@@ -1,8 +1,8 @@
 //! MouseClaw 主入口。
 //! 完整架构约束见 `/Users/edwinhao/MouseClaw/CLAUDE.md`。
 
-mod claude_cli;
-mod screenshot;
+pub mod claude_cli;
+pub mod screenshot;
 
 use tauri::{Manager, WebviewWindow};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
