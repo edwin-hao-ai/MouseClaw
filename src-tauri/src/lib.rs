@@ -1,12 +1,14 @@
 //! MouseClaw main entry. See `/Users/edwinhao/MouseClaw/CLAUDE.md` for full architecture.
 
+pub mod audio;
 pub mod claude_cli;
 pub mod events;
 pub mod mode_b;
 pub mod screenshot;
 pub mod sessions;
+pub mod transcribe;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tokio::sync::Mutex;
@@ -14,11 +16,13 @@ use tokio::sync::Mutex;
 use crate::events::{EV_VIEW_CHANGED, ReplyMode, ViewKind};
 use crate::sessions::SessionStore;
 
-/// Global app state — wrapped in tokio Mutex so async pipelines can lock.
+/// App-wide state. Mutex split: tokio::Mutex for async-accessed bits,
+/// std::Mutex for the cpal Recorder (cpal::Stream is !Send so we never await
+/// while holding the recorder lock).
 pub struct AppState {
     pub sessions: Mutex<SessionStore>,
-    /// Path of the most recent screenshot, captured at shortcut press.
     pub last_screenshot: Mutex<Option<std::path::PathBuf>>,
+    pub recorder: StdMutex<Option<audio::Recorder>>,
 }
 
 impl AppState {
@@ -26,6 +30,7 @@ impl AppState {
         Ok(Self {
             sessions: Mutex::new(SessionStore::new()?),
             last_screenshot: Mutex::new(None),
+            recorder: StdMutex::new(None),
         })
     }
 }
@@ -55,9 +60,6 @@ fn emit_view(app: &AppHandle, view: &ViewKind) {
 
 // ────────────────── Tauri commands ──────────────────
 
-/// User pressed Submit on the listening prompt bar with `text`.
-/// Pipeline: ensure screenshot → emit Thinking → call Claude → emit Reply.
-/// If Mode B detected: emit countdown for 3s → emit Inserting → write at cursor.
 #[tauri::command]
 async fn submit_query(
     text: String,
@@ -70,7 +72,6 @@ async fn submit_query(
     Ok(())
 }
 
-/// Follow-up from the expanded Panel (no new screenshot — re-uses last).
 #[tauri::command]
 async fn follow_up(
     text: String,
@@ -86,92 +87,84 @@ async fn follow_up(
 #[tauri::command]
 async fn new_session(state: State<'_, Arc<AppState>>) -> Result<u64, String> {
     let mut store = state.sessions.lock().await;
-    let id = store.touch(true);
-    Ok(id)
+    Ok(store.touch(true))
 }
 
 #[tauri::command]
 fn save_shortcut(choice: String) -> Result<(), String> {
-    // V1: Onboarding choice persisted on the frontend in localStorage.
-    // V2 will re-register the global shortcut based on this choice.
     println!("[mouseclaw] user picked shortcut: {choice}");
     Ok(())
 }
 
 #[tauri::command]
 fn cancel_pipeline(app: AppHandle) -> Result<(), String> {
-    // V1 best-effort: just return to idle. In-flight Claude call still completes
-    // but its result is discarded by the view state.
     emit_view(&app, &ViewKind::Idle);
+    Ok(())
+}
+
+/// Manual stop from the recording bubble's ◼ button (equivalent to a 2nd shortcut press).
+#[tauri::command]
+async fn toggle_recording(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn(async move { on_shortcut_pressed(app, state).await });
     Ok(())
 }
 
 // ────────────────── Pipeline ──────────────────
 
 async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppState>) {
-    // 1. Ensure we have a fresh screenshot (taken when shortcut fired; if not, grab now)
+    // 1. Use screenshot captured at shortcut-press time (recent + matches user intent)
     let img_path = match state.last_screenshot.lock().await.clone() {
         Some(p) if p.exists() => p,
         _ => match screenshot::capture_main_screen().await {
             Ok(p) => p,
             Err(e) => {
-                eprintln!("[mouseclaw] screenshot failed: {e:#}");
                 emit_view(&app, &ViewKind::Blocked { reason: format!("截图失败：{e}") });
                 return;
             }
         },
     };
 
-    // 2. Session bookkeeping (touch resolves new vs continue based on idle window)
-    let (session_id, context_preamble) = {
+    // 2. Session bookkeeping
+    let (_session_id, context_preamble) = {
         let mut store = state.sessions.lock().await;
         let id = store.touch(false);
-        let pre = store.context_preamble();
-        (id, pre)
+        (id, store.context_preamble())
     };
-
     let prompt_with_context = match &context_preamble {
         Some(pre) => format!("{pre}{transcript}"),
         None => transcript.clone(),
     };
 
-    // 3. Emit Thinking
     emit_view(&app, &ViewKind::Thinking { transcript: transcript.clone() });
 
-    // 4. Foreground app context (best effort)
     let frontmost = mode_b::frontmost_app_name();
-
-    // 5. Call Claude
     let reply = match claude_cli::ask_claude(&prompt_with_context, &img_path, frontmost.as_deref()).await {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("[mouseclaw] claude failed: {e:#}");
             emit_view(&app, &ViewKind::Blocked { reason: format!("Claude 调用失败：{e}") });
             return;
         }
     };
 
-    // 6. Record turns
     {
         let mut store = state.sessions.lock().await;
         let _ = store.record_user(transcript.clone()).await;
         let _ = store.record_assistant(reply.clone()).await;
     }
 
-    // 7. Mode detection
     let insert_text = claude_cli::parse_insert_directive(&reply);
-
-    // Mode B but blocked (e.g., terminal foreground) → degrade to Mode A
     let (mode, final_insert) = match insert_text {
-        Some(text) => match mode_b::assert_writable() {
-            Ok(()) => (ReplyMode::B, Some(text)),
-            Err(_) => (ReplyMode::A, None), // block the write but still show reply
+        Some(t) => match mode_b::assert_writable() {
+            Ok(()) => (ReplyMode::B, Some(t)),
+            Err(_) => (ReplyMode::A, None),
         },
         None => (ReplyMode::A, None),
     };
 
-    // 8. Emit Reply
-    let _ = session_id; // (could pass into view for chip; UI uses placeholder for now)
     emit_view(&app, &ViewKind::Reply {
         transcript: transcript.clone(),
         reply: reply.clone(),
@@ -179,27 +172,110 @@ async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppState>) 
         insert_text: final_insert.clone(),
     });
 
-    // 9. If Mode B: 3-second countdown then insert
     if let (ReplyMode::B, Some(text)) = (mode, final_insert) {
         for remaining in (1..=3).rev() {
             emit_view(&app, &ViewKind::ModeBCountdown {
-                insert_text: text.clone(),
-                remaining,
+                insert_text: text.clone(), remaining,
             });
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         }
         emit_view(&app, &ViewKind::ModeBInserting { insert_text: text.clone() });
         if let Err(e) = mode_b::write_at_cursor(&text).await {
-            eprintln!("[mouseclaw] mode B write failed: {e:#}");
             emit_view(&app, &ViewKind::Blocked { reason: format!("写入失败：{e}") });
             return;
         }
-        // After write, fall back to Reply (success) for the auto-dismiss timer
         emit_view(&app, &ViewKind::Reply {
-            transcript,
-            reply: format!("✅ 已写入：{text}"),
-            mode: ReplyMode::A,
-            insert_text: None,
+            transcript, reply: format!("✅ 已写入：{text}"),
+            mode: ReplyMode::A, insert_text: None,
+        });
+    }
+}
+
+// ────────────────── Voice trigger (toggle recording on shortcut) ──────────────────
+
+/// Called on each shortcut press. Toggles recording state:
+///   1st press → start cpal capture, emit Listening with mic indicator
+///   2nd press → stop capture, transcribe with Whisper, run pipeline with transcript
+async fn on_shortcut_pressed(app: AppHandle, state: Arc<AppState>) {
+    // Check current recorder state (under std mutex — no awaits while held)
+    let was_recording = {
+        let g = state.recorder.lock().unwrap();
+        g.is_some()
+    };
+
+    if was_recording {
+        // Stop + transcribe + pipeline
+        let recorder = {
+            let mut g = state.recorder.lock().unwrap();
+            g.take()
+        };
+        let Some(recorder) = recorder else { return };
+
+        emit_view(&app, &ViewKind::Thinking { transcript: "(转写中…)".into() });
+
+        // Move CPU-bound work off the async thread
+        let app_clone = app.clone();
+        let state_clone = state.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let samples = match recorder.stop_and_take() {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("[mouseclaw] stop_and_take: {e:#}");
+                    let _ = app_clone.emit(EV_VIEW_CHANGED, ViewKind::Blocked {
+                        reason: format!("录音失败：{e}"),
+                    });
+                    return;
+                }
+            };
+            println!("[mouseclaw] captured {} samples @ 16kHz ({:.1}s)",
+                samples.len(), samples.len() as f32 / 16_000.0);
+            let transcript = match transcribe::transcribe(&samples) {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("[mouseclaw] transcribe: {e:#}");
+                    let _ = app_clone.emit(EV_VIEW_CHANGED, ViewKind::Blocked {
+                        reason: format!("Whisper 失败：{e}"),
+                    });
+                    return;
+                }
+            };
+            println!("[mouseclaw] transcript: {transcript:?}");
+            if transcript.is_empty() {
+                let _ = app_clone.emit(EV_VIEW_CHANGED, ViewKind::Idle);
+                return;
+            }
+            // Run the pipeline on the async runtime
+            tauri::async_runtime::spawn(async move {
+                run_pipeline(transcript, app_clone, state_clone).await;
+            });
+        });
+    } else {
+        // Start recording. Also capture screenshot up front.
+        if !transcribe::is_available() {
+            emit_view(&app, &ViewKind::Blocked {
+                reason: "Whisper 模型未找到（~/.mouseclaw/models/ggml-base-q5_1.bin）".into(),
+            });
+            return;
+        }
+        let recorder = match audio::Recorder::start() {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("[mouseclaw] start recording: {e:#}");
+                emit_view(&app, &ViewKind::Blocked { reason: format!("录音启动失败：{e}") });
+                return;
+            }
+        };
+        *state.recorder.lock().unwrap() = Some(recorder);
+
+        // Take screenshot in parallel
+        let state_clone = state.clone();
+        let app_clone = app.clone();
+        tauri::async_runtime::spawn(async move {
+            match screenshot::capture_main_screen().await {
+                Ok(p) => { *state_clone.last_screenshot.lock().await = Some(p); }
+                Err(e) => eprintln!("[mouseclaw] screenshot: {e:#}"),
+            }
+            emit_view(&app_clone, &ViewKind::Listening);
         });
     }
 }
@@ -216,48 +292,30 @@ pub fn run() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
-                    if event.state() != ShortcutState::Pressed {
-                        return;
-                    }
-                    println!("\n[mouseclaw] 🦞 shortcut fired: {shortcut:?}");
-
-                    // Show overlay window
+                    if event.state() != ShortcutState::Pressed { return; }
+                    println!("[mouseclaw] 🦞 shortcut fired: {shortcut:?}");
                     if let Some(w) = app.get_webview_window("mouse") {
                         let _ = show_mouse(&w);
                     }
-
-                    // Capture screenshot up-front (so the screen state when the
-                    // user pressed the key is what gets sent, not what's visible
-                    // by the time they finish typing).
                     let app_handle = app.clone();
-                    let state_clone: Arc<AppState> = app.state::<Arc<AppState>>().inner().clone();
+                    let state: Arc<AppState> = app.state::<Arc<AppState>>().inner().clone();
                     tauri::async_runtime::spawn(async move {
-                        match screenshot::capture_main_screen().await {
-                            Ok(p) => {
-                                *state_clone.last_screenshot.lock().await = Some(p);
-                            }
-                            Err(e) => eprintln!("[mouseclaw] screenshot at trigger: {e:#}"),
-                        }
-                        emit_view(&app_handle, &ViewKind::Listening);
+                        on_shortcut_pressed(app_handle, state).await;
                     });
                 })
                 .build(),
         )
         .invoke_handler(tauri::generate_handler![
-            submit_query, follow_up, new_session, save_shortcut, cancel_pipeline
+            submit_query, follow_up, new_session, save_shortcut, cancel_pipeline, toggle_recording
         ])
         .setup(|app| {
             let shortcut = Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::Space);
             app.global_shortcut().register(shortcut)?;
-            println!("[mouseclaw] registered global shortcut: Cmd+Shift+Space");
-
+            println!("[mouseclaw] registered global shortcut: Cmd+Shift+Space (toggle record)");
             set_accessory_activation_policy();
             println!("[mouseclaw] activation policy = Accessory (no dock icon)");
-
-            // Ensure initial state is idle on startup
             emit_view(&app.handle(), &ViewKind::Idle);
-
-            println!("[mouseclaw] 🦞 ready — press Cmd+Shift+Space to summon");
+            println!("[mouseclaw] 🦞 ready — press Cmd+Shift+Space to start recording");
             Ok(())
         })
         .run(tauri::generate_context!())
