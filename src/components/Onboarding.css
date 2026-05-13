@@ -1,0 +1,117 @@
+/* Onboarding — DESIGN.md §4.5 */
+
+.ob-root {
+  width: 100%;
+  max-width: 560px;
+  padding: var(--space-10) var(--space-12);
+  background: var(--surface-glass);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border-radius: var(--radius-4xl);
+  color: var(--text-on-dark);
+  margin: var(--space-10) auto;
+  box-shadow: var(--shadow-card);
+}
+
+.ob-mouse-stage {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--space-7);
+}
+.ob-mouse-stage .mouse-wrap {
+  animation: ob-float 3s var(--ease-default) infinite;
+}
+@keyframes ob-float {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50%      { transform: translateY(-6px) rotate(2deg); }
+}
+
+.ob-title {
+  font-size: var(--text-headline);
+  font-weight: 700;
+  text-align: center;
+  margin: 0 0 var(--space-2);
+  letter-spacing: -0.01em;
+  color: var(--text-on-dark);
+}
+.ob-subtitle {
+  font-size: var(--text-body-lg);
+  color: var(--text-dim);
+  text-align: center;
+  margin: 0 0 var(--space-7);
+  line-height: 1.6;
+}
+
+.ob-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ob-option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  border-radius: var(--radius-xl);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  transition: background var(--duration-tap) var(--ease-tap),
+              border-color var(--duration-tap) var(--ease-tap),
+              box-shadow var(--duration-tap) var(--ease-tap);
+  color: var(--text-on-dark);
+  font-family: inherit;
+  width: 100%;
+  text-align: left;
+}
+.ob-option:hover {
+  background: rgba(255, 107, 157, 0.08);
+  border-color: rgba(255, 107, 157, 0.3);
+}
+.ob-option.selected {
+  background: var(--accent-glow);
+  border-color: rgba(255, 107, 157, 0.5);
+  box-shadow: var(--shadow-focus-ring);
+}
+.ob-key {
+  font-family: var(--font-mono);
+  font-size: var(--text-body-sm);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--accent-soft);
+  font-weight: 600;
+}
+.ob-label {
+  font-size: var(--text-body-lg);
+  font-weight: 500;
+  flex: 1;
+}
+.ob-tag {
+  font-size: var(--text-micro);
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: rgba(92, 214, 160, 0.15);
+  color: var(--success);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+.ob-cta {
+  margin-top: var(--space-7);
+  width: 100%;
+  padding: 14px;
+  background: var(--accent-gradient);
+  border: none;
+  border-radius: var(--radius-xl);
+  color: #ffffff;
+  font-size: var(--text-body-lg);
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow-cta);
+  transition: transform var(--duration-tap) var(--ease-tap);
+  font-family: inherit;
+}
+.ob-cta:hover { transform: translateY(-1px); }
+.ob-cta:active { transform: translateY(0); }
