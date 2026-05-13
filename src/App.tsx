@@ -14,6 +14,7 @@ import { PixelMouse, type MouseState } from "./components/PixelMouse";
 import { Bubble } from "./components/Bubble";
 import { Panel } from "./components/Panel";
 import { Onboarding } from "./components/Onboarding";
+import { PromptBar } from "./components/PromptBar";
 import { EV_VIEW_CHANGED, type ViewKind, type ShortcutChoice } from "./types";
 
 const PREVIEW_LONG = "这篇 Nature 文章讨论 2026 年 AI 加速材料发现的三个突破：室温超导候选材料、新型电池电解液、碳捕获催化剂。核心机制是自动化实验室加大模型生成假设的迭代闭环。";
@@ -155,7 +156,8 @@ function BubbleFor({ view, continuing }: BubbleForProps) {
     case "idle":
       return null;
     case "listening":
-      return <Bubble text="听着呢" voiceBars />;
+      // Day 2: text input stands in for Whisper. Day 3+ swap with mic widget.
+      return <PromptBar onSubmit={(t) => invoke("submit_query", { text: t })} onCancel={() => invoke("cancel_pipeline").catch(() => {})} />;
     case "thinking":
       return <Bubble text={view.transcript} />;
     case "reply": {

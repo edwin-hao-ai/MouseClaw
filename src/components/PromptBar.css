@@ -1,0 +1,43 @@
+/* PromptBar — extends .bubble base, adds inline input + send button.
+ * Whisper-replacement until Day 3+. */
+
+.prompt-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 240px;
+  padding: 6px 8px 6px var(--space-3);
+}
+
+.prompt-bar input {
+  flex: 1;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-body);
+  color: var(--text-primary);
+  outline: none;
+  padding: 4px 0;
+  min-width: 0;
+}
+.prompt-bar input::placeholder {
+  color: var(--text-bubble-dim);
+}
+
+.prompt-bar-send {
+  background: var(--accent-gradient);
+  border: 0;
+  color: #ffffff;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: var(--text-body);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(255, 107, 157, 0.3);
+  font-family: inherit;
+  flex-shrink: 0;
+}
+.prompt-bar-send:active { transform: translateY(1px); }
