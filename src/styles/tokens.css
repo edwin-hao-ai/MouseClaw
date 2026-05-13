@@ -1,0 +1,145 @@
+/* MouseClaw Design Tokens — extracted verbatim from DESIGN.md §9 cheatsheet.
+ * Any new visual value must come from here. Inline literals = review failure.
+ * Edit only by syncing with DESIGN.md in the SAME commit. */
+
+:root {
+  /* ─── Surface ─── */
+  --surface-deep: #0a0e1a;
+  --surface-glass: rgba(255, 255, 255, 0.06);
+  --surface-glass-strong: rgba(255, 255, 255, 0.10);
+  --surface-border: rgba(255, 255, 255, 0.10);
+
+  /* ─── Bubble / Panel ─── */
+  --bubble-bg: rgba(255, 255, 255, 0.97);
+  --panel-bg: rgba(252, 252, 254, 0.98);
+  --bubble-border: rgba(0, 0, 0, 0.06);
+  --bubble-success-bg: linear-gradient(135deg, #d8f8e6, #ffffff);
+  --bubble-warn-bg: linear-gradient(135deg, #fff7e0, #ffffff);
+  --bubble-danger-bg: linear-gradient(135deg, #ffe1e0, #ffffff);
+
+  /* ─── Text ─── */
+  --text-primary: #1a1a1a;
+  --text-on-dark: #f5f5f7;
+  --text-dim: #a1a1a8;
+  --text-bubble-dim: #6c6c70;
+  --text-warn: #b58900;
+  --text-danger: #7a1f1c;
+  --text-link: #b3326d;
+
+  /* ─── Accent (brand) ─── */
+  --accent-primary: #ff6b9d;
+  --accent-soft: #ff9bb8;
+  --accent-gradient: linear-gradient(135deg, #ff6b9d, #ff9bb8);
+  --accent-glow: rgba(255, 107, 157, 0.15);
+
+  /* ─── Semantic ─── */
+  --success: #5cd6a0;
+  --success-soft: #88e2b7;
+  --warn: #ffd166;
+  --danger: #ff5f57;
+
+  /* ─── Pixel-mouse palette (LOCKED — 8 colors max) ─── */
+  --m-body: #cfcfcf;
+  --m-belly: #ffffff;
+  --m-ear-out: #cfcfcf;
+  --m-ear-in: #ff9bb8;
+  --m-eye: #1a1a1a;
+  --m-nose: #d63d6a;
+  --m-tail: #8a8a8a;
+  --m-paw: #ffffff;
+
+  /* ─── Font stacks ─── */
+  --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+                 "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+
+  /* ─── Type scale ─── */
+  --text-display: 38px;
+  --text-headline: 22px;
+  --text-title: 16px;
+  --text-body-lg: 14px;
+  --text-body: 13px;
+  --text-body-sm: 12px;
+  --text-meta: 11px;
+  --text-micro: 10px;
+
+  /* ─── Spacing (8-px grid) ─── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-10: 48px;
+  --space-12: 56px;
+  --space-14: 64px;
+
+  /* ─── Radius ─── */
+  --radius-pill: 999px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-2xl: 14px;
+  --radius-3xl: 16px;
+  --radius-4xl: 24px;
+
+  /* ─── Shadow ─── */
+  --shadow-bubble: 0 12px 32px rgba(0, 0, 0, 0.35),
+                   0 2px 6px rgba(0, 0, 0, 0.2),
+                   inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --shadow-panel: 0 24px 64px rgba(0, 0, 0, 0.4),
+                  0 4px 12px rgba(0, 0, 0, 0.2),
+                  inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --shadow-card: 0 30px 80px rgba(0, 0, 0, 0.5),
+                 inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --shadow-cta: 0 8px 24px rgba(255, 107, 157, 0.35);
+  --shadow-mouse: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.4));
+  --shadow-focus-ring: 0 0 0 4px rgba(255, 107, 157, 0.15);
+  --shadow-input-focus: 0 0 0 3px rgba(255, 107, 157, 0.15);
+
+  /* ─── Motion ─── */
+  --ease-default: ease-in-out;
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-linear: linear;
+  --ease-tap: cubic-bezier(0.2, 0, 0, 1);
+
+  --duration-sleep: 3200ms;
+  --duration-listen: 600ms;
+  --duration-listen-ear: 400ms;
+  --duration-think: 1400ms;
+  --duration-jump: 900ms;
+  --duration-countdown: 3000ms;
+  --duration-hover: 300ms;
+  --duration-tap: 150ms;
+  --duration-bubble-in: 200ms;
+  --duration-bubble-out: 150ms;
+  --duration-panel-expand: 300ms;
+}
+
+/* ─── Reset for the mouse overlay window ─── */
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent !important;
+  overflow: hidden;
+  cursor: default;
+  font-family: var(--font-system);
+  font-size: var(--text-body);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Reduce-motion friendly defaults ─── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1.6s !important;
+    transition-duration: 80ms !important;
+  }
+}

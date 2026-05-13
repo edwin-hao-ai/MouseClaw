@@ -1,68 +1,187 @@
 /**
- * Day 1 占位 UI：纯像素老鼠（睡眠状态），透明背景。
- * 真正的 4 状态动画 + 气泡 + panel 在 Day 2+。
+ * MouseClaw root — single overlay window, composes mouse + bubble + panel + onboarding.
+ *
+ * State machine driven by ViewKind events from Rust. For Day 2 dev, we expose
+ * a hidden keyboard shortcut (?) to cycle states locally so the UI can be
+ * inspected without firing the pipeline.
  */
-import "./App.css";
+import { useCallback, useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 
-const MOUSE_PALETTE = {
-  body: "#cfcfcf",
-  belly: "#ffffff",
-  earIn: "#ff9bb8",
-  eye: "#1a1a1a",
-  nose: "#d63d6a",
-  tail: "#8a8a8a",
-  paw: "#ffffff",
-};
+import "./styles/tokens.css";
+import { PixelMouse, type MouseState } from "./components/PixelMouse";
+import { Bubble } from "./components/Bubble";
+import { Panel } from "./components/Panel";
+import { Onboarding } from "./components/Onboarding";
+import { EV_VIEW_CHANGED, type ViewKind, type ShortcutChoice } from "./types";
 
-function PixelMouse() {
-  const p = MOUSE_PALETTE;
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      width="128"
-      height="128"
-      style={{
-        imageRendering: "pixelated",
-        shapeRendering: "crispEdges",
-        filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.4))",
-      }}
-    >
-      {/* ears outer */}
-      <rect x="3" y="1" width="2" height="2" fill={p.body} />
-      <rect x="2" y="2" width="3" height="2" fill={p.body} />
-      <rect x="11" y="1" width="2" height="2" fill={p.body} />
-      <rect x="11" y="2" width="3" height="2" fill={p.body} />
-      {/* ears inner */}
-      <rect x="3" y="2" width="1" height="1" fill={p.earIn} />
-      <rect x="12" y="2" width="1" height="1" fill={p.earIn} />
-      {/* body */}
-      <rect x="3" y="3" width="10" height="1" fill={p.body} />
-      <rect x="2" y="4" width="12" height="3" fill={p.body} />
-      <rect x="3" y="7" width="10" height="1" fill={p.body} />
-      <rect x="5" y="8" width="6" height="2" fill={p.belly} />
-      <rect x="3" y="8" width="2" height="2" fill={p.body} />
-      <rect x="11" y="8" width="2" height="2" fill={p.body} />
-      <rect x="4" y="10" width="8" height="1" fill={p.body} />
-      <rect x="4" y="11" width="2" height="1" fill={p.paw} />
-      <rect x="10" y="11" width="2" height="1" fill={p.paw} />
-      {/* sleeping eyes (small dots) */}
-      <rect x="5" y="6" width="1" height="1" fill={p.eye} />
-      <rect x="10" y="6" width="1" height="1" fill={p.eye} />
-      {/* nose */}
-      <rect x="7" y="7" width="2" height="1" fill={p.nose} />
-      {/* tail */}
-      <rect x="13" y="9" width="1" height="1" fill={p.tail} />
-      <rect x="14" y="7" width="1" height="3" fill={p.tail} />
-    </svg>
-  );
+const PREVIEW_LONG = "这篇 Nature 文章讨论 2026 年 AI 加速材料发现的三个突破：室温超导候选材料、新型电池电解液、碳捕获催化剂。核心机制是自动化实验室加大模型生成假设的迭代闭环。";
+
+function isLongReply(text: string): boolean {
+  return text.split("\n").length >= 4 || text.length > 140;
 }
 
-function App() {
+function mouseStateFor(view: ViewKind): MouseState {
+  switch (view.kind) {
+    case "idle":             return "sleep";
+    case "onboarding":       return "listen";
+    case "listening":        return "listen";
+    case "thinking":         return "think";
+    case "reply":            return view.mode === "B" ? "write" : "jump";
+    case "panel":            return "think";
+    case "mode-b-countdown": return "write";
+    case "mode-b-inserting": return "write";
+    case "blocked":          return "block";
+  }
+}
+
+export default function App() {
+  const [view, setView] = useState<ViewKind>({ kind: "idle" });
+  const [onboarded, setOnboarded] = useState<boolean>(
+    () => localStorage.getItem("mouseclaw.onboarded") === "1"
+  );
+  // session continuation chip — true when current view is part of an ongoing session
+  const [continuing, setContinuing] = useState(false);
+
+  // Listen for state changes from Rust
+  useEffect(() => {
+    const unlisten = listen<ViewKind>(EV_VIEW_CHANGED, (e) => {
+      setView(e.payload);
+      // setContinuing logic will be wired when sessions module ships events
+    });
+    return () => { unlisten.then(fn => fn()); };
+  }, []);
+
+  // Dev-only: cycle states by pressing 1-9 on the keyboard
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const onKey = (e: KeyboardEvent) => {
+      const k = e.key;
+      if (k === "1") setView({ kind: "idle" });
+      else if (k === "2") setView({ kind: "onboarding" });
+      else if (k === "3") setView({ kind: "listening" });
+      else if (k === "4") setView({ kind: "thinking", transcript: "总结这个网页" });
+      else if (k === "5") setView({ kind: "reply", transcript: "总结这个网页", reply: PREVIEW_LONG, mode: "A" });
+      else if (k === "6") setView({ kind: "reply", transcript: "看一眼屏幕", reply: "✅ 已发送邮件", mode: "A" });
+      else if (k === "7") setView({
+        kind: "panel", sessionId: 42, turns: [
+          { role: "user", text: "总结这个网页" },
+          { role: "assistant", text: PREVIEW_LONG },
+          { role: "user", text: "那 Berkeley 用的是什么模型" },
+          { role: "assistant", text: "等离子扩散模型，源代码在 github.com/Berkeley/...", streaming: true },
+        ]
+      });
+      else if (k === "8") setView({ kind: "mode-b-countdown", insertText: "他望着窗外，第一片雪正缓缓落下。", remaining: 3 });
+      else if (k === "9") setView({ kind: "blocked", reason: "终端窗口禁止写入" });
+      else return;
+      setContinuing(k === "7");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const handleOnboard = useCallback(async (choice: ShortcutChoice) => {
+    try {
+      await invoke("save_shortcut", { choice });
+    } catch (e) {
+      console.warn("save_shortcut not yet registered:", e);
+    }
+    localStorage.setItem("mouseclaw.onboarded", "1");
+    setOnboarded(true);
+    setView({ kind: "idle" });
+  }, []);
+
+  const handlePanelSend = useCallback(async (text: string) => {
+    try { await invoke("follow_up", { text }); }
+    catch (e) { console.warn("follow_up not yet registered:", e); }
+  }, []);
+
+  const handleCollapse = useCallback(() => {
+    setView({ kind: "idle" });
+  }, []);
+
+  const handleNewSession = useCallback(async () => {
+    try { await invoke("new_session"); }
+    catch (e) { console.warn("new_session not yet registered:", e); }
+    setContinuing(false);
+  }, []);
+
+  // ────────────────── Render ──────────────────
+
+  // Onboarding screen takes over the whole window
+  if (!onboarded && view.kind !== "idle") {
+    return <Onboarding onComplete={handleOnboard} />;
+  }
+  if (view.kind === "onboarding") {
+    return <Onboarding onComplete={handleOnboard} />;
+  }
+
+  // Panel takes precedence over mouse-only views
+  if (view.kind === "panel") {
+    return (
+      <div className="stage stage-panel">
+        <Panel
+          sessionId={view.sessionId}
+          turns={view.turns}
+          onSend={handlePanelSend}
+          onCollapse={handleCollapse}
+          onNewSession={handleNewSession}
+        />
+        <div className="stage-mouse">
+          <PixelMouse state="think" size={48} continuing={continuing} />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="mouse-stage">
-      <PixelMouse />
+    <div className="stage stage-mouse-bubble">
+      <BubbleFor view={view} continuing={continuing} />
+      <div className="stage-mouse">
+        <PixelMouse
+          state={mouseStateFor(view)}
+          size={view.kind === "idle" ? 64 : 96}
+          continuing={continuing}
+        />
+      </div>
     </div>
   );
 }
 
-export default App;
+interface BubbleForProps { view: ViewKind; continuing: boolean; }
+function BubbleFor({ view, continuing }: BubbleForProps) {
+  switch (view.kind) {
+    case "idle":
+      return null;
+    case "listening":
+      return <Bubble text="听着呢" voiceBars />;
+    case "thinking":
+      return <Bubble text={view.transcript} />;
+    case "reply": {
+      const long = isLongReply(view.reply);
+      const variant = view.mode === "B" ? "warn" : "success";
+      return (
+        <Bubble
+          text={view.reply}
+          variant={variant}
+          expandable={long}
+          sessionChip={continuing ? { sessionId: 42, turn: 2 } : undefined}
+        />
+      );
+    }
+    case "mode-b-countdown":
+      return (
+        <Bubble
+          text={`⌨ 即将写入：${view.insertText}\n(${view.remaining}s · Esc 取消 / ↵ 立即)`}
+          variant="warn"
+        />
+      );
+    case "mode-b-inserting":
+      return <Bubble text={`正在写入「${view.insertText}」`} variant="warn" />;
+    case "blocked":
+      return <Bubble text={`⛔ ${view.reason}`} variant="danger" />;
+    default:
+      return null;
+  }
+}

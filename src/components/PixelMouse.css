@@ -1,0 +1,85 @@
+/* PixelMouse animations — durations/curves come from tokens.css per DESIGN.md §2.7 */
+
+.mouse-wrap {
+  position: relative;
+  display: inline-block;
+  pointer-events: none;
+}
+
+.mouse-svg {
+  image-rendering: pixelated;
+  /* @ts-expect-error — vendor variant kept for older webviews */
+  image-rendering: crisp-edges;
+  shape-rendering: crispEdges;
+  filter: var(--shadow-mouse);
+  display: block;
+}
+
+/* Sleep — slow vertical breathing */
+.mouse-sleep .mouse-svg {
+  animation: mc-sleep var(--duration-sleep) var(--ease-default) infinite;
+}
+@keyframes mc-sleep {
+  0%, 100% { transform: translateY(0) scaleY(1); }
+  50%      { transform: translateY(-1px) scaleY(0.98); }
+}
+
+/* Listen — short bounce + the ear-wiggle is via stand-alone class
+   applied on the SVG group; for V1 we wiggle whole svg slightly */
+.mouse-listen .mouse-svg {
+  animation: mc-listen var(--duration-listen) var(--ease-default) infinite;
+  transform-origin: center bottom;
+}
+@keyframes mc-listen {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50%      { transform: translateY(-2px) rotate(0.5deg); }
+}
+
+/* Think — slow left-right wobble */
+.mouse-think .mouse-svg {
+  animation: mc-think var(--duration-think) var(--ease-default) infinite;
+  transform-origin: center bottom;
+}
+@keyframes mc-think {
+  0%   { transform: rotate(-3deg); }
+  50%  { transform: rotate(3deg); }
+  100% { transform: rotate(-3deg); }
+}
+
+/* Jump — one-shot bounce with spring overshoot */
+.mouse-jump .mouse-svg {
+  animation: mc-jump var(--duration-jump) var(--ease-spring) infinite;
+}
+@keyframes mc-jump {
+  0%, 60%, 100% { transform: translateY(0) rotate(0deg); }
+  30%           { transform: translateY(-22px) rotate(0deg); }
+  45%           { transform: translateY(-18px) rotate(-4deg); }
+}
+
+/* Write — slight forward lean, no infinite loop */
+.mouse-write .mouse-svg {
+  transform: rotate(-2deg);
+}
+
+/* Block — static, no animation */
+.mouse-block .mouse-svg {
+  filter: var(--shadow-mouse) saturate(0.7);
+}
+
+/* Continuing session chain indicator — 3-pixel green block above head */
+.mouse-chain {
+  position: absolute;
+  top: 4%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 25%;
+  aspect-ratio: 3 / 2;
+  background:
+    linear-gradient(to bottom,
+      var(--success) 0%, var(--success) 50%,
+      transparent 50%, transparent 60%,
+      var(--success) 60%, var(--success) 100%);
+  background-size: 100% 100%;
+  z-index: 2;
+  image-rendering: pixelated;
+}
