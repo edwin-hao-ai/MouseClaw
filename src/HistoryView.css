@@ -1,0 +1,156 @@
+/* History window — regular window (not transparent overlay).
+ * Reuses design tokens but with light theme (works in normal Tauri window). */
+
+.hv-root {
+  width: 100%;
+  min-height: 100vh;
+  background: #f5f5f7;
+  color: var(--text-primary);
+  font-family: var(--font-system);
+  padding: var(--space-6) var(--space-7);
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.hv-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--space-6);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+.hv-header h1 {
+  font-size: var(--text-headline);
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.hv-stat {
+  font-size: var(--text-body-sm);
+  color: var(--text-bubble-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.hv-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-14) var(--space-6);
+  color: var(--text-bubble-dim);
+  font-size: var(--text-body-lg);
+  gap: var(--space-2);
+  text-align: center;
+}
+.hv-empty-icon { font-size: 48px; opacity: 0.6; }
+.hv-empty-sub { font-size: var(--text-body-sm); color: var(--text-dim); }
+
+.hv-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.hv-session {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  transition: box-shadow var(--duration-tap) var(--ease-tap);
+}
+.hv-session.open {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.hv-session-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  color: var(--text-primary);
+  font-size: var(--text-body);
+  transition: background var(--duration-tap) var(--ease-tap);
+}
+.hv-session-head:hover {
+  background: rgba(255, 107, 157, 0.04);
+}
+
+.hv-session-chip {
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 107, 157, 0.12);
+  color: var(--text-link);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.hv-session-time {
+  font-family: var(--font-mono);
+  font-size: var(--text-meta);
+  color: var(--text-bubble-dim);
+  flex-shrink: 0;
+}
+.hv-session-turns {
+  font-size: var(--text-meta);
+  color: var(--text-dim);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.04);
+  flex-shrink: 0;
+}
+.hv-session-preview {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+  font-style: italic;
+  font-size: var(--text-body-sm);
+}
+.hv-session-caret {
+  color: var(--text-dim);
+  font-size: var(--text-meta);
+  flex-shrink: 0;
+}
+
+.hv-session-body {
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border-top: 1px solid rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  background: #fafafa;
+}
+
+.hv-turn {
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+}
+.hv-turn-meta {
+  display: flex;
+  gap: var(--space-3);
+  font-size: var(--text-meta);
+  color: var(--text-bubble-dim);
+  margin-bottom: var(--space-2);
+}
+.hv-turn-role { font-weight: 600; }
+.hv-turn-time { font-family: var(--font-mono); }
+.hv-turn-text {
+  font-size: var(--text-body);
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.turn-user { background: rgba(255, 107, 157, 0.04); }

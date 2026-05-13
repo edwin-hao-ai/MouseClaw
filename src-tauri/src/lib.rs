@@ -8,6 +8,7 @@ pub mod mode_b;
 pub mod screenshot;
 pub mod sessions;
 pub mod transcribe;
+pub mod tray;
 
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -59,7 +60,7 @@ fn set_accessory_activation_policy() {}
 /// Position the overlay window near the user's mouse cursor, then show it.
 /// NSEvent::mouseLocation returns screen coords with bottom-left origin;
 /// Tauri's set_position uses top-left origin, so we flip Y by screen height.
-fn show_mouse(window: &WebviewWindow) -> tauri::Result<()> {
+pub fn show_mouse(window: &WebviewWindow) -> tauri::Result<()> {
     if let Some((x, y)) = current_mouse_pos_top_left(window) {
         // Offset so the mouse character lands just below+right of the cursor
         let w_size = window.outer_size().ok();
@@ -223,6 +224,58 @@ fn dismiss(app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<(), String
     Ok(())
 }
 
+/// Read session history from ~/.mouseclaw/sessions.jsonl and return grouped sessions
+/// for the History window. Returns most recent sessions first.
+#[tauri::command]
+fn read_history() -> Result<Vec<HistorySession>, String> {
+    use std::collections::BTreeMap;
+    use crate::sessions::TurnRecord;
+
+    let home = std::env::var_os("HOME").ok_or("HOME not set")?;
+    let path = std::path::PathBuf::from(home).join(".mouseclaw/sessions.jsonl");
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("read: {e}"))?;
+    let mut sessions: BTreeMap<u64, HistorySession> = BTreeMap::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() { continue; }
+        let Ok(record) = serde_json::from_str::<TurnRecord>(line) else { continue };
+        let entry = sessions.entry(record.session_id).or_insert_with(|| HistorySession {
+            session_id: record.session_id,
+            started_at: record.timestamp,
+            ended_at: record.timestamp,
+            turns: Vec::new(),
+        });
+        entry.ended_at = record.timestamp;
+        entry.turns.push(HistoryTurn {
+            role: format!("{:?}", record.role).to_lowercase(),
+            text: record.text,
+            timestamp: record.timestamp,
+        });
+    }
+    // Reverse-chronological (most recent first)
+    let mut list: Vec<HistorySession> = sessions.into_values().collect();
+    list.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+    Ok(list)
+}
+
+#[derive(serde::Serialize)]
+pub struct HistorySession {
+    pub session_id: u64,
+    pub started_at: chrono::DateTime<chrono::Utc>,
+    pub ended_at: chrono::DateTime<chrono::Utc>,
+    pub turns: Vec<HistoryTurn>,
+}
+
+#[derive(serde::Serialize)]
+pub struct HistoryTurn {
+    pub role: String,
+    pub text: String,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+}
+
 /// Manual stop from the recording bubble's ◼ button (equivalent to a 2nd shortcut press).
 #[tauri::command]
 async fn toggle_recording(
@@ -330,7 +383,7 @@ async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppState>) 
 /// Called on each shortcut press. Toggles recording state:
 ///   1st press → start cpal capture, emit Listening with mic indicator
 ///   2nd press → stop capture, transcribe with Whisper, run pipeline with transcript
-async fn on_shortcut_pressed(app: AppHandle, state: Arc<AppState>) {
+pub async fn on_shortcut_pressed(app: AppHandle, state: Arc<AppState>) {
     // New user activity → invalidate any pending auto-hide timer.
     bump_gen(&state);
 
@@ -449,7 +502,7 @@ pub fn run() {
         )
         .invoke_handler(tauri::generate_handler![
             submit_query, follow_up, new_session, save_shortcut,
-            cancel_pipeline, toggle_recording, pin_window, dismiss
+            cancel_pipeline, toggle_recording, pin_window, dismiss, read_history
         ])
         .setup(|app| {
             // Read user-saved shortcut (or fall back to Cmd+Shift+Space on first run)
@@ -461,6 +514,14 @@ pub fn run() {
             set_accessory_activation_policy();
             println!("[mouseclaw] activation policy = Accessory (no dock icon)");
             emit_view(&app.handle(), &ViewKind::Idle);
+
+            // Tray icon (V1.4 addition)
+            if let Err(e) = tray::setup(&app.handle()) {
+                eprintln!("[mouseclaw] tray setup failed: {e:#}");
+            } else {
+                println!("[mouseclaw] tray icon registered");
+            }
+
             println!("[mouseclaw] 🦞 ready — press {} to start recording", cfg.shortcut);
             Ok(())
         })

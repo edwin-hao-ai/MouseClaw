@@ -96,7 +96,8 @@ claude -p "{user_voice_transcript}\n\n截图位置：/tmp/mouseclaw-frame.png\n�
 
 MouseClaw 是**纯后台进程**，平时完全"不存在"：
 - macOS `LSUIElement=true`（Info.plist）→ 无 dock 图标
-- 无 app 主窗口、无 menubar 项（V1 极简策略；V2 可选加 menubar 图标做退出/设置）
+- 无 app 主窗口
+- **有 menubar 托盘图标**（v0.1.4 加入）→ 提供「召唤老鼠 / 查看历史记录 / 关于 / 退出」菜单
 - 不出现在 Cmd+Tab 列表（`NSWindowCollectionBehaviorIgnoresCycle` + transient panel）
 - 唯一可见物 = 像素老鼠的透明 always-on-top 小窗口（Tauri 窗口配 `decorations:false, transparent:true, alwaysOnTop:true, skipTaskbar:true, focus:false`，macOS 端需要 NSPanel 行为）
 - 启动 = 注册全局快捷键 + 创建隐藏 mouse 窗口；退出 = 杀进程（V1 用 `killall mouseclaw`，V2 加 menubar 退出）
