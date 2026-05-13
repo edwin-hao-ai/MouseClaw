@@ -54,6 +54,26 @@ export default function App() {
     return () => { unlisten.then(fn => fn()); };
   }, []);
 
+  // Global Esc → dismiss immediately (hide window, cancel pending pipeline timers).
+  // Skip when typing inside the Panel input (Panel handles its own Esc).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      invoke("dismiss").catch(() => {});
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // When view transitions to Panel, tell Rust to pin (cancel pending auto-hide).
+  useEffect(() => {
+    if (view.kind === "panel") {
+      invoke("pin_window").catch(() => {});
+    }
+  }, [view.kind]);
+
   // Dev-only: cycle states by pressing 1-9 on the keyboard
   useEffect(() => {
     if (!import.meta.env.DEV) return;
@@ -99,7 +119,8 @@ export default function App() {
   }, []);
 
   const handleCollapse = useCallback(() => {
-    setView({ kind: "idle" });
+    // Folding the panel back = dismiss the whole overlay (PRD §IV "回角落").
+    invoke("dismiss").catch(() => {});
   }, []);
 
   const handleNewSession = useCallback(async () => {
@@ -136,9 +157,22 @@ export default function App() {
     );
   }
 
+  const handleExpand = useCallback(() => {
+    if (view.kind === "reply") {
+      setView({
+        kind: "panel",
+        sessionId: 1,
+        turns: [
+          { role: "user", text: view.transcript },
+          { role: "assistant", text: view.reply },
+        ],
+      });
+    }
+  }, [view]);
+
   return (
     <div className="stage stage-mouse-bubble">
-      <BubbleFor view={view} continuing={continuing} />
+      <BubbleFor view={view} continuing={continuing} onExpand={handleExpand} />
       <div className="stage-mouse">
         <PixelMouse
           state={mouseStateFor(view)}
@@ -150,8 +184,8 @@ export default function App() {
   );
 }
 
-interface BubbleForProps { view: ViewKind; continuing: boolean; }
-function BubbleFor({ view, continuing }: BubbleForProps) {
+interface BubbleForProps { view: ViewKind; continuing: boolean; onExpand: () => void; }
+function BubbleFor({ view, continuing, onExpand }: BubbleForProps) {
   switch (view.kind) {
     case "idle":
       return null;
@@ -168,6 +202,7 @@ function BubbleFor({ view, continuing }: BubbleForProps) {
           text={view.reply}
           variant={variant}
           expandable={long}
+          onExpand={onExpand}
           sessionChip={continuing ? { sessionId: 42, turn: 2 } : undefined}
         />
       );
