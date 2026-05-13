@@ -2,15 +2,17 @@
 
 pub mod audio;
 pub mod claude_cli;
+pub mod config;
 pub mod events;
 pub mod mode_b;
 pub mod screenshot;
 pub mod sessions;
 pub mod transcribe;
 
+use std::str::FromStr;
 use std::sync::{Arc, Mutex as StdMutex};
-use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
-use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use tauri::{AppHandle, Emitter, LogicalPosition, Manager, State, WebviewWindow};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tokio::sync::Mutex;
 
 use crate::events::{EV_VIEW_CHANGED, ReplyMode, ViewKind};
@@ -46,11 +48,60 @@ fn set_accessory_activation_policy() {
 #[cfg(not(target_os = "macos"))]
 fn set_accessory_activation_policy() {}
 
+/// Position the overlay window near the user's mouse cursor, then show it.
+/// NSEvent::mouseLocation returns screen coords with bottom-left origin;
+/// Tauri's set_position uses top-left origin, so we flip Y by screen height.
 fn show_mouse(window: &WebviewWindow) -> tauri::Result<()> {
+    if let Some((x, y)) = current_mouse_pos_top_left(window) {
+        // Offset so the mouse character lands just below+right of the cursor
+        let w_size = window.outer_size().ok();
+        let (ww, wh) = match w_size {
+            Some(s) => (s.width as f64, s.height as f64),
+            None => (320.0, 320.0),
+        };
+        let scale = window.scale_factor().unwrap_or(1.0);
+        let pos_x = x - (ww / scale) / 2.0;
+        let pos_y = y - (wh / scale) + 32.0; // bubble sits above cursor; mouse char near cursor
+        let _ = window.set_position(LogicalPosition::new(pos_x, pos_y));
+    }
     window.show()?;
     window.set_always_on_top(true)?;
     Ok(())
 }
+
+/// Get cursor position in top-left-origin screen coordinates (matches Tauri API).
+#[cfg(target_os = "macos")]
+fn current_mouse_pos_top_left(window: &WebviewWindow) -> Option<(f64, f64)> {
+    use cocoa::base::id;
+    use cocoa::foundation::NSPoint;
+    use objc::{class, msg_send, sel, sel_impl};
+    unsafe {
+        let event_class: id = msg_send![class!(NSEvent), class];
+        let point: NSPoint = msg_send![event_class, mouseLocation];
+        // mouseLocation is in screen coords with bottom-left origin.
+        // To convert: y_top = primary_screen_height - point.y
+        let screen_h = primary_screen_height_pts().unwrap_or(1080.0);
+        let scale = window.scale_factor().unwrap_or(1.0);
+        Some((point.x, (screen_h - point.y) * scale / scale))
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn primary_screen_height_pts() -> Option<f64> {
+    use cocoa::base::id;
+    use cocoa::foundation::{NSRect, NSSize};
+    use objc::{class, msg_send, sel, sel_impl};
+    unsafe {
+        let screen: id = msg_send![class!(NSScreen), mainScreen];
+        if screen as usize == 0 { return None; }
+        let frame: NSRect = msg_send![screen, frame];
+        let size: NSSize = frame.size;
+        Some(size.height)
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn current_mouse_pos_top_left(_w: &WebviewWindow) -> Option<(f64, f64)> { None }
 
 fn emit_view(app: &AppHandle, view: &ViewKind) {
     if let Err(e) = app.emit(EV_VIEW_CHANGED, view) {
@@ -91,8 +142,22 @@ async fn new_session(state: State<'_, Arc<AppState>>) -> Result<u64, String> {
 }
 
 #[tauri::command]
-fn save_shortcut(choice: String) -> Result<(), String> {
-    println!("[mouseclaw] user picked shortcut: {choice}");
+fn save_shortcut(choice: String, app: AppHandle) -> Result<(), String> {
+    let new_str = config::choice_to_shortcut_str(&choice).to_string();
+    let new_shortcut = Shortcut::from_str(&new_str)
+        .map_err(|e| format!("解析快捷键 {new_str:?} 失败：{e}"))?;
+
+    let gs = app.global_shortcut();
+    // Unregister all previous shortcuts (we only ever have one in V1)
+    let _ = gs.unregister_all();
+    gs.register(new_shortcut)
+        .map_err(|e| format!("注册快捷键失败：{e}"))?;
+
+    // Persist
+    let cfg = config::Config { shortcut: new_str.clone() };
+    cfg.save().map_err(|e| format!("保存配置失败：{e}"))?;
+
+    println!("[mouseclaw] shortcut updated → {new_str} (choice: {choice})");
     Ok(())
 }
 
@@ -309,13 +374,16 @@ pub fn run() {
             submit_query, follow_up, new_session, save_shortcut, cancel_pipeline, toggle_recording
         ])
         .setup(|app| {
-            let shortcut = Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::Space);
+            // Read user-saved shortcut (or fall back to Cmd+Shift+Space on first run)
+            let cfg = config::Config::load();
+            let shortcut = Shortcut::from_str(&cfg.shortcut)
+                .unwrap_or_else(|_| Shortcut::from_str("Super+Shift+Space").unwrap());
             app.global_shortcut().register(shortcut)?;
-            println!("[mouseclaw] registered global shortcut: Cmd+Shift+Space (toggle record)");
+            println!("[mouseclaw] registered global shortcut: {} (toggle record)", cfg.shortcut);
             set_accessory_activation_policy();
             println!("[mouseclaw] activation policy = Accessory (no dock icon)");
             emit_view(&app.handle(), &ViewKind::Idle);
-            println!("[mouseclaw] 🦞 ready — press Cmd+Shift+Space to start recording");
+            println!("[mouseclaw] 🦞 ready — press {} to start recording", cfg.shortcut);
             Ok(())
         })
         .run(tauri::generate_context!())

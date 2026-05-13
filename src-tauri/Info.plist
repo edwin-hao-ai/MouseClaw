@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- LSUIElement = true → no dock icon, no Cmd+Tab presence.
+       Together with NSApp.setActivationPolicy(.accessory) in lib.rs this
+       gives a clean menubar-less daemon. -->
+  <key>LSUIElement</key>
+  <true/>
+
+  <!-- Permission strings shown by macOS the first time MouseClaw tries to
+       use the corresponding capability. Required for App Store / notarized
+       distribution; cosmetic but improves the prompt UX for tauri dev runs. -->
+  <key>NSMicrophoneUsageDescription</key>
+  <string>鼠标龙虾需要访问麦克风以录制你的语音，再通过本地 Whisper 转写为文字发给 AI。所有录音都在本地处理，不会上传服务器。</string>
+
+  <key>NSAppleEventsUsageDescription</key>
+  <string>鼠标龙虾需要发送系统事件（模拟 Cmd+V）以便在你的当前光标位置写入 AI 生成的文本，仅在你按下"续写"等明确指令时触发。</string>
+
+  <!-- Screen Recording permission is required for screencapture(1) to capture
+       any window other than MouseClaw's own. macOS uses a hardcoded prompt for
+       this; the description below appears in System Settings > Privacy. -->
+  <key>NSScreenCaptureDescription</key>
+  <string>鼠标龙虾需要截取当前屏幕，连同你的语音一起发送给 AI，让它"看到"你想问的内容。</string>
+
+  <!-- High-DPI rendering -->
+  <key>NSHighResolutionCapable</key>
+  <true/>
+
+  <!-- Minimum macOS version -->
+  <key>LSMinimumSystemVersion</key>
+  <string>11.0</string>
+</dict>
+</plist>
