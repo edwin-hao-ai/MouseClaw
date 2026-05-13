@@ -1,0 +1,66 @@
+/* Recording indicator — sits in the same .bubble envelope as PromptBar.
+ * Tokens from DESIGN.md only. */
+
+.recording-bubble {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 8px var(--space-3);
+  min-width: 200px;
+}
+
+.rec-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: var(--danger);
+  box-shadow: 0 0 0 0 rgba(255, 95, 87, 0.4);
+  animation: rec-pulse 1.4s var(--ease-default) infinite;
+  flex-shrink: 0;
+}
+@keyframes rec-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(255, 95, 87, 0.4); }
+  50%  { box-shadow: 0 0 0 6px rgba(255, 95, 87, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 95, 87, 0); }
+}
+
+.rec-label {
+  font-size: var(--text-body);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.recording-bubble .voicebars {
+  flex: 1;
+  margin: 0;
+}
+.recording-bubble .voicebars span:nth-child(5) {
+  height: 12px;
+  animation-delay: 0.4s;
+  width: 3px;
+  background: var(--accent-primary);
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.rec-stop {
+  background: rgba(0, 0, 0, 0.06);
+  border: 0;
+  color: var(--text-primary);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: var(--text-meta);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  flex-shrink: 0;
+  transition: background var(--duration-tap) var(--ease-tap);
+}
+.rec-stop:hover {
+  background: rgba(255, 95, 87, 0.15);
+  color: var(--danger);
+}
+.rec-stop:active { transform: translateY(1px); }
