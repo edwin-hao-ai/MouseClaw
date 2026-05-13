@@ -1,8 +1,28 @@
 # MouseClaw 项目规则
 
+## 设计系统：DESIGN.md 是视觉单一信源
+
+**最硬规则**：[DESIGN.md](./DESIGN.md) 是 MouseClaw 视觉语言的**唯一权威**。任何 UI 工作（webview 组件、prototype HTML、README 截图、营销页面）必须用 DESIGN.md 里的 design tokens，不允许在组件里硬编码颜色/间距/圆角字面量。
+
+### 强制执行
+- **写 prototype HTML 前**：先读 DESIGN.md 第 2 节（tokens）和第 4 节（components），选好要复用的 token
+- **写 React/Rust UI 代码前**：把 DESIGN.md 第 9 节的 `:root` cheatsheet 粘到全局 CSS，所有值都从变量来
+- **新增颜色/间距/动画**：必须**同 PR 内**更新 DESIGN.md 的对应 token 表，否则审查不通过
+- **prototype 和 DESIGN.md 冲突**：以 DESIGN.md 为准，改 prototype 不改 DESIGN.md
+- **像素老鼠**：8 色调色板锁定，不能加第 9 色；新增动画状态必须在 DESIGN.md 第 3.1 节补完整 anatomy
+
+### 任何视觉变更的 review checklist
+- [ ] 所有 color/spacing/radius/shadow 都用 DESIGN.md 里的 token，没有内联字面量
+- [ ] 文字大小用 type scale（`--text-body`、`--text-meta` 等），不直接写 px
+- [ ] 动画 duration / curve 用 motion 表里的值
+- [ ] 新颜色已检验对比度 ≥ 4.5:1（body）/ 3:1（large）
+- [ ] 检查 `prefers-reduced-motion` fallback
+- [ ] 中英文混排测过（用 "🦞 Hello 你好 ABC 中文 World" 这种 string 试一下）
+- [ ] 如果改了 token 或加了新组件，DESIGN.md 同 PR 更新
+
 ## UI/UX 工作流：先 HTML prototype，再写代码
 
-**硬规则**：任何涉及视觉/交互的功能，**先用单文件 HTML prototype 让用户看到效果**，用户拍板之后才进入 Rust/Tauri 实现。
+**硬规则**：任何涉及视觉/交互的功能，**先用单文件 HTML prototype 让用户看到效果**（prototype 也必须用 DESIGN.md 的 token），用户拍板之后才进入 Rust/Tauri 实现。
 
 ### 适用范围
 - 像素老鼠的任何新动画状态
