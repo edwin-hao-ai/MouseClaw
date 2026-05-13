@@ -1,14 +1,16 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the mouse overlay window",
-  "windows": ["mouse"],
+  "description": "Capabilities for all MouseClaw windows (mouse overlay + history + about)",
+  "windows": ["mouse", "history", "about"],
   "permissions": [
     "core:default",
     "core:window:allow-show",
     "core:window:allow-hide",
+    "core:window:allow-close",
     "core:window:allow-set-position",
     "core:window:allow-set-size",
+    "core:window:allow-set-focus",
     "core:webview:allow-set-webview-position",
     "global-shortcut:default",
     "opener:default"
