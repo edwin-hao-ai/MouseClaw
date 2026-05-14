@@ -35,13 +35,24 @@ impl PermissionStatus {
 // macOS 实现
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// 强制链接 AVFoundation framework —— 这样 `class!(AVCaptureDevice)` 在运行时
+/// 能解析到。空 extern block + #[link] 只是告诉 linker 加 `-framework AVFoundation`。
+#[cfg(target_os = "macos")]
+#[link(name = "AVFoundation", kind = "framework")]
+extern "C" {}
+
 #[cfg(target_os = "macos")]
 pub fn check_all() -> PermissionStatus {
-    PermissionStatus {
+    let s = PermissionStatus {
         accessibility: check_accessibility(),
         screen_recording: check_screen_recording(),
         microphone: check_microphone(),
-    }
+    };
+    println!(
+        "[mouseclaw] perm check → accessibility={} screen_recording={} microphone={}",
+        s.accessibility, s.screen_recording, s.microphone
+    );
+    s
 }
 
 // ── Accessibility ────────────────────────────────────────────────────────────
@@ -110,41 +121,49 @@ pub fn request_screen_recording() -> bool {
 /// `[AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio]`
 /// 纯状态查询 —— 不初始化 CoreAudio，不死锁。
 /// AVAuthorizationStatus: 0=NotDetermined 1=Restricted 2=Denied 3=Authorized
+///
+/// ⚠️ 不链接 `AVMediaTypeAudio` extern 常量（上一版踩坑：链接失败导致传进去
+///    的是垃圾指针，status 永远返回 0）。AVMediaTypeAudio 的实际值就是字符串
+///    "soun" —— 直接构造 NSString 传进去，等价且无链接风险。
 #[cfg(target_os = "macos")]
 pub fn check_microphone() -> bool {
-    use objc::{class, msg_send, sel, sel_impl};
-    use objc::runtime::Object;
-    #[link(name = "AVFoundation", kind = "framework")]
-    extern "C" {
-        static AVMediaTypeAudio: *const Object;
-    }
+    use cocoa::base::nil;
+    use cocoa::foundation::NSString;
+    use objc::runtime::Class;
+    use objc::{msg_send, sel, sel_impl};
     unsafe {
-        let status: i64 =
-            msg_send![class!(AVCaptureDevice), authorizationStatusForMediaType: AVMediaTypeAudio];
+        // Class::get 而不是 class!() —— 后者类不存在会 panic
+        let Some(cls) = Class::get("AVCaptureDevice") else {
+            eprintln!("[mouseclaw] ✘ AVCaptureDevice class 未找到 — AVFoundation 没链上？");
+            return false;
+        };
+        let media_type = NSString::alloc(nil).init_str("soun"); // == AVMediaTypeAudio
+        let status: i64 = msg_send![cls, authorizationStatusForMediaType: media_type];
         status == 3 // Authorized
     }
 }
 
 /// `[AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio completionHandler:]`
-/// 触发系统麦克风授权弹窗。completionHandler 是个空 block（我们靠轮询
-/// check_microphone() 知道结果，不依赖回调）。
+/// 触发系统麦克风授权弹窗。completionHandler 是个空 block（靠前端轮询
+/// check_permissions 拿结果，不依赖回调）。
 #[cfg(target_os = "macos")]
 pub fn request_microphone() {
     use block::ConcreteBlock;
-    use objc::{class, msg_send, sel, sel_impl};
-    use objc::runtime::Object;
-    #[link(name = "AVFoundation", kind = "framework")]
-    extern "C" {
-        static AVMediaTypeAudio: *const Object;
-    }
+    use cocoa::base::nil;
+    use cocoa::foundation::NSString;
+    use objc::runtime::Class;
+    use objc::{msg_send, sel, sel_impl};
     unsafe {
-        // completionHandler 必须是个 block，不能传 nil。空 block 即可 ——
-        // 前端每 2 秒轮询 check_permissions 拿到结果。
+        let Some(cls) = Class::get("AVCaptureDevice") else {
+            eprintln!("[mouseclaw] ✘ AVCaptureDevice class 未找到，无法请求麦克风权限");
+            return;
+        };
+        let media_type = NSString::alloc(nil).init_str("soun"); // == AVMediaTypeAudio
         let handler = ConcreteBlock::new(|_granted: bool| {});
         let handler = handler.copy();
         let _: () = msg_send![
-            class!(AVCaptureDevice),
-            requestAccessForMediaType: AVMediaTypeAudio
+            cls,
+            requestAccessForMediaType: media_type
             completionHandler: handler
         ];
     }
