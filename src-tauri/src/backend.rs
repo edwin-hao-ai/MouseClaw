@@ -157,7 +157,7 @@ where
         .map_err(|e| anyhow::anyhow!("{e}\n装一下：npm install -g @openai/codex"))?;
     let prompt = format!(
         "{}\n\n{}",
-        crate::claude_cli::APPEND_SYSTEM_PROMPT,
+        crate::claude_cli::system_prompt(),
         crate::claude_cli::build_prompt_pub(transcript, image, frontmost, cursor)
     );
     spawn_and_stream(&bin, &["exec", "--skip-git-repo-check", &prompt], on_chunk).await
@@ -179,7 +179,7 @@ where
         .map_err(|e| anyhow::anyhow!("{e}\n装一下：npm install -g openclaw"))?;
     let prompt = format!(
         "{}\n\n{}",
-        crate::claude_cli::APPEND_SYSTEM_PROMPT,
+        crate::claude_cli::system_prompt(),
         crate::claude_cli::build_prompt_pub(transcript, image, frontmost, cursor)
     );
     spawn_and_stream(&bin, &["agent", "--local", "-m", &prompt], on_chunk).await
