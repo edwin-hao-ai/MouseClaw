@@ -79,36 +79,23 @@ pub fn frontmost_app_bundle_id() -> Option<String> { None }
 #[cfg(not(target_os = "macos"))]
 pub fn frontmost_app_name() -> Option<String> { None }
 
-/// Write text to the foreground app's cursor via clipboard + Cmd+V.
-/// V1 implementation uses `pbcopy` + AppleScript for Cmd+V — no extra deps.
+/// Write text to the foreground app's cursor.
+///
+/// V1.5 (current): Direct CGEvent keyboard events with unicode string injection.
+/// Bypasses IME (no composition collision) and doesn't pollute the clipboard.
+/// `CGEventKeyboardSetUnicodeString` sends raw text to whichever app is frontmost.
+///
+/// Limit: macOS caps each event at ~20 UTF-16 code units, so we chunk longer
+/// text and add a tiny gap between chunks so the app's input loop catches up.
 #[cfg(target_os = "macos")]
 pub async fn write_at_cursor(text: &str) -> Result<()> {
     assert_writable()?;
-
-    // 1. Save current clipboard
-    let prior = read_clipboard_text().await.unwrap_or_default();
-
-    // 2. Put new text on clipboard
-    write_clipboard_text(text).await.context("set new clipboard")?;
-
-    // 3. Simulate Cmd+V via AppleScript (osascript)
-    let status = tokio::process::Command::new("osascript")
-        .args([
-            "-e",
-            r#"tell application "System Events" to keystroke "v" using {command down}"#,
-        ])
-        .status()
+    let text = text.to_string();
+    // CGEvent calls aren't Send-friendly when held across awaits, so run on a
+    // blocking thread. The post operation itself is fast (microseconds per event).
+    tokio::task::spawn_blocking(move || type_unicode_string(&text))
         .await
-        .context("osascript Cmd+V")?;
-    if !status.success() {
-        bail!("osascript Cmd+V exited {status}");
-    }
-
-    // 4. Wait a moment for the paste to take effect, then restore
-    tokio::time::sleep(std::time::Duration::from_millis(120)).await;
-    if !prior.is_empty() {
-        let _ = write_clipboard_text(&prior).await;
-    }
+        .context("spawn_blocking join")??;
     Ok(())
 }
 
@@ -118,23 +105,35 @@ pub async fn write_at_cursor(_text: &str) -> Result<()> {
 }
 
 #[cfg(target_os = "macos")]
-async fn write_clipboard_text(text: &str) -> Result<()> {
-    use tokio::io::AsyncWriteExt;
-    let mut child = tokio::process::Command::new("pbcopy")
-        .stdin(std::process::Stdio::piped())
-        .spawn()?;
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(text.as_bytes()).await?;
-    }
-    let status = child.wait().await?;
-    if !status.success() {
-        bail!("pbcopy failed {status}");
+fn type_unicode_string(text: &str) -> Result<()> {
+    use core_graphics::event::{CGEvent, CGEventTapLocation};
+    use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+
+    let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
+        .map_err(|_| anyhow::anyhow!("CGEventSource::new failed"))?;
+
+    // Chunk into ≤ 15-character pieces (16-bit UTF-16 units each).
+    // CGEventKeyboardSetUnicodeString accepts up to ~20 UCS-2 codepoints in practice;
+    // we stay below the limit to handle surrogate pairs / emojis safely.
+    const CHUNK: usize = 15;
+    let chars: Vec<char> = text.chars().collect();
+    for chunk in chars.chunks(CHUNK) {
+        let s: String = chunk.iter().collect();
+        // Fire a key-down event with the unicode string. The app sees this as raw
+        // text input bypassing whatever IME state the user has active.
+        let down = CGEvent::new_keyboard_event(source.clone(), 0, true)
+            .map_err(|_| anyhow::anyhow!("CGEvent::new_keyboard_event(down) failed"))?;
+        down.set_string(&s);
+        down.post(CGEventTapLocation::HID);
+
+        // Matching key-up for cleanliness (some apps require paired events).
+        let up = CGEvent::new_keyboard_event(source.clone(), 0, false)
+            .map_err(|_| anyhow::anyhow!("CGEvent::new_keyboard_event(up) failed"))?;
+        up.set_string(&s);
+        up.post(CGEventTapLocation::HID);
+
+        // 5ms between chunks gives focused apps time to consume the event.
+        std::thread::sleep(std::time::Duration::from_millis(5));
     }
     Ok(())
-}
-
-#[cfg(target_os = "macos")]
-async fn read_clipboard_text() -> Result<String> {
-    let out = tokio::process::Command::new("pbpaste").output().await?;
-    Ok(String::from_utf8_lossy(&out.stdout).to_string())
 }

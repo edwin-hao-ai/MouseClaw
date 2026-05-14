@@ -2328,6 +2328,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "cocoa",
+ "core-graphics 0.24.0",
  "cpal",
  "hound",
  "objc",
