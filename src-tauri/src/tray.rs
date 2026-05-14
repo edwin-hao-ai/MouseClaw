@@ -99,8 +99,15 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
 }
 
 /// Programmatically trigger the same flow as a global-shortcut press.
+/// If user hasn't completed onboarding yet, divert to the onboarding window
+/// instead — calling the pipeline without a registered shortcut isn't useful.
 fn summon_via_tray(app: &AppHandle) {
     use std::sync::Arc;
+    if !crate::config::Config::load().onboarded {
+        println!("[mouseclaw] tray summon: not onboarded yet → opening Onboarding");
+        open_onboarding_window(app);
+        return;
+    }
     let state: Arc<crate::AppState> = app.state::<Arc<crate::AppState>>().inner().clone();
     if let Some(w) = app.get_webview_window("mouse") {
         let _ = crate::show_mouse(&w);
@@ -150,6 +157,35 @@ fn open_history_window(app: &AppHandle) {
             let _ = w.set_focus();
         }
         Err(e) => eprintln!("[mouseclaw] failed to open history window: {e:#}"),
+    }
+}
+
+pub fn open_onboarding_window(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("onboarding") {
+        let _ = w.show();
+        activate_app();
+        let _ = w.set_focus();
+        return;
+    }
+    let result = WebviewWindowBuilder::new(
+        app,
+        "onboarding",
+        WebviewUrl::App("index.html?view=onboarding".into()),
+    )
+    .title("欢迎使用 MouseClaw 🦞")
+    .inner_size(700.0, 760.0)
+    .min_inner_size(560.0, 680.0)
+    .resizable(false)
+    .decorations(true)
+    .focused(true)
+    .build();
+    match result {
+        Ok(w) => {
+            activate_app();
+            let _ = w.set_focus();
+            println!("[mouseclaw] onboarding window opened");
+        }
+        Err(e) => eprintln!("[mouseclaw] failed to open onboarding window: {e:#}"),
     }
 }
 

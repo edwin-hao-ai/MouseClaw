@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capabilities for all MouseClaw windows (mouse overlay + history + about)",
-  "windows": ["mouse", "history", "about"],
+  "description": "Capabilities for all MouseClaw windows (mouse overlay + history + about + onboarding)",
+  "windows": ["mouse", "history", "about", "onboarding"],
   "permissions": [
     "core:default",
     "core:window:allow-show",
