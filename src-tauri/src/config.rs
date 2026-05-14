@@ -112,3 +112,43 @@ pub fn choice_to_shortcut_str(choice: &str) -> &'static str {
         _ => "Super+Shift+Space",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+    use tauri_plugin_global_shortcut::Shortcut;
+
+    #[test]
+    fn all_choice_strings_parse_as_valid_shortcuts() {
+        for c in ["hold-option", "hold-cmd", "double-option", "double-cmd", "garbage"] {
+            let s = choice_to_shortcut_str(c);
+            assert!(
+                Shortcut::from_str(s).is_ok(),
+                "choice {c:?} → {s:?} 必须是合法快捷键"
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_choice_falls_back_to_default() {
+        assert_eq!(choice_to_shortcut_str("whatever"), "Super+Shift+Space");
+    }
+
+    #[test]
+    fn default_config_is_not_onboarded_and_current_version() {
+        let c = Config::default();
+        assert!(!c.onboarded);
+        assert_eq!(c.version, CURRENT_CONFIG_VERSION);
+        assert_eq!(c.backend, Backend::ClaudeCli);
+    }
+
+    #[test]
+    fn legacy_config_json_deserializes_with_defaults() {
+        // 旧 config 没有 backend / version 字段 —— serde default 兜底
+        let json = r#"{"shortcut":"Super+Shift+Space","onboarded":true}"#;
+        let cfg: Config = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.backend, Backend::ClaudeCli);
+        assert_eq!(cfg.version, legacy_version());
+    }
+}
