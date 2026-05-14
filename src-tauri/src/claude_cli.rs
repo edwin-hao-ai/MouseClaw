@@ -39,6 +39,32 @@ pub struct CursorContext {
     pub screen_h: i32,
 }
 
+/// `.app` bundle 启动时 PATH 默认是 launchd 给的最小集（`/usr/bin:/bin:/usr/sbin:/sbin`）
+/// 不会继承用户 shell 的 `.zshrc` 等。这导致 `claude` CLI（通常装在
+/// `~/.npm-global/bin`）找不到。我们 spawn 命令前手动拓宽 PATH 把常见
+/// 包管理器 bin 目录都加上。
+fn expanded_path() -> String {
+    let current = std::env::var("PATH").unwrap_or_default();
+    let home = std::env::var("HOME").unwrap_or_default();
+    let extras = [
+        format!("{home}/.npm-global/bin"),
+        format!("{home}/.bun/bin"),
+        format!("{home}/.cargo/bin"),
+        format!("{home}/.local/bin"),
+        "/opt/homebrew/bin".to_string(),
+        "/opt/homebrew/sbin".to_string(),
+        "/usr/local/bin".to_string(),
+        "/usr/local/sbin".to_string(),
+    ];
+    let mut paths: Vec<String> = current.split(':').map(String::from).collect();
+    for p in extras {
+        if !p.is_empty() && !paths.contains(&p) {
+            paths.push(p);
+        }
+    }
+    paths.join(":")
+}
+
 /// Claude CLI 一次性调用（非流式），返回完整回复文本。
 ///
 /// `transcript`：用户的语音转文字
@@ -71,6 +97,7 @@ pub async fn ask_claude(
     );
 
     let output = tokio::process::Command::new("claude")
+        .env("PATH", expanded_path())
         .args([
             "-p",
             &prompt,
@@ -85,7 +112,7 @@ pub async fn ask_claude(
         ])
         .output()
         .await
-        .context("failed to spawn `claude` CLI — is it on PATH?")?;
+        .context("failed to spawn `claude` CLI — is it on PATH? (expected at ~/.npm-global/bin/claude)")?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

@@ -51,23 +51,20 @@ impl Config {
     }
 }
 
-/// Map the Onboarding choice strings (matching ShortcutChoice in src/types.ts)
-/// to canonical Tauri shortcut strings.
+/// Map Onboarding choice strings to canonical Tauri shortcut strings.
 ///
-/// Native double-tap detection isn't supported by the plugin (requires CGEventTap)
-/// so we approximate "double X" with a sensible 2-key combo that minimises clash
-/// with system shortcuts.
+/// v0.1.5+: 全部改成 push-to-talk 语义——按住录音，松开发送。所以这些
+/// 组合键得是用户能舒服「按住」的，不是双击/连点。
+///
+/// 测试过的 Tauri Shortcut 字符串格式：用 `Super` = ⌘、`Alt` = ⌥、`Control` = ⌃、
+/// `Shift` = ⇧；字母用 `KeyA`...`KeyZ`；空格 `Space`、句号 `Period` 等。
 pub fn choice_to_shortcut_str(choice: &str) -> &'static str {
     match choice {
-        // "double-option" 用户期望双击 ⌥；近似为 ⌥⌘L（龙虾 lobster）
-        "double-option" => "Alt+Super+KeyL",
-        // 按住 Option：⌥+空格（Spotlight 是 ⌘+空格，正交不冲突）
-        "hold-option"   => "Alt+Space",
-        // 双击 Cmd：⌘+. (period) 是一个少用的组合，不易冲突
-        "double-cmd"    => "Super+Period",
-        // 按住 Cmd：⌘+⇧+M（M for MouseClaw）
-        "hold-cmd"      => "Super+Shift+KeyM",
-        // 默认 / 未识别：⌘+⇧+空格（Day 1 测试用）
-        _               => "Super+Shift+Space",
+        // 推荐：⌥+Space — 单手好按、不撞 Spotlight (⌘Space)
+        "double-option" | "hold-option" => "Alt+Space",
+        // 备选：⌘+⇧+Space — 之前的默认值
+        "double-cmd"    | "hold-cmd"    => "Super+Shift+Space",
+        // 默认 fallback
+        _ => "Alt+Space",
     }
 }

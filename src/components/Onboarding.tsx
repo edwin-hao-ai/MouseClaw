@@ -19,14 +19,12 @@ interface OnboardingProps {
 const OPTIONS: Array<{
   id: ShortcutChoice; label: string; keyHint: string; tag?: string;
 }> = [
-  { id: "double-option", label: "双击 Option", keyHint: "⌥ ⌥", tag: "零冲突 · 推荐" },
-  { id: "hold-option",   label: "按住 Option", keyHint: "⌥ Hold" },
-  { id: "double-cmd",    label: "双击 Cmd",    keyHint: "⌘ ⌘" },
-  { id: "hold-cmd",      label: "按住 Cmd",    keyHint: "⌘ Hold" },
+  { id: "hold-option", label: "按住 ⌥ + 空格", keyHint: "⌥ Space", tag: "零冲突 · 推荐" },
+  { id: "hold-cmd",    label: "按住 ⌘ + ⇧ + 空格", keyHint: "⌘ ⇧ Space" },
 ];
 
 export function Onboarding({ onComplete }: OnboardingProps) {
-  const [selected, setSelected] = useState<ShortcutChoice>("double-option");
+  const [selected, setSelected] = useState<ShortcutChoice>("hold-option");
 
   return (
     <div className="ob-root">
@@ -35,7 +33,8 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       </div>
       <h1 className="ob-title">嘿，我是鼠标龙虾 🦞</h1>
       <p className="ob-subtitle">
-        选一个不会和你已有快捷键冲突的键，<br />按住它就能召唤我。
+        <strong>按住</strong> 快捷键说话，<strong>松开</strong> 发给 AI。<br />
+        选一个不和别的应用冲突的键。
       </p>
       <div className="ob-options" role="radiogroup" aria-label="选择触发快捷键">
         {OPTIONS.map(opt => (
