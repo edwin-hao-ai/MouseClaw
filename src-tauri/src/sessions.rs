@@ -39,6 +39,9 @@ pub struct SessionStore {
     file_path: PathBuf,
     current_session: u64,
     last_turn_at: Option<DateTime<Utc>>,
+    /// Frontmost app name at the last turn — switching apps starts a new session
+    /// (per design doc: "前台 app 切换 = 新 session"). None until first turn.
+    last_frontmost: Option<String>,
     /// Last N turns of the current session (for prompt context). Capped at MAX_HISTORY_TURNS.
     history: Vec<Turn>,
 }
@@ -56,6 +59,7 @@ impl SessionStore {
             file_path,
             current_session: Self::next_session_id(),
             last_turn_at: None,
+            last_frontmost: None,
             history: Vec::new(),
         })
     }
@@ -70,17 +74,31 @@ impl SessionStore {
 
     /// Decide whether to start a new session before recording a turn.
     /// Caller invokes this at the START of each shortcut press.
-    /// Returns the resolved current session id.
-    pub fn touch(&mut self, force_new: bool) -> u64 {
+    ///
+    /// 新 session 触发条件（design doc）：
+    ///   - `force_new`（保留给"用户说新对话"等显式重置）
+    ///   - 距上次回复 > 5 分钟（idle 超时）
+    ///   - 前台 app 和上次不同（切了应用 = 换了话题）
+    ///
+    /// `frontmost`：当前前台 app 名（None = 拿不到，不参与判断）。
+    pub fn touch(&mut self, force_new: bool, frontmost: Option<&str>) -> u64 {
         let now = Utc::now();
-        let should_new = force_new
-            || match self.last_turn_at {
-                None => false, // first call uses initial session id
-                Some(t) => (now - t).num_seconds() > SESSION_IDLE_LIMIT_SECS,
-            };
+        let idle_expired = match self.last_turn_at {
+            None => false, // first call uses initial session id
+            Some(t) => (now - t).num_seconds() > SESSION_IDLE_LIMIT_SECS,
+        };
+        let app_switched = match (&self.last_frontmost, frontmost) {
+            (Some(prev), Some(cur)) => prev != cur,
+            _ => false, // 任一侧缺失就不算切换
+        };
+        let should_new = force_new || idle_expired || app_switched;
         if should_new {
             self.current_session = Self::next_session_id();
             self.history.clear();
+        }
+        // 记下这次的前台 app，供下次比较
+        if let Some(cur) = frontmost {
+            self.last_frontmost = Some(cur.to_string());
         }
         self.current_session
     }

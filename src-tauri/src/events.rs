@@ -16,6 +16,9 @@ pub enum ViewKind {
         mode: ReplyMode,
         #[serde(skip_serializing_if = "Option::is_none")]
         insert_text: Option<String>,
+        /// true = Claude 还在流式输出中（气泡显示闪烁光标）；
+        /// false = 最终回复（已确定 mode、可存 history）。
+        streaming: bool,
     },
     Panel { session_id: u64, turns: Vec<Turn> },
     #[serde(rename = "mode-b-countdown")]

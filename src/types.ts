@@ -8,7 +8,7 @@ export type ViewKind =
   | { kind: "onboarding" }
   | { kind: "listening" }     // after shortcut; awaiting user text/voice
   | { kind: "thinking"; transcript: string }
-  | { kind: "reply"; transcript: string; reply: string; mode: "A" | "B"; insertText?: string }
+  | { kind: "reply"; transcript: string; reply: string; mode: "A" | "B"; insertText?: string; streaming?: boolean }
   | { kind: "panel"; sessionId: number; turns: Turn[] }
   | { kind: "mode-b-countdown"; insertText: string; remaining: number }
   | { kind: "mode-b-inserting"; insertText: string }

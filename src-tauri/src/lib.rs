@@ -217,7 +217,7 @@ async fn follow_up(
 #[tauri::command]
 async fn new_session(state: State<'_, Arc<AppState>>) -> Result<u64, String> {
     let mut store = state.sessions.lock().await;
-    Ok(store.touch(true))
+    Ok(store.touch(true, None)) // 显式新 session，前台 app 不参与判断
 }
 
 #[tauri::command]
@@ -417,10 +417,11 @@ async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppState>) 
         },
     };
 
-    // 2. Session bookkeeping
+    // 2. Session bookkeeping —— 前台 app 提前算好，touch() 用它判断「切 app = 新 session」
+    let frontmost = mode_b::frontmost_app_name();
     let (_session_id, context_preamble) = {
         let mut store = state.sessions.lock().await;
-        let id = store.touch(false);
+        let id = store.touch(false, frontmost.as_deref());
         (id, store.context_preamble())
     };
     let prompt_with_context = match &context_preamble {
@@ -430,12 +431,29 @@ async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppState>) 
 
     emit_view(&app, &ViewKind::Thinking { transcript: transcript.clone() });
 
-    let frontmost = mode_b::frontmost_app_name();
-    let reply = match claude_cli::ask_claude(
+    // 流式调用 —— 边收边 emit Reply{streaming:true}，气泡实时长出来。
+    // 节流：最多每 90ms emit 一次，避免 IPC 被 token 级事件刷爆。
+    let app_chunks = app.clone();
+    let transcript_chunks = transcript.clone();
+    let mut last_emit = std::time::Instant::now() - Duration::from_secs(1);
+    let reply = match claude_cli::ask_claude_streaming(
         &prompt_with_context,
         &img_path,
         frontmost.as_deref(),
         cursor_ctx.as_ref(),
+        |accumulated| {
+            let now = std::time::Instant::now();
+            if now.duration_since(last_emit) >= Duration::from_millis(90) {
+                last_emit = now;
+                emit_view(&app_chunks, &ViewKind::Reply {
+                    transcript: transcript_chunks.clone(),
+                    reply: accumulated.to_string(),
+                    mode: ReplyMode::A, // 流式期间统一按 A 显示，最终 emit 再定 mode
+                    insert_text: None,
+                    streaming: true,
+                });
+            }
+        },
     ).await {
         Ok(r) => r,
         Err(e) => {
@@ -461,11 +479,13 @@ async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppState>) 
         None => (ReplyMode::A, None),
     };
 
+    // 最终 Reply —— streaming:false，mode 已确定，此时才存 history / 触发 Mode B
     emit_view(&app, &ViewKind::Reply {
         transcript: transcript.clone(),
         reply: reply.clone(),
         mode,
         insert_text: final_insert.clone(),
+        streaming: false,
     });
 
     if let (ReplyMode::B, Some(text)) = (mode, final_insert) {
@@ -486,6 +506,7 @@ async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppState>) 
         emit_view(&app, &ViewKind::Reply {
             transcript, reply: format!("✅ 已写入：{text}"),
             mode: ReplyMode::A, insert_text: None,
+            streaming: false,
         });
     }
 
