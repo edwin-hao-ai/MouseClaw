@@ -28,7 +28,8 @@ function mouseStateFor(view: ViewKind): MouseState {
     case "onboarding":       return "listen";
     case "listening":        return "listen";
     case "thinking":         return "think";
-    case "reply":            return view.mode === "B" ? "write" : "jump";
+    case "reply":            return view.streaming ? "think"
+                                  : view.mode === "B" ? "write" : "jump";
     case "panel":            return "think";
     case "mode-b-countdown": return "write";
     case "mode-b-inserting": return "write";
@@ -186,13 +187,16 @@ function BubbleFor({ view, continuing, onExpand }: BubbleForProps) {
       // 慢 —— Claude 调用要 10-30s，给个动态 loading 让用户知道在干活
       return <Bubble text={view.transcript} loading />;
     case "reply": {
+      const streaming = view.streaming ?? false;
       const long = isLongReply(view.reply);
-      const variant = view.mode === "B" ? "warn" : "success";
+      // 流式期间：default 样式 + 闪烁光标；流完了：success/warn 终态样式 + 可展开
+      const variant = streaming ? "default" : view.mode === "B" ? "warn" : "success";
       return (
         <Bubble
           text={view.reply}
           variant={variant}
-          expandable={long}
+          streaming={streaming}
+          expandable={!streaming && long}
           onExpand={onExpand}
           sessionChip={continuing ? { sessionId: 42, turn: 2 } : undefined}
         />

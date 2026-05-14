@@ -3,11 +3,14 @@
 //! Risk #1 已于 2026-05-13 验证：`claude -p` + `--allowedTools "Read"` 可以读本地 PNG。
 //! 完整调用约定见 `/Users/edwinhao/MouseClaw/CLAUDE.md` 「Claude CLI 调用约定」一节。
 //!
-//! Day 1 用最简单的 `--output-format text`（一次拿全文）。
-//! Day 2+ 切到 `stream-json` 做流式气泡。
+//! v0.1.5：用 `--output-format stream-json --include-partial-messages --verbose`
+//! 做流式 —— 边收边显示，用户不用干等 10-30s。`ask_claude_streaming` 是主路径，
+//! `ask_claude` 是它的非流式 wrapper（smoke test 用）。
 
 use std::path::Path;
+use std::process::Stdio;
 use anyhow::{bail, Context, Result};
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 /// 发给 Claude 的 system prompt 追加内容（不替换默认）。
 /// 教 Claude:
@@ -90,18 +93,13 @@ fn find_claude_binary() -> Result<std::path::PathBuf> {
     )
 }
 
-/// Claude CLI 一次性调用（非流式），返回完整回复文本。
-///
-/// `transcript`：用户的语音转文字
-/// `image_path`：截屏 PNG 路径
-/// `frontmost_app`：前台 app 名（NSWorkspace.frontmostApplication.localizedName）
-/// `cursor`：光标位置 + 截图屏幕尺寸（让 Claude 知道用户指的「这里」在哪）
-pub async fn ask_claude(
+/// 拼接发给 Claude 的最终 prompt（transcript + 截图路径 + 光标位置 + 前台 app）。
+fn build_prompt(
     transcript: &str,
     image_path: &Path,
     frontmost_app: Option<&str>,
     cursor: Option<&CursorContext>,
-) -> Result<String> {
+) -> String {
     let context_line = frontmost_app
         .map(|t| format!("\n上下文窗口：{t}"))
         .unwrap_or_default();
@@ -116,13 +114,34 @@ pub async fn ask_claude(
             )
         })
         .unwrap_or_default();
-    let prompt = format!(
+    format!(
         "{transcript}\n\n截图位置：{}{cursor_line}{context_line}",
         image_path.display()
-    );
+    )
+}
 
+/// Claude CLI 流式调用 —— 边收边把累计文本喂给 `on_chunk`，结束返回完整文本。
+///
+/// 用 `--output-format stream-json --include-partial-messages --verbose`，stdout 是
+/// NDJSON：每行一个 JSON 事件。我们只关心
+/// `stream_event` → `content_block_delta` → `text_delta` → `.text` 这种增量文本块，
+/// 累加后每收到一块就回调 `on_chunk(累计文本)`，让前端气泡实时长出来。
+///
+/// `on_chunk` 收到的是**累计**文本（不是单个 delta），调用方直接拿去 emit 即可。
+pub async fn ask_claude_streaming<F>(
+    transcript: &str,
+    image_path: &Path,
+    frontmost_app: Option<&str>,
+    cursor: Option<&CursorContext>,
+    mut on_chunk: F,
+) -> Result<String>
+where
+    F: FnMut(&str),
+{
+    let prompt = build_prompt(transcript, image_path, frontmost_app, cursor);
     let claude_bin = find_claude_binary()?;
-    let output = tokio::process::Command::new(&claude_bin)
+
+    let mut child = tokio::process::Command::new(&claude_bin)
         .env("PATH", expanded_path())
         .args([
             "-p",
@@ -132,21 +151,72 @@ pub async fn ask_claude(
             "--permission-mode",
             "auto",
             "--output-format",
-            "text",
+            "stream-json",
+            "--include-partial-messages",
+            "--verbose",
             "--append-system-prompt",
             APPEND_SYSTEM_PROMPT,
         ])
-        .output()
-        .await
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .with_context(|| format!("failed to spawn {}", claude_bin.display()))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!("claude exited {}: {}", output.status, stderr.trim());
+    let stdout = child.stdout.take().context("claude stdout not piped")?;
+    // stderr 先 take 出来，结束时如果失败再读 —— 用 tokio 的 AsyncRead，不碰 raw fd
+    let mut stderr = child.stderr.take();
+    let mut reader = BufReader::new(stdout).lines();
+    let mut accumulated = String::new();
+
+    while let Some(line) = reader.next_line().await.context("read claude stdout")? {
+        if line.trim().is_empty() {
+            continue;
+        }
+        // 每行是一个 JSON 事件；解析失败的行直接跳过（容错）
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else {
+            continue;
+        };
+        // 只取 stream_event → content_block_delta → text_delta → .text
+        if v.get("type").and_then(|t| t.as_str()) == Some("stream_event") {
+            let ev = &v["event"];
+            if ev.get("type").and_then(|t| t.as_str()) == Some("content_block_delta") {
+                let delta = &ev["delta"];
+                if delta.get("type").and_then(|t| t.as_str()) == Some("text_delta") {
+                    if let Some(text) = delta.get("text").and_then(|t| t.as_str()) {
+                        accumulated.push_str(text);
+                        on_chunk(&accumulated);
+                    }
+                }
+            }
+        }
     }
 
-    let stdout = String::from_utf8(output.stdout).context("claude stdout was not UTF-8")?;
-    Ok(stdout.trim().to_string())
+    let status = child.wait().await.context("wait claude")?;
+    if !status.success() {
+        let mut err_text = String::new();
+        if let Some(ref mut s) = stderr {
+            use tokio::io::AsyncReadExt;
+            let _ = s.read_to_string(&mut err_text).await;
+        }
+        bail!("claude exited {}: {}", status, err_text.trim());
+    }
+
+    let trimmed = accumulated.trim().to_string();
+    if trimmed.is_empty() {
+        bail!("claude 没有返回任何文本（可能 stream-json 格式变了或调用被拒）");
+    }
+    Ok(trimmed)
+}
+
+/// Claude CLI 非流式调用 —— `ask_claude_streaming` 的 wrapper，丢弃增量回调。
+/// smoke test / 不需要流式的场景用。
+pub async fn ask_claude(
+    transcript: &str,
+    image_path: &Path,
+    frontmost_app: Option<&str>,
+    cursor: Option<&CursorContext>,
+) -> Result<String> {
+    ask_claude_streaming(transcript, image_path, frontmost_app, cursor, |_| {}).await
 }
 
 /// 解析回复是否是 Mode B（含 `[INSERT_AT_CURSOR]` 标记），返回要写入光标的纯文本（去掉标记）。
