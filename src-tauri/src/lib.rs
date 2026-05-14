@@ -5,6 +5,7 @@ pub mod claude_cli;
 pub mod config;
 pub mod events;
 pub mod mode_b;
+pub mod permissions;
 pub mod screenshot;
 pub mod sessions;
 pub mod transcribe;
@@ -318,6 +319,19 @@ pub struct HistoryTurn {
     pub screenshot: Option<String>,
 }
 
+/// 前端查询当前权限状态（Onboarding 页面用）。
+#[tauri::command]
+fn check_permissions() -> permissions::PermissionStatus {
+    permissions::check_all()
+}
+
+/// 前端请求打开对应权限的系统设置面板。
+/// name: "accessibility" | "screen_recording" | "microphone"
+#[tauri::command]
+fn request_permission(name: String) {
+    permissions::open_prefs_for(&name);
+}
+
 /// ◼ Stop button in the RecordingBubble — equivalent to releasing the shortcut.
 /// In push-to-talk mode, this is the only way to send a recording without
 /// the user having to release the shortcut keys (useful if user wants to
@@ -352,7 +366,13 @@ async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppState>) 
                 (r.path, cursor)
             }
             Err(e) => {
-                emit_view(&app, &ViewKind::Blocked { reason: format!("截图失败：{e}") });
+                // 检查是否是屏幕录制权限问题
+                let reason = if !permissions::check_screen_recording() {
+                    "屏幕录制权限未授权 — 请前往「系统设置 → 隐私与安全性 → 屏幕录制」开启".into()
+                } else {
+                    format!("截图失败：{e}")
+                };
+                emit_view(&app, &ViewKind::Blocked { reason });
                 schedule_auto_hide(&app, &state, 4000);
                 return;
             }
@@ -474,7 +494,13 @@ pub async fn on_shortcut_press(app: AppHandle, state: Arc<AppState>) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("[mouseclaw] start recording: {e:#}");
-            emit_view(&app, &ViewKind::Blocked { reason: format!("录音启动失败：{e}") });
+            // 检查是否是麦克风权限问题
+            let reason = if !permissions::check_microphone() {
+                "麦克风权限未授权 — 请前往「系统设置 → 隐私与安全性 → 麦克风」开启".into()
+            } else {
+                format!("录音启动失败：{e}")
+            };
+            emit_view(&app, &ViewKind::Blocked { reason });
             schedule_auto_hide(&app, &state, 4000);
             return;
         }
@@ -590,7 +616,8 @@ pub fn run() {
         )
         .invoke_handler(tauri::generate_handler![
             submit_query, follow_up, new_session, save_shortcut,
-            cancel_pipeline, toggle_recording, pin_window, dismiss, read_history
+            cancel_pipeline, toggle_recording, pin_window, dismiss, read_history,
+            check_permissions, request_permission
         ])
         .setup(|app| {
             let cfg = config::Config::load();
@@ -624,7 +651,19 @@ pub fn run() {
             transcribe::kick_off_download_if_missing();
 
             if cfg.onboarded {
-                // Existing user → register shortcut + ready
+                // Existing user → check permissions first, then register shortcut
+                let perm = permissions::check_all();
+                if !perm.accessibility {
+                    eprintln!("[mouseclaw] ⚠️  Accessibility permission missing — global shortcut will NOT work");
+                    eprintln!("[mouseclaw]    → 请前往「系统设置 → 隐私与安全性 → 辅助功能」授权 MouseClaw");
+                }
+                if !perm.screen_recording {
+                    eprintln!("[mouseclaw] ⚠️  Screen Recording permission missing — screenshots will fail");
+                }
+                if !perm.microphone {
+                    eprintln!("[mouseclaw] ⚠️  Microphone permission missing — recording will fail");
+                }
+
                 let shortcut = Shortcut::from_str(&cfg.shortcut)
                     .unwrap_or_else(|_| Shortcut::from_str("Super+Shift+Space").unwrap());
                 app.global_shortcut().register(shortcut)?;

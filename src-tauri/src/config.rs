@@ -10,9 +10,10 @@ use serde::{Deserialize, Serialize};
 /// Bump this whenever shortcut choices / config schema change in a way that
 /// invalidates user's saved choice. Old configs auto-trigger re-Onboarding.
 ///   v1 → v2: Onboarding 选项从 4 个双击/按住 改成 2 个按住
-///   v2 → v3: 弃用 Alt+Space（macOS 上 ⌥+空格 会打出字符，全局热键抢不到），
-///            换成不产生字符的纯热键组合
-pub const CURRENT_CONFIG_VERSION: u32 = 3;
+///   v2 → v3: 弃用 Alt+Space（macOS 上 ⌥+空格 会打出字符，全局热键抢不到）
+///   v3 → v4: 弃用 Control+Super+Space —— ⌃⌘空格 是 macOS「表情与符号」
+///            系统快捷键，被系统抢走。换成 ⌘⇧空格 / ⌘⇧M
+pub const CURRENT_CONFIG_VERSION: u32 = 4;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {

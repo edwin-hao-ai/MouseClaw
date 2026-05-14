@@ -137,3 +137,103 @@
 }
 .ob-cta:hover { transform: translateY(-1px); }
 .ob-cta:active { transform: translateY(0); }
+
+/* ── Step 2: 权限列表 ─────────────────────────────────────────────────────── */
+
+.ob-perm-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ob-perm-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: 14px 18px;
+  border-radius: var(--radius-xl);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: background 200ms var(--ease-default),
+              border-color 200ms var(--ease-default);
+}
+
+.ob-perm-row.granted {
+  background: rgba(92, 214, 160, 0.08);
+  border-color: rgba(92, 214, 160, 0.3);
+}
+
+.ob-perm-icon {
+  font-size: 20px;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.ob-perm-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+}
+
+.ob-perm-title {
+  font-size: var(--text-body-lg);
+  font-weight: 600;
+  color: var(--text-on-dark);
+}
+
+.ob-perm-desc {
+  font-size: var(--text-body-sm);
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.ob-perm-check {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--success);
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.ob-perm-btn {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 107, 157, 0.15);
+  border: 1px solid rgba(255, 107, 157, 0.35);
+  color: var(--accent-soft);
+  font-size: var(--text-body-sm);
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 150ms var(--ease-tap),
+              border-color 150ms var(--ease-tap);
+}
+
+.ob-perm-btn:hover {
+  background: rgba(255, 107, 157, 0.25);
+  border-color: rgba(255, 107, 157, 0.6);
+}
+
+/* 次要 CTA（权限未全部授权时） */
+.ob-cta-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+  color: var(--text-dim);
+}
+
+.ob-cta-secondary:hover {
+  background: rgba(255, 255, 255, 0.12);
+  transform: none;
+}
+
+.ob-skip-hint {
+  margin-top: var(--space-3);
+  font-size: var(--text-body-sm);
+  color: var(--text-dim);
+  text-align: center;
+  line-height: 1.5;
+}
