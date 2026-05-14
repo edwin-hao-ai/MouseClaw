@@ -1,12 +1,19 @@
-/* Onboarding — DESIGN.md §4.5 */
+/* Onboarding — DESIGN.md §4.5
+ *
+ * Renders on top of whatever's behind it (transparent Tauri overlay → desktop,
+ * or Vite dev-server white page). Self-contained dark glass card with text
+ * tuned to always be readable regardless of parent background. */
 
 .ob-root {
   width: 100%;
   max-width: 560px;
   padding: var(--space-10) var(--space-12);
-  background: var(--surface-glass);
+  background: linear-gradient(135deg,
+    rgba(20, 25, 45, 0.95) 0%,
+    rgba(10, 14, 26, 0.95) 100%);
   backdrop-filter: blur(30px);
   -webkit-backdrop-filter: blur(30px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-4xl);
   color: var(--text-on-dark);
   margin: var(--space-10) auto;
