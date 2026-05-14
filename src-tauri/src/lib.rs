@@ -504,7 +504,7 @@ pub async fn on_shortcut_press(app: AppHandle, state: Arc<AppState>) {
         Err(e) => {
             eprintln!("[mouseclaw] start recording: {e:#}");
             // 检查是否是麦克风权限问题
-            let reason = if !permissions::check_microphone() {
+            let reason = if !permissions::check_microphone_tcc() {
                 "麦克风权限未授权 — 请前往「系统设置 → 隐私与安全性 → 麦克风」开启".into()
             } else {
                 format!("录音启动失败：{e}")
