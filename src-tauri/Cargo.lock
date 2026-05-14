@@ -2331,6 +2331,7 @@ dependencies = [
  "core-graphics 0.24.0",
  "cpal",
  "hound",
+ "libc",
  "objc",
  "once_cell",
  "serde",
