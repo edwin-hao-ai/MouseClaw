@@ -116,9 +116,7 @@ fn summon_via_tray(app: &AppHandle) {
         return;
     }
     let state: Arc<crate::AppState> = app.state::<Arc<crate::AppState>>().inner().clone();
-    if let Some(w) = app.get_webview_window("mouse") {
-        let _ = crate::show_mouse(&w);
-    }
+    crate::show_mouse(app);
     let app_clone = app.clone();
     tauri::async_runtime::spawn(async move {
         crate::on_shortcut_pressed(app_clone, state).await;

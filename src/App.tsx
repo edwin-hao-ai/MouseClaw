@@ -183,7 +183,8 @@ function BubbleFor({ view, continuing, onExpand }: BubbleForProps) {
       // Whisper recording active. User presses shortcut again (or clicks ◼) to stop.
       return <RecordingBubble />;
     case "thinking":
-      return <Bubble text={view.transcript} />;
+      // 慢 —— Claude 调用要 10-30s，给个动态 loading 让用户知道在干活
+      return <Bubble text={view.transcript} loading />;
     case "reply": {
       const long = isLongReply(view.reply);
       const variant = view.mode === "B" ? "warn" : "success";

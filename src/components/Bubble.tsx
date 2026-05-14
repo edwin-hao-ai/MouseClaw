@@ -18,12 +18,14 @@ interface BubbleProps {
   sessionChip?: { sessionId: number; turn: number };
   /** Voice bars (Listening state). */
   voiceBars?: boolean;
+  /** Animated 3-dot loading indicator after the text (Thinking state). */
+  loading?: boolean;
 }
 
 export function Bubble({
   text, variant = "default", streaming = false,
   expandable = false, onExpand,
-  sessionChip, voiceBars,
+  sessionChip, voiceBars, loading = false,
 }: BubbleProps) {
   return (
     <div className={`bubble bubble-${variant}`} role="status" aria-live="polite">
@@ -37,6 +39,11 @@ export function Bubble({
         {voiceBars && (
           <span className="voicebars" aria-hidden>
             <span /><span /><span /><span />
+          </span>
+        )}
+        {loading && (
+          <span className="loading-dots" aria-label="思考中" role="status">
+            <span /><span /><span />
           </span>
         )}
         {streaming && <span className="stream-cursor" aria-hidden>▮</span>}
