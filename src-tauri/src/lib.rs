@@ -283,14 +283,17 @@ pub struct HistoryTurn {
     pub screenshot: Option<String>,
 }
 
-/// Manual stop from the recording bubble's ◼ button (equivalent to a 2nd shortcut press).
+/// ◼ Stop button in the RecordingBubble — equivalent to releasing the shortcut.
+/// In push-to-talk mode, this is the only way to send a recording without
+/// the user having to release the shortcut keys (useful if user wants to
+/// keep holding the keys mid-thought).
 #[tauri::command]
 async fn toggle_recording(
     app: AppHandle,
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
     let state = state.inner().clone();
-    tauri::async_runtime::spawn(async move { on_shortcut_pressed(app, state).await });
+    tauri::async_runtime::spawn(async move { on_shortcut_release(app, state).await });
     Ok(())
 }
 
@@ -399,110 +402,120 @@ async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppState>) 
     schedule_auto_hide(&app, &state, 3000);
 }
 
-// ────────────────── Voice trigger (toggle recording on shortcut) ──────────────────
+// ────────────────── Push-to-talk shortcut handling ──────────────────
+//
+// Press-and-hold semantics (v0.1.5+):
+//   - 按住 = 开始录音 + 抓截图
+//   - 松开 = 停止录音 + Whisper 转写 + 跑 pipeline
+//
+// 之前是 toggle press (按一下开始、再按一下结束)，但用户反馈说录音状态
+// 容易卡住。push-to-talk 更符合直觉，没有"是否在录音"的歧义状态。
 
-/// Called on each shortcut press. Toggles recording state:
-///   1st press → start cpal capture, emit Listening with mic indicator
-///   2nd press → stop capture, transcribe with Whisper, run pipeline with transcript
-pub async fn on_shortcut_pressed(app: AppHandle, state: Arc<AppState>) {
-    // New user activity → invalidate any pending auto-hide timer.
+/// 按下快捷键：起手录音 + 截图。
+pub async fn on_shortcut_press(app: AppHandle, state: Arc<AppState>) {
     bump_gen(&state);
 
-    // Check current recorder state (under std mutex — no awaits while held)
-    let was_recording = {
-        let g = state.recorder.lock().unwrap();
-        g.is_some()
-    };
+    // 已经在录音中（理论上 hold + auto-repeat 会再次 fire Press）→ 跳过
+    if state.recorder.lock().unwrap().is_some() {
+        return;
+    }
 
-    if was_recording {
-        // Stop + transcribe + pipeline
-        let recorder = {
-            let mut g = state.recorder.lock().unwrap();
-            g.take()
+    if !transcribe::is_available() {
+        let msg = match transcribe::current_state() {
+            Some(transcribe::ModelState::Downloading) =>
+                "正在下载 Whisper 模型（57MB），下载完成后再试一次".into(),
+            Some(transcribe::ModelState::Failed(e)) =>
+                format!("Whisper 模型下载失败：{e}（手动跑：curl -L -o ~/.mouseclaw/models/{} {}）",
+                    transcribe::MODEL_FILENAME, transcribe::MODEL_URL),
+            _ =>
+                "Whisper 模型未找到（~/.mouseclaw/models/ggml-base-q5_1.bin）".into(),
         };
-        let Some(recorder) = recorder else { return };
+        emit_view(&app, &ViewKind::Blocked { reason: msg });
+        schedule_auto_hide(&app, &state, 6000);
+        return;
+    }
 
-        emit_view(&app, &ViewKind::Thinking { transcript: "(转写中…)".into() });
-
-        // Move CPU-bound work off the async thread
-        let app_clone = app.clone();
-        let state_clone = state.clone();
-        tauri::async_runtime::spawn_blocking(move || {
-            let samples = match recorder.stop_and_take() {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!("[mouseclaw] stop_and_take: {e:#}");
-                    let _ = app_clone.emit(EV_VIEW_CHANGED, ViewKind::Blocked {
-                        reason: format!("录音失败：{e}"),
-                    });
-                    schedule_auto_hide(&app_clone, &state_clone, 4000);
-                    return;
-                }
-            };
-            println!("[mouseclaw] captured {} samples @ 16kHz ({:.1}s)",
-                samples.len(), samples.len() as f32 / 16_000.0);
-            let transcript = match transcribe::transcribe(&samples) {
-                Ok(t) => t,
-                Err(e) => {
-                    eprintln!("[mouseclaw] transcribe: {e:#}");
-                    let _ = app_clone.emit(EV_VIEW_CHANGED, ViewKind::Blocked {
-                        reason: format!("Whisper 失败：{e}"),
-                    });
-                    schedule_auto_hide(&app_clone, &state_clone, 4000);
-                    return;
-                }
-            };
-            println!("[mouseclaw] transcript: {transcript:?}");
-            if transcript.is_empty() {
-                // Nothing heard → silently dismiss. No bubble error.
-                hide_overlay(&app_clone);
-                return;
-            }
-            // Run the pipeline on the async runtime
-            tauri::async_runtime::spawn(async move {
-                run_pipeline(transcript, app_clone, state_clone).await;
-            });
-        });
-    } else {
-        // Start recording. Also capture screenshot up front.
-        if !transcribe::is_available() {
-            // Differentiate "downloading" from "permanently missing"
-            let msg = match transcribe::current_state() {
-                Some(transcribe::ModelState::Downloading) =>
-                    "正在下载 Whisper 模型（57MB），下载完成后再试一次".into(),
-                Some(transcribe::ModelState::Failed(e)) =>
-                    format!("Whisper 模型下载失败：{e}（手动跑：curl -L -o ~/.mouseclaw/models/{} {}）",
-                        transcribe::MODEL_FILENAME, transcribe::MODEL_URL),
-                _ =>
-                    "Whisper 模型未找到（~/.mouseclaw/models/ggml-base-q5_1.bin）".into(),
-            };
-            emit_view(&app, &ViewKind::Blocked { reason: msg });
-            schedule_auto_hide(&app, &state, 6000);
+    let recorder = match audio::Recorder::start() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[mouseclaw] start recording: {e:#}");
+            emit_view(&app, &ViewKind::Blocked { reason: format!("录音启动失败：{e}") });
+            schedule_auto_hide(&app, &state, 4000);
             return;
         }
-        let recorder = match audio::Recorder::start() {
-            Ok(r) => r,
+    };
+    *state.recorder.lock().unwrap() = Some(recorder);
+
+    // 截图并行（不阻塞录音）
+    let state_clone = state.clone();
+    let app_clone = app.clone();
+    tauri::async_runtime::spawn(async move {
+        match screenshot::capture_main_screen().await {
+            Ok(r) => { *state_clone.last_screenshot.lock().await = Some(r.path); }
+            Err(e) => eprintln!("[mouseclaw] screenshot: {e:#}"),
+        }
+        emit_view(&app_clone, &ViewKind::Listening);
+    });
+}
+
+/// 松开快捷键：停止录音 + Whisper 转写 + 跑 pipeline。
+pub async fn on_shortcut_release(app: AppHandle, state: Arc<AppState>) {
+    let recorder = {
+        let mut g = state.recorder.lock().unwrap();
+        g.take()
+    };
+    let Some(recorder) = recorder else {
+        // 没在录音 → 可能是 Release 先于 Press（不常见），忽略
+        return;
+    };
+
+    emit_view(&app, &ViewKind::Thinking { transcript: "(转写中…)".into() });
+
+    let app_clone = app.clone();
+    let state_clone = state.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let samples = match recorder.stop_and_take() {
+            Ok(s) => s,
             Err(e) => {
-                eprintln!("[mouseclaw] start recording: {e:#}");
-                emit_view(&app, &ViewKind::Blocked { reason: format!("录音启动失败：{e}") });
-                schedule_auto_hide(&app, &state, 4000);
+                eprintln!("[mouseclaw] stop_and_take: {e:#}");
+                let _ = app_clone.emit(EV_VIEW_CHANGED, ViewKind::Blocked {
+                    reason: format!("录音失败：{e}"),
+                });
+                schedule_auto_hide(&app_clone, &state_clone, 4000);
                 return;
             }
         };
-        *state.recorder.lock().unwrap() = Some(recorder);
-
-        // Take screenshot in parallel
-        let state_clone = state.clone();
-        let app_clone = app.clone();
-        tauri::async_runtime::spawn(async move {
-            match screenshot::capture_main_screen().await {
-                // Just store path; cursor context is captured fresh in run_pipeline
-                Ok(r) => { *state_clone.last_screenshot.lock().await = Some(r.path); }
-                Err(e) => eprintln!("[mouseclaw] screenshot: {e:#}"),
+        println!("[mouseclaw] captured {} samples @ 16kHz ({:.1}s)",
+            samples.len(), samples.len() as f32 / 16_000.0);
+        let transcript = match transcribe::transcribe(&samples) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("[mouseclaw] transcribe: {e:#}");
+                let _ = app_clone.emit(EV_VIEW_CHANGED, ViewKind::Blocked {
+                    reason: format!("Whisper 失败：{e}"),
+                });
+                schedule_auto_hide(&app_clone, &state_clone, 4000);
+                return;
             }
-            emit_view(&app_clone, &ViewKind::Listening);
+        };
+        println!("[mouseclaw] transcript: {transcript:?}");
+        if transcript.is_empty() {
+            hide_overlay(&app_clone);
+            return;
+        }
+        tauri::async_runtime::spawn(async move {
+            run_pipeline(transcript, app_clone, state_clone).await;
         });
-    }
+    });
+}
+
+/// Legacy alias — tray summon uses this. Maps to "tap": press+immediate release.
+/// 不太理想但 tray 点一下没法 hold，只能模拟一个最短录音（500ms）。
+/// 后续 v2 改 tray 触发独立路径（让用户用文字输入）。
+pub async fn on_shortcut_pressed(app: AppHandle, state: Arc<AppState>) {
+    on_shortcut_press(app.clone(), state.clone()).await;
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    on_shortcut_release(app, state).await;
 }
 
 // ────────────────── Entry ──────────────────
@@ -517,16 +530,25 @@ pub fn run() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
-                    if event.state() != ShortcutState::Pressed { return; }
-                    println!("[mouseclaw] 🦞 shortcut fired: {shortcut:?}");
-                    if let Some(w) = app.get_webview_window("mouse") {
-                        let _ = show_mouse(&w);
-                    }
                     let app_handle = app.clone();
                     let state: Arc<AppState> = app.state::<Arc<AppState>>().inner().clone();
-                    tauri::async_runtime::spawn(async move {
-                        on_shortcut_pressed(app_handle, state).await;
-                    });
+                    match event.state() {
+                        ShortcutState::Pressed => {
+                            println!("[mouseclaw] 🦞 shortcut PRESS: {shortcut:?}");
+                            if let Some(w) = app.get_webview_window("mouse") {
+                                let _ = show_mouse(&w);
+                            }
+                            tauri::async_runtime::spawn(async move {
+                                on_shortcut_press(app_handle, state).await;
+                            });
+                        }
+                        ShortcutState::Released => {
+                            println!("[mouseclaw] 🦞 shortcut RELEASE: {shortcut:?}");
+                            tauri::async_runtime::spawn(async move {
+                                on_shortcut_release(app_handle, state).await;
+                            });
+                        }
+                    }
                 })
                 .build(),
         )
@@ -545,6 +567,19 @@ pub fn run() {
                 eprintln!("[mouseclaw] tray setup failed: {e:#}");
             } else {
                 println!("[mouseclaw] tray icon registered");
+            }
+
+            // Diagnostic: log PATH + claude CLI location so users can see in
+            // ~/Library/Logs/MouseClaw or `bun tauri dev` console why a shortcut
+            // press might not invoke Claude in a .app bundle (PATH inheritance issue).
+            println!("[mouseclaw] inherited PATH = {}", std::env::var("PATH").unwrap_or_default());
+            match std::process::Command::new("sh").arg("-c").arg("which claude").output() {
+                Ok(out) if out.status.success() => {
+                    println!("[mouseclaw] claude CLI found at: {}", String::from_utf8_lossy(&out.stdout).trim());
+                }
+                _ => {
+                    eprintln!("[mouseclaw] ⚠️  claude CLI NOT on PATH at startup — will retry at invocation with expanded PATH (~/.npm-global/bin etc.)");
+                }
             }
 
             // Kick off Whisper model download in background if missing.
