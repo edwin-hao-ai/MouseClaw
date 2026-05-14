@@ -113,7 +113,8 @@ MouseClaw 是**纯后台进程**，平时完全"不存在"：
 - 发给 Claude 的 system prompt 必须加 INSERT 标记规则（见上面 Claude CLI 调用约定）
 - MouseClaw 解析时只取**第一个** `[INSERT_AT_CURSOR]` 块（防止 Claude 写多块文本到光标）
 - 倒数期间按 **Esc** = 取消（不写入），按 **Enter** = 立即写入（跳过倒数）
-- V1 用剪贴板 + Cmd+V + 保存/恢复原剪贴板（妥协，污染剪贴板的窗口期 < 100ms），V2 改 CGEventCreateKeyboardEvent 直接键入
+- 写入用 `CGEventKeyboardSetUnicodeString` 直接发 unicode 键盘事件——不污染剪贴板，**绕过 IME**（中文输入法激活时不会变成 composition），不依赖外部进程
+- 长文本分 15 char/chunk 发送，每 chunk 间 5ms 让前台 app input loop 跟上
 - B 模式触发时，老鼠状态切换为新的 "ready-to-write" 动画（眼睛盯着鼠标位置，前爪上举做笔状）
 
 ### B 模式的安全红线
