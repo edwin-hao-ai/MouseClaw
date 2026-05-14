@@ -2326,8 +2326,10 @@ name = "mouseclaw"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "block",
  "chrono",
  "cocoa",
+ "core-foundation",
  "core-graphics 0.24.0",
  "cpal",
  "hound",

@@ -67,8 +67,12 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     screen_recording: false,
     microphone: false,
   });
+  // 用户点过「去开启」的权限。屏幕录制授权后本进程查不到（macOS 设计 ——
+  // 必须重启 app 才生效），所以靠「点过请求」+ 重启来兜。
+  const [requested, setRequested] = useState<Set<keyof PermissionStatus>>(new Set());
 
-  // 轮询权限状态（用户去系统设置授权后自动刷新）
+  // 轮询权限状态（accessibility / microphone 授权后会实时变绿；
+  // screen_recording 不会 —— 需重启，所以用 requested 集合兜底）
   const refreshPerms = useCallback(async () => {
     try {
       const status = await invoke<PermissionStatus>("check_permissions");
@@ -82,15 +86,24 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   useEffect(() => {
     if (step !== 2) return;
     refreshPerms();
-    // 每 2 秒刷新一次，让用户授权后立即看到变化
-    const timer = setInterval(refreshPerms, 2000);
+    // 每 1.5 秒刷新一次，让用户授权后立即看到变化
+    const timer = setInterval(refreshPerms, 1500);
     return () => clearInterval(timer);
   }, [step, refreshPerms]);
 
-  const allGranted =
-    perms.accessibility && perms.screen_recording && perms.microphone;
+  // 一个权限算"搞定" = 真的查到已授权 OR (是屏幕录制 且 已点过请求)
+  const isDone = (key: keyof PermissionStatus): boolean => {
+    if (perms[key]) return true;
+    if (key === "screen_recording" && requested.has(key)) return true;
+    return false;
+  };
+
+  // 三项都搞定才能完成。完成时会重启 app（让屏幕录制生效）。
+  const allDone =
+    isDone("accessibility") && isDone("screen_recording") && isDone("microphone");
 
   const handleOpenPref = async (key: keyof PermissionStatus) => {
+    setRequested((prev) => new Set(prev).add(key));
     try {
       await invoke("request_permission", { name: key });
     } catch {
@@ -141,21 +154,25 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   return (
     <div className="ob-root">
       <div className="ob-mouse-stage">
-        <PixelMouse state={allGranted ? "jump" : "think"} size={96} />
+        <PixelMouse state={allDone ? "jump" : "think"} size={96} />
       </div>
       <h1 className="ob-title">开启必要权限</h1>
       <p className="ob-subtitle">
-        点击每一项，在弹出的系统设置里勾选 MouseClaw。<br />
-        授权后这里会自动变绿 ✓
+        点「去开启」会弹出系统授权框，按提示勾选 MouseClaw。<br />
+        辅助功能 / 麦克风授权后会自动变绿；<strong>屏幕录制需要重启 App 才生效</strong>。
       </p>
 
       <div className="ob-perm-list">
         {PERMISSIONS.map(p => {
           const granted = perms[p.key];
+          const done = isDone(p.key);
+          // 屏幕录制：点过请求但还没查到 → "已请求"中间态
+          const pendingRestart =
+            p.key === "screen_recording" && requested.has(p.key) && !granted;
           return (
             <div
               key={p.key}
-              className={`ob-perm-row ${granted ? "granted" : ""}`}
+              className={`ob-perm-row ${done ? "granted" : ""}`}
             >
               <span className="ob-perm-icon">{p.icon}</span>
               <div className="ob-perm-text">
@@ -164,6 +181,10 @@ export function Onboarding({ onComplete }: OnboardingProps) {
               </div>
               {granted ? (
                 <span className="ob-perm-check" aria-label="已授权">✓</span>
+              ) : pendingRestart ? (
+                <span className="ob-perm-pending" aria-label="已请求，重启生效">
+                  已请求 · 重启生效
+                </span>
               ) : (
                 <button
                   type="button"
@@ -180,18 +201,18 @@ export function Onboarding({ onComplete }: OnboardingProps) {
 
       <button
         type="button"
-        className={`ob-cta ${!allGranted ? "ob-cta-secondary" : ""}`}
+        className={`ob-cta ${!allDone ? "ob-cta-secondary" : ""}`}
         onClick={() => onComplete(selected)}
-        aria-disabled={!allGranted}
+        aria-disabled={!allDone}
       >
-        {allGranted ? "开始使用 🦞" : "跳过（部分功能不可用）"}
+        {allDone ? "完成并重启 MouseClaw 🦞" : "请先开启全部三项权限"}
       </button>
 
-      {!allGranted && (
-        <p className="ob-skip-hint">
-          建议全部开启后再使用，否则快捷键或录音可能无法工作。
-        </p>
-      )}
+      <p className="ob-skip-hint">
+        {allDone
+          ? "点击后会重启 App —— 这是让屏幕录制权限生效的必要步骤。"
+          : "三项都需要：辅助功能（快捷键）、屏幕录制（截图）、麦克风（语音）。"}
+      </p>
     </div>
   );
 }

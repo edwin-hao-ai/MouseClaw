@@ -11,9 +11,10 @@ use serde::{Deserialize, Serialize};
 /// invalidates user's saved choice. Old configs auto-trigger re-Onboarding.
 ///   v1 → v2: Onboarding 选项从 4 个双击/按住 改成 2 个按住
 ///   v2 → v3: 弃用 Alt+Space（macOS 上 ⌥+空格 会打出字符，全局热键抢不到）
-///   v3 → v4: 弃用 Control+Super+Space —— ⌃⌘空格 是 macOS「表情与符号」
-///            系统快捷键，被系统抢走。换成 ⌘⇧空格 / ⌘⇧M
-pub const CURRENT_CONFIG_VERSION: u32 = 4;
+///   v3 → v4: 弃用 Control+Super+Space（注释改了但代码没改 —— 见 v5）
+///   v4 → v5: 真正弃用 Control+Super+Space —— ⌃⌘空格 是 macOS「表情与符号」
+///            系统快捷键。换成 ⌘⇧空格 / ⌘⇧M（macOS 默认未占用）
+pub const CURRENT_CONFIG_VERSION: u32 = 5;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -37,7 +38,7 @@ fn legacy_version() -> u32 { 1 }
 impl Default for Config {
     fn default() -> Self {
         Self {
-            shortcut: "Control+Super+Space".into(),
+            shortcut: "Super+Shift+Space".into(),
             onboarded: false,
             version: CURRENT_CONFIG_VERSION,
         }
@@ -82,21 +83,25 @@ impl Config {
 ///
 /// v0.1.5+: push-to-talk 语义——按住录音，松开发送。
 ///
-/// **重要**：组合键不能产生字符，否则全局热键抢不到 / 被输入法吃掉：
-///   - ❌ Alt+Space (⌥空格) → macOS 打出不间断空格
-///   - ❌ 任何 单 modifier + 字母 → 容易被 app 内快捷键吃
-///   - ✅ Control+Cmd+Space / Control+Cmd+M → 三键组合，不产生字符，
-///        macOS 默认没占用，全局热键能稳定抢到
+/// **踩过的坑（按时间）：**
+///   - ❌ Alt+Space (⌥空格)     → macOS 打出不间断空格字符，热键抢不到
+///   - ❌ 单 modifier + 字母     → 容易被 app 内快捷键吃
+///   - ❌ Control+Super+Space   → ⌃⌘空格 是 macOS「表情与符号」系统快捷键
+///   - ✅ Super+Shift+Space     → ⌘⇧空格，macOS 默认未占用
+///   - ✅ Super+Shift+KeyM      → ⌘⇧M，macOS 默认未占用
+///
+/// 注册仍可能失败（用户装了 Alfred/Raycast 等占了键）—— lib.rs setup() 里
+/// register 失败会 log + 重弹 Onboarding 让用户换。
 ///
 /// Tauri Shortcut 字符串：`Super`=⌘ `Alt`=⌥ `Control`=⌃ `Shift`=⇧；
 /// 字母 `KeyA`..`KeyZ`；空格 `Space`。
 pub fn choice_to_shortcut_str(choice: &str) -> &'static str {
     match choice {
-        // 推荐：⌃⌘空格 — 三键组合不产生字符，macOS 默认空闲
-        "double-option" | "hold-option" | "ctrl-cmd-space" => "Control+Super+Space",
-        // 备选：⌃⌘M (M for MouseClaw)
-        "double-cmd" | "hold-cmd" | "ctrl-cmd-m" => "Control+Super+KeyM",
+        // 推荐：⌘⇧空格
+        "double-option" | "hold-option" | "cmd-shift-space" => "Super+Shift+Space",
+        // 备选：⌘⇧M (M for MouseClaw)
+        "double-cmd" | "hold-cmd" | "cmd-shift-m" => "Super+Shift+KeyM",
         // 默认 fallback
-        _ => "Control+Super+Space",
+        _ => "Super+Shift+Space",
     }
 }
