@@ -298,4 +298,30 @@ mod tests {
         let reply = "[INSERT_AT_CURSOR]A[/INSERT_AT_CURSOR][INSERT_AT_CURSOR]B[/INSERT_AT_CURSOR]";
         assert_eq!(parse_insert_directive(reply).as_deref(), Some("A"));
     }
+
+    #[test]
+    fn system_prompt_always_includes_base() {
+        // system_prompt() 至少包含基础 prompt；agent-browser 段是可选的
+        let p = system_prompt();
+        assert!(p.starts_with("你是 MouseClaw 桌面助手"));
+        // 若本机装了 agent-browser，应追加 compute use 段
+        if find_binary("agent-browser").is_ok() {
+            assert!(p.contains("compute use"));
+        }
+    }
+
+    #[test]
+    fn build_prompt_includes_image_path_and_cursor() {
+        let cursor = CursorContext { x: 100, y: 50, screen_w: 1000, screen_h: 500 };
+        let p = build_prompt(
+            "这段代码有 bug 吗",
+            Path::new("/tmp/frame.png"),
+            Some("Visual Studio Code"),
+            Some(&cursor),
+        );
+        assert!(p.contains("/tmp/frame.png"));
+        assert!(p.contains("x=100"));
+        assert!(p.contains("Visual Studio Code"));
+        assert!(p.contains("10%")); // 100/1000
+    }
 }

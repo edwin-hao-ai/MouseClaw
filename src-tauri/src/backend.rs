@@ -184,3 +184,43 @@ where
     );
     spawn_and_stream(&bin, &["agent", "--local", "-m", &prompt], on_chunk).await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_choice_maps_known_ids() {
+        assert_eq!(Backend::from_choice("codex-cli"), Backend::CodexCli);
+        assert_eq!(Backend::from_choice("codex"), Backend::CodexCli);
+        assert_eq!(Backend::from_choice("openclaw-cli"), Backend::OpenclawCli);
+        assert_eq!(Backend::from_choice("openclaw"), Backend::OpenclawCli);
+        assert_eq!(Backend::from_choice("claude-cli"), Backend::ClaudeCli);
+    }
+
+    #[test]
+    fn from_choice_unknown_falls_back_to_claude() {
+        assert_eq!(Backend::from_choice(""), Backend::ClaudeCli);
+        assert_eq!(Backend::from_choice("garbage"), Backend::ClaudeCli);
+    }
+
+    #[test]
+    fn default_is_claude() {
+        assert_eq!(Backend::default(), Backend::ClaudeCli);
+    }
+
+    #[test]
+    fn binary_names_are_distinct() {
+        assert_eq!(Backend::ClaudeCli.binary_name(), "claude");
+        assert_eq!(Backend::CodexCli.binary_name(), "codex");
+        assert_eq!(Backend::OpenclawCli.binary_name(), "openclaw");
+    }
+
+    #[test]
+    fn serde_roundtrip_kebab_case() {
+        let json = serde_json::to_string(&Backend::CodexCli).unwrap();
+        assert_eq!(json, "\"codex-cli\"");
+        let back: Backend = serde_json::from_str("\"openclaw-cli\"").unwrap();
+        assert_eq!(back, Backend::OpenclawCli);
+    }
+}
