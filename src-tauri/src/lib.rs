@@ -1,25 +1,42 @@
-//! MouseClaw main entry. See `/Users/edwinhao/MouseClaw/CLAUDE.md` for full architecture.
+//! MouseClaw 主入口。
+//!
+//! 模块拆分（每个文件 ≤800 行，见 CLAUDE.md 规则）：
+//!   - `overlay`     —— 老鼠窗口显示/隐藏 + 视图事件广播 + 自动隐藏
+//!   - `pipeline`    —— 截屏+转写+AI+输出模式 的核心流程；push-to-talk handler
+//!   - `commands`    —— 所有 #[tauri::command]
+//!   - `backend`     —— 多 AI 后端抽象（Claude / Codex / OpenClaw CLI）
+//!   - `claude_cli`  —— Claude Code CLI 流式调用
+//!   - `audio` / `transcribe` —— cpal 录音 + Whisper 转写
+//!   - `screenshot` / `mode_b` / `permissions` / `sessions` / `config` / `tray` / `events`
+//!
+//! 完整架构见 `/Users/edwinhao/MouseClaw/CLAUDE.md`。
 
 pub mod audio;
+pub mod backend;
 pub mod claude_cli;
+pub mod commands;
 pub mod config;
 pub mod events;
 pub mod mode_b;
+pub mod overlay;
 pub mod permissions;
+pub mod pipeline;
 pub mod screenshot;
 pub mod sessions;
 pub mod transcribe;
 pub mod tray;
 
 use std::str::FromStr;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex as StdMutex};
-use std::time::Duration;
-use tauri::{AppHandle, Emitter, LogicalPosition, Manager, State, WebviewWindow};
+use tauri::Manager;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tokio::sync::Mutex;
 
-use crate::events::{EV_VIEW_CHANGED, ReplyMode, ViewKind};
+use crate::backend::Backend;
+use crate::events::ViewKind;
+use crate::overlay::{emit_view, show_mouse};
+use crate::pipeline::{on_shortcut_press, on_shortcut_release};
 use crate::sessions::SessionStore;
 
 /// App-wide state. Mutex split: tokio::Mutex for async-accessed bits,
@@ -29,19 +46,22 @@ pub struct AppState {
     pub sessions: Mutex<SessionStore>,
     pub last_screenshot: Mutex<Option<std::path::PathBuf>>,
     pub recorder: StdMutex<Option<audio::Recorder>>,
+    /// 当前选用的 AI 后端 —— pipeline 每次调用前 .lock().await.clone() 读取。
+    /// 启动时从 config 灌入；运行期不变（改后端要重新 onboard + 重启）。
+    pub backend: Mutex<Backend>,
     /// Monotonic counter — bumped on any new shortcut press / pipeline run /
     /// pin / dismiss. Auto-hide timers capture the gen at scheduling time and
-    /// no-op if it changed by the time they fire, so a follow-up shortcut
-    /// press doesn't get hidden by the previous reply's timer.
+    /// no-op if it changed by the time they fire.
     pub gen: AtomicU64,
 }
 
 impl AppState {
-    fn new() -> anyhow::Result<Self> {
+    fn new(backend: Backend) -> anyhow::Result<Self> {
         Ok(Self {
             sessions: Mutex::new(SessionStore::new()?),
             last_screenshot: Mutex::new(None),
             recorder: StdMutex::new(None),
+            backend: Mutex::new(backend),
             gen: AtomicU64::new(0),
         })
     }
@@ -83,566 +103,16 @@ fn set_accessory_activation_policy() {
     use cocoa::appkit::{NSApp, NSApplication, NSApplicationActivationPolicy};
     unsafe {
         let app = NSApp();
-        app.setActivationPolicy_(NSApplicationActivationPolicy::NSApplicationActivationPolicyAccessory);
+        app.setActivationPolicy_(
+            NSApplicationActivationPolicy::NSApplicationActivationPolicyAccessory,
+        );
     }
 }
 #[cfg(not(target_os = "macos"))]
 fn set_accessory_activation_policy() {}
 
-/// Show the overlay window near the cursor.
-///
-/// ⚠️ **必须在主线程跑** —— 里面碰 NSEvent / NSScreen，AppKit 不是线程安全的。
-/// 之前 show_mouse 从全局快捷键 handler 线程直接调，NSScreen.mainScreen 离开
-/// 主线程访问会静默崩溃。现在统一 marshal 到主线程。
-pub fn show_mouse(app: &AppHandle) {
-    let app2 = app.clone();
-    let _ = app.run_on_main_thread(move || {
-        let Some(window) = app2.get_webview_window("mouse") else { return };
-        // 现在在主线程 —— cocoa 调用安全
-        if let Some((x, y)) = current_mouse_pos_top_left(&window) {
-            let (ww, wh) = match window.outer_size().ok() {
-                Some(s) => (s.width as f64, s.height as f64),
-                None => (320.0, 320.0),
-            };
-            let scale = window.scale_factor().unwrap_or(1.0);
-            let pos_x = x - (ww / scale) / 2.0;
-            let pos_y = y - (wh / scale) + 32.0;
-            let _ = window.set_position(LogicalPosition::new(pos_x, pos_y));
-        }
-        let _ = window.show();
-        let _ = window.set_always_on_top(true);
-    });
-}
-
-/// Get cursor position in top-left-origin screen coordinates.
-/// ⚠️ 只能在主线程调用（碰 NSScreen）。
-#[cfg(target_os = "macos")]
-fn current_mouse_pos_top_left(window: &WebviewWindow) -> Option<(f64, f64)> {
-    use cocoa::base::id;
-    use cocoa::foundation::NSPoint;
-    use objc::{class, msg_send, sel, sel_impl};
-    unsafe {
-        let event_class: id = msg_send![class!(NSEvent), class];
-        let point: NSPoint = msg_send![event_class, mouseLocation];
-        let screen_h = primary_screen_height_pts().unwrap_or(1080.0);
-        let _scale = window.scale_factor().unwrap_or(1.0);
-        Some((point.x, screen_h - point.y))
-    }
-}
-
-/// ⚠️ 只能在主线程调用（NSScreen.mainScreen 不是线程安全的）。
-#[cfg(target_os = "macos")]
-fn primary_screen_height_pts() -> Option<f64> {
-    use cocoa::base::id;
-    use cocoa::foundation::{NSRect, NSSize};
-    use objc::{class, msg_send, sel, sel_impl};
-    unsafe {
-        let screen: id = msg_send![class!(NSScreen), mainScreen];
-        if screen as usize == 0 { return None; }
-        let frame: NSRect = msg_send![screen, frame];
-        let size: NSSize = frame.size;
-        Some(size.height)
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-fn current_mouse_pos_top_left(_w: &WebviewWindow) -> Option<(f64, f64)> { None }
-
-fn emit_view(app: &AppHandle, view: &ViewKind) {
-    if let Err(e) = app.emit(EV_VIEW_CHANGED, view) {
-        eprintln!("[mouseclaw] failed to emit view-changed: {e}");
-    }
-}
-
-/// Hide the overlay window, emit Idle. Idempotent.
-/// ⚠️ window.hide() marshal 到主线程 —— 同 show_mouse，避免 AppKit 跨线程崩溃。
-fn hide_overlay(app: &AppHandle) {
-    let app2 = app.clone();
-    let _ = app.run_on_main_thread(move || {
-        if let Some(w) = app2.get_webview_window("mouse") {
-            let _ = w.hide();
-        }
-    });
-    emit_view(app, &ViewKind::Idle); // emit 是发事件，跨线程安全
-}
-
-/// Schedule `hide_overlay` after `after_ms` ms — but only fire if the app's
-/// generation hasn't changed (i.e., no new pipeline/shortcut activity).
-fn schedule_auto_hide(app: &AppHandle, state: &Arc<AppState>, after_ms: u64) {
-    let my_gen = state.gen.load(Ordering::SeqCst);
-    let app_clone = app.clone();
-    let state_clone = state.clone();
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(after_ms)).await;
-        if state_clone.gen.load(Ordering::SeqCst) == my_gen {
-            println!("[mouseclaw] auto-hide (gen {my_gen} still current after {after_ms}ms)");
-            hide_overlay(&app_clone);
-        } else {
-            println!("[mouseclaw] auto-hide skipped (gen advanced, user did something)");
-        }
-    });
-}
-
-/// Bump the generation — invalidates any pending auto-hide timer.
-fn bump_gen(state: &Arc<AppState>) -> u64 {
-    state.gen.fetch_add(1, Ordering::SeqCst) + 1
-}
-
-// ────────────────── Tauri commands ──────────────────
-
-#[tauri::command]
-async fn submit_query(
-    text: String,
-    app: AppHandle,
-    state: State<'_, Arc<AppState>>,
-) -> Result<(), String> {
-    let state = state.inner().clone();
-    let app2 = app.clone();
-    tauri::async_runtime::spawn(async move { run_pipeline(text, app2, state).await });
-    Ok(())
-}
-
-#[tauri::command]
-async fn follow_up(
-    text: String,
-    app: AppHandle,
-    state: State<'_, Arc<AppState>>,
-) -> Result<(), String> {
-    let state = state.inner().clone();
-    let app2 = app.clone();
-    tauri::async_runtime::spawn(async move { run_pipeline(text, app2, state).await });
-    Ok(())
-}
-
-#[tauri::command]
-async fn new_session(state: State<'_, Arc<AppState>>) -> Result<u64, String> {
-    let mut store = state.sessions.lock().await;
-    Ok(store.touch(true, None)) // 显式新 session，前台 app 不参与判断
-}
-
-#[tauri::command]
-fn save_shortcut(choice: String, _app: AppHandle) -> Result<(), String> {
-    let new_str = config::choice_to_shortcut_str(&choice).to_string();
-    // 校验快捷键字符串能解析（真正的注册在重启后的 setup() 里做，
-    // 那时屏幕录制权限也活了，时机统一）。
-    Shortcut::from_str(&new_str)
-        .map_err(|e| format!("解析快捷键 {new_str:?} 失败：{e}"))?;
-
-    // Persist with onboarded=true + current schema version so we don't re-trigger
-    let cfg = config::Config {
-        shortcut: new_str.clone(),
-        onboarded: true,
-        version: config::CURRENT_CONFIG_VERSION,
-    };
-    cfg.save().map_err(|e| format!("保存配置失败：{e}"))?;
-
-    // 注意：不在这里 register 快捷键、不关窗口。OnboardingView 接着会调
-    // restart_app —— 重启后 setup() 会读 config 注册快捷键，且屏幕录制权限
-    // 此时已生效。窗口关闭由 restart 兜底。
-    println!("[mouseclaw] shortcut saved → {new_str} (choice: {choice}, onboarded ✓) — 等待重启");
-    Ok(())
-}
-
-#[tauri::command]
-fn cancel_pipeline(app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    bump_gen(&state.inner().clone());
-    hide_overlay(&app);
-    Ok(())
-}
-
-/// React calls this when entering Panel / sticky states to cancel the
-/// pending 3s auto-hide and keep the overlay visible until the user dismisses.
-#[tauri::command]
-fn pin_window(state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    let g = bump_gen(&state.inner().clone());
-    println!("[mouseclaw] window pinned (gen → {g})");
-    Ok(())
-}
-
-/// User pressed Esc / clicked away → hide immediately.
-#[tauri::command]
-fn dismiss(app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    bump_gen(&state.inner().clone());
-    hide_overlay(&app);
-    Ok(())
-}
-
-/// Read session history from ~/.mouseclaw/sessions.jsonl and return grouped sessions
-/// for the History window. Returns most recent sessions first.
-#[tauri::command]
-fn read_history() -> Result<Vec<HistorySession>, String> {
-    use std::collections::BTreeMap;
-    use crate::sessions::TurnRecord;
-
-    let home = std::env::var_os("HOME").ok_or("HOME not set")?;
-    let path = std::path::PathBuf::from(home).join(".mouseclaw/sessions.jsonl");
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let text = std::fs::read_to_string(&path).map_err(|e| format!("read: {e}"))?;
-    let mut sessions: BTreeMap<u64, HistorySession> = BTreeMap::new();
-    for line in text.lines() {
-        let line = line.trim();
-        if line.is_empty() { continue; }
-        let Ok(record) = serde_json::from_str::<TurnRecord>(line) else { continue };
-        let entry = sessions.entry(record.session_id).or_insert_with(|| HistorySession {
-            session_id: record.session_id,
-            started_at: record.timestamp,
-            ended_at: record.timestamp,
-            turns: Vec::new(),
-        });
-        entry.ended_at = record.timestamp;
-        entry.turns.push(HistoryTurn {
-            role: format!("{:?}", record.role).to_lowercase(),
-            text: record.text,
-            timestamp: record.timestamp,
-            screenshot: record.screenshot,
-        });
-    }
-    // Reverse-chronological (most recent first)
-    let mut list: Vec<HistorySession> = sessions.into_values().collect();
-    list.sort_by(|a, b| b.started_at.cmp(&a.started_at));
-    Ok(list)
-}
-
-#[derive(serde::Serialize)]
-pub struct HistorySession {
-    pub session_id: u64,
-    pub started_at: chrono::DateTime<chrono::Utc>,
-    pub ended_at: chrono::DateTime<chrono::Utc>,
-    pub turns: Vec<HistoryTurn>,
-}
-
-#[derive(serde::Serialize)]
-pub struct HistoryTurn {
-    pub role: String,
-    pub text: String,
-    pub timestamp: chrono::DateTime<chrono::Utc>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub screenshot: Option<String>,
-}
-
-/// 前端查询当前权限状态（Onboarding 页面用）。
-/// 三个 check 都是官方状态查询 API（AXIsProcessTrusted /
-/// CGPreflightScreenCaptureAccess / AVCaptureDevice authorizationStatus），
-/// 纯只读、不弹窗、不阻塞 —— 直接同步调用即可，不需要 spawn_blocking。
-#[tauri::command]
-fn check_permissions() -> permissions::PermissionStatus {
-    permissions::check_all()
-}
-
-/// 前端「去开启」按钮 —— 触发系统授权弹窗 + 打开设置面板。
-/// name: "accessibility" | "screen_recording" | "microphone"
-///
-/// 麦克风特殊处理：`AVCaptureDevice requestAccessForMediaType:` + block 回调
-/// 不可靠（block crate 传参问题），改为直接用 cpal 开一下输入流 —— macOS 见到
-/// app 访问麦克风会立刻弹授权框，app 也就进了「麦克风」列表。
-#[tauri::command]
-fn request_permission(name: String) {
-    if name == "microphone" {
-        // 后台线程开一个极短的 cpal 输入流，纯粹为了触发 macOS 授权弹窗。
-        std::thread::spawn(|| {
-            match audio::Recorder::start() {
-                Ok(rec) => {
-                    // 开流即触发系统弹窗；停一下立刻收掉，丢弃采样。
-                    std::thread::sleep(Duration::from_millis(400));
-                    let _ = rec.stop_and_take();
-                    println!("[mouseclaw] microphone prompt triggered via cpal input stream");
-                }
-                Err(e) => {
-                    eprintln!("[mouseclaw] mic prompt trigger via cpal failed: {e:#}");
-                }
-            }
-        });
-        // 同时打开麦克风设置面板兜底（用户也能手动勾）
-        permissions::open_prefs_for("microphone");
-    } else {
-        permissions::request_permission(&name);
-    }
-}
-
-/// 重启 MouseClaw 自身。
-/// 屏幕录制权限授权后，CGPreflightScreenCaptureAccess() 在本进程生命周期内
-/// 一直返回 false（macOS 设计）—— 必须重启 app 才生效。Onboarding 完成时调。
-#[tauri::command]
-fn restart_app(app: AppHandle) {
-    println!("[mouseclaw] 重启 app（让屏幕录制权限生效）");
-    app.restart();
-}
-
-/// ◼ Stop button in the RecordingBubble — equivalent to releasing the shortcut.
-/// In push-to-talk mode, this is the only way to send a recording without
-/// the user having to release the shortcut keys (useful if user wants to
-/// keep holding the keys mid-thought).
-#[tauri::command]
-async fn toggle_recording(
-    app: AppHandle,
-    state: State<'_, Arc<AppState>>,
-) -> Result<(), String> {
-    let state = state.inner().clone();
-    tauri::async_runtime::spawn(async move { on_shortcut_release(app, state).await });
-    Ok(())
-}
-
-// ────────────────── Pipeline ──────────────────
-
-async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppState>) {
-    // Bump generation so any pending auto-hide timer from a previous run no-ops
-    bump_gen(&state);
-
-    // 1. Use screenshot captured at shortcut-press time (recent + matches user intent)
-    let (img_path, cursor_ctx) = match state.last_screenshot.lock().await.clone() {
-        Some(p) if p.exists() => (p, None), // older snapshot, no cursor context preserved
-        _ => match screenshot::capture_main_screen().await {
-            Ok(r) => {
-                let cursor = match (r.cursor, r.screen_size) {
-                    (Some((x, y)), Some((w, h))) => Some(claude_cli::CursorContext {
-                        x, y, screen_w: w, screen_h: h,
-                    }),
-                    _ => None,
-                };
-                (r.path, cursor)
-            }
-            Err(e) => {
-                // 检查是否是屏幕录制权限问题
-                let reason = if !permissions::check_screen_recording() {
-                    "屏幕录制权限未授权 — 请前往「系统设置 → 隐私与安全性 → 屏幕录制」开启".into()
-                } else {
-                    format!("截图失败：{e}")
-                };
-                emit_view(&app, &ViewKind::Blocked { reason });
-                schedule_auto_hide(&app, &state, 4000);
-                return;
-            }
-        },
-    };
-
-    // 2. Session bookkeeping —— 前台 app 提前算好，touch() 用它判断「切 app = 新 session」
-    let frontmost = mode_b::frontmost_app_name();
-    let (_session_id, context_preamble) = {
-        let mut store = state.sessions.lock().await;
-        let id = store.touch(false, frontmost.as_deref());
-        (id, store.context_preamble())
-    };
-    let prompt_with_context = match &context_preamble {
-        Some(pre) => format!("{pre}{transcript}"),
-        None => transcript.clone(),
-    };
-
-    emit_view(&app, &ViewKind::Thinking { transcript: transcript.clone() });
-
-    // 流式调用 —— 边收边 emit Reply{streaming:true}，气泡实时长出来。
-    // 节流：最多每 90ms emit 一次，避免 IPC 被 token 级事件刷爆。
-    let app_chunks = app.clone();
-    let transcript_chunks = transcript.clone();
-    let mut last_emit = std::time::Instant::now() - Duration::from_secs(1);
-    let reply = match claude_cli::ask_claude_streaming(
-        &prompt_with_context,
-        &img_path,
-        frontmost.as_deref(),
-        cursor_ctx.as_ref(),
-        |accumulated| {
-            let now = std::time::Instant::now();
-            if now.duration_since(last_emit) >= Duration::from_millis(90) {
-                last_emit = now;
-                emit_view(&app_chunks, &ViewKind::Reply {
-                    transcript: transcript_chunks.clone(),
-                    reply: accumulated.to_string(),
-                    mode: ReplyMode::A, // 流式期间统一按 A 显示，最终 emit 再定 mode
-                    insert_text: None,
-                    streaming: true,
-                });
-            }
-        },
-    ).await {
-        Ok(r) => r,
-        Err(e) => {
-            emit_view(&app, &ViewKind::Blocked { reason: format!("Claude 调用失败：{e}") });
-            schedule_auto_hide(&app, &state, 4000);
-            return;
-        }
-    };
-
-    {
-        let mut store = state.sessions.lock().await;
-        let screenshot_path = img_path.to_string_lossy().to_string();
-        let _ = store.record_user(transcript.clone(), Some(screenshot_path)).await;
-        let _ = store.record_assistant(reply.clone()).await;
-    }
-
-    let insert_text = claude_cli::parse_insert_directive(&reply);
-    let (mode, final_insert) = match insert_text {
-        Some(t) => match mode_b::assert_writable() {
-            Ok(()) => (ReplyMode::B, Some(t)),
-            Err(_) => (ReplyMode::A, None),
-        },
-        None => (ReplyMode::A, None),
-    };
-
-    // 最终 Reply —— streaming:false，mode 已确定，此时才存 history / 触发 Mode B
-    emit_view(&app, &ViewKind::Reply {
-        transcript: transcript.clone(),
-        reply: reply.clone(),
-        mode,
-        insert_text: final_insert.clone(),
-        streaming: false,
-    });
-
-    if let (ReplyMode::B, Some(text)) = (mode, final_insert) {
-        // Note: countdown frames don't bump gen — they're part of the same
-        // logical pipeline. Auto-hide is scheduled after the final Reply emit.
-        for remaining in (1..=3).rev() {
-            emit_view(&app, &ViewKind::ModeBCountdown {
-                insert_text: text.clone(), remaining,
-            });
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        }
-        emit_view(&app, &ViewKind::ModeBInserting { insert_text: text.clone() });
-        if let Err(e) = mode_b::write_at_cursor(&text).await {
-            emit_view(&app, &ViewKind::Blocked { reason: format!("写入失败：{e}") });
-            schedule_auto_hide(&app, &state, 4000);
-            return;
-        }
-        emit_view(&app, &ViewKind::Reply {
-            transcript, reply: format!("✅ 已写入：{text}"),
-            mode: ReplyMode::A, insert_text: None,
-            streaming: false,
-        });
-    }
-
-    // Auto-hide 3s after the final Reply (PRD §IV "3 秒后小老鼠跑回角落").
-    // Cancelled if the user presses the shortcut again, expands to Panel
-    // (which calls pin_window), or presses Esc (dismiss).
-    schedule_auto_hide(&app, &state, 3000);
-}
-
-// ────────────────── Push-to-talk shortcut handling ──────────────────
-//
-// Press-and-hold semantics (v0.1.5+):
-//   - 按住 = 开始录音 + 抓截图
-//   - 松开 = 停止录音 + Whisper 转写 + 跑 pipeline
-//
-// 之前是 toggle press (按一下开始、再按一下结束)，但用户反馈说录音状态
-// 容易卡住。push-to-talk 更符合直觉，没有"是否在录音"的歧义状态。
-
-/// 按下快捷键：起手录音 + 截图。
-pub async fn on_shortcut_press(app: AppHandle, state: Arc<AppState>) {
-    bump_gen(&state);
-
-    // 已经在录音中（理论上 hold + auto-repeat 会再次 fire Press）→ 跳过
-    if state.recorder.lock().unwrap().is_some() {
-        return;
-    }
-
-    if !transcribe::is_available() {
-        let msg = match transcribe::current_state() {
-            Some(transcribe::ModelState::Downloading) =>
-                "正在下载 Whisper 模型（57MB），下载完成后再试一次".into(),
-            Some(transcribe::ModelState::Failed(e)) =>
-                format!("Whisper 模型下载失败：{e}（手动跑：curl -L -o ~/.mouseclaw/models/{} {}）",
-                    transcribe::MODEL_FILENAME, transcribe::MODEL_URL),
-            _ =>
-                "Whisper 模型未找到（~/.mouseclaw/models/ggml-base-q5_1.bin）".into(),
-        };
-        emit_view(&app, &ViewKind::Blocked { reason: msg });
-        schedule_auto_hide(&app, &state, 6000);
-        return;
-    }
-
-    let recorder = match audio::Recorder::start() {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("[mouseclaw] start recording: {e:#}");
-            // 检查是否是麦克风权限问题
-            let reason = if !permissions::check_microphone() {
-                "麦克风权限未授权 — 请前往「系统设置 → 隐私与安全性 → 麦克风」开启".into()
-            } else {
-                format!("录音启动失败：{e}")
-            };
-            emit_view(&app, &ViewKind::Blocked { reason });
-            schedule_auto_hide(&app, &state, 4000);
-            return;
-        }
-    };
-    *state.recorder.lock().unwrap() = Some(recorder);
-
-    // 截图并行（不阻塞录音）
-    let state_clone = state.clone();
-    let app_clone = app.clone();
-    tauri::async_runtime::spawn(async move {
-        match screenshot::capture_main_screen().await {
-            Ok(r) => { *state_clone.last_screenshot.lock().await = Some(r.path); }
-            Err(e) => eprintln!("[mouseclaw] screenshot: {e:#}"),
-        }
-        emit_view(&app_clone, &ViewKind::Listening);
-    });
-}
-
-/// 松开快捷键：停止录音 + Whisper 转写 + 跑 pipeline。
-pub async fn on_shortcut_release(app: AppHandle, state: Arc<AppState>) {
-    let recorder = {
-        let mut g = state.recorder.lock().unwrap();
-        g.take()
-    };
-    let Some(recorder) = recorder else {
-        // 没在录音 → 可能是 Release 先于 Press（不常见），忽略
-        return;
-    };
-
-    emit_view(&app, &ViewKind::Thinking { transcript: "(转写中…)".into() });
-
-    let app_clone = app.clone();
-    let state_clone = state.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let samples = match recorder.stop_and_take() {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("[mouseclaw] stop_and_take: {e:#}");
-                let _ = app_clone.emit(EV_VIEW_CHANGED, ViewKind::Blocked {
-                    reason: format!("录音失败：{e}"),
-                });
-                schedule_auto_hide(&app_clone, &state_clone, 4000);
-                return;
-            }
-        };
-        println!("[mouseclaw] captured {} samples @ 16kHz ({:.1}s)",
-            samples.len(), samples.len() as f32 / 16_000.0);
-        let transcript = match transcribe::transcribe(&samples) {
-            Ok(t) => t,
-            Err(e) => {
-                eprintln!("[mouseclaw] transcribe: {e:#}");
-                let _ = app_clone.emit(EV_VIEW_CHANGED, ViewKind::Blocked {
-                    reason: format!("Whisper 失败：{e}"),
-                });
-                schedule_auto_hide(&app_clone, &state_clone, 4000);
-                return;
-            }
-        };
-        println!("[mouseclaw] transcript: {transcript:?}");
-        if transcript.is_empty() {
-            hide_overlay(&app_clone);
-            return;
-        }
-        tauri::async_runtime::spawn(async move {
-            run_pipeline(transcript, app_clone, state_clone).await;
-        });
-    });
-}
-
-/// Legacy alias — tray summon uses this. Maps to "tap": press+immediate release.
-/// 不太理想但 tray 点一下没法 hold，只能模拟一个最短录音（500ms）。
-/// 后续 v2 改 tray 触发独立路径（让用户用文字输入）。
-pub async fn on_shortcut_pressed(app: AppHandle, state: Arc<AppState>) {
-    on_shortcut_press(app.clone(), state.clone()).await;
-    tokio::time::sleep(Duration::from_millis(800)).await;
-    on_shortcut_release(app, state).await;
-}
-
-// ────────────────── Entry ──────────────────
-
 /// 装一个 panic hook —— 任何线程 panic 都把完整信息 + backtrace 写进
 /// ~/.mouseclaw/mouseclaw.log（stderr 已被 init_file_logging 重定向过去）。
-/// 之前 app「崩溃」但日志里啥都没有，就是因为 panic 信息没被捕获。
 fn install_panic_hook() {
     let default = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
@@ -664,7 +134,9 @@ fn install_panic_hook() {
 pub fn run() {
     init_file_logging();
     install_panic_hook();
-    let app_state = Arc::new(AppState::new().expect("init AppState"));
+
+    let cfg = config::Config::load();
+    let app_state = Arc::new(AppState::new(cfg.backend).expect("init AppState"));
 
     tauri::Builder::default()
         .manage(app_state.clone())
@@ -693,77 +165,86 @@ pub fn run() {
                 .build(),
         )
         .invoke_handler(tauri::generate_handler![
-            submit_query, follow_up, new_session, save_shortcut,
-            cancel_pipeline, toggle_recording, pin_window, dismiss, read_history,
-            check_permissions, request_permission, restart_app
+            commands::submit_query,
+            commands::follow_up,
+            commands::new_session,
+            commands::save_shortcut,
+            commands::cancel_pipeline,
+            commands::toggle_recording,
+            commands::pin_window,
+            commands::dismiss,
+            commands::read_history,
+            commands::check_permissions,
+            commands::request_permission,
+            commands::restart_app,
         ])
-        .setup(|app| {
-            let cfg = config::Config::load();
+        .setup(move |app| {
             set_accessory_activation_policy();
             println!("[mouseclaw] activation policy = Accessory (no dock icon)");
+            println!("[mouseclaw] 后端 = {}", cfg.backend.display_name());
             emit_view(&app.handle(), &ViewKind::Idle);
 
-            // Tray always available (gives user an escape valve before/during onboarding)
+            // Tray always available (escape valve before/during onboarding)
             if let Err(e) = tray::setup(&app.handle()) {
                 eprintln!("[mouseclaw] tray setup failed: {e:#}");
             } else {
                 println!("[mouseclaw] tray icon registered");
             }
 
-            // Diagnostic: log PATH + claude CLI location so users can see in
-            // ~/Library/Logs/MouseClaw or `bun tauri dev` console why a shortcut
-            // press might not invoke Claude in a .app bundle (PATH inheritance issue).
-            println!("[mouseclaw] inherited PATH = {}", std::env::var("PATH").unwrap_or_default());
-            match std::process::Command::new("sh").arg("-c").arg("which claude").output() {
-                Ok(out) if out.status.success() => {
-                    println!("[mouseclaw] claude CLI found at: {}", String::from_utf8_lossy(&out.stdout).trim());
-                }
-                _ => {
-                    eprintln!("[mouseclaw] ⚠️  claude CLI NOT on PATH at startup — will retry at invocation with expanded PATH (~/.npm-global/bin etc.)");
-                }
+            // Diagnostic: PATH + claude location
+            println!(
+                "[mouseclaw] inherited PATH = {}",
+                std::env::var("PATH").unwrap_or_default()
+            );
+            match claude_cli::find_binary(cfg.backend.binary_name()) {
+                Ok(p) => println!("[mouseclaw] backend binary: {}", p.display()),
+                Err(_) => eprintln!(
+                    "[mouseclaw] ⚠️  后端 `{}` 二进制未找到 —— 调用时会用拓宽 PATH 重试",
+                    cfg.backend.binary_name()
+                ),
             }
 
-            // Kick off Whisper model download in background if missing.
-            // First-launch users get a "downloading…" bubble instead of a
-            // cryptic error when they press the shortcut.
+            // Background Whisper model download if missing
             transcribe::kick_off_download_if_missing();
 
             if cfg.onboarded {
-                // Existing user → check permissions first, then register shortcut
                 let perm = permissions::check_all();
                 if !perm.accessibility {
-                    eprintln!("[mouseclaw] ⚠️  Accessibility permission missing — global shortcut will NOT work");
-                    eprintln!("[mouseclaw]    → 请前往「系统设置 → 隐私与安全性 → 辅助功能」授权 MouseClaw");
+                    eprintln!("[mouseclaw] ⚠️  辅助功能权限缺失 — 全局快捷键不会工作");
                 }
                 if !perm.screen_recording {
-                    eprintln!("[mouseclaw] ⚠️  Screen Recording permission missing — screenshots will fail");
+                    eprintln!("[mouseclaw] ⚠️  屏幕录制权限缺失 — 截图会失败");
                 }
                 if !perm.microphone {
-                    eprintln!("[mouseclaw] ⚠️  Microphone permission missing — recording will fail");
+                    eprintln!("[mouseclaw] ⚠️  麦克风权限缺失 — 录音会失败");
                 }
 
                 let shortcut = match Shortcut::from_str(&cfg.shortcut) {
                     Ok(s) => s,
                     Err(e) => {
-                        eprintln!("[mouseclaw] ✘ 快捷键字符串 {:?} 解析失败：{e} — 重弹 Onboarding", cfg.shortcut);
+                        eprintln!(
+                            "[mouseclaw] ✘ 快捷键 {:?} 解析失败：{e} — 重弹 Onboarding",
+                            cfg.shortcut
+                        );
                         tray::open_onboarding_window(&app.handle());
                         return Ok(());
                     }
                 };
                 match app.global_shortcut().register(shortcut) {
                     Ok(()) => {
-                        println!("[mouseclaw] ✓ 全局快捷键注册成功: {} (按住录音/松开发送)", cfg.shortcut);
+                        println!(
+                            "[mouseclaw] ✓ 全局快捷键注册成功: {} (按住录音/松开发送)",
+                            cfg.shortcut
+                        );
                         println!("[mouseclaw] 🦞 ready — 按住 {} 开始说话", cfg.shortcut);
                     }
                     Err(e) => {
-                        // 快捷键被系统或其他 app（Alfred/Raycast 等）占用 → 重弹 Onboarding 让用户换
                         eprintln!("[mouseclaw] ✘ 快捷键 {} 注册失败：{e}", cfg.shortcut);
-                        eprintln!("[mouseclaw]    → 可能被系统或其他 app 占用，重弹 Onboarding 让你换一个");
+                        eprintln!("[mouseclaw]    → 可能被系统或其他 app 占用，重弹 Onboarding");
                         tray::open_onboarding_window(&app.handle());
                     }
                 }
             } else {
-                // First launch → no shortcut registered yet; open Onboarding window
                 println!("[mouseclaw] first launch → opening Onboarding window");
                 tray::open_onboarding_window(&app.handle());
             }

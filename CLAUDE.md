@@ -1,3 +1,10 @@
+---
+mddock_imported_at: 2026-05-14T13:21:17Z
+mddock_import_reason: CLAUDE.md convention
+type: agent-config
+created_by: agent
+---
+
 # MouseClaw 项目规则
 
 ## 设计系统：DESIGN.md 是视觉单一信源
@@ -54,12 +61,24 @@
 
 ---
 
+## 代码组织：单文件 ≤ 800 行（硬规则）
+
+**任何源文件不得超过 800 行**，目标 200–400 行。超了就按职责拆模块。
+
+- Rust：按功能拆 module（`overlay.rs` / `pipeline.rs` / `commands.rs` / `backend.rs` …），
+  `lib.rs` 只留 `AppState` + `run()` + 启动钩子
+- React：组件单文件，逻辑抽 hook / 子组件
+- 检查：`wc -l src-tauri/src/*.rs src/**/*.tsx | sort -rn | head` —— 任何一行超 800 就拆
+- **2026-05-15 教训**：lib.rs 一度涨到 792 行，加新功能前必须先拆，不然滚雪球
+
 ## 技术选型（已锁定）
 
 - **GUI**：Tauri 2（理由：Webview 写"漂亮+流式文本"几乎零成本，纯 Rust GUI 在文本布局上是地狱）
 - **录音 → 转写**：cpal 录音 + whisper-rs（whisper.cpp Rust binding）+ Whisper base 量化模型
-- **截屏**：macOS 用 `CGWindowListCreateImage` 取当前活动窗口完整截图（不是 300×300 局部）
-- **AI 后端**：V1 写死 Claude Code CLI（v2.1.138+）。后端抽象层留接口但**不暴露给用户**
+- **截屏**：macOS 用 `screencapture` CLI 取光标所在屏完整截图（不是 300×300 局部）
+- **AI 后端**：多后端抽象（`backend.rs`）—— Claude Code CLI（默认，最成熟）/
+  OpenAI Codex CLI / OpenClaw CLI。用户在 Onboarding 选，存 config.json。
+  所有后端走统一契约 `(截图 + prompt) → 流式文本`
 - **平台**：macOS 优先，Windows V2
 
 ### Claude CLI 调用约定（2026-05-13 验证 ✅）

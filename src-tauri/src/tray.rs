@@ -116,10 +116,10 @@ fn summon_via_tray(app: &AppHandle) {
         return;
     }
     let state: Arc<crate::AppState> = app.state::<Arc<crate::AppState>>().inner().clone();
-    crate::show_mouse(app);
+    crate::overlay::show_mouse(app);
     let app_clone = app.clone();
     tauri::async_runtime::spawn(async move {
-        crate::on_shortcut_pressed(app_clone, state).await;
+        crate::pipeline::on_shortcut_pressed(app_clone, state).await;
     });
 }
 

@@ -7,6 +7,8 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
+use crate::backend::Backend;
+
 /// Bump this whenever shortcut choices / config schema change in a way that
 /// invalidates user's saved choice. Old configs auto-trigger re-Onboarding.
 ///   v1 → v2: Onboarding 选项从 4 个双击/按住 改成 2 个按住
@@ -14,13 +16,17 @@ use serde::{Deserialize, Serialize};
 ///   v3 → v4: 弃用 Control+Super+Space（注释改了但代码没改 —— 见 v5）
 ///   v4 → v5: 真正弃用 Control+Super+Space —— ⌃⌘空格 是 macOS「表情与符号」
 ///            系统快捷键。换成 ⌘⇧空格 / ⌘⇧M（macOS 默认未占用）
-pub const CURRENT_CONFIG_VERSION: u32 = 5;
+///   v5 → v6: 新增多后端选择（backend 字段）—— Onboarding 多一步选 AI 后端
+pub const CURRENT_CONFIG_VERSION: u32 = 6;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// Canonical shortcut string, e.g. "Super+Shift+Space" / "Alt+Space".
     /// Parseable by tauri_plugin_global_shortcut::Shortcut::from_str.
     pub shortcut: String,
+    /// 用户选的 AI 后端（Claude Code CLI / Codex CLI / OpenClaw CLI）。
+    #[serde(default)]
+    pub backend: Backend,
     /// Set to true the first time the user completes Onboarding. Until then,
     /// the app doesn't register a global shortcut — clicking the tray or
     /// launching the app re-opens the Onboarding window instead.
@@ -39,6 +45,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             shortcut: "Super+Shift+Space".into(),
+            backend: Backend::default(),
             onboarded: false,
             version: CURRENT_CONFIG_VERSION,
         }

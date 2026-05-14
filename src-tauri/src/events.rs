@@ -14,7 +14,9 @@ pub enum ViewKind {
         transcript: String,
         reply: String,
         mode: ReplyMode,
-        #[serde(skip_serializing_if = "Option::is_none")]
+        /// rename → camelCase 跟 src/types.ts 的 `insertText` 对齐
+        /// （之前是 insert_text，TS 侧永远读到 undefined —— latent bug）
+        #[serde(rename = "insertText", skip_serializing_if = "Option::is_none")]
         insert_text: Option<String>,
         /// true = Claude 还在流式输出中（气泡显示闪烁光标）；
         /// false = 最终回复（已确定 mode、可存 history）。
