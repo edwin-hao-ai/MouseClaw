@@ -320,16 +320,25 @@ pub struct HistoryTurn {
 }
 
 /// 前端查询当前权限状态（Onboarding 页面用）。
+/// async + spawn_blocking 确保不在主线程执行，避免 cpal 枚举设备时阻塞 UI。
 #[tauri::command]
-fn check_permissions() -> permissions::PermissionStatus {
-    permissions::check_all()
+async fn check_permissions() -> permissions::PermissionStatus {
+    tokio::task::spawn_blocking(|| permissions::check_all())
+        .await
+        .unwrap_or(permissions::PermissionStatus {
+            accessibility: false,
+            screen_recording: false,
+            microphone: false,
+        })
 }
 
 /// 前端请求打开对应权限的系统设置面板。
 /// name: "accessibility" | "screen_recording" | "microphone"
 #[tauri::command]
-fn request_permission(name: String) {
-    permissions::open_prefs_for(&name);
+async fn request_permission(name: String) {
+    tokio::task::spawn_blocking(move || permissions::open_prefs_for(&name))
+        .await
+        .ok();
 }
 
 /// ◼ Stop button in the RecordingBubble — equivalent to releasing the shortcut.

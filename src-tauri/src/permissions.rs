@@ -5,8 +5,9 @@
 //!   2. Screen Recording（屏幕录制）— screencapture 必须
 //!   3. Microphone（麦克风）— cpal 录音必须
 //!
-//! 全部用 macOS 原生 C API，不依赖外部进程（swift/osascript 在 release 包
-//! 的受限 PATH 下不可靠，且 osascript 本身需要 Accessibility 权限，会死循环）。
+//! 重要：所有检查函数必须是非阻塞的——不能触发系统权限弹窗。
+//! AVCaptureDevice authorizationStatusForMediaType: 在 NotDetermined 状态下
+//! 会同步弹窗阻塞线程，所以麦克风检查改用 cpal 枚举设备的方式。
 
 use serde::Serialize;
 
@@ -57,28 +58,19 @@ pub fn check_screen_recording() -> bool {
     unsafe { CGPreflightScreenCaptureAccess() }
 }
 
-/// Microphone: `AVAuthorizationStatusAuthorized = 3`
-/// 通过 Objective-C runtime 调用 AVCaptureDevice，不引入额外 crate。
+/// Microphone: 用 cpal 尝试枚举默认输入设备。
+///
+/// 为什么不用 AVCaptureDevice.authorizationStatus：
+///   当状态是 NotDetermined(0) 时，该 API 会同步弹出权限对话框并阻塞调用线程，
+///   在 Tauri 主线程上调用会导致整个 UI 卡死。
+///
+/// cpal 的 default_input_device() 在没有麦克风权限时返回 None，
+/// 且不会触发系统弹窗，是安全的只读检查。
 #[cfg(target_os = "macos")]
 pub fn check_microphone() -> bool {
-    use objc::{class, msg_send, sel, sel_impl};
-    use objc::runtime::Object;
-
-    // AVMediaTypeAudio = "soun"
-    let media_type = unsafe {
-        let cls = class!(NSString);
-        let s: *mut Object = msg_send![cls, stringWithUTF8String: b"soun\0".as_ptr()];
-        s
-    };
-
-    // [AVCaptureDevice authorizationStatusForMediaType:] → i64
-    // 0=NotDetermined, 1=Restricted, 2=Denied, 3=Authorized
-    let status: i64 = unsafe {
-        let cls = class!(AVCaptureDevice);
-        msg_send![cls, authorizationStatusForMediaType: media_type]
-    };
-
-    status == 3 // Authorized
+    use cpal::traits::HostTrait;
+    let host = cpal::default_host();
+    host.default_input_device().is_some()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
