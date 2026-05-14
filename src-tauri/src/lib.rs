@@ -466,10 +466,18 @@ pub async fn on_shortcut_pressed(app: AppHandle, state: Arc<AppState>) {
     } else {
         // Start recording. Also capture screenshot up front.
         if !transcribe::is_available() {
-            emit_view(&app, &ViewKind::Blocked {
-                reason: "Whisper 模型未找到（~/.mouseclaw/models/ggml-base-q5_1.bin）".into(),
-            });
-            schedule_auto_hide(&app, &state, 4000);
+            // Differentiate "downloading" from "permanently missing"
+            let msg = match transcribe::current_state() {
+                Some(transcribe::ModelState::Downloading) =>
+                    "正在下载 Whisper 模型（57MB），下载完成后再试一次".into(),
+                Some(transcribe::ModelState::Failed(e)) =>
+                    format!("Whisper 模型下载失败：{e}（手动跑：curl -L -o ~/.mouseclaw/models/{} {}）",
+                        transcribe::MODEL_FILENAME, transcribe::MODEL_URL),
+                _ =>
+                    "Whisper 模型未找到（~/.mouseclaw/models/ggml-base-q5_1.bin）".into(),
+            };
+            emit_view(&app, &ViewKind::Blocked { reason: msg });
+            schedule_auto_hide(&app, &state, 6000);
             return;
         }
         let recorder = match audio::Recorder::start() {
@@ -538,6 +546,11 @@ pub fn run() {
             } else {
                 println!("[mouseclaw] tray icon registered");
             }
+
+            // Kick off Whisper model download in background if missing.
+            // First-launch users get a "downloading…" bubble instead of a
+            // cryptic error when they press the shortcut.
+            transcribe::kick_off_download_if_missing();
 
             if cfg.onboarded {
                 // Existing user → register shortcut + ready

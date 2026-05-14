@@ -34,25 +34,32 @@ const MOUSE_TEMPLATE_BITMAP: [u16; 16] = [
     0b0000000000000000, // row 15
 ];
 
-/// Build the tray icon as raw RGBA. 16×16×4 = 1024 bytes.
+/// Build the tray icon as raw RGBA at 2× resolution for retina menubars.
+/// The bitmap is 16×16 logical pixels, scaled to 32×32 physical pixels by
+/// pixel-doubling. macOS will downscale to whatever its menubar height
+/// requires (typically 22pt) while preserving sharpness on retina.
 fn build_template_icon() -> Image<'static> {
-    let mut rgba = vec![0u8; 16 * 16 * 4];
+    const SCALE: usize = 2;
+    const SIZE: usize = 16 * SCALE; // 32
+    let mut rgba = vec![0u8; SIZE * SIZE * 4];
     for y in 0..16 {
         let row = MOUSE_TEMPLATE_BITMAP[y];
         for x in 0..16 {
             let bit = (row >> (15 - x)) & 1;
-            let i = (y * 16 + x) * 4;
             if bit == 1 {
-                // RGB ignored when template image; alpha 255 = opaque
-                rgba[i] = 0;
-                rgba[i + 1] = 0;
-                rgba[i + 2] = 0;
-                rgba[i + 3] = 255;
+                // Fill the corresponding 2×2 block in the upscaled grid
+                for dy in 0..SCALE {
+                    for dx in 0..SCALE {
+                        let px = x * SCALE + dx;
+                        let py = y * SCALE + dy;
+                        let i = (py * SIZE + px) * 4;
+                        rgba[i + 3] = 255; // template: alpha-only matters
+                    }
+                }
             }
-            // else: alpha 0 = fully transparent (default zeros)
         }
     }
-    Image::new_owned(rgba, 16, 16)
+    Image::new_owned(rgba, SIZE as u32, SIZE as u32)
 }
 
 pub fn setup(app: &AppHandle) -> tauri::Result<()> {
