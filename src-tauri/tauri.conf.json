@@ -47,7 +47,8 @@
       "icons/icon.icns"
     ],
     "macOS": {
-      "minimumSystemVersion": "11.0"
+      "minimumSystemVersion": "11.0",
+      "signingIdentity": "Developer ID Application: Beijing VGO Co;Ltd (5XNDF727Y6)"
     }
   }
 }

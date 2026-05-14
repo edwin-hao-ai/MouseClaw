@@ -19,8 +19,8 @@ interface OnboardingProps {
 const OPTIONS: Array<{
   id: ShortcutChoice; label: string; keyHint: string; tag?: string;
 }> = [
-  { id: "hold-option", label: "按住 ⌥ + 空格", keyHint: "⌥ Space", tag: "零冲突 · 推荐" },
-  { id: "hold-cmd",    label: "按住 ⌘ + ⇧ + 空格", keyHint: "⌘ ⇧ Space" },
+  { id: "hold-option", label: "按住 ⌃ + ⌘ + 空格", keyHint: "⌃ ⌘ Space", tag: "零冲突 · 推荐" },
+  { id: "hold-cmd",    label: "按住 ⌃ + ⌘ + M",    keyHint: "⌃ ⌘ M" },
 ];
 
 export function Onboarding({ onComplete }: OnboardingProps) {

@@ -46,6 +46,37 @@ impl AppState {
     }
 }
 
+/// Release builds run as a `.app` bundle where stdout/stderr go nowhere.
+/// Redirect both to `~/.mouseclaw/mouseclaw.log` so users (and us) can debug.
+/// Dev builds (`bun tauri dev`) keep console output — no redirect.
+#[cfg(all(target_os = "macos", not(debug_assertions)))]
+fn init_file_logging() {
+    use std::os::unix::io::IntoRawFd;
+    let home = std::env::var("HOME").unwrap_or_default();
+    let dir = std::path::PathBuf::from(&home).join(".mouseclaw");
+    let _ = std::fs::create_dir_all(&dir);
+    let log_path = dir.join("mouseclaw.log");
+    if let Ok(file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+    {
+        let fd = file.into_raw_fd();
+        unsafe {
+            libc::dup2(fd, libc::STDOUT_FILENO);
+            libc::dup2(fd, libc::STDERR_FILENO);
+            libc::close(fd);
+        }
+        println!(
+            "\n========== MouseClaw 启动 {} ==========",
+            chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
+        );
+    }
+}
+
+#[cfg(not(all(target_os = "macos", not(debug_assertions))))]
+fn init_file_logging() {}
+
 #[cfg(target_os = "macos")]
 fn set_accessory_activation_policy() {
     use cocoa::appkit::{NSApp, NSApplication, NSApplicationActivationPolicy};
@@ -526,6 +557,7 @@ pub async fn on_shortcut_pressed(app: AppHandle, state: Arc<AppState>) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    init_file_logging();
     let app_state = Arc::new(AppState::new().expect("init AppState"));
 
     tauri::Builder::default()
