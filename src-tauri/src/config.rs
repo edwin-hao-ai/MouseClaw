@@ -12,11 +12,19 @@ pub struct Config {
     /// Canonical shortcut string, e.g. "Super+Shift+Space" / "Alt+Space".
     /// Parseable by tauri_plugin_global_shortcut::Shortcut::from_str.
     pub shortcut: String,
+    /// Set to true the first time the user completes Onboarding. Until then,
+    /// the app doesn't register a global shortcut — clicking the tray or
+    /// launching the app re-opens the Onboarding window instead.
+    #[serde(default)]
+    pub onboarded: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self { shortcut: "Super+Shift+Space".into() }
+        Self {
+            shortcut: "Super+Shift+Space".into(),
+            onboarded: false,
+        }
     }
 }
 

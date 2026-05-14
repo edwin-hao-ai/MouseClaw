@@ -13,9 +13,8 @@ import "./styles/tokens.css";
 import { PixelMouse, type MouseState } from "./components/PixelMouse";
 import { Bubble } from "./components/Bubble";
 import { Panel } from "./components/Panel";
-import { Onboarding } from "./components/Onboarding";
 import { RecordingBubble } from "./components/RecordingBubble";
-import { EV_VIEW_CHANGED, type ViewKind, type ShortcutChoice } from "./types";
+import { EV_VIEW_CHANGED, type ViewKind } from "./types";
 
 const PREVIEW_LONG = "这篇 Nature 文章讨论 2026 年 AI 加速材料发现的三个突破：室温超导候选材料、新型电池电解液、碳捕获催化剂。核心机制是自动化实验室加大模型生成假设的迭代闭环。";
 
@@ -39,9 +38,6 @@ function mouseStateFor(view: ViewKind): MouseState {
 
 export default function App() {
   const [view, setView] = useState<ViewKind>({ kind: "idle" });
-  const [onboarded, setOnboarded] = useState<boolean>(
-    () => localStorage.getItem("mouseclaw.onboarded") === "1"
-  );
   // session continuation chip — true when current view is part of an ongoing session
   const [continuing, setContinuing] = useState(false);
 
@@ -109,17 +105,6 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const handleOnboard = useCallback(async (choice: ShortcutChoice) => {
-    try {
-      await invoke("save_shortcut", { choice });
-    } catch (e) {
-      console.warn("save_shortcut not yet registered:", e);
-    }
-    localStorage.setItem("mouseclaw.onboarded", "1");
-    setOnboarded(true);
-    setView({ kind: "idle" });
-  }, []);
-
   const handlePanelSend = useCallback(async (text: string) => {
     try { await invoke("follow_up", { text }); }
     catch (e) { console.warn("follow_up not yet registered:", e); }
@@ -153,14 +138,9 @@ export default function App() {
   }, [view]);
 
   // ────────────────── Render ──────────────────
-
-  // Onboarding screen takes over the whole window
-  if (!onboarded && view.kind !== "idle") {
-    return <Onboarding onComplete={handleOnboard} />;
-  }
-  if (view.kind === "onboarding") {
-    return <Onboarding onComplete={handleOnboard} />;
-  }
+  // Onboarding lives in its OWN window opened by Rust on first launch
+  // (see src-tauri/src/tray.rs::open_onboarding_window). The overlay window
+  // only handles the actual mouse interaction states.
 
   // Panel takes precedence over mouse-only views
   if (view.kind === "panel") {

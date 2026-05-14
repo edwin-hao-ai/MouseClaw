@@ -187,16 +187,20 @@ fn save_shortcut(choice: String, app: AppHandle) -> Result<(), String> {
         .map_err(|e| format!("解析快捷键 {new_str:?} 失败：{e}"))?;
 
     let gs = app.global_shortcut();
-    // Unregister all previous shortcuts (we only ever have one in V1)
     let _ = gs.unregister_all();
     gs.register(new_shortcut)
         .map_err(|e| format!("注册快捷键失败：{e}"))?;
 
-    // Persist
-    let cfg = config::Config { shortcut: new_str.clone() };
+    // Persist with onboarded=true so we never bring up the onboarding window again
+    let cfg = config::Config { shortcut: new_str.clone(), onboarded: true };
     cfg.save().map_err(|e| format!("保存配置失败：{e}"))?;
 
-    println!("[mouseclaw] shortcut updated → {new_str} (choice: {choice})");
+    // Close the onboarding window if open
+    if let Some(w) = app.get_webview_window("onboarding") {
+        let _ = w.close();
+    }
+
+    println!("[mouseclaw] shortcut updated → {new_str} (choice: {choice}, onboarded ✓)");
     Ok(())
 }
 
@@ -523,24 +527,30 @@ pub fn run() {
             cancel_pipeline, toggle_recording, pin_window, dismiss, read_history
         ])
         .setup(|app| {
-            // Read user-saved shortcut (or fall back to Cmd+Shift+Space on first run)
             let cfg = config::Config::load();
-            let shortcut = Shortcut::from_str(&cfg.shortcut)
-                .unwrap_or_else(|_| Shortcut::from_str("Super+Shift+Space").unwrap());
-            app.global_shortcut().register(shortcut)?;
-            println!("[mouseclaw] registered global shortcut: {} (toggle record)", cfg.shortcut);
             set_accessory_activation_policy();
             println!("[mouseclaw] activation policy = Accessory (no dock icon)");
             emit_view(&app.handle(), &ViewKind::Idle);
 
-            // Tray icon (V1.4 addition)
+            // Tray always available (gives user an escape valve before/during onboarding)
             if let Err(e) = tray::setup(&app.handle()) {
                 eprintln!("[mouseclaw] tray setup failed: {e:#}");
             } else {
                 println!("[mouseclaw] tray icon registered");
             }
 
-            println!("[mouseclaw] 🦞 ready — press {} to start recording", cfg.shortcut);
+            if cfg.onboarded {
+                // Existing user → register shortcut + ready
+                let shortcut = Shortcut::from_str(&cfg.shortcut)
+                    .unwrap_or_else(|_| Shortcut::from_str("Super+Shift+Space").unwrap());
+                app.global_shortcut().register(shortcut)?;
+                println!("[mouseclaw] registered global shortcut: {} (toggle record)", cfg.shortcut);
+                println!("[mouseclaw] 🦞 ready — press {} to start recording", cfg.shortcut);
+            } else {
+                // First launch → no shortcut registered yet; open Onboarding window
+                println!("[mouseclaw] first launch → opening Onboarding window");
+                tray::open_onboarding_window(&app.handle());
+            }
             Ok(())
         })
         .run(tauri::generate_context!())
