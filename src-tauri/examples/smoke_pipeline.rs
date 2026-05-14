@@ -11,18 +11,25 @@ async fn main() -> anyhow::Result<()> {
     println!("🦞 MouseClaw smoke test\n");
 
     println!("① 截屏中...");
-    let img = screenshot::capture_main_screen().await?;
-    let size = std::fs::metadata(&img)?.len();
-    println!("   ✓ {} ({:.1} KB)\n", img.display(), size as f64 / 1024.0);
+    let r = screenshot::capture_main_screen().await?;
+    let size = std::fs::metadata(&r.path)?.len();
+    println!("   ✓ {} ({:.1} KB, cursor={:?})\n", r.path.display(), size as f64 / 1024.0, r.cursor);
+
+    let cursor_ctx = match (r.cursor, r.screen_size) {
+        (Some((x, y)), Some((w, h))) => Some(claude_cli::CursorContext {
+            x, y, screen_w: w, screen_h: h,
+        }),
+        _ => None,
+    };
 
     let transcript = "看一眼当前屏幕，用一句中文告诉我你看到了什么主要内容。";
     println!("② 调 Claude CLI：");
     println!("   transcript = {transcript:?}");
-    println!("   image = {}", img.display());
+    println!("   image = {}", r.path.display());
     println!("   等待回复...");
 
     let started = std::time::Instant::now();
-    let reply = claude_cli::ask_claude(transcript, &img, None).await?;
+    let reply = claude_cli::ask_claude(transcript, &r.path, None, cursor_ctx.as_ref()).await?;
     let dt = started.elapsed();
     println!("   ✓ 回复 ({:.1}s):", dt.as_secs_f32());
     println!("   ─────────────────────────────");

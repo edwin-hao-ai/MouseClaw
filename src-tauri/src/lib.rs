@@ -297,10 +297,18 @@ async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppState>) 
     bump_gen(&state);
 
     // 1. Use screenshot captured at shortcut-press time (recent + matches user intent)
-    let img_path = match state.last_screenshot.lock().await.clone() {
-        Some(p) if p.exists() => p,
+    let (img_path, cursor_ctx) = match state.last_screenshot.lock().await.clone() {
+        Some(p) if p.exists() => (p, None), // older snapshot, no cursor context preserved
         _ => match screenshot::capture_main_screen().await {
-            Ok(p) => p,
+            Ok(r) => {
+                let cursor = match (r.cursor, r.screen_size) {
+                    (Some((x, y)), Some((w, h))) => Some(claude_cli::CursorContext {
+                        x, y, screen_w: w, screen_h: h,
+                    }),
+                    _ => None,
+                };
+                (r.path, cursor)
+            }
             Err(e) => {
                 emit_view(&app, &ViewKind::Blocked { reason: format!("截图失败：{e}") });
                 schedule_auto_hide(&app, &state, 4000);
@@ -323,7 +331,12 @@ async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppState>) 
     emit_view(&app, &ViewKind::Thinking { transcript: transcript.clone() });
 
     let frontmost = mode_b::frontmost_app_name();
-    let reply = match claude_cli::ask_claude(&prompt_with_context, &img_path, frontmost.as_deref()).await {
+    let reply = match claude_cli::ask_claude(
+        &prompt_with_context,
+        &img_path,
+        frontmost.as_deref(),
+        cursor_ctx.as_ref(),
+    ).await {
         Ok(r) => r,
         Err(e) => {
             emit_view(&app, &ViewKind::Blocked { reason: format!("Claude 调用失败：{e}") });
@@ -471,7 +484,8 @@ pub async fn on_shortcut_pressed(app: AppHandle, state: Arc<AppState>) {
         let app_clone = app.clone();
         tauri::async_runtime::spawn(async move {
             match screenshot::capture_main_screen().await {
-                Ok(p) => { *state_clone.last_screenshot.lock().await = Some(p); }
+                // Just store path; cursor context is captured fresh in run_pipeline
+                Ok(r) => { *state_clone.last_screenshot.lock().await = Some(r.path); }
                 Err(e) => eprintln!("[mouseclaw] screenshot: {e:#}"),
             }
             emit_view(&app_clone, &ViewKind::Listening);
