@@ -324,11 +324,33 @@ fn check_permissions() -> permissions::PermissionStatus {
 }
 
 /// 前端「去开启」按钮 —— 触发系统授权弹窗 + 打开设置面板。
-/// 不再只是「打开设置面板」（那不会弹授权框）。
 /// name: "accessibility" | "screen_recording" | "microphone"
+///
+/// 麦克风特殊处理：`AVCaptureDevice requestAccessForMediaType:` + block 回调
+/// 不可靠（block crate 传参问题），改为直接用 cpal 开一下输入流 —— macOS 见到
+/// app 访问麦克风会立刻弹授权框，app 也就进了「麦克风」列表。
 #[tauri::command]
 fn request_permission(name: String) {
-    permissions::request_permission(&name);
+    if name == "microphone" {
+        // 后台线程开一个极短的 cpal 输入流，纯粹为了触发 macOS 授权弹窗。
+        std::thread::spawn(|| {
+            match audio::Recorder::start() {
+                Ok(rec) => {
+                    // 开流即触发系统弹窗；停一下立刻收掉，丢弃采样。
+                    std::thread::sleep(Duration::from_millis(400));
+                    let _ = rec.stop_and_take();
+                    println!("[mouseclaw] microphone prompt triggered via cpal input stream");
+                }
+                Err(e) => {
+                    eprintln!("[mouseclaw] mic prompt trigger via cpal failed: {e:#}");
+                }
+            }
+        });
+        // 同时打开麦克风设置面板兜底（用户也能手动勾）
+        permissions::open_prefs_for("microphone");
+    } else {
+        permissions::request_permission(&name);
+    }
 }
 
 /// 重启 MouseClaw 自身。
