@@ -11,13 +11,14 @@ import type { ShortcutChoice } from "./types";
 export default function OnboardingView() {
   const handleComplete = async (choice: ShortcutChoice) => {
     try {
+      // 1. 持久化快捷键选择 + 标记 onboarded=true
       await invoke("save_shortcut", { choice });
-      // Rust closes this window itself after persisting + registering the shortcut.
-      // If it doesn't (e.g. running in a browser-only test mode), we fall through
-      // and the user can just close the window manually.
+      // 2. 重启 App —— 屏幕录制权限授权后必须重启本进程才生效（macOS 设计）。
+      //    重启后 onboarded=true → 直接注册快捷键 + ready，屏幕录制也活了。
+      await invoke("restart_app");
     } catch (e) {
-      console.error("save_shortcut failed:", e);
-      alert("保存快捷键失败：" + String(e));
+      console.error("onboarding complete failed:", e);
+      alert("完成 Onboarding 失败：" + String(e));
     }
   };
 

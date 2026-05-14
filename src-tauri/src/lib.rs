@@ -213,15 +213,12 @@ async fn new_session(state: State<'_, Arc<AppState>>) -> Result<u64, String> {
 }
 
 #[tauri::command]
-fn save_shortcut(choice: String, app: AppHandle) -> Result<(), String> {
+fn save_shortcut(choice: String, _app: AppHandle) -> Result<(), String> {
     let new_str = config::choice_to_shortcut_str(&choice).to_string();
-    let new_shortcut = Shortcut::from_str(&new_str)
+    // 校验快捷键字符串能解析（真正的注册在重启后的 setup() 里做，
+    // 那时屏幕录制权限也活了，时机统一）。
+    Shortcut::from_str(&new_str)
         .map_err(|e| format!("解析快捷键 {new_str:?} 失败：{e}"))?;
-
-    let gs = app.global_shortcut();
-    let _ = gs.unregister_all();
-    gs.register(new_shortcut)
-        .map_err(|e| format!("注册快捷键失败：{e}"))?;
 
     // Persist with onboarded=true + current schema version so we don't re-trigger
     let cfg = config::Config {
@@ -231,12 +228,10 @@ fn save_shortcut(choice: String, app: AppHandle) -> Result<(), String> {
     };
     cfg.save().map_err(|e| format!("保存配置失败：{e}"))?;
 
-    // Close the onboarding window if open
-    if let Some(w) = app.get_webview_window("onboarding") {
-        let _ = w.close();
-    }
-
-    println!("[mouseclaw] shortcut updated → {new_str} (choice: {choice}, onboarded ✓)");
+    // 注意：不在这里 register 快捷键、不关窗口。OnboardingView 接着会调
+    // restart_app —— 重启后 setup() 会读 config 注册快捷键，且屏幕录制权限
+    // 此时已生效。窗口关闭由 restart 兜底。
+    println!("[mouseclaw] shortcut saved → {new_str} (choice: {choice}, onboarded ✓) — 等待重启");
     Ok(())
 }
 
@@ -320,25 +315,29 @@ pub struct HistoryTurn {
 }
 
 /// 前端查询当前权限状态（Onboarding 页面用）。
-/// async + spawn_blocking 确保不在主线程执行，避免 cpal 枚举设备时阻塞 UI。
+/// 三个 check 都是官方状态查询 API（AXIsProcessTrusted /
+/// CGPreflightScreenCaptureAccess / AVCaptureDevice authorizationStatus），
+/// 纯只读、不弹窗、不阻塞 —— 直接同步调用即可，不需要 spawn_blocking。
 #[tauri::command]
-async fn check_permissions() -> permissions::PermissionStatus {
-    tokio::task::spawn_blocking(|| permissions::check_all())
-        .await
-        .unwrap_or(permissions::PermissionStatus {
-            accessibility: false,
-            screen_recording: false,
-            microphone: false,
-        })
+fn check_permissions() -> permissions::PermissionStatus {
+    permissions::check_all()
 }
 
-/// 前端请求打开对应权限的系统设置面板。
+/// 前端「去开启」按钮 —— 触发系统授权弹窗 + 打开设置面板。
+/// 不再只是「打开设置面板」（那不会弹授权框）。
 /// name: "accessibility" | "screen_recording" | "microphone"
 #[tauri::command]
-async fn request_permission(name: String) {
-    tokio::task::spawn_blocking(move || permissions::open_prefs_for(&name))
-        .await
-        .ok();
+fn request_permission(name: String) {
+    permissions::request_permission(&name);
+}
+
+/// 重启 MouseClaw 自身。
+/// 屏幕录制权限授权后，CGPreflightScreenCaptureAccess() 在本进程生命周期内
+/// 一直返回 false（macOS 设计）—— 必须重启 app 才生效。Onboarding 完成时调。
+#[tauri::command]
+fn restart_app(app: AppHandle) {
+    println!("[mouseclaw] 重启 app（让屏幕录制权限生效）");
+    app.restart();
 }
 
 /// ◼ Stop button in the RecordingBubble — equivalent to releasing the shortcut.
@@ -504,7 +503,7 @@ pub async fn on_shortcut_press(app: AppHandle, state: Arc<AppState>) {
         Err(e) => {
             eprintln!("[mouseclaw] start recording: {e:#}");
             // 检查是否是麦克风权限问题
-            let reason = if !permissions::check_microphone_tcc() {
+            let reason = if !permissions::check_microphone() {
                 "麦克风权限未授权 — 请前往「系统设置 → 隐私与安全性 → 麦克风」开启".into()
             } else {
                 format!("录音启动失败：{e}")
@@ -626,7 +625,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             submit_query, follow_up, new_session, save_shortcut,
             cancel_pipeline, toggle_recording, pin_window, dismiss, read_history,
-            check_permissions, request_permission
+            check_permissions, request_permission, restart_app
         ])
         .setup(|app| {
             let cfg = config::Config::load();
@@ -673,11 +672,26 @@ pub fn run() {
                     eprintln!("[mouseclaw] ⚠️  Microphone permission missing — recording will fail");
                 }
 
-                let shortcut = Shortcut::from_str(&cfg.shortcut)
-                    .unwrap_or_else(|_| Shortcut::from_str("Super+Shift+Space").unwrap());
-                app.global_shortcut().register(shortcut)?;
-                println!("[mouseclaw] registered global shortcut: {} (toggle record)", cfg.shortcut);
-                println!("[mouseclaw] 🦞 ready — press {} to start recording", cfg.shortcut);
+                let shortcut = match Shortcut::from_str(&cfg.shortcut) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("[mouseclaw] ✘ 快捷键字符串 {:?} 解析失败：{e} — 重弹 Onboarding", cfg.shortcut);
+                        tray::open_onboarding_window(&app.handle());
+                        return Ok(());
+                    }
+                };
+                match app.global_shortcut().register(shortcut) {
+                    Ok(()) => {
+                        println!("[mouseclaw] ✓ 全局快捷键注册成功: {} (按住录音/松开发送)", cfg.shortcut);
+                        println!("[mouseclaw] 🦞 ready — 按住 {} 开始说话", cfg.shortcut);
+                    }
+                    Err(e) => {
+                        // 快捷键被系统或其他 app（Alfred/Raycast 等）占用 → 重弹 Onboarding 让用户换
+                        eprintln!("[mouseclaw] ✘ 快捷键 {} 注册失败：{e}", cfg.shortcut);
+                        eprintln!("[mouseclaw]    → 可能被系统或其他 app 占用，重弹 Onboarding 让你换一个");
+                        tray::open_onboarding_window(&app.handle());
+                    }
+                }
             } else {
                 // First launch → no shortcut registered yet; open Onboarding window
                 println!("[mouseclaw] first launch → opening Onboarding window");

@@ -218,6 +218,20 @@
   border-color: rgba(255, 107, 157, 0.6);
 }
 
+/* 屏幕录制「已请求 · 重启生效」中间态 —— 琥珀色，区别于已授权的绿色 ✓ */
+.ob-perm-pending {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  background: rgba(245, 180, 60, 0.15);
+  border: 1px solid rgba(245, 180, 60, 0.4);
+  color: #f5b43c;
+  font-size: var(--text-meta);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 /* 次要 CTA（权限未全部授权时） */
 .ob-cta-secondary {
   background: rgba(255, 255, 255, 0.08);
