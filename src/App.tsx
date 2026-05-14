@@ -45,13 +45,20 @@ export default function App() {
   // session continuation chip — true when current view is part of an ongoing session
   const [continuing, setContinuing] = useState(false);
 
-  // Listen for state changes from Rust
+  // Listen for state changes from Rust.
+  // Wrapped in try/catch because @tauri-apps/api/event.listen() throws when run
+  // outside a Tauri shell (e.g. browser-only Vite dev mode for UI testing).
   useEffect(() => {
-    const unlisten = listen<ViewKind>(EV_VIEW_CHANGED, (e) => {
-      setView(e.payload);
-      // setContinuing logic will be wired when sessions module ships events
-    });
-    return () => { unlisten.then(fn => fn()); };
+    let unlisten: (() => void) | null = null;
+    try {
+      const p = listen<ViewKind>(EV_VIEW_CHANGED, (e) => {
+        setView(e.payload);
+      });
+      p.then((fn) => { unlisten = fn; }).catch(() => {});
+    } catch (e) {
+      console.warn("Tauri event listen unavailable (browser-only mode):", e);
+    }
+    return () => { if (unlisten) unlisten(); };
   }, []);
 
   // Global Esc → dismiss immediately (hide window, cancel pending pipeline timers).
@@ -129,6 +136,22 @@ export default function App() {
     setContinuing(false);
   }, []);
 
+  // Must be declared BEFORE any early-return JSX below — React hooks rules
+  // require the same number of hook calls on every render, but early returns
+  // for panel/onboarding branches would have skipped this previously.
+  const handleExpand = useCallback(() => {
+    if (view.kind === "reply") {
+      setView({
+        kind: "panel",
+        sessionId: 1,
+        turns: [
+          { role: "user", text: view.transcript },
+          { role: "assistant", text: view.reply },
+        ],
+      });
+    }
+  }, [view]);
+
   // ────────────────── Render ──────────────────
 
   // Onboarding screen takes over the whole window
@@ -156,19 +179,6 @@ export default function App() {
       </div>
     );
   }
-
-  const handleExpand = useCallback(() => {
-    if (view.kind === "reply") {
-      setView({
-        kind: "panel",
-        sessionId: 1,
-        turns: [
-          { role: "user", text: view.transcript },
-          { role: "assistant", text: view.reply },
-        ],
-      });
-    }
-  }, [view]);
 
   return (
     <div className="stage stage-mouse-bubble">
