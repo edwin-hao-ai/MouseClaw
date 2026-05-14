@@ -12,12 +12,13 @@ use std::process::Stdio;
 use anyhow::{bail, Context, Result};
 use tokio::io::{AsyncBufReadExt, BufReader};
 
-/// 发给 Claude 的 system prompt 追加内容（不替换默认）。
-/// 教 Claude:
+/// 发给 AI 后端的 system prompt 追加内容（不替换默认）。pub —— backend.rs 的
+/// codex / openclaw 后端也复用同一套指令。
+/// 教 AI:
 ///   1. 用截图 + 用户语音回答问题
 ///   2. **优先关注光标周围的内容**（用户大概率指的是"这里"、"这段"、"这个网页"）
 ///   3. 用 `[INSERT_AT_CURSOR]...[/INSERT_AT_CURSOR]` 标记区分 Mode A / Mode B 输出
-const APPEND_SYSTEM_PROMPT: &str = r#"你是 MouseClaw 桌面助手。用户通过语音 + 一张当前屏幕截图向你提问。
+pub const APPEND_SYSTEM_PROMPT: &str = r#"你是 MouseClaw 桌面助手。用户通过语音 + 一张当前屏幕截图向你提问。
 
 ## 怎么看截图
 截图是用户按下快捷键瞬间「光标所在那块显示器」的完整画面（多显示器场景下不是主屏）。
@@ -70,27 +71,43 @@ pub fn expanded_path() -> String {
     paths.join(":")
 }
 
-/// 在拓宽过的 PATH 里查找 `claude` 二进制，返回绝对路径。
-/// 找不到时报错文本里直接列出所有搜过的目录方便排查。
-fn find_claude_binary() -> Result<std::path::PathBuf> {
+/// 在拓宽过的 PATH 里查找任意 CLI 二进制，返回绝对路径。
+/// pub —— backend.rs 的 codex / openclaw 后端也用它定位自己的二进制。
+/// 找不到时报错文本里列出所有搜过的目录方便排查。
+pub fn find_binary(name: &str) -> Result<std::path::PathBuf> {
     let path = expanded_path();
     let mut searched = Vec::new();
     for dir in path.split(':') {
-        if dir.is_empty() { continue; }
-        let candidate = std::path::PathBuf::from(dir).join("claude");
+        if dir.is_empty() {
+            continue;
+        }
+        let candidate = std::path::PathBuf::from(dir).join(name);
         searched.push(candidate.display().to_string());
-        if candidate.exists() {
-            // 用 metadata 排掉指向坏路径的 broken symlinks
-            if std::fs::metadata(&candidate).is_ok() {
-                return Ok(candidate);
-            }
+        if candidate.exists() && std::fs::metadata(&candidate).is_ok() {
+            return Ok(candidate);
         }
     }
     anyhow::bail!(
-        "找不到 claude CLI。装一下：npm install -g @anthropic-ai/claude-code\n\n\
-        已搜索的路径：\n  {}",
+        "找不到 `{name}` CLI。\n已搜索的路径：\n  {}",
         searched.join("\n  ")
     )
+}
+
+/// 在拓宽过的 PATH 里查找 `claude` 二进制。
+fn find_claude_binary() -> Result<std::path::PathBuf> {
+    find_binary("claude").map_err(|e| {
+        anyhow::anyhow!("{e}\n装一下：npm install -g @anthropic-ai/claude-code")
+    })
+}
+
+/// 拼接发给 AI 的最终 prompt —— pub，backend.rs 各后端共用同一套格式。
+pub fn build_prompt_pub(
+    transcript: &str,
+    image_path: &Path,
+    frontmost_app: Option<&str>,
+    cursor: Option<&CursorContext>,
+) -> String {
+    build_prompt(transcript, image_path, frontmost_app, cursor)
 }
 
 /// 拼接发给 Claude 的最终 prompt（transcript + 截图路径 + 光标位置 + 前台 app）。
