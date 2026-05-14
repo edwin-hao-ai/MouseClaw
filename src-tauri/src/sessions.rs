@@ -27,6 +27,11 @@ pub struct TurnRecord {
     pub timestamp: DateTime<Utc>,
     pub role: TurnRole,
     pub text: String,
+    /// Path to the screenshot PNG taken when the user pressed the shortcut.
+    /// Only present on `User` turns. `None` for backward-compat with
+    /// pre-v0.1.4 lines that don't have the field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub screenshot: Option<String>,
 }
 
 /// Session store — in-memory state + JSONL append.
@@ -96,15 +101,15 @@ impl SessionStore {
         Some(s)
     }
 
-    pub async fn record_user(&mut self, text: String) -> Result<()> {
-        self.append(TurnRole::User, text.clone()).await?;
+    pub async fn record_user(&mut self, text: String, screenshot: Option<String>) -> Result<()> {
+        self.append(TurnRole::User, text.clone(), screenshot).await?;
         self.history.push(Turn { role: TurnRole::User, text, streaming: None });
         self.trim_history();
         Ok(())
     }
 
     pub async fn record_assistant(&mut self, text: String) -> Result<()> {
-        self.append(TurnRole::Assistant, text.clone()).await?;
+        self.append(TurnRole::Assistant, text.clone(), None).await?;
         self.history.push(Turn { role: TurnRole::Assistant, text, streaming: None });
         self.trim_history();
         Ok(())
@@ -112,12 +117,13 @@ impl SessionStore {
 
     pub fn snapshot_turns(&self) -> Vec<Turn> { self.history.clone() }
 
-    async fn append(&mut self, role: TurnRole, text: String) -> Result<()> {
+    async fn append(&mut self, role: TurnRole, text: String, screenshot: Option<String>) -> Result<()> {
         let record = TurnRecord {
             session_id: self.current_session,
             timestamp: Utc::now(),
             role,
             text,
+            screenshot,
         };
         let line = serde_json::to_string(&record)? + "\n";
         let mut file = tokio::fs::OpenOptions::new()
