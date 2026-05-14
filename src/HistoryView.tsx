@@ -3,13 +3,14 @@
  * Renders all sessions (most recent first) with collapsible turns.
  */
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import "./HistoryView.css";
 
 interface HistoryTurn {
   role: "user" | "assistant" | string;
   text: string;
   timestamp: string;
+  screenshot?: string;
 }
 interface HistorySession {
   session_id: number;
@@ -87,6 +88,21 @@ export default function HistoryView() {
   );
 }
 
+function Thumbnail({ path }: { path: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [error, setError] = useState(false);
+  const src = convertFileSrc(path);
+  if (error) {
+    return <div className="hv-thumb-missing">📷 截图已删除：<code>{path}</code></div>;
+  }
+  return (
+    <div className={`hv-thumb ${expanded ? "expanded" : ""}`} onClick={() => setExpanded(v => !v)}>
+      <img src={src} alt="screenshot" onError={() => setError(true)} />
+      {!expanded && <span className="hv-thumb-hint">点击放大</span>}
+    </div>
+  );
+}
+
 function Session({ session }: { session: HistorySession }) {
   const [open, setOpen] = useState(false);
   const userTurns = session.turns.filter((t) => t.role === "user").length;
@@ -117,6 +133,9 @@ function Session({ session }: { session: HistorySession }) {
                 <span className="hv-turn-time">{fmtTime(turn.timestamp)}</span>
               </div>
               <div className="hv-turn-text">{turn.text}</div>
+              {turn.screenshot && (
+                <Thumbnail path={turn.screenshot} />
+              )}
             </div>
           ))}
         </div>

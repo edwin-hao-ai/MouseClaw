@@ -253,6 +253,7 @@ fn read_history() -> Result<Vec<HistorySession>, String> {
             role: format!("{:?}", record.role).to_lowercase(),
             text: record.text,
             timestamp: record.timestamp,
+            screenshot: record.screenshot,
         });
     }
     // Reverse-chronological (most recent first)
@@ -274,6 +275,8 @@ pub struct HistoryTurn {
     pub role: String,
     pub text: String,
     pub timestamp: chrono::DateTime<chrono::Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub screenshot: Option<String>,
 }
 
 /// Manual stop from the recording bubble's ◼ button (equivalent to a 2nd shortcut press).
@@ -331,7 +334,8 @@ async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppState>) 
 
     {
         let mut store = state.sessions.lock().await;
-        let _ = store.record_user(transcript.clone()).await;
+        let screenshot_path = img_path.to_string_lossy().to_string();
+        let _ = store.record_user(transcript.clone(), Some(screenshot_path)).await;
         let _ = store.record_assistant(reply.clone()).await;
     }
 
