@@ -41,3 +41,4 @@ models/
 .mddock/
 entities/
 mddock.md
+*.dmg
