@@ -7,6 +7,10 @@ use std::path::PathBuf;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
+/// Bump this whenever shortcut choices / config schema change in a way that
+/// invalidates user's saved choice. Old configs auto-trigger re-Onboarding.
+pub const CURRENT_CONFIG_VERSION: u32 = 2;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// Canonical shortcut string, e.g. "Super+Shift+Space" / "Alt+Space".
@@ -17,13 +21,21 @@ pub struct Config {
     /// launching the app re-opens the Onboarding window instead.
     #[serde(default)]
     pub onboarded: bool,
+    /// Schema version. Saved configs older than CURRENT_CONFIG_VERSION get
+    /// treated as not-onboarded so the user re-picks a shortcut.
+    /// Pre-versioned configs default to 1 (the legacy schema).
+    #[serde(default = "legacy_version")]
+    pub version: u32,
 }
+
+fn legacy_version() -> u32 { 1 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            shortcut: "Super+Shift+Space".into(),
+            shortcut: "Alt+Space".into(),
             onboarded: false,
+            version: CURRENT_CONFIG_VERSION,
         }
     }
 }
@@ -37,7 +49,18 @@ impl Config {
     pub fn load() -> Self {
         let Some(path) = config_path() else { return Self::default(); };
         let Ok(bytes) = std::fs::read(&path) else { return Self::default(); };
-        serde_json::from_slice(&bytes).unwrap_or_default()
+        let mut cfg: Self = serde_json::from_slice(&bytes).unwrap_or_default();
+        // Schema migration: older configs had different shortcut choices.
+        // Force re-Onboarding so the user picks a current valid combo.
+        if cfg.version < CURRENT_CONFIG_VERSION {
+            eprintln!(
+                "[mouseclaw] config schema v{} < v{} → 重新走 Onboarding 让你选新快捷键",
+                cfg.version, CURRENT_CONFIG_VERSION
+            );
+            cfg.onboarded = false;
+            cfg.version = CURRENT_CONFIG_VERSION;
+        }
+        cfg
     }
 
     pub fn save(&self) -> Result<()> {

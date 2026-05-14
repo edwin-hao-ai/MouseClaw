@@ -191,8 +191,12 @@ fn save_shortcut(choice: String, app: AppHandle) -> Result<(), String> {
     gs.register(new_shortcut)
         .map_err(|e| format!("注册快捷键失败：{e}"))?;
 
-    // Persist with onboarded=true so we never bring up the onboarding window again
-    let cfg = config::Config { shortcut: new_str.clone(), onboarded: true };
+    // Persist with onboarded=true + current schema version so we don't re-trigger
+    let cfg = config::Config {
+        shortcut: new_str.clone(),
+        onboarded: true,
+        version: config::CURRENT_CONFIG_VERSION,
+    };
     cfg.save().map_err(|e| format!("保存配置失败：{e}"))?;
 
     // Close the onboarding window if open
