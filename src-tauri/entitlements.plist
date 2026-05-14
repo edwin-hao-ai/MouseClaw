@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Hardened Runtime entitlements.
+       Tauri 用 Developer ID 签名时默认开 hardened runtime（flags=runtime），
+       开了之后访问麦克风必须显式声明这个 entitlement —— 没有的话 macOS 直接
+       拦截，连授权框都不弹、app 也不进「系统设置 → 麦克风」列表。
+
+       辅助功能 / 屏幕录制是纯 TCC 权限，不需要 entitlement（实测能用）。-->
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
+</dict>
+</plist>
