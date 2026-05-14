@@ -37,3 +37,7 @@ models/
 *.njsproj
 *.sln
 *.sw?
+# MDDock local metadata (do not commit)
+.mddock/
+entities/
+mddock.md

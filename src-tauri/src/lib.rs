@@ -89,28 +89,33 @@ fn set_accessory_activation_policy() {
 #[cfg(not(target_os = "macos"))]
 fn set_accessory_activation_policy() {}
 
-/// Position the overlay window near the user's mouse cursor, then show it.
-/// NSEvent::mouseLocation returns screen coords with bottom-left origin;
-/// Tauri's set_position uses top-left origin, so we flip Y by screen height.
-pub fn show_mouse(window: &WebviewWindow) -> tauri::Result<()> {
-    if let Some((x, y)) = current_mouse_pos_top_left(window) {
-        // Offset so the mouse character lands just below+right of the cursor
-        let w_size = window.outer_size().ok();
-        let (ww, wh) = match w_size {
-            Some(s) => (s.width as f64, s.height as f64),
-            None => (320.0, 320.0),
-        };
-        let scale = window.scale_factor().unwrap_or(1.0);
-        let pos_x = x - (ww / scale) / 2.0;
-        let pos_y = y - (wh / scale) + 32.0; // bubble sits above cursor; mouse char near cursor
-        let _ = window.set_position(LogicalPosition::new(pos_x, pos_y));
-    }
-    window.show()?;
-    window.set_always_on_top(true)?;
-    Ok(())
+/// Show the overlay window near the cursor.
+///
+/// ⚠️ **必须在主线程跑** —— 里面碰 NSEvent / NSScreen，AppKit 不是线程安全的。
+/// 之前 show_mouse 从全局快捷键 handler 线程直接调，NSScreen.mainScreen 离开
+/// 主线程访问会静默崩溃。现在统一 marshal 到主线程。
+pub fn show_mouse(app: &AppHandle) {
+    let app2 = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let Some(window) = app2.get_webview_window("mouse") else { return };
+        // 现在在主线程 —— cocoa 调用安全
+        if let Some((x, y)) = current_mouse_pos_top_left(&window) {
+            let (ww, wh) = match window.outer_size().ok() {
+                Some(s) => (s.width as f64, s.height as f64),
+                None => (320.0, 320.0),
+            };
+            let scale = window.scale_factor().unwrap_or(1.0);
+            let pos_x = x - (ww / scale) / 2.0;
+            let pos_y = y - (wh / scale) + 32.0;
+            let _ = window.set_position(LogicalPosition::new(pos_x, pos_y));
+        }
+        let _ = window.show();
+        let _ = window.set_always_on_top(true);
+    });
 }
 
-/// Get cursor position in top-left-origin screen coordinates (matches Tauri API).
+/// Get cursor position in top-left-origin screen coordinates.
+/// ⚠️ 只能在主线程调用（碰 NSScreen）。
 #[cfg(target_os = "macos")]
 fn current_mouse_pos_top_left(window: &WebviewWindow) -> Option<(f64, f64)> {
     use cocoa::base::id;
@@ -119,14 +124,13 @@ fn current_mouse_pos_top_left(window: &WebviewWindow) -> Option<(f64, f64)> {
     unsafe {
         let event_class: id = msg_send![class!(NSEvent), class];
         let point: NSPoint = msg_send![event_class, mouseLocation];
-        // mouseLocation is in screen coords with bottom-left origin.
-        // To convert: y_top = primary_screen_height - point.y
         let screen_h = primary_screen_height_pts().unwrap_or(1080.0);
-        let scale = window.scale_factor().unwrap_or(1.0);
-        Some((point.x, (screen_h - point.y) * scale / scale))
+        let _scale = window.scale_factor().unwrap_or(1.0);
+        Some((point.x, screen_h - point.y))
     }
 }
 
+/// ⚠️ 只能在主线程调用（NSScreen.mainScreen 不是线程安全的）。
 #[cfg(target_os = "macos")]
 fn primary_screen_height_pts() -> Option<f64> {
     use cocoa::base::id;
@@ -151,11 +155,15 @@ fn emit_view(app: &AppHandle, view: &ViewKind) {
 }
 
 /// Hide the overlay window, emit Idle. Idempotent.
+/// ⚠️ window.hide() marshal 到主线程 —— 同 show_mouse，避免 AppKit 跨线程崩溃。
 fn hide_overlay(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window("mouse") {
-        let _ = w.hide();
-    }
-    emit_view(app, &ViewKind::Idle);
+    let app2 = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(w) = app2.get_webview_window("mouse") {
+            let _ = w.hide();
+        }
+    });
+    emit_view(app, &ViewKind::Idle); // emit 是发事件，跨线程安全
 }
 
 /// Schedule `hide_overlay` after `after_ms` ms — but only fire if the app's
@@ -611,9 +619,30 @@ pub async fn on_shortcut_pressed(app: AppHandle, state: Arc<AppState>) {
 
 // ────────────────── Entry ──────────────────
 
+/// 装一个 panic hook —— 任何线程 panic 都把完整信息 + backtrace 写进
+/// ~/.mouseclaw/mouseclaw.log（stderr 已被 init_file_logging 重定向过去）。
+/// 之前 app「崩溃」但日志里啥都没有，就是因为 panic 信息没被捕获。
+fn install_panic_hook() {
+    let default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let thread = std::thread::current();
+        let name = thread.name().unwrap_or("<unnamed>");
+        eprintln!("\n[mouseclaw] ╔══════════ PANIC ══════════");
+        eprintln!("[mouseclaw] ║ thread: {name}");
+        eprintln!("[mouseclaw] ║ {info}");
+        eprintln!(
+            "[mouseclaw] ║ backtrace:\n{}",
+            std::backtrace::Backtrace::force_capture()
+        );
+        eprintln!("[mouseclaw] ╚═══════════════════════════\n");
+        default(info);
+    }));
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     init_file_logging();
+    install_panic_hook();
     let app_state = Arc::new(AppState::new().expect("init AppState"));
 
     tauri::Builder::default()
@@ -627,9 +656,7 @@ pub fn run() {
                     match event.state() {
                         ShortcutState::Pressed => {
                             println!("[mouseclaw] 🦞 shortcut PRESS: {shortcut:?}");
-                            if let Some(w) = app.get_webview_window("mouse") {
-                                let _ = show_mouse(&w);
-                            }
+                            show_mouse(app);
                             tauri::async_runtime::spawn(async move {
                                 on_shortcut_press(app_handle, state).await;
                             });
