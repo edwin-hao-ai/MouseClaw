@@ -179,10 +179,14 @@ MouseClaw 是**纯后台进程**，平时完全"不存在"：
 
 ## 不要做的事
 
-- ❌ 不要在 Onboarding 让用户选 AI 后端（V1 只有 Claude Code CLI，不是选项）
+- ⚠️ ~~不要在 Onboarding 让用户选 AI 后端~~ —— v0.1.6 起改为**支持**多后端
+  （Claude Code / Codex / OpenClaw CLI），Onboarding 第 2 步选。见 `backend.rs`。
 - ❌ 不要让老鼠跟随鼠标（V1 停在触发位置即可，跟随是 V2）
 - ❌ 不要做图形设置界面（除了一步 Onboarding）
-- ❌ 不要做自动填表（**Mode C，V2 独立项目**，安全模型完全不同）
+- ❌ 不要自己实现一套浏览器自动化引擎（**Mode C 独立引擎是 V2**，安全模型完全不同）
+  - ✅ 但**允许**：检测到本机装了 `agent-browser` CLI 时，在 system prompt 里告诉
+    后端「你的 Bash 工具里有这个 CLI」——compute use 能力随后端 agentic 能力自然获得，
+    零新增安全面。见 `claude_cli.rs::BROWSER_CAPABILITY_PROMPT`。不可逆动作要求后端先确认。
 - ❌ 不要在没有 prototype 之前写任何 UI 相关的 Rust/TS 代码
 - ❌ 不要超过 5 天 ship V1（4-5 天预算已经把 long-form panel + session 算进去了）
 

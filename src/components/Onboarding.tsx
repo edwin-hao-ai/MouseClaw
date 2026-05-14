@@ -1,13 +1,15 @@
 /**
- * Two-step Onboarding:
+ * Three-step Onboarding:
  *   Step 1 — pick a global shortcut
- *   Step 2 — grant required permissions (Accessibility, Screen Recording, Microphone)
+ *   Step 2 — pick an AI backend (Claude Code / Codex / OpenClaw CLI)
+ *   Step 3 — grant required permissions (Accessibility, Screen Recording, Microphone)
  *
  * Per DESIGN.md §4.5.
  */
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { PixelMouse } from "./PixelMouse";
+import type { BackendChoice } from "../types";
 import "./Onboarding.css";
 
 export type ShortcutChoice =
@@ -23,7 +25,7 @@ interface PermissionStatus {
 }
 
 interface OnboardingProps {
-  onComplete: (choice: ShortcutChoice) => void;
+  onComplete: (choice: ShortcutChoice, backend: BackendChoice) => void;
 }
 
 const OPTIONS: Array<{
@@ -31,6 +33,27 @@ const OPTIONS: Array<{
 }> = [
   { id: "hold-option", label: "按住 ⌃ + ⌘ + 空格", keyHint: "⌃ ⌘ Space", tag: "零冲突 · 推荐" },
   { id: "hold-cmd",    label: "按住 ⌃ + ⌘ + M",    keyHint: "⌃ ⌘ M" },
+];
+
+const BACKENDS: Array<{
+  id: BackendChoice; label: string; desc: string; tag?: string;
+}> = [
+  {
+    id: "claude-cli",
+    label: "Claude Code CLI",
+    desc: "最成熟 · 原生 agentic + 读图。需已装并登录 claude。",
+    tag: "推荐",
+  },
+  {
+    id: "codex-cli",
+    label: "OpenAI Codex CLI",
+    desc: "codex exec 非交互模式。需 npm i -g @openai/codex 并配好 key。",
+  },
+  {
+    id: "openclaw-cli",
+    label: "OpenClaw CLI",
+    desc: "openclaw agent --local。需 npm i -g openclaw 并配好 provider key。",
+  },
 ];
 
 const PERMISSIONS: Array<{
@@ -60,8 +83,9 @@ const PERMISSIONS: Array<{
 ];
 
 export function Onboarding({ onComplete }: OnboardingProps) {
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [selected, setSelected] = useState<ShortcutChoice>("hold-option");
+  const [backend, setBackend] = useState<BackendChoice>("claude-cli");
   const [perms, setPerms] = useState<PermissionStatus>({
     accessibility: false,
     screen_recording: false,
@@ -84,7 +108,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   }, []);
 
   useEffect(() => {
-    if (step !== 2) return;
+    if (step !== 3) return;
     refreshPerms();
     // 每 1.5 秒刷新一次，让用户授权后立即看到变化
     const timer = setInterval(refreshPerms, 1500);
@@ -144,13 +168,52 @@ export function Onboarding({ onComplete }: OnboardingProps) {
           className="ob-cta"
           onClick={() => setStep(2)}
         >
+          下一步：选 AI 后端 →
+        </button>
+      </div>
+    );
+  }
+
+  // ── Step 2: 选 AI 后端 ────────────────────────────────────────────────────
+  if (step === 2) {
+    return (
+      <div className="ob-root">
+        <div className="ob-mouse-stage">
+          <PixelMouse state="think" size={96} />
+        </div>
+        <h1 className="ob-title">选一个 AI 后端</h1>
+        <p className="ob-subtitle">
+          MouseClaw 把语音 + 截图交给它处理。<br />
+          不确定就选 <strong>Claude Code CLI</strong>（最成熟）。
+        </p>
+        <div className="ob-options" role="radiogroup" aria-label="选择 AI 后端">
+          {BACKENDS.map(b => (
+            <button
+              key={b.id}
+              type="button"
+              role="radio"
+              aria-checked={backend === b.id}
+              className={`ob-option ${backend === b.id ? "selected" : ""}`}
+              onClick={() => setBackend(b.id)}
+            >
+              <span className="ob-label">{b.label}</span>
+              <span className="ob-perm-desc">{b.desc}</span>
+              {b.tag && <span className="ob-tag">{b.tag}</span>}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="ob-cta"
+          onClick={() => setStep(3)}
+        >
           下一步：开启权限 →
         </button>
       </div>
     );
   }
 
-  // ── Step 2: 权限申请 ──────────────────────────────────────────────────────
+  // ── Step 3: 权限申请 ──────────────────────────────────────────────────────
   return (
     <div className="ob-root">
       <div className="ob-mouse-stage">
@@ -204,7 +267,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       <button
         type="button"
         className={`ob-cta ${!allDone ? "ob-cta-secondary" : ""}`}
-        onClick={() => onComplete(selected)}
+        onClick={() => onComplete(selected, backend)}
       >
         {allDone ? "完成并重启 MouseClaw 🦞" : "已在系统设置里开好了 → 完成并重启"}
       </button>

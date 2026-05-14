@@ -24,6 +24,9 @@ export type ShortcutChoice =
   | "double-option" | "hold-option"
   | "double-cmd"    | "hold-cmd";
 
+/** AI backend choice — matches Rust `Backend::from_choice`. */
+export type BackendChoice = "claude-cli" | "codex-cli" | "openclaw-cli";
+
 export interface SessionMeta {
   id: number;
   startedAt: string; // ISO 8601

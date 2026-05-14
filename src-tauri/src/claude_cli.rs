@@ -35,6 +35,33 @@ pub const APPEND_SYSTEM_PROMPT: &str = r#"你是 MouseClaw 桌面助手。用户
 [/INSERT_AT_CURSOR]
 否则正常回答即可。"#;
 
+/// 当检测到 `agent-browser` CLI 已安装时，追加给后端的「compute use」能力说明。
+/// 不自己实现浏览器自动化（那是 Mode C / V2 独立安全模型）——而是告诉后端：
+/// 你的 Bash 工具里有 `agent-browser` 这个轻量 CLI，需要操作浏览器/填表时可以调它。
+/// 这样 compute use 能力随后端 agentic 能力自然获得，零新增安全面。
+pub const BROWSER_CAPABILITY_PROMPT: &str = r#"
+
+## 浏览器操作能力（compute use）
+本机已安装 `agent-browser` CLI（Vercel Labs 出品，Rust 原生、headless）。
+当用户要求「在浏览器里填表 / 点按钮 / 抓取网页 / 自动操作网站」时，你可以用 Bash 调它：
+  - `agent-browser open <url>`        打开页面
+  - `agent-browser snapshot`          拿可访问性树（元素带 @e1/@e2 引用）
+  - `agent-browser click @e2`         点击元素
+  - `agent-browser fill @e3 "文本"`   填表
+  - `agent-browser screenshot`        截图确认
+先 snapshot 看清楚再操作。涉及提交订单、付款、发送消息等不可逆动作时，**先停下来在回答里
+说明你打算做什么，让用户确认**，不要直接执行。"#;
+
+/// 按本机已安装的能力拼出最终 system prompt。
+/// 目前唯一的可选能力：`agent-browser`（compute use）。
+pub fn system_prompt() -> String {
+    let mut p = APPEND_SYSTEM_PROMPT.to_string();
+    if find_binary("agent-browser").is_ok() {
+        p.push_str(BROWSER_CAPABILITY_PROMPT);
+    }
+    p
+}
+
 /// 光标在截图坐标系里的位置 + 屏幕尺寸（logical points, top-left origin）。
 pub struct CursorContext {
     pub x: i32,
@@ -156,6 +183,7 @@ where
     F: FnMut(&str),
 {
     let prompt = build_prompt(transcript, image_path, frontmost_app, cursor);
+    let sys_prompt = system_prompt();
     let claude_bin = find_claude_binary()?;
 
     let mut child = tokio::process::Command::new(&claude_bin)
@@ -172,7 +200,7 @@ where
             "--include-partial-messages",
             "--verbose",
             "--append-system-prompt",
-            APPEND_SYSTEM_PROMPT,
+            &sys_prompt,
         ])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
