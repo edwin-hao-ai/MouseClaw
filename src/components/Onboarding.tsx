@@ -199,19 +199,20 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         })}
       </div>
 
+      {/* 主按钮永远可点 —— 即使检测有偏差也不卡死用户。
+          allDone 时是「完成并重启」主样式；否则是「跳过检查」次要样式。 */}
       <button
         type="button"
         className={`ob-cta ${!allDone ? "ob-cta-secondary" : ""}`}
         onClick={() => onComplete(selected)}
-        aria-disabled={!allDone}
       >
-        {allDone ? "完成并重启 MouseClaw 🦞" : "请先开启全部三项权限"}
+        {allDone ? "完成并重启 MouseClaw 🦞" : "已在系统设置里开好了 → 完成并重启"}
       </button>
 
       <p className="ob-skip-hint">
         {allDone
           ? "点击后会重启 App —— 这是让屏幕录制权限生效的必要步骤。"
-          : "三项都需要：辅助功能（快捷键）、屏幕录制（截图）、麦克风（语音）。"}
+          : "如果你已经在「系统设置 → 隐私与安全性」里手动勾选了 MouseClaw，可以直接点上面完成。重启后会重新检测。"}
       </p>
     </div>
   );
