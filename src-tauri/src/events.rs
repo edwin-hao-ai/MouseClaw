@@ -22,11 +22,22 @@ pub enum ViewKind {
         /// false = 最终回复（已确定 mode、可存 history）。
         streaming: bool,
     },
-    Panel { session_id: u64, turns: Vec<Turn> },
+    Panel {
+        #[serde(rename = "sessionId")]
+        session_id: u64,
+        turns: Vec<Turn>,
+    },
     #[serde(rename = "mode-b-countdown")]
-    ModeBCountdown { insert_text: String, remaining: u32 },
+    ModeBCountdown {
+        #[serde(rename = "insertText")]
+        insert_text: String,
+        remaining: u32,
+    },
     #[serde(rename = "mode-b-inserting")]
-    ModeBInserting { insert_text: String },
+    ModeBInserting {
+        #[serde(rename = "insertText")]
+        insert_text: String,
+    },
     Blocked { reason: String },
 }
 
