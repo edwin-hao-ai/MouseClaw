@@ -6,13 +6,13 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import { Onboarding } from "./components/Onboarding";
-import type { ShortcutChoice, BackendChoice } from "./types";
+import type { ShortcutChoice, BackendChoice, SkinId } from "./types";
 
 export default function OnboardingView() {
-  const handleComplete = async (choice: ShortcutChoice, backend: BackendChoice) => {
+  const handleComplete = async (choice: ShortcutChoice, backend: BackendChoice, skin: SkinId) => {
     try {
-      // 1. 持久化快捷键 + AI 后端选择 + 标记 onboarded=true
-      await invoke("save_shortcut", { choice, backend });
+      // 1. 持久化快捷键 + AI 后端 + 桌宠皮肤 + 标记 onboarded=true
+      await invoke("save_shortcut", { choice, backend, skin });
       // 2. 重启 App —— 屏幕录制权限授权后必须重启本进程才生效（macOS 设计）。
       //    重启后 onboarded=true → 直接注册快捷键 + ready，屏幕录制也活了。
       await invoke("restart_app");

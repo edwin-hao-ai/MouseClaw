@@ -14,7 +14,8 @@ import { PixelMouse, type MouseState } from "./components/PixelMouse";
 import { Bubble } from "./components/Bubble";
 import { Panel } from "./components/Panel";
 import { RecordingBubble } from "./components/RecordingBubble";
-import { EV_VIEW_CHANGED, type ViewKind } from "./types";
+import { EV_VIEW_CHANGED, EV_SKIN_CHANGED, type ViewKind, type SkinId } from "./types";
+import { DEFAULT_SKIN } from "./skins";
 
 const PREVIEW_LONG = "这篇 Nature 文章讨论 2026 年 AI 加速材料发现的三个突破：室温超导候选材料、新型电池电解液、碳捕获催化剂。核心机制是自动化实验室加大模型生成假设的迭代闭环。";
 
@@ -41,6 +42,27 @@ export default function App() {
   const [view, setView] = useState<ViewKind>({ kind: "idle" });
   // session continuation chip — true when current view is part of an ongoing session
   const [continuing, setContinuing] = useState(false);
+  // 当前桌宠皮肤 —— 启动读 config，运行期托盘换皮可热切换（不重启）
+  const [skin, setSkin] = useState<SkinId>(DEFAULT_SKIN);
+
+  // 启动时从 Rust 读当前皮肤（避免闪一下默认 classic 再切换）
+  useEffect(() => {
+    invoke<string>("get_skin")
+      .then((s) => setSkin((s as SkinId) ?? DEFAULT_SKIN))
+      .catch(() => { /* 浏览器 dev 模式 invoke 不可用 */ });
+  }, []);
+
+  // 托盘菜单换皮肤 → Rust 广播 skin-changed → 实时切换，不重启
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    try {
+      const p = listen<string>(EV_SKIN_CHANGED, (e) => {
+        setSkin((e.payload as SkinId) ?? DEFAULT_SKIN);
+      });
+      p.then((fn) => { unlisten = fn; }).catch(() => {});
+    } catch { /* browser-only mode */ }
+    return () => { if (unlisten) unlisten(); };
+  }, []);
 
   // Listen for state changes from Rust.
   // Wrapped in try/catch because @tauri-apps/api/event.listen() throws when run
@@ -155,7 +177,7 @@ export default function App() {
           onNewSession={handleNewSession}
         />
         <div className="stage-mouse">
-          <PixelMouse state="think" size={48} continuing={continuing} />
+          <PixelMouse state="think" size={48} skin={skin} continuing={continuing} />
         </div>
       </div>
     );
@@ -166,7 +188,7 @@ export default function App() {
       <BubbleFor view={view} continuing={continuing} onExpand={handleExpand} />
       <div className="stage-mouse">
         <PixelMouse
-          state={mouseStateFor(view)}
+          state={mouseStateFor(view)} skin={skin}
           size={view.kind === "idle" ? 64 : 96}
           continuing={continuing}
         />

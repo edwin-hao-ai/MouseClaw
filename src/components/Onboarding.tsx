@@ -1,15 +1,17 @@
 /**
- * Three-step Onboarding:
+ * Four-step Onboarding:
  *   Step 1 — pick a global shortcut
  *   Step 2 — pick an AI backend (Claude Code / Codex / OpenClaw CLI)
- *   Step 3 — grant required permissions (Accessibility, Screen Recording, Microphone)
+ *   Step 3 — pick a desktop pet skin (6 mouse styles)
+ *   Step 4 — grant required permissions (Accessibility, Screen Recording, Microphone)
  *
  * Per DESIGN.md §4.5.
  */
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { PixelMouse } from "./PixelMouse";
-import type { BackendChoice } from "../types";
+import type { BackendChoice, SkinId } from "../types";
+import { SKINS, DEFAULT_SKIN } from "../skins";
 import "./Onboarding.css";
 
 export type ShortcutChoice =
@@ -25,7 +27,7 @@ interface PermissionStatus {
 }
 
 interface OnboardingProps {
-  onComplete: (choice: ShortcutChoice, backend: BackendChoice) => void;
+  onComplete: (choice: ShortcutChoice, backend: BackendChoice, skin: SkinId) => void;
 }
 
 const OPTIONS: Array<{
@@ -83,9 +85,10 @@ const PERMISSIONS: Array<{
 ];
 
 export function Onboarding({ onComplete }: OnboardingProps) {
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [selected, setSelected] = useState<ShortcutChoice>("hold-option");
   const [backend, setBackend] = useState<BackendChoice>("claude-cli");
+  const [skin, setSkin] = useState<SkinId>(DEFAULT_SKIN);
   const [perms, setPerms] = useState<PermissionStatus>({
     accessibility: false,
     screen_recording: false,
@@ -108,7 +111,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   }, []);
 
   useEffect(() => {
-    if (step !== 3) return;
+    if (step !== 4) return;
     refreshPerms();
     // 每 1.5 秒刷新一次，让用户授权后立即看到变化
     const timer = setInterval(refreshPerms, 1500);
@@ -140,7 +143,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     return (
       <div className="ob-root">
         <div className="ob-mouse-stage">
-          <PixelMouse state="listen" size={96} />
+          <PixelMouse state="listen" size={96} skin={skin} />
         </div>
         <h1 className="ob-title">嘿，我是鼠标龙虾 🦞</h1>
         <p className="ob-subtitle">
@@ -179,7 +182,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     return (
       <div className="ob-root">
         <div className="ob-mouse-stage">
-          <PixelMouse state="think" size={96} />
+          <PixelMouse state="think" size={96} skin={skin} />
         </div>
         <h1 className="ob-title">选一个 AI 后端</h1>
         <p className="ob-subtitle">
@@ -207,17 +210,63 @@ export function Onboarding({ onComplete }: OnboardingProps) {
           className="ob-cta"
           onClick={() => setStep(3)}
         >
+          下一步：挑桌宠 →
+        </button>
+      </div>
+    );
+  }
+
+  // ── Step 3: 挑桌宠 ────────────────────────────────────────────────────────
+  if (step === 3) {
+    return (
+      <div className="ob-root">
+        <div className="ob-mouse-stage">
+          <PixelMouse state="listen" size={96} skin={skin} />
+        </div>
+        <h1 className="ob-title">挑一只你的桌宠 🦞</h1>
+        <p className="ob-subtitle">
+          6 款老鼠风格 · 随时可在<strong>托盘菜单「换个桌宠」</strong>切换。
+        </p>
+        <div
+          className="ob-options"
+          role="radiogroup"
+          aria-label="选择桌宠皮肤"
+          style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}
+        >
+          {SKINS.map(s => (
+            <button
+              key={s.id}
+              type="button"
+              role="radio"
+              aria-checked={skin === s.id}
+              className={`ob-option ${skin === s.id ? "selected" : ""}`}
+              onClick={() => setSkin(s.id)}
+              style={{ flexDirection: "column", alignItems: "center", padding: 12, minHeight: 130 }}
+            >
+              <div style={{ marginBottom: 6 }}>
+                <PixelMouse state="listen" size={64} skin={s.id} />
+              </div>
+              <span className="ob-label" style={{ textAlign: "center" }}>{s.name}</span>
+              {s.tag && <span className="ob-tag">{s.tag}</span>}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="ob-cta"
+          onClick={() => setStep(4)}
+        >
           下一步：开启权限 →
         </button>
       </div>
     );
   }
 
-  // ── Step 3: 权限申请 ──────────────────────────────────────────────────────
+  // ── Step 4: 权限申请 ──────────────────────────────────────────────────────
   return (
     <div className="ob-root">
       <div className="ob-mouse-stage">
-        <PixelMouse state={allDone ? "jump" : "think"} size={96} />
+        <PixelMouse state={allDone ? "jump" : "think"} size={96} skin={skin} />
       </div>
       <h1 className="ob-title">开启必要权限</h1>
       <p className="ob-subtitle">
@@ -267,7 +316,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       <button
         type="button"
         className={`ob-cta ${!allDone ? "ob-cta-secondary" : ""}`}
-        onClick={() => onComplete(selected, backend)}
+        onClick={() => onComplete(selected, backend, skin)}
       >
         {allDone ? "完成并重启 MouseClaw 🦞" : "已在系统设置里开好了 → 完成并重启"}
       </button>

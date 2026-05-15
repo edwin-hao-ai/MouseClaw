@@ -23,6 +23,7 @@ pub mod permissions;
 pub mod pipeline;
 pub mod screenshot;
 pub mod sessions;
+pub mod skins;
 pub mod transcribe;
 pub mod tray;
 
@@ -177,6 +178,8 @@ pub fn run() {
             commands::check_permissions,
             commands::request_permission,
             commands::restart_app,
+            commands::save_skin,
+            commands::get_skin,
         ])
         .setup(move |app| {
             set_accessory_activation_policy();
