@@ -22,6 +22,27 @@ const BLOCKED_BUNDLES: &[&str] = &[
 
 const BLOCKED_NAMES: &[&str] = &["Terminal", "iTerm", "iTerm2", "Warp", "Hyper", "Alacritty", "kitty"];
 
+/// 已知 CGEventKeyboardSetUnicodeString 不太靠谱的 app —— 走 clipboard-paste fallback。
+/// 这类 app 多半是 Electron / web-based 富文本编辑器，会吃掉合成的 unicode keystrokes：
+///   - Slack / Discord / Lark / Notion / Linear / Obsidian（contenteditable）
+///   - VS Code / Cursor（Monaco editor 自己接管 input）
+///   - Chrome / Edge / Arc / Safari（页面里的 contenteditable / textarea 也常有问题）
+const RICH_EDITOR_BUNDLES: &[&str] = &[
+    "com.tinyspeck.slackmacgap",       // Slack
+    "com.hnc.Discord",                  // Discord
+    "com.electron.lark",                // Lark / 飞书
+    "com.bytedance.macos.lark",         // Lark 另一个 bundle
+    "notion.id",                        // Notion
+    "com.linear",                       // Linear
+    "md.obsidian",                      // Obsidian
+    "com.microsoft.VSCode",             // VS Code
+    "com.todesktop.230313mzl4w4u92",    // Cursor
+    "com.google.Chrome",                // Chrome (contenteditable / textarea)
+    "com.microsoft.edgemac",            // Edge
+    "company.thebrowser.Browser",       // Arc
+    "com.apple.Safari",                 // Safari
+];
+
 /// Detect whether write-back is allowed for the current foreground app.
 /// Returns `Err` with a user-friendly Chinese reason when blocked.
 #[cfg(target_os = "macos")]
@@ -79,29 +100,117 @@ pub fn frontmost_app_bundle_id() -> Option<String> { None }
 #[cfg(not(target_os = "macos"))]
 pub fn frontmost_app_name() -> Option<String> { None }
 
+/// Decide which write strategy to use for the frontmost app.
+/// 富文本/Electron/浏览器 → clipboard paste；其它 → direct CGEvent unicode keystrokes。
+#[cfg(target_os = "macos")]
+fn should_use_clipboard_paste() -> bool {
+    let bundle = frontmost_app_bundle_id().unwrap_or_default();
+    RICH_EDITOR_BUNDLES.iter().any(|b| bundle.eq_ignore_ascii_case(b))
+}
+
 /// Write text to the foreground app's cursor.
 ///
-/// V1.5 (current): Direct CGEvent keyboard events with unicode string injection.
-/// Bypasses IME (no composition collision) and doesn't pollute the clipboard.
-/// `CGEventKeyboardSetUnicodeString` sends raw text to whichever app is frontmost.
+/// 两条路径，按前台 app 自动选：
+///   1. **Direct CGEvent unicode**（默认）—— TextEdit / Pages / 终端外的普通 native app
+///      用 `CGEventKeyboardSetUnicodeString` 合成 unicode 键盘事件，不污染剪贴板、绕过 IME
+///   2. **Clipboard-paste fallback**（Electron / 浏览器 / Monaco / Notion / Slack 等）——
+///      存原剪贴板 → 写 text → 合成 ⌘V → 200ms 后恢复原剪贴板
+///      因为 Electron / contenteditable 经常吃掉合成的 unicode keystroke
 ///
-/// Limit: macOS caps each event at ~20 UTF-16 code units, so we chunk longer
-/// text and add a tiny gap between chunks so the app's input loop catches up.
+/// Limit (path #1): macOS 每个事件最多 ~20 UTF-16 单位，分 15 char/chunk 发送。
 #[cfg(target_os = "macos")]
 pub async fn write_at_cursor(text: &str) -> Result<()> {
     assert_writable()?;
     let text = text.to_string();
-    // CGEvent calls aren't Send-friendly when held across awaits, so run on a
-    // blocking thread. The post operation itself is fast (microseconds per event).
-    tokio::task::spawn_blocking(move || type_unicode_string(&text))
-        .await
-        .context("spawn_blocking join")??;
+    let use_paste = should_use_clipboard_paste();
+    tokio::task::spawn_blocking(move || {
+        if use_paste {
+            paste_via_clipboard(&text)
+        } else {
+            type_unicode_string(&text)
+        }
+    })
+    .await
+    .context("spawn_blocking join")??;
     Ok(())
 }
 
 #[cfg(not(target_os = "macos"))]
 pub async fn write_at_cursor(_text: &str) -> Result<()> {
     bail!("Mode B not implemented on non-macOS yet")
+}
+
+/// Clipboard-paste fallback for rich/Electron editors.
+///
+/// 流程：
+///   1. snapshot NSPasteboard 的 changeCount + plain-text 内容
+///   2. 写 text 进 NSPasteboard (NSPasteboardTypeString)
+///   3. 合成 Cmd+V 键盘事件
+///   4. 等 250ms 让目标 app 完成 paste（>200ms 是 GenClipboard 等实测的安全值）
+///   5. 恢复原 plain-text 内容（如果还是我们写的那次 changeCount）
+///
+/// 已知 trade-off：只恢复 plain-text flavor。RTF/图片/文件等不还原 ——
+/// 大多数 daily-use 场景剪贴板里就是文字，这个权衡可接受。
+#[cfg(target_os = "macos")]
+fn paste_via_clipboard(text: &str) -> Result<()> {
+    use cocoa::base::{id, nil};
+    use cocoa::foundation::{NSString, NSArray};
+    use objc::{class, msg_send, sel, sel_impl};
+    use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation};
+    use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+
+    unsafe {
+        let pb: id = msg_send![class!(NSPasteboard), generalPasteboard];
+        if pb == nil { bail!("NSPasteboard generalPasteboard returned nil"); }
+
+        // ── 1. snapshot 原剪贴板（只存 plain-text 一种 flavor）
+        let ns_type_string = NSString::alloc(nil).init_str("public.utf8-plain-text");
+        let old_str_obj: id = msg_send![pb, stringForType: ns_type_string];
+        let old_str: Option<String> = if old_str_obj == nil {
+            None
+        } else {
+            let ptr: *const std::os::raw::c_char = msg_send![old_str_obj, UTF8String];
+            if ptr.is_null() {
+                None
+            } else {
+                Some(std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned())
+            }
+        };
+
+        // ── 2. 写我们的 text 进 pasteboard
+        let _: i64 = msg_send![pb, clearContents];
+        let ns_text = NSString::alloc(nil).init_str(text);
+        let types = NSArray::arrayWithObject(nil, ns_type_string);
+        let _: bool = msg_send![pb, declareTypes: types owner: nil];
+        let ok: bool = msg_send![pb, setString: ns_text forType: ns_type_string];
+        if !ok { bail!("NSPasteboard setString 失败"); }
+
+        // ── 3. 合成 Cmd+V
+        let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
+            .map_err(|_| anyhow::anyhow!("CGEventSource::new failed"))?;
+        // V 键 keycode = 9 on macOS
+        const V_KEYCODE: u16 = 9;
+        let down = CGEvent::new_keyboard_event(source.clone(), V_KEYCODE, true)
+            .map_err(|_| anyhow::anyhow!("CGEvent v-down failed"))?;
+        down.set_flags(CGEventFlags::CGEventFlagCommand);
+        down.post(CGEventTapLocation::HID);
+        let up = CGEvent::new_keyboard_event(source.clone(), V_KEYCODE, false)
+            .map_err(|_| anyhow::anyhow!("CGEvent v-up failed"))?;
+        up.set_flags(CGEventFlags::CGEventFlagCommand);
+        up.post(CGEventTapLocation::HID);
+
+        // ── 4. 等 paste 完成
+        std::thread::sleep(std::time::Duration::from_millis(250));
+
+        // ── 5. 恢复原 plain-text
+        if let Some(prev) = old_str {
+            let _: i64 = msg_send![pb, clearContents];
+            let ns_prev = NSString::alloc(nil).init_str(prev.as_str());
+            let _: bool = msg_send![pb, declareTypes: types owner: nil];
+            let _: bool = msg_send![pb, setString: ns_prev forType: ns_type_string];
+        }
+    }
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]
