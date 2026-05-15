@@ -15,6 +15,7 @@ pub mod audio;
 pub mod backend;
 pub mod browser_bridge;
 pub mod claude_cli;
+pub mod cursor_follow;
 pub mod commands;
 pub mod config;
 pub mod events;
@@ -29,7 +30,7 @@ pub mod transcribe;
 pub mod tray;
 
 use std::str::FromStr;
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::{Arc, Mutex as StdMutex};
 use tauri::Manager;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
@@ -55,6 +56,9 @@ pub struct AppState {
     /// pin / dismiss. Auto-hide timers capture the gen at scheduling time and
     /// no-op if it changed by the time they fire.
     pub gen: AtomicU64,
+    /// 桌宠跟随鼠标开关 —— cursor_follow 后台任务 30fps 读它。
+    /// emit_view 进 listening/idle 时 = true；进 thinking/reply/panel 时 = false。
+    pub follow_cursor: AtomicBool,
 }
 
 impl AppState {
@@ -65,6 +69,7 @@ impl AppState {
             recorder: StdMutex::new(None),
             backend: Mutex::new(backend),
             gen: AtomicU64::new(0),
+            follow_cursor: AtomicBool::new(false),
         })
     }
 }
@@ -183,6 +188,8 @@ pub fn run() {
             commands::get_skin,
             commands::enable_browser_automation,
             commands::capability_status,
+            commands::save_whisper_model,
+            commands::get_whisper_model,
         ])
         .setup(move |app| {
             set_accessory_activation_policy();
@@ -191,6 +198,9 @@ pub fn run() {
             emit_view(&app.handle(), &ViewKind::Idle);
 
             // Tray always available (escape valve before/during onboarding)
+            // v0.1.8 启动 cursor-follow 后台任务（30fps；由 AtomicBool 控制开 / 关）
+            cursor_follow::spawn_follow_loop(app.handle().clone(), app_state.clone());
+
             if let Err(e) = tray::setup(&app.handle()) {
                 eprintln!("[mouseclaw] tray setup failed: {e:#}");
             } else {

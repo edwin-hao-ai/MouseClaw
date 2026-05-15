@@ -164,8 +164,20 @@ pub async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppStat
         );
     }
 
-    // Auto-hide 3s after the final Reply (PRD §IV "3 秒后小老鼠跑回角落").
-    schedule_auto_hide(&app, &state, 3000);
+    // ❌ V1 auto-hide 3s 太激进 —— 用户来不及看完就消失了。
+    // v0.1.8 改成「不自动消失」：
+    //   - 短回复（< 4 行）：保留 30s 让用户看清楚
+    //   - 长回复：完全不自动消失（用户看完按 Esc / 点窗口外 / 切 app 关闭）
+    //   - Mode B 有自己的倒计时 UI，不归这里管
+    //   - 错误 / 阻塞：保留 6s 自动消失（错误信息没多重要，不需要长留）
+    let is_long = reply.split('\n').count() >= 4 || reply.chars().count() > 140;
+    if is_long {
+        println!("[mouseclaw] reply 长回复 → 不自动消失，等用户 Esc / 点外 / 切 app");
+        // 不调 schedule_auto_hide
+    } else {
+        println!("[mouseclaw] reply 短回复 → 30s 后自动消失");
+        schedule_auto_hide(&app, &state, 30_000);
+    }
 }
 
 // ────────────────── Push-to-talk shortcut handling ──────────────────
@@ -180,16 +192,17 @@ pub async fn on_shortcut_press(app: AppHandle, state: Arc<AppState>) {
     }
 
     if !transcribe::is_available() {
+        let active = crate::config::Config::load().whisper_model;
         let msg = match transcribe::current_state() {
-            Some(transcribe::ModelState::Downloading) => {
-                "正在下载 Whisper 模型（57MB），下载完成后再试一次".into()
-            }
+            Some(transcribe::ModelState::Downloading) => format!(
+                "正在下载 Whisper {} 模型（~{}MB），下载完成后再试一次",
+                active.display_name(), active.size_mb()
+            ),
             Some(transcribe::ModelState::Failed(e)) => format!(
                 "Whisper 模型下载失败：{e}（手动跑：curl -L -o ~/.mouseclaw/models/{} {}）",
-                transcribe::MODEL_FILENAME,
-                transcribe::MODEL_URL
+                active.filename(), active.url()
             ),
-            _ => "Whisper 模型未找到（~/.mouseclaw/models/ggml-base-q5_1.bin）".into(),
+            _ => format!("Whisper 模型未找到（~/.mouseclaw/models/{}）", active.filename()),
         };
         emit_view(&app, &ViewKind::Blocked { reason: msg });
         schedule_auto_hide(&app, &state, 6000);

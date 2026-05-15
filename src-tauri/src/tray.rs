@@ -12,6 +12,7 @@ use tauri::{
     AppHandle, Manager, WebviewUrl, WebviewWindowBuilder,
 };
 
+use crate::config::WhisperModel;
 use crate::skins::SkinId;
 
 /// 16×16 monochrome mouse silhouette for the macOS menubar (template image).
@@ -97,13 +98,34 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     };
     let browser_item = MenuItem::with_id(app, "enable-browser", browser_label, true, None::<&str>)?;
 
+    // 「🎙️ 语音模型 ▸」子菜单 —— 4 档 Whisper 模型，当前选中打勾
+    let current_model = crate::config::Config::load().whisper_model;
+    let mut model_items: Vec<CheckMenuItem<tauri::Wry>> = Vec::new();
+    for m in WhisperModel::all() {
+        let item = CheckMenuItem::with_id(
+            app, m.tray_menu_id(), m.display_name(),
+            true, *m == current_model, None::<&str>,
+        )?;
+        model_items.push(item);
+    }
+    let model_refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> =
+        model_items.iter().map(|i| i as &dyn tauri::menu::IsMenuItem<tauri::Wry>).collect();
+    let model_submenu = Submenu::with_id_and_items(
+        app, "whisper-submenu", "🎙️ 语音模型", true, &model_refs,
+    )?;
+
     let status  = MenuItem::with_id(app, "status",  "📊 系统状态…",     true, None::<&str>)?;
     let about   = MenuItem::with_id(app, "about",   "ℹ️  关于 MouseClaw", true, None::<&str>)?;
     let sep1    = PredefinedMenuItem::separator(app)?;
     let sep2    = PredefinedMenuItem::separator(app)?;
     let quit    = MenuItem::with_id(app, "quit",    "退出 MouseClaw",     true, Some("CmdOrCtrl+Q"))?;
 
-    let menu = Menu::with_items(app, &[&summon, &history, &skin_submenu, &sep1, &browser_item, &status, &sep2, &about, &quit])?;
+    let menu = Menu::with_items(app, &[
+        &summon, &history,
+        &skin_submenu, &model_submenu,
+        &sep1, &browser_item, &status,
+        &sep2, &about, &quit,
+    ])?;
     let icon = build_template_icon();
 
     TrayIconBuilder::with_id("main-tray")
@@ -134,6 +156,11 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
     // 皮肤子菜单：id 形如 "skin:lab" / "skin:cyber"
     if let Some(skin_name) = id.strip_prefix("skin:") {
         change_skin(app, skin_name);
+        return;
+    }
+    // Whisper 模型子菜单：id 形如 "whisper:small" / "whisper:turbo"
+    if let Some(model_name) = id.strip_prefix("whisper:") {
+        change_whisper_model(app, model_name);
         return;
     }
     match id {
@@ -211,6 +238,40 @@ fn enable_browser_automation(app: &AppHandle) {
 }
 
 /// 托盘子菜单点击 → 持久化 + 广播 skin-changed。
+/// 托盘点 Whisper 模型 → 持久化 + 触发后台下载（如缺）+ 通知用户。
+fn change_whisper_model(app: &AppHandle, name: &str) {
+    use tauri::Emitter;
+    let parsed = WhisperModel::from_str(name);
+    let mut cfg = crate::config::Config::load();
+    if cfg.whisper_model == parsed {
+        return;
+    }
+    cfg.whisper_model = parsed;
+    if let Err(e) = cfg.save() {
+        eprintln!("[mouseclaw] tray change_whisper_model save failed: {e}");
+        return;
+    }
+    crate::transcribe::set_active_model(parsed);
+    let msg = if crate::transcribe::is_available() {
+        format!("✅ 已切到 {} — 立即生效", parsed.display_name())
+    } else {
+        format!(
+            "📦 切到 {} — 后台下载 {}MB 中，下次提问就用新模型",
+            parsed.display_name(), parsed.size_mb()
+        )
+    };
+    println!("[mouseclaw] 🎙️ {msg}");
+    for (_, w) in app.webview_windows() {
+        let _ = w.emit(crate::events::EV_VIEW_CHANGED, serde_json::json!({
+            "kind": "reply",
+            "transcript": "切换语音模型",
+            "reply": msg,
+            "mode": "A",
+            "streaming": false,
+        }));
+    }
+}
+
 /// 复用 commands::save_skin 的实现，保证逻辑只有一处。
 fn change_skin(app: &AppHandle, skin_name: &str) {
     use tauri::Emitter;
