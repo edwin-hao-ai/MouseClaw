@@ -19,6 +19,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 ///   2. **优先关注光标周围的内容**（用户大概率指的是"这里"、"这段"、"这个网页"）
 ///   3. 用 `[INSERT_AT_CURSOR]...[/INSERT_AT_CURSOR]` 标记区分 Mode A / Mode B 输出
 pub const APPEND_SYSTEM_PROMPT: &str = r#"你是 MouseClaw 桌面助手。用户通过语音 + 一张当前屏幕截图向你提问。
+回答尽量精简、可执行——这是个桌宠 daily assistant，不是研究报告。
 
 ## 怎么看截图
 截图是用户按下快捷键瞬间「光标所在那块显示器」的完整画面（多显示器场景下不是主屏）。
@@ -27,37 +28,83 @@ pub const APPEND_SYSTEM_PROMPT: &str = r#"你是 MouseClaw 桌面助手。用户
 
 如果用户问的是显然不依赖光标位置的话题（"我屏幕上有什么"、"总结一下"），就看整张图。
 
-## 写回光标（特殊路径）
-如果用户**明确要求**把内容写入当前光标位置（"续写"、"补全这里"、"写一段在这里"），
-用以下标记包裹要写入的纯文本（除标记内文本外不要其他内容）：
-[INSERT_AT_CURSOR]
-要写入的内容
-[/INSERT_AT_CURSOR]
-否则正常回答即可。"#;
+## 写回光标（特殊路径 = Mode B）
+**触发条件（任一）：**
+  - 用户**明确**说"写到这里 / 续写 / 补全 / 帮我写一段 / 填到这个输入框"
+  - 用户在表单/输入框/编辑器里光标定位明确，并要求生成文本去填它
+
+**输出格式（极其严格，否则 Mode B 失效）：**
+用 `[INSERT_AT_CURSOR]` 和 `[/INSERT_AT_CURSOR]` 包裹**要写入的纯文本**。**标记之间只能有纯文本，
+不能有任何解释、Markdown、代码块围栏、emoji 装饰**。错误示例：
+
+  ❌ [INSERT_AT_CURSOR]
+     好的，下面是续写：
+     "他望着窗外……"
+     [/INSERT_AT_CURSOR]
+
+  ✅ [INSERT_AT_CURSOR]
+     他望着窗外，第一片雪正缓缓落下。
+     [/INSERT_AT_CURSOR]
+
+如果你想顺带解释，把解释放在标记**外面**。也可以完全不解释，气泡只显示要写入的内容。
+
+其他情况下（用户只是问问题、要总结、要分析）= Mode A，正常回答即可，**不要**用 INSERT 标记。"#;
 
 /// 当检测到 `agent-browser` CLI 已安装时，追加给后端的「compute use」能力说明。
-/// 不自己实现浏览器自动化（那是 Mode C / V2 独立安全模型）——而是告诉后端：
-/// 你的 Bash 工具里有 `agent-browser` 这个轻量 CLI，需要操作浏览器/填表时可以调它。
+/// 不自己实现浏览器自动化（Mode C 独立引擎是 V2）——而是告诉后端：
+/// 你的 Bash 工具里有 `agent-browser`，需要操作浏览器/填表时可以调它。
 /// 这样 compute use 能力随后端 agentic 能力自然获得，零新增安全面。
 pub const BROWSER_CAPABILITY_PROMPT: &str = r#"
 
-## 浏览器操作能力（compute use）
-本机已安装 `agent-browser` CLI（Vercel Labs 出品，Rust 原生、headless）。
-当用户要求「在浏览器里填表 / 点按钮 / 抓取网页 / 自动操作网站」时，你可以用 Bash 调它：
-  - `agent-browser open <url>`        打开页面
-  - `agent-browser snapshot`          拿可访问性树（元素带 @e1/@e2 引用）
-  - `agent-browser click @e2`         点击元素
-  - `agent-browser fill @e3 "文本"`   填表
-  - `agent-browser screenshot`        截图确认
-先 snapshot 看清楚再操作。涉及提交订单、付款、发送消息等不可逆动作时，**先停下来在回答里
-说明你打算做什么，让用户确认**，不要直接执行。"#;
+## 浏览器操作能力（compute use · agent-browser 已就绪）
+本机装了 `agent-browser` CLI（Vercel Labs，Rust 原生、headless）。**当用户提到「打开网页 /
+搜一下 / 帮我登录 / 在 X 网站上 / 填这个表 / 抓取 / 自动操作」时，你必须主动用 Bash 调它，
+不要回答"我无法操作浏览器"**。
+
+### 标准操作流程（必须按顺序）
+1. `agent-browser open <url>` —— 打开目标页面
+2. `agent-browser snapshot` —— 拿可访问性树（元素带 `@e1/@e2/...` 引用 + label）
+3. 根据 snapshot 输出**选定元素**，再 `click @eN` / `fill @eN "文本"`
+4. 操作完一步立刻再 `snapshot` 看变化，**不要凭想象点**
+5. 最终 `agent-browser screenshot` 确认结果
+
+### 常见任务模板
+- **"帮我在 GitHub 搜 X"**：open https://github.com → snapshot → fill 搜索框 → click 搜索按钮 → screenshot
+- **"登录 X 网站"**：open URL → snapshot → fill 用户名/密码 → click 登录 → screenshot。**密码** 让用户填，
+  你只填用户名/邮箱
+- **"抓取这个页面的标题"**：open URL → snapshot → 从 snapshot 的 accessibility tree 里 grep `<h1>` / `role="heading"`
+
+### 重要边界
+- **agent-browser 跑的是它自己的 headless Chromium，不是用户当前打开的 Chrome 标签页**。如果用户
+  说"这个我已经打开的页面"，看截图给指导步骤即可，**不要**用 agent-browser（它看不到那个标签）
+- 涉及付款、提交订单、发邮件、删数据等**不可逆动作**：先停下来在回答里说"我准备做 X，确认吗？"，
+  让用户在 follow-up 里回 yes 才继续
+- snapshot 输出可能很长，**用 grep / head 截短**再读：`agent-browser snapshot | head -200`"#;
+
+/// 当 `agent-browser` 没装时，告诉后端不能主动操作浏览器，但可以走两条 fallback：
+/// (1) 看截图给步骤指南；(2) Mode B 写到光标。免得 Claude 误以为能调而不存在的工具。
+pub const NO_BROWSER_CAPABILITY_PROMPT: &str = r#"
+
+## 浏览器操作能力（未装 agent-browser）
+本机**没装** `agent-browser` CLI，所以你**不能主动**打开新页面、点按钮、抓取网站。当用户要求
+浏览器自动化时，按下面 fallback 处理：
+
+1. **截图里看得到目标网页** → 给清晰的"点哪里、填什么"步骤指南，告诉用户自己操作。结尾加一句
+   "想让我自动操作的话，跑 `npm i -g @vercel/agent-browser` 装一下就行"
+2. **用户已经把光标放在某个字段里、想让你生成文本去填** → 用 `[INSERT_AT_CURSOR]...[/INSERT_AT_CURSOR]`
+   走 Mode B 写进去（这条路不依赖 agent-browser）
+
+不要假装会用 `agent-browser` —— 调用会直接报"command not found"，对用户毫无帮助。"#;
 
 /// 按本机已安装的能力拼出最终 system prompt。
-/// 目前唯一的可选能力：`agent-browser`（compute use）。
+/// 目前唯一的可选能力：`agent-browser`（compute use）。无论装没装都注入对应说明，
+/// 保证 Claude 知道自己的"能 / 不能"边界，不会糊弄用户。
 pub fn system_prompt() -> String {
     let mut p = APPEND_SYSTEM_PROMPT.to_string();
     if find_binary("agent-browser").is_ok() {
         p.push_str(BROWSER_CAPABILITY_PROMPT);
+    } else {
+        p.push_str(NO_BROWSER_CAPABILITY_PROMPT);
     }
     p
 }
@@ -264,15 +311,51 @@ pub async fn ask_claude(
     ask_claude_streaming(transcript, image_path, frontmost_app, cursor, |_| {}).await
 }
 
-/// 解析回复是否是 Mode B（含 `[INSERT_AT_CURSOR]` 标记），返回要写入光标的纯文本（去掉标记）。
-/// 若是 Mode A，返回 `None`。
+/// 把 Mode B inner text 里 Claude 常加的装饰剥掉 —— prompt 已经禁止过，但 LLM 经常忘。
+/// 处理：
+///   - 外围 ``` / ```lang 代码栏（首尾）
+///   - 整段被英文/中文引号包裹（首尾）
+///   - 多余的前后空行 / `>` 引用符
+fn strip_insert_decorations(raw: &str) -> String {
+    let mut s = raw.trim().to_string();
+    // 代码栏
+    if s.starts_with("```") {
+        if let Some(first_nl) = s.find('\n') {
+            s = s[first_nl + 1..].to_string();
+        }
+        if s.ends_with("```") {
+            s.truncate(s.len() - 3);
+        }
+        s = s.trim().to_string();
+    }
+    // 整段引号包裹
+    let quote_pairs: [(&str, &str); 4] = [
+        ("\"", "\""), ("'", "'"), ("“", "”"), ("「", "」"),
+    ];
+    for (open, close) in quote_pairs {
+        if s.starts_with(open) && s.ends_with(close) && s.len() > open.len() + close.len() {
+            s = s[open.len()..s.len() - close.len()].trim().to_string();
+        }
+    }
+    // 引用符行首
+    s.lines()
+        .map(|l| l.trim_start_matches('>').trim_start().to_string())
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
+/// 解析回复是否是 Mode B（含 `[INSERT_AT_CURSOR]` 标记），返回要写入光标的纯文本（去掉标记 + 装饰）。
+/// 若是 Mode A，返回 `None`。空内容也返回 `None` —— 避免 Mode B 写入空串误触发 UI。
 pub fn parse_insert_directive(reply: &str) -> Option<String> {
     const OPEN: &str = "[INSERT_AT_CURSOR]";
     const CLOSE: &str = "[/INSERT_AT_CURSOR]";
     let start = reply.find(OPEN)? + OPEN.len();
     let rest = &reply[start..];
     let end = rest.find(CLOSE)?;
-    Some(rest[..end].trim().to_string())
+    let inner = strip_insert_decorations(&rest[..end]);
+    if inner.is_empty() { None } else { Some(inner) }
 }
 
 #[cfg(test)]
@@ -294,20 +377,54 @@ mod tests {
     }
 
     #[test]
+    fn mode_b_strips_code_fence() {
+        let reply = "好的：[INSERT_AT_CURSOR]\n```\n第二天清晨，雪停了。\n```\n[/INSERT_AT_CURSOR]";
+        assert_eq!(parse_insert_directive(reply).as_deref(), Some("第二天清晨，雪停了。"));
+    }
+
+    #[test]
+    fn mode_b_strips_outer_chinese_quotes() {
+        let reply = "[INSERT_AT_CURSOR]「他望着窗外。」[/INSERT_AT_CURSOR]";
+        assert_eq!(parse_insert_directive(reply).as_deref(), Some("他望着窗外。"));
+    }
+
+    #[test]
+    fn mode_b_strips_quote_marker_lines() {
+        let reply = "[INSERT_AT_CURSOR]\n> 第一行\n> 第二行\n[/INSERT_AT_CURSOR]";
+        assert_eq!(parse_insert_directive(reply).as_deref(), Some("第一行\n第二行"));
+    }
+
+    #[test]
+    fn mode_b_empty_inner_returns_none() {
+        // 空内容不应误触发 Mode B
+        assert!(parse_insert_directive("[INSERT_AT_CURSOR]   \n  [/INSERT_AT_CURSOR]").is_none());
+    }
+
+    #[test]
     fn mode_b_takes_first_block() {
         let reply = "[INSERT_AT_CURSOR]A[/INSERT_AT_CURSOR][INSERT_AT_CURSOR]B[/INSERT_AT_CURSOR]";
         assert_eq!(parse_insert_directive(reply).as_deref(), Some("A"));
     }
 
     #[test]
-    fn system_prompt_always_includes_base() {
-        // system_prompt() 至少包含基础 prompt；agent-browser 段是可选的
+    fn system_prompt_always_includes_base_and_browser_branch() {
+        // 不管装没装 agent-browser，system_prompt 都必须告诉 Claude 它的边界 ——
+        // 装了 → BROWSER_CAPABILITY_PROMPT；没装 → NO_BROWSER_CAPABILITY_PROMPT
         let p = system_prompt();
         assert!(p.starts_with("你是 MouseClaw 桌面助手"));
-        // 若本机装了 agent-browser，应追加 compute use 段
         if find_binary("agent-browser").is_ok() {
-            assert!(p.contains("compute use"));
+            assert!(p.contains("agent-browser 已就绪"));
+        } else {
+            assert!(p.contains("未装 agent-browser"));
         }
+    }
+
+    #[test]
+    fn mode_b_prompt_warns_about_decoration() {
+        // Mode B 失败的主因是 Claude 在 INSERT 标记里加了多余的解释/Markdown —— prompt 必须显式禁止
+        let p = APPEND_SYSTEM_PROMPT;
+        assert!(p.contains("不能有任何解释"));
+        assert!(p.contains("[INSERT_AT_CURSOR]"));
     }
 
     #[test]
