@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>MouseClaw 🦞 — 多皮肤桌宠 Prototype · 2026-05-15</title>
+<style>
+/* ────────────────────────────────────────────────────────────────────
+   Design tokens — 全部来自 DESIGN.md §2 + §9 cheatsheet
+   每个皮肤额外定义自己的 --m-* 8 色调色板（locked palette 仍 ≤8 色，
+   只是不同皮肤有自己的一套），anatomy 仍然在 16×16 网格上画。
+   ────────────────────────────────────────────────────────────────── */
+:root {
+  --surface-deep: #0a0e1a;
+  --surface-mid:  #131826;
+  --text-on-dark: #f5f5f7;
+  --text-dim:     #a1a1a8;
+  --accent-primary: #ff6b9d;
+  --accent-soft:    #ff9bb8;
+  --accent-glow:    rgba(255,107,157,0.15);
+  --success: #5cd6a0;
+  --warn:    #ffd166;
+  --danger:  #ff5f57;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --bubble-bg: linear-gradient(135deg, #ffffff, #fefefe);
+  --bubble-shadow: 0 18px 36px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.04);
+  --t-fast: 160ms cubic-bezier(.2,.7,.3,1);
+  --t-base: 280ms cubic-bezier(.2,.7,.3,1);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: radial-gradient(1200px 800px at 30% 20%, #1a2034 0%, var(--surface-deep) 60%);
+  color: var(--text-on-dark);
+  font: 14px/1.55 -apple-system, "PingFang SC", system-ui, sans-serif;
+  padding: 36px 22px 80px;
+  min-height: 100vh;
+}
+.wrap { max-width: 1180px; margin: 0 auto; }
+h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.01em; }
+.sub { color: var(--text-dim); margin: 0 0 28px; }
+h2 { font-size: 17px; margin: 36px 0 14px; padding-bottom: 6px; border-bottom: 1px solid #23283a; }
+
+/* ── pixel rendering — mandatory per DESIGN.md ─────────────────── */
+svg.mouse { image-rendering: pixelated; shape-rendering: crispEdges; display: block; }
+
+/* ── skin gallery grid ─────────────────────────────────────────── */
+.gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.skin-card {
+  background: var(--surface-mid);
+  border: 1px solid #23283a;
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  transition: all var(--t-base);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+.skin-card:hover { transform: translateY(-2px); border-color: var(--accent-primary); }
+.skin-card.selected {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px var(--accent-glow), 0 14px 30px rgba(255,107,157,0.18);
+}
+.skin-card.selected::after {
+  content: "✓ 选中";
+  position: absolute; top: 12px; right: 12px;
+  background: var(--accent-primary); color: #fff;
+  font-size: 11px; padding: 3px 10px; border-radius: 999px; font-weight: 600;
+}
+.skin-stage {
+  position: relative;
+  height: 168px;
+  background: linear-gradient(180deg, #f3eee6 0%, #e7ddcd 100%);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+/* mock desktop content (lines mimicking code) */
+.skin-stage::before {
+  content: "";
+  position: absolute; inset: 0;
+  background:
+    linear-gradient(transparent 12px, #d4c8b3 12px, #d4c8b3 13px, transparent 13px),
+    linear-gradient(transparent 26px, #c9bba2 26px, #c9bba2 27px, transparent 27px),
+    linear-gradient(transparent 44px, #d4c8b3 44px, #d4c8b3 45px, transparent 45px),
+    linear-gradient(transparent 60px, #c9bba2 60px, #c9bba2 61px, transparent 61px);
+  opacity: 0.7;
+}
+.skin-stage .pet {
+  position: absolute;
+  bottom: 14px; left: 50%;
+  transform: translateX(-50%);
+  animation: idle-breath 2400ms ease-in-out infinite;
+}
+@keyframes idle-breath {
+  0%, 100% { transform: translateX(-50%) translateY(0) scale(1.0); }
+  50%      { transform: translateX(-50%) translateY(-1px) scale(1.015); }
+}
+.skin-name { font-size: 15px; font-weight: 600; margin: 0 0 2px; }
+.skin-desc { font-size: 12px; color: var(--text-dim); line-height: 1.45; }
+.skin-tag {
+  display: inline-block; margin-top: 6px;
+  font-size: 11px; padding: 1px 8px; border-radius: 999px;
+  background: var(--accent-glow); color: var(--accent-soft);
+}
+.skin-tag.warn { background: rgba(255,209,102,0.12); color: var(--warn); }
+
+/* ── selected preview (big, cycling states) ────────────────────── */
+.preview {
+  display: grid; grid-template-columns: 280px 1fr; gap: 24px;
+  background: var(--surface-mid);
+  border: 1px solid #23283a;
+  border-radius: var(--radius-lg);
+  padding: 22px;
+  margin-top: 12px;
+}
+.preview-stage {
+  background: linear-gradient(180deg, #f3eee6 0%, #e7ddcd 100%);
+  border-radius: var(--radius-md);
+  height: 240px;
+  position: relative;
+  overflow: hidden;
+}
+.preview-stage::before {
+  content: "";
+  position: absolute; inset: 0;
+  background:
+    linear-gradient(transparent 20px, #d4c8b3 20px, #d4c8b3 21px, transparent 21px),
+    linear-gradient(transparent 42px, #c9bba2 42px, #c9bba2 43px, transparent 43px),
+    linear-gradient(transparent 68px, #d4c8b3 68px, #d4c8b3 69px, transparent 69px),
+    linear-gradient(transparent 92px, #c9bba2 92px, #c9bba2 93px, transparent 93px),
+    linear-gradient(transparent 120px, #d4c8b3 120px, #d4c8b3 121px, transparent 121px);
+  opacity: 0.7;
+}
+.preview-stage .big-pet {
+  position: absolute; bottom: 28px; left: 50%; transform: translateX(-50%);
+  animation: big-breath 2200ms ease-in-out infinite;
+}
+@keyframes big-breath {
+  0%, 100% { transform: translateX(-50%) translateY(0) scale(1.0); }
+  50%      { transform: translateX(-50%) translateY(-2px) scale(1.02); }
+}
+.state-grid {
+  display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px;
+}
+.state-cell {
+  background: #1a2034; border: 1px solid #23283a;
+  border-radius: 10px; padding: 10px 6px;
+  text-align: center;
+}
+.state-cell .label { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+.state-cell svg { margin: 0 auto; }
+
+/* ── mock scene strip ──────────────────────────────────────────── */
+.scenes { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.scene {
+  background: var(--surface-mid); border: 1px solid #23283a;
+  border-radius: var(--radius-lg); padding: 14px;
+}
+.scene-window {
+  background: #fff; color: #2b2622; border-radius: 10px;
+  font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+  padding: 28px 14px 14px;
+  position: relative; overflow: hidden;
+  min-height: 180px;
+  box-shadow: 0 12px 24px rgba(0,0,0,0.4);
+}
+.scene-window::before {
+  content: "";
+  position: absolute; top: 10px; left: 10px;
+  width: 11px; height: 11px; border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 18px 0 0 var(--warn), 36px 0 0 var(--success);
+}
+.scene-window .line { color: #5a5249; }
+.scene-window .line .k { color: var(--accent-primary); }
+.scene-window .line .s { color: #3fa66a; }
+.scene-window .pet-overlay {
+  position: absolute; bottom: 8px; right: 16px;
+}
+
+/* ── decisions notes ───────────────────────────────────────────── */
+.notes { font-size: 13px; color: var(--text-dim); line-height: 1.7; }
+.notes code { background: #1a2034; padding: 1px 6px; border-radius: 5px; font-size: 12px; color: var(--accent-soft); }
+.notes ul { margin: 6px 0; padding-left: 22px; }
+
+/* ── speech bubble (over preview) ──────────────────────────────── */
+.bubble {
+  position: absolute;
+  top: 18px; left: 50%; transform: translateX(-50%);
+  background: var(--bubble-bg); color: #2b2622;
+  padding: 8px 14px; border-radius: 14px;
+  box-shadow: var(--bubble-shadow);
+  font-size: 12px; max-width: 180px;
+  animation: bubble-pop 4s ease-in-out infinite;
+}
+@keyframes bubble-pop {
+  0%, 25% { opacity: 0; transform: translateX(-50%) translateY(-4px) scale(0.92); }
+  35%, 90% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-4px) scale(0.92); }
+}
+
+/* ── ear / tail animations (state demos) ───────────────────────── */
+.listen-ears { animation: ear-twitch 1800ms ease-in-out infinite; transform-origin: 50% 50%; }
+@keyframes ear-twitch { 0%,100%{transform:rotate(0)} 40%{transform:rotate(-2deg)} 60%{transform:rotate(2deg)} }
+.jump-bounce { animation: bounce 700ms cubic-bezier(.5,0,.5,1) infinite; }
+@keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+.sleep-bob   { animation: sleep-bob 3200ms ease-in-out infinite; }
+@keyframes sleep-bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-1px)} }
+
+@media (prefers-reduced-motion: reduce) {
+  .skin-stage .pet, .preview-stage .big-pet,
+  .listen-ears, .jump-bounce, .sleep-bob, .bubble { animation: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>🦞 MouseClaw 多皮肤桌宠 — Prototype</h1>
+  <p class="sub">2026-05-15 · 6 款老鼠风格 · 换色 + 体型微调 · 所有皮肤共用 16×16 网格 + 8 色调色板上限</p>
+
+  <h2>1. 6 款皮肤一览（idle / 听 状态，背景模拟桌面文本）</h2>
+  <div class="gallery" id="gallery"></div>
+
+  <h2>2. 选中预览（点上面的卡片切换 · 6 个状态全展示）</h2>
+  <div class="preview">
+    <div class="preview-stage">
+      <div class="bubble" id="bubble">在这呢，听你说 🦞</div>
+      <div class="big-pet" id="big-pet"></div>
+    </div>
+    <div>
+      <div style="margin-bottom:10px;">
+        <strong id="sel-name">经典灰</strong>
+        <span style="color: var(--text-dim); font-size: 12px; margin-left: 8px;" id="sel-desc"></span>
+      </div>
+      <div class="state-grid" id="state-grid"></div>
+    </div>
+  </div>
+
+  <h2>3. 叠在真桌面应用上是什么感觉</h2>
+  <div class="scenes">
+    <div class="scene">
+      <div style="font-size:12px;color:var(--text-dim);margin-bottom:8px;">VS Code · 写代码场景</div>
+      <div class="scene-window">
+        <div class="line"><span class="k">function</span> <span class="k">summon</span>() {</div>
+        <div class="line">&nbsp;&nbsp;<span class="k">const</span> mouse = <span class="s">"🦞"</span>;</div>
+        <div class="line">&nbsp;&nbsp;<span class="k">return</span> mouse.listen();</div>
+        <div class="line">}</div>
+        <div class="line">&nbsp;</div>
+        <div class="line"><span style="background:var(--accent-glow);">// 光标在这里</span></div>
+        <div class="pet-overlay" id="scene1"></div>
+      </div>
+    </div>
+    <div class="scene">
+      <div style="font-size:12px;color:var(--text-dim);margin-bottom:8px;">Chrome · 浏览器场景</div>
+      <div class="scene-window">
+        <div class="line" style="color:#1a73e8;font-weight:600;">News · 2026-05-15</div>
+        <div class="line">&nbsp;</div>
+        <div class="line" style="color:#2b2622;">AI agents are getting</div>
+        <div class="line" style="color:#2b2622;">smaller, cuter, and</div>
+        <div class="line" style="color:#2b2622;">faster. MouseClaw 🦞 is...</div>
+        <div class="pet-overlay" id="scene2"></div>
+      </div>
+    </div>
+  </div>
+
+  <h2>4. 设计决策</h2>
+  <div class="notes">
+    <ul>
+      <li><strong>Anatomy 仍锁定</strong>：每款都在同一 16×16 网格上画 —— 不破坏 DESIGN.md §3.1
+          的 anatomy 约束。差异 = (a) 每款独立的 8 色调色板 + (b) 极小的体型/配件微调
+          （耳朵大小、尾巴长短、头饰一两个像素），不会出现完全不同的造型。</li>
+      <li><strong>每款 ≤8 色</strong>：仍尊重 NES-style 限色，只是不同皮肤用不同的 8 色组合。
+          需在 DESIGN.md §2.1 新增「Skin Palettes」表，列出每款的 token map。</li>
+      <li><strong>所有状态 (sleep/listen/think/write/jump/block) 都得各自渲染一遍</strong> ——
+          但因为眼睛 / 嘴 / 道具是按 state 决定的，每款只需复用 PixelMouse.tsx 的
+          Eyes/Extras 组件 + 自己的 palette CSS variable。代码改动小。</li>
+      <li><strong>切换入口</strong>：Onboarding 加第 4 步「挑你的桌宠」（默认经典灰）+
+          托盘菜单加「🎨 换个桌宠 ▸」子菜单（实时切换、立即生效）。
+          <code>config.json</code> 加 <code>skin: SkinId</code> 字段，schema v6→v7。</li>
+      <li><strong>未来扩展</strong>：拿到这套 token 化框架后，加新皮肤 = 加一组 CSS 变量
+          + 一行 SkinId 枚举。不需要改任何渲染逻辑。</li>
+    </ul>
+  </div>
+
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════
+     皮肤定义 + 渲染逻辑
+     ════════════════════════════════════════════════════════════════ -->
+<script>
+/* 6 款皮肤的 8 色调色板 + 体型微调标记 */
+const SKINS = [
+  {
+    id: "classic",
+    name: "经典灰",
+    desc: "DESIGN.md 锁定的原版，灰身白肚粉耳。",
+    tag: "默认",
+    palette: { body:"#cfcfcf", belly:"#ffffff", earIn:"#ff9bb8", earOut:"#cfcfcf",
+               eye:"#1a1a1a", nose:"#d63d6a", tail:"#8a8a8a", paw:"#ffffff" },
+    body: "standard"
+  },
+  {
+    id: "lab",
+    name: "小白鼠",
+    desc: "实验室经典款 · 通体雪白 + 红宝石眼，耳朵尾巴粉嫩。",
+    palette: { body:"#fafafa", belly:"#ffffff", earIn:"#ffb3c8", earOut:"#e8e3dc",
+               eye:"#ff5f57", nose:"#ff6b9d", tail:"#ffb3c8", paw:"#ffffff" },
+    body: "slim"   // 体型微调：身体瘦一圈
+  },
+  {
+    id: "field",
+    name: "田鼠",
+    desc: "野外田园款 · 棕色毛皮 + 大耳朵，圆滚滚的可爱。",
+    palette: { body:"#a47148", belly:"#e8d5b0", earIn:"#d6a07a", earOut:"#7a4e2e",
+               eye:"#1a1a1a", nose:"#5a2e10", tail:"#7a4e2e", paw:"#d6a07a" },
+    body: "chubby" // 体型：圆胖、耳朵更大
+  },
+  {
+    id: "ninja",
+    name: "忍者鼠",
+    desc: "夜行版 · 深色身 + 黑色蒙面带，眼神锐利。",
+    palette: { body:"#3a3a42", belly:"#5a5a64", earIn:"#1a1a1a", earOut:"#2a2a30",
+               eye:"#ffd166", nose:"#1a1a1a", tail:"#2a2a30", paw:"#1a1a1a" },
+    body: "ninja"  // 体型：加蒙面带（横向 1px 黑条）
+  },
+  {
+    id: "cyber",
+    name: "机械鼠",
+    desc: "赛博朋克款 · 钛银机身 + 青蓝色发光眼、天线代替耳朵。",
+    tag: "酷",
+    palette: { body:"#c0c8d0", belly:"#e8eef4", earIn:"#00e5ff", earOut:"#7a8290",
+               eye:"#00e5ff", nose:"#00e5ff", tail:"#7a8290", paw:"#5a6270" },
+    body: "robot"  // 体型：天线代替耳朵
+  },
+  {
+    id: "golden",
+    name: "金鼠",
+    desc: "新年限定款 · 奶油金身 + 圆润体型 + 卷尾巴。",
+    tag: "限定",
+    palette: { body:"#e8c87a", belly:"#fff4d6", earIn:"#d68a40", earOut:"#c8a050",
+               eye:"#3a2818", nose:"#a06028", tail:"#c8a050", paw:"#fff4d6" },
+    body: "round" // 体型：圆滚滚 + 卷尾
+  },
+];
+
+/* 渲染一个老鼠 SVG。state ∈ {sleep,listen,think,write,jump,block}。 */
+function renderMouse(skin, state, size=64, opts={}) {
+  const p = skin.palette;
+  const body = skin.body;
+
+  // ── 耳朵 (rows 0-2) — 形状按 body 类型微调
+  let ears = "";
+  if (body === "robot") {
+    // 天线代替耳朵
+    ears = `
+      <rect x="4" y="-1" width="1" height="3" fill="${p.earOut}"/>
+      <rect x="4" y="-2" width="1" height="1" fill="${p.earIn}"/>
+      <rect x="11" y="-1" width="1" height="3" fill="${p.earOut}"/>
+      <rect x="11" y="-2" width="1" height="1" fill="${p.earIn}"/>`;
+  } else if (body === "chubby") {
+    // 大耳朵（外扩 1px）
+    ears = `
+      <rect x="2" y="0" width="3" height="3" fill="${p.earOut}"/>
+      <rect x="1" y="1" width="4" height="3" fill="${p.earOut}"/>
+      <rect x="11" y="0" width="3" height="3" fill="${p.earOut}"/>
+      <rect x="11" y="1" width="4" height="3" fill="${p.earOut}"/>
+      <rect x="3" y="1" width="1" height="2" fill="${p.earIn}"/>
+      <rect x="12" y="1" width="1" height="2" fill="${p.earIn}"/>`;
+  } else {
+    // 标准耳朵
+    ears = `
+      <rect x="3" y="1" width="2" height="2" fill="${p.earOut}"/>
+      <rect x="2" y="2" width="3" height="2" fill="${p.earOut}"/>
+      <rect x="11" y="1" width="2" height="2" fill="${p.earOut}"/>
+      <rect x="11" y="2" width="3" height="2" fill="${p.earOut}"/>
+      <rect x="3" y="2" width="1" height="1" fill="${p.earIn}"/>
+      <rect x="12" y="2" width="1" height="1" fill="${p.earIn}"/>`;
+  }
+
+  // ── 身体 (rows 3-10) — 形状按 body 类型微调
+  let bodyRects = "";
+  if (body === "slim") {
+    // 瘦一圈：身体宽度从 12 → 10
+    bodyRects = `
+      <rect x="4" y="3" width="8" height="1" fill="${p.body}"/>
+      <rect x="3" y="4" width="10" height="3" fill="${p.body}"/>
+      <rect x="4" y="7" width="8" height="1" fill="${p.body}"/>
+      <rect x="6" y="8" width="4" height="2" fill="${p.belly}"/>
+      <rect x="4" y="8" width="2" height="2" fill="${p.body}"/>
+      <rect x="10" y="8" width="2" height="2" fill="${p.body}"/>
+      <rect x="5" y="10" width="6" height="1" fill="${p.body}"/>`;
+  } else if (body === "round") {
+    // 圆胖 + 多 1 行肚子
+    bodyRects = `
+      <rect x="3" y="3" width="10" height="1" fill="${p.body}"/>
+      <rect x="2" y="4" width="12" height="3" fill="${p.body}"/>
+      <rect x="3" y="7" width="10" height="1" fill="${p.body}"/>
+      <rect x="4" y="8" width="8" height="3" fill="${p.belly}"/>
+      <rect x="3" y="8" width="1" height="3" fill="${p.body}"/>
+      <rect x="12" y="8" width="1" height="3" fill="${p.body}"/>`;
+  } else {
+    // standard / chubby / ninja / robot 共享基础身体
+    bodyRects = `
+      <rect x="3" y="3" width="10" height="1" fill="${p.body}"/>
+      <rect x="2" y="4" width="12" height="3" fill="${p.body}"/>
+      <rect x="3" y="7" width="10" height="1" fill="${p.body}"/>
+      <rect x="5" y="8" width="6" height="2" fill="${p.belly}"/>
+      <rect x="3" y="8" width="2" height="2" fill="${p.body}"/>
+      <rect x="11" y="8" width="2" height="2" fill="${p.body}"/>
+      <rect x="4" y="10" width="8" height="1" fill="${p.body}"/>`;
+  }
+
+  // ── 蒙面带 (忍者鼠) — 一条横跨眼睛的黑色带
+  let ninjaMask = "";
+  if (body === "ninja") {
+    ninjaMask = `<rect x="2" y="5" width="12" height="1" fill="#1a1a1a"/>
+                 <rect x="0" y="5" width="2" height="1" fill="${p.earIn}"/>
+                 <rect x="14" y="5" width="2" height="1" fill="${p.earIn}"/>`;
+  }
+
+  // ── 爪子 (row 11)
+  const paws = `<rect x="4" y="11" width="2" height="1" fill="${p.paw}"/>
+                <rect x="10" y="11" width="2" height="1" fill="${p.paw}"/>`;
+
+  // ── 尾巴 — 圆胖→卷尾，其他→直尾
+  let tail = "";
+  if (body === "round") {
+    // 卷尾巴
+    tail = `<rect x="13" y="9" width="1" height="1" fill="${p.tail}"/>
+            <rect x="14" y="8" width="1" height="2" fill="${p.tail}"/>
+            <rect x="15" y="7" width="1" height="1" fill="${p.tail}"/>
+            <rect x="14" y="6" width="2" height="1" fill="${p.tail}"/>`;
+  } else if (body === "robot") {
+    // 直且短的金属尾
+    tail = `<rect x="13" y="9" width="2" height="1" fill="${p.tail}"/>
+            <rect x="15" y="8" width="1" height="1" fill="${p.tail}"/>`;
+  } else {
+    // 标准尾
+    tail = `<rect x="13" y="9" width="1" height="1" fill="${p.tail}"/>
+            <rect x="14" y="7" width="1" height="3" fill="${p.tail}"/>`;
+  }
+
+  // ── 眼睛 — 按 state 决定形状
+  let eyes;
+  if (state === "sleep" || state === "write") {
+    eyes = `<rect x="5" y="6" width="1" height="1" fill="${p.eye}"/>
+            <rect x="10" y="6" width="1" height="1" fill="${p.eye}"/>`;
+  } else if (state === "jump") {
+    eyes = `<rect x="5" y="5" width="1" height="1" fill="${p.eye}"/>
+            <rect x="6" y="6" width="1" height="1" fill="${p.eye}"/>
+            <rect x="9" y="6" width="1" height="1" fill="${p.eye}"/>
+            <rect x="10" y="5" width="1" height="1" fill="${p.eye}"/>`;
+  } else {
+    // alert 2px 眼
+    eyes = `<rect x="5" y="5" width="1" height="2" fill="${p.eye}"/>
+            <rect x="10" y="5" width="1" height="2" fill="${p.eye}"/>`;
+  }
+
+  // ── 鼻子 (row 7)
+  const nose = `<rect x="7" y="7" width="2" height="1" fill="${p.nose}"/>`;
+
+  // ── 额外配件 (state-dependent)
+  let extras = "";
+  if (state === "listen") {
+    extras = `<rect x="7" y="9" width="2" height="1" fill="${p.eye}"/>`;
+  } else if (state === "think") {
+    extras = `<rect x="13" y="0" width="1" height="1" fill="var(--accent-primary)"/>
+              <rect x="14" y="1" width="1" height="1" fill="var(--accent-primary)"/>
+              <rect x="13" y="2" width="1" height="1" fill="var(--accent-primary)"/>
+              <rect x="13" y="4" width="1" height="1" fill="var(--accent-primary)"/>`;
+  } else if (state === "write") {
+    extras = `<rect x="3" y="12" width="1" height="3" fill="var(--warn)"/>
+              <rect x="3" y="15" width="1" height="1" fill="${p.eye}"/>`;
+  } else if (state === "block") {
+    extras = `<rect x="7" y="-2" width="2" height="2" fill="var(--danger)"/>
+              <rect x="7" y="1" width="2" height="1" fill="var(--danger)"/>`;
+  }
+
+  // 动画 class
+  let animCls = "";
+  if (state === "listen") animCls = "listen-ears";
+  if (state === "jump")   animCls = "jump-bounce";
+  if (state === "sleep")  animCls = "sleep-bob";
+
+  return `<svg class="mouse ${animCls}" viewBox="-1 -3 18 18" width="${size}" height="${size}" role="img" aria-label="${skin.name}, ${state}">
+    ${ears}${ninjaMask}${bodyRects}${tail}${paws}${eyes}${nose}${extras}
+  </svg>`;
+}
+
+/* ── 渲染卡片网格 ───────────────────────────────────────────────── */
+let selectedId = "classic";
+function renderGallery() {
+  const g = document.getElementById("gallery");
+  g.innerHTML = SKINS.map(s => `
+    <div class="skin-card ${s.id === selectedId ? "selected" : ""}" data-id="${s.id}">
+      <div class="skin-stage">
+        <div class="pet">${renderMouse(s, "listen", 96)}</div>
+      </div>
+      <div class="skin-name">${s.name}</div>
+      <div class="skin-desc">${s.desc}</div>
+      ${s.tag ? `<span class="skin-tag ${s.tag === "限定" ? "warn" : ""}">${s.tag}</span>` : ""}
+    </div>
+  `).join("");
+  g.querySelectorAll(".skin-card").forEach(c => {
+    c.addEventListener("click", () => {
+      selectedId = c.dataset.id;
+      renderGallery();
+      renderPreview();
+      renderScenes();
+    });
+  });
+}
+
+/* ── 渲染预览（选中的皮肤 · 大图 + 状态网格） ─────────────────── */
+function renderPreview() {
+  const s = SKINS.find(x => x.id === selectedId);
+  document.getElementById("sel-name").textContent = s.name;
+  document.getElementById("sel-desc").textContent = s.desc;
+  document.getElementById("big-pet").innerHTML = renderMouse(s, "listen", 128);
+  const states = [
+    {id:"sleep",  zh:"睡"},
+    {id:"listen", zh:"听"},
+    {id:"think",  zh:"想"},
+    {id:"write",  zh:"写"},
+    {id:"jump",   zh:"跳"},
+    {id:"block",  zh:"拦"},
+  ];
+  document.getElementById("state-grid").innerHTML = states.map(st => `
+    <div class="state-cell">
+      ${renderMouse(s, st.id, 56)}
+      <div class="label">${st.zh}</div>
+    </div>
+  `).join("");
+}
+
+/* ── 真桌面 mock 上叠老鼠 ──────────────────────────────────────── */
+function renderScenes() {
+  const s = SKINS.find(x => x.id === selectedId);
+  document.getElementById("scene1").innerHTML = renderMouse(s, "think", 64);
+  document.getElementById("scene2").innerHTML = renderMouse(s, "listen", 64);
+}
+
+renderGallery();
+renderPreview();
+renderScenes();
+</script>
+</body>
+</html>
