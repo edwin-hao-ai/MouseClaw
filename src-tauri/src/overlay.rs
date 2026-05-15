@@ -11,6 +11,26 @@ use tauri::{AppHandle, Emitter, LogicalPosition, Manager, WebviewWindow};
 use crate::events::{ViewKind, EV_VIEW_CHANGED};
 use crate::AppState;
 
+/// 重新定位 overlay 到光标位置 —— cursor-follow 后台任务用。
+/// 复用 show_mouse 的偏移算法（窗口下沿距离光标 32px）。
+/// ⚠️ 必须在主线程 —— NSEvent.mouseLocation / NSScreen.mainScreen 都不是线程安全的。
+pub fn reposition_to_cursor(app: &AppHandle) {
+    let app2 = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let Some(window) = app2.get_webview_window("mouse") else { return };
+        if let Some((x, y)) = current_mouse_pos_top_left(&window) {
+            let (ww, wh) = match window.outer_size().ok() {
+                Some(s) => (s.width as f64, s.height as f64),
+                None => (320.0, 320.0),
+            };
+            let scale = window.scale_factor().unwrap_or(1.0);
+            let pos_x = x - (ww / scale) / 2.0;
+            let pos_y = y - (wh / scale) + 32.0;
+            let _ = window.set_position(LogicalPosition::new(pos_x, pos_y));
+        }
+    });
+}
+
 /// Show the overlay window near the cursor.
 ///
 /// ⚠️ **必须在主线程跑** —— 里面碰 NSEvent / NSScreen，AppKit 不是线程安全的。
@@ -34,6 +54,10 @@ pub fn show_mouse(app: &AppHandle) {
         let _ = window.show();
         let _ = window.set_always_on_top(true);
     });
+    // v0.1.8 召唤瞬间起就跟着鼠标走，直到出现气泡才停住
+    if let Some(state) = app.try_state::<Arc<AppState>>() {
+        crate::cursor_follow::enable(state.inner());
+    }
 }
 
 /// Get cursor position in top-left-origin screen coordinates.
@@ -92,6 +116,16 @@ pub fn emit_view(app: &AppHandle, view: &ViewKind) {
         ViewKind::ModeBInserting { .. } => "mode-b-inserting".to_string(),
         ViewKind::Blocked { reason } => format!("blocked({reason})"),
     };
+    // v0.1.8 cursor-follow gating —— 只在 listening 跟随鼠标，其它有气泡的状态全部冻结
+    // 这样用户在读 Claude 回答时窗口不会被光标拽飞
+    if let Some(state) = app.try_state::<Arc<AppState>>() {
+        let should_follow = matches!(view, ViewKind::Listening);
+        if should_follow {
+            crate::cursor_follow::enable(state.inner());
+        } else {
+            crate::cursor_follow::disable(state.inner());
+        }
+    }
     match app.emit(EV_VIEW_CHANGED, view) {
         Ok(()) => println!("[mouseclaw] emit_view → {kind}"),
         Err(e) => eprintln!("[mouseclaw] ✘ emit_view 失败 ({kind}): {e}"),

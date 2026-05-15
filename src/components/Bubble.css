@@ -16,6 +16,27 @@
   animation: bubble-in var(--duration-bubble-in) var(--ease-default);
 }
 
+/* v0.1.8: 长回复气泡内部可滚动 —— 不再强迫用户去 Panel 才能看完 */
+.bubble-scroll {
+  max-height: 320px;
+  overflow-y: auto;
+  /* 自定义滚动条：细 + 半透明，不抢戏 */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0,0,0,0.25) transparent;
+  /* 给底部留点呼吸空间，最后一行不顶到 scrollbar 边 */
+  padding-right: 4px;
+  /* 顶/底 fade mask 提示「还有更多 / 上面还有」 */
+  mask-image: linear-gradient(to bottom, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
+}
+.bubble-scroll::-webkit-scrollbar { width: 6px; }
+.bubble-scroll::-webkit-scrollbar-track { background: transparent; }
+.bubble-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.22);
+  border-radius: 3px;
+}
+.bubble-scroll::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.4); }
+
 @keyframes bubble-in {
   from { opacity: 0; transform: translateY(4px) scale(0.96); }
   to   { opacity: 1; transform: translateY(0) scale(1); }

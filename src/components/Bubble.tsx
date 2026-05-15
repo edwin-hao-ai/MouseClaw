@@ -20,12 +20,14 @@ interface BubbleProps {
   voiceBars?: boolean;
   /** Animated 3-dot loading indicator after the text (Thinking state). */
   loading?: boolean;
+  /** 让正文区域可内部滚动 —— 长回复气泡用，不必跳 Panel 也能看完 (v0.1.8) */
+  scrollable?: boolean;
 }
 
 export function Bubble({
   text, variant = "default", streaming = false,
   expandable = false, onExpand,
-  sessionChip, voiceBars, loading = false,
+  sessionChip, voiceBars, loading = false, scrollable = false,
 }: BubbleProps) {
   return (
     <div className={`bubble bubble-${variant}`} role="status" aria-live="polite">
@@ -34,7 +36,7 @@ export function Bubble({
           🔗 续 Session #{sessionChip.sessionId} · 第 {sessionChip.turn} 轮
         </div>
       )}
-      <div className="bubble-body">
+      <div className={`bubble-body ${scrollable ? "bubble-scroll" : ""}`}>
         <span className="bubble-text">{text}</span>
         {voiceBars && (
           <span className="voicebars" aria-hidden>
@@ -55,7 +57,7 @@ export function Bubble({
           onClick={onExpand}
           aria-label="展开看完整回答"
         >
-          ▼ 展开看完整回答
+          ↗ 在 Panel 里打开（可继续追问）
           <kbd>↓</kbd>
         </button>
       )}

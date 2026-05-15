@@ -211,13 +211,15 @@ function BubbleFor({ view, continuing, onExpand }: BubbleForProps) {
     case "reply": {
       const streaming = view.streaming ?? false;
       const long = isLongReply(view.reply);
-      // 流式期间：default 样式 + 闪烁光标；流完了：success/warn 终态样式 + 可展开
+      // 流式期间：default 样式 + 闪烁光标；流完了：success/warn 终态样式
+      // v0.1.8：长回复气泡内部直接可滚动；按钮改成「↗ 在 Panel 里打开」（仍保留 Panel 入口）
       const variant = streaming ? "default" : view.mode === "B" ? "warn" : "success";
       return (
         <Bubble
           text={view.reply}
           variant={variant}
           streaming={streaming}
+          scrollable={long}
           expandable={!streaming && long}
           onExpand={onExpand}
           sessionChip={continuing ? { sessionId: 42, turn: 2 } : undefined}

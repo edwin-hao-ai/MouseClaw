@@ -10,6 +10,73 @@ use serde::{Deserialize, Serialize};
 use crate::backend::Backend;
 use crate::skins::SkinId;
 
+/// 可选 Whisper 模型 —— 用户在托盘 / config 切。
+/// 体积 / 中文质量 / 速度的取舍详见 transcribe.rs 顶部注释。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WhisperModel {
+    Base,
+    Small,
+    Medium,
+    Turbo,
+}
+
+impl Default for WhisperModel {
+    fn default() -> Self { WhisperModel::Small }
+}
+
+impl WhisperModel {
+    pub fn filename(&self) -> &'static str {
+        match self {
+            WhisperModel::Base   => "ggml-base-q5_1.bin",
+            WhisperModel::Small  => "ggml-small-q5_1.bin",
+            WhisperModel::Medium => "ggml-medium-q5_0.bin",
+            WhisperModel::Turbo  => "ggml-large-v3-turbo-q5_0.bin",
+        }
+    }
+    pub fn url(&self) -> &'static str {
+        match self {
+            WhisperModel::Base   => "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base-q5_1.bin",
+            WhisperModel::Small  => "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin",
+            WhisperModel::Medium => "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium-q5_0.bin",
+            WhisperModel::Turbo  => "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
+        }
+    }
+    /// 下载体积（MB，approx）—— 给 UI / log 用
+    pub fn size_mb(&self) -> u32 {
+        match self {
+            WhisperModel::Base => 59, WhisperModel::Small => 190,
+            WhisperModel::Medium => 539, WhisperModel::Turbo => 547,
+        }
+    }
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            WhisperModel::Base   => "⚡ Base (59MB · 最快 / 一般)",
+            WhisperModel::Small  => "✨ Small (190MB · 推荐 · 中文好)",
+            WhisperModel::Medium => "🎯 Medium (539MB · 接近 large)",
+            WhisperModel::Turbo  => "🚀 Turbo (547MB · 最准 · 占 RAM)",
+        }
+    }
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            WhisperModel::Base => "base", WhisperModel::Small => "small",
+            WhisperModel::Medium => "medium", WhisperModel::Turbo => "turbo",
+        }
+    }
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "base" => WhisperModel::Base,
+            "medium" => WhisperModel::Medium,
+            "turbo" => WhisperModel::Turbo,
+            _ => WhisperModel::Small,
+        }
+    }
+    pub fn all() -> &'static [WhisperModel] {
+        &[WhisperModel::Base, WhisperModel::Small, WhisperModel::Medium, WhisperModel::Turbo]
+    }
+    pub fn tray_menu_id(&self) -> String { format!("whisper:{}", self.as_str()) }
+}
+
 /// Bump this whenever shortcut choices / config schema change in a way that
 /// invalidates user's saved choice. Old configs auto-trigger re-Onboarding.
 ///   v1 → v2: Onboarding 选项从 4 个双击/按住 改成 2 个按住
@@ -19,7 +86,8 @@ use crate::skins::SkinId;
 ///            系统快捷键。换成 ⌘⇧空格 / ⌘⇧M（macOS 默认未占用）
 ///   v5 → v6: 新增多后端选择（backend 字段）—— Onboarding 多一步选 AI 后端
 ///   v6 → v7: 新增桌宠皮肤（skin 字段）—— Onboarding 多一步选老鼠风格
-pub const CURRENT_CONFIG_VERSION: u32 = 7;
+///   v7 → v8: 新增可选 Whisper 模型（whisper_model 字段，默认 small）
+pub const CURRENT_CONFIG_VERSION: u32 = 8;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -32,6 +100,9 @@ pub struct Config {
     /// 用户选的桌宠皮肤（6 款老鼠风格）。
     #[serde(default)]
     pub skin: SkinId,
+    /// 用户选的 Whisper 转写模型（默认 Small —— 中文质量好且不超 RAM 上限）。
+    #[serde(default)]
+    pub whisper_model: WhisperModel,
     /// Set to true the first time the user completes Onboarding. Until then,
     /// the app doesn't register a global shortcut — clicking the tray or
     /// launching the app re-opens the Onboarding window instead.
@@ -52,6 +123,7 @@ impl Default for Config {
             shortcut: "Super+Shift+Space".into(),
             backend: Backend::default(),
             skin: SkinId::default(),
+            whisper_model: WhisperModel::default(),
             onboarded: false,
             version: CURRENT_CONFIG_VERSION,
         }
@@ -148,6 +220,27 @@ mod tests {
         assert_eq!(c.version, CURRENT_CONFIG_VERSION);
         assert_eq!(c.backend, Backend::ClaudeCli);
         assert_eq!(c.skin, SkinId::Classic);
+        // v0.1.8 默认升 Small（中文质量大跳，仍在 RAM 上限内）
+        assert_eq!(c.whisper_model, WhisperModel::Small);
+    }
+
+    #[test]
+    fn whisper_models_round_trip_and_have_distinct_files() {
+        let all = WhisperModel::all();
+        assert_eq!(all.len(), 4);
+        let mut files = std::collections::HashSet::new();
+        for m in all {
+            assert_eq!(WhisperModel::from_str(m.as_str()), *m, "{:?} round-trip", m);
+            assert!(files.insert(m.filename()), "{:?} filename 重复", m);
+            assert!(m.url().contains("huggingface.co"), "{:?} url 必须指向 hf", m);
+            assert!(m.size_mb() > 0);
+        }
+    }
+
+    #[test]
+    fn whisper_unknown_falls_back_to_small() {
+        assert_eq!(WhisperModel::from_str(""), WhisperModel::Small);
+        assert_eq!(WhisperModel::from_str("nope"), WhisperModel::Small);
     }
 
     #[test]
