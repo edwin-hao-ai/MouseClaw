@@ -7,10 +7,12 @@
 
 use tauri::{
     image::Image,
-    menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem},
+    menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Manager, WebviewUrl, WebviewWindowBuilder,
 };
+
+use crate::skins::SkinId;
 
 /// 16×16 monochrome mouse silhouette for the macOS menubar (template image).
 /// Each u16 row encodes 16 horizontal pixels MSB-first: 1 = opaque black, 0 = transparent.
@@ -65,11 +67,32 @@ fn build_template_icon() -> Image<'static> {
 pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let summon  = MenuItem::with_id(app, "summon",  "🦞 召唤老鼠",       true, None::<&str>)?;
     let history = MenuItem::with_id(app, "history", "📜 查看历史记录…",  true, None::<&str>)?;
+
+    // 「🎨 换个桌宠 ▸」子菜单 —— 6 款 SkinId，当前选中的打勾
+    let current_skin = crate::config::Config::load().skin;
+    let mut skin_items: Vec<CheckMenuItem<tauri::Wry>> = Vec::new();
+    for s in SkinId::all() {
+        let item = CheckMenuItem::with_id(
+            app,
+            s.tray_menu_id(),
+            s.display_name(),
+            true,
+            *s == current_skin,
+            None::<&str>,
+        )?;
+        skin_items.push(item);
+    }
+    let skin_refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> =
+        skin_items.iter().map(|i| i as &dyn tauri::menu::IsMenuItem<tauri::Wry>).collect();
+    let skin_submenu = Submenu::with_id_and_items(
+        app, "skin-submenu", "🎨 换个桌宠", true, &skin_refs,
+    )?;
+
     let about   = MenuItem::with_id(app, "about",   "ℹ️  关于 MouseClaw", true, None::<&str>)?;
     let sep1    = PredefinedMenuItem::separator(app)?;
     let quit    = MenuItem::with_id(app, "quit",    "退出 MouseClaw",     true, Some("CmdOrCtrl+Q"))?;
 
-    let menu = Menu::with_items(app, &[&summon, &history, &sep1, &about, &quit])?;
+    let menu = Menu::with_items(app, &[&summon, &history, &skin_submenu, &sep1, &about, &quit])?;
     let icon = build_template_icon();
 
     TrayIconBuilder::with_id("main-tray")
@@ -96,13 +119,37 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
 }
 
 fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
-    match event.id.as_ref() {
+    let id = event.id.as_ref();
+    // 皮肤子菜单：id 形如 "skin:lab" / "skin:cyber"
+    if let Some(skin_name) = id.strip_prefix("skin:") {
+        change_skin(app, skin_name);
+        return;
+    }
+    match id {
         "summon"  => summon_via_tray(app),
         "history" => open_history_window(app),
         "about"   => open_about_dialog(app),
         "quit"    => app.exit(0),
         _ => {}
     }
+}
+
+/// 托盘子菜单点击 → 持久化 + 广播 skin-changed。
+/// 复用 commands::save_skin 的实现，保证逻辑只有一处。
+fn change_skin(app: &AppHandle, skin_name: &str) {
+    use tauri::Emitter;
+    let parsed = SkinId::from_str(skin_name);
+    let mut cfg = crate::config::Config::load();
+    cfg.skin = parsed;
+    if let Err(e) = cfg.save() {
+        eprintln!("[mouseclaw] tray change_skin save failed: {e}");
+        return;
+    }
+    let payload = parsed.as_str().to_string();
+    for (_, w) in app.webview_windows() {
+        let _ = w.emit(crate::events::EV_SKIN_CHANGED, payload.clone());
+    }
+    println!("[mouseclaw] 🎨 tray: skin → {:?}", parsed);
 }
 
 /// Programmatically trigger the same flow as a global-shortcut press.

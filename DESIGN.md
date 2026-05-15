@@ -102,6 +102,27 @@ Tokens are **mandatory variables**. Hardcoded literals in component code are rev
 
 **Locked constraint:** The mouse uses **exactly these 8 colors**, no more. Adding a 9th requires updating this doc and all states. NES discipline = strong silhouette + cheap recognition.
 
+#### Skin Palettes (v0.1.7 — 6 mouse styles)
+
+Same 8-color slot system per skin; only the values vary. Body变体（standard / slim
+/ chubby / ninja / robot / round）控制耳/身/尾形状的像素差异 —— anatomy 仍锁 16×16
+网格。前后端单一信源：TS 在 `src/skins.ts`、Rust 在 `src-tauri/src/skins.rs`。
+
+| Skin | id | Body 变体 | body | belly | ear-in / ear-out | eye | nose | tail | paw | 角标 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 🐭 经典灰 | `classic` | standard | `#cfcfcf` | `#ffffff` | `#ff9bb8` / `#cfcfcf` | `#1a1a1a` | `#d63d6a` | `#8a8a8a` | `#ffffff` | 默认 |
+| 🤍 小白鼠 | `lab` | slim | `#fafafa` | `#ffffff` | `#ffb3c8` / `#e8e3dc` | `#ff5f57` | `#ff6b9d` | `#ffb3c8` | `#ffffff` | — |
+| 🌾 田鼠 | `field` | chubby | `#a47148` | `#e8d5b0` | `#d6a07a` / `#7a4e2e` | `#1a1a1a` | `#5a2e10` | `#7a4e2e` | `#d6a07a` | — |
+| 🥷 忍者鼠 | `ninja` | ninja | `#3a3a42` | `#5a5a64` | `#1a1a1a` / `#2a2a30` | `#ffd166` | `#1a1a1a` | `#2a2a30` | `#1a1a1a` | — |
+| 🤖 机械鼠 | `cyber` | robot | `#c0c8d0` | `#e8eef4` | `#00e5ff` / `#7a8290` | `#00e5ff` | `#00e5ff` | `#7a8290` | `#5a6270` | 酷 |
+| ✨ 金鼠 | `golden` | round | `#e8c87a` | `#fff4d6` | `#d68a40` / `#c8a050` | `#3a2818` | `#a06028` | `#c8a050` | `#fff4d6` | 限定 |
+
+**新增皮肤的硬规则：**
+1. 仍只能用 **8 个 slot**（body/belly/ear-in/ear-out/eye/nose/tail/paw）—— 不加第 9 个槽
+2. 体型变体只能从现有 6 个里挑，新增变体需同 PR 改 `PixelMouse.tsx::Ears/Body/Tail`
+3. 同 PR 更新这张表 + `src/skins.ts` + `src-tauri/src/skins.rs::SkinId`
+4. 6 款全 state 在 prototype（`docs/prototypes/mouse-skins-20260515.html`）截图确认对比度可读
+
 ---
 
 ### 2.2 Typography

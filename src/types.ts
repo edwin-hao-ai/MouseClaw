@@ -27,6 +27,9 @@ export type ShortcutChoice =
 /** AI backend choice — matches Rust `Backend::from_choice`. */
 export type BackendChoice = "claude-cli" | "codex-cli" | "openclaw-cli";
 
+/** Re-export SkinId here for convenience (single source of truth lives in src/skins.ts). */
+export type { SkinId } from "./skins";
+
 export interface SessionMeta {
   id: number;
   startedAt: string; // ISO 8601
@@ -35,5 +38,6 @@ export interface SessionMeta {
 
 /** Event names emitted from Rust via app.emit(). */
 export const EV_VIEW_CHANGED = "view-changed";
+export const EV_SKIN_CHANGED = "skin-changed";
 export const EV_STREAM_CHUNK = "stream-chunk";
 export const EV_COUNTDOWN    = "countdown-tick";

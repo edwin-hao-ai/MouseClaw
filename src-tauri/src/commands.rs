@@ -4,12 +4,14 @@
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_global_shortcut::Shortcut;
 
 use crate::backend::Backend;
+use crate::events::EV_SKIN_CHANGED;
 use crate::overlay::{bump_gen, hide_overlay};
 use crate::pipeline::{on_shortcut_release, run_pipeline};
+use crate::skins::SkinId;
 use crate::{audio, config, permissions};
 use crate::AppState;
 
@@ -52,6 +54,7 @@ pub async fn new_session(state: State<'_, Arc<AppState>>) -> Result<u64, String>
 pub fn save_shortcut(
     choice: String,
     backend: String,
+    skin: Option<String>,
     _app: AppHandle,
 ) -> Result<(), String> {
     let new_str = config::choice_to_shortcut_str(&choice).to_string();
@@ -59,19 +62,46 @@ pub fn save_shortcut(
         .map_err(|e| format!("解析快捷键 {new_str:?} 失败：{e}"))?;
 
     let backend = Backend::from_choice(&backend);
+    let skin = SkinId::from_str(skin.as_deref().unwrap_or(""));
     let cfg = config::Config {
         shortcut: new_str.clone(),
         backend,
+        skin,
         onboarded: true,
         version: config::CURRENT_CONFIG_VERSION,
     };
     cfg.save().map_err(|e| format!("保存配置失败：{e}"))?;
 
     println!(
-        "[mouseclaw] config saved → shortcut={new_str}, backend={:?}, onboarded ✓ — 等待重启",
-        backend
+        "[mouseclaw] config saved → shortcut={new_str}, backend={:?}, skin={:?}, onboarded ✓ — 等待重启",
+        backend, skin
     );
     Ok(())
+}
+
+/// 运行期切换桌宠皮肤 —— 托盘子菜单调它。
+/// 1) 持久化进 config.json
+/// 2) emit `skin-changed` 事件，前端立即换皮肤（不重启）
+#[tauri::command]
+pub fn save_skin(skin: String, app: AppHandle) -> Result<(), String> {
+    let parsed = SkinId::from_str(&skin);
+    let mut cfg = config::Config::load();
+    cfg.skin = parsed;
+    cfg.save().map_err(|e| format!("保存皮肤失败：{e}"))?;
+
+    // 广播给所有 webview 窗口（overlay / history / about / onboarding 都监听）
+    let payload = parsed.as_str().to_string();
+    for (_, w) in app.webview_windows() {
+        let _ = w.emit(EV_SKIN_CHANGED, payload.clone());
+    }
+    println!("[mouseclaw] skin saved → {:?} (已广播 skin-changed)", parsed);
+    Ok(())
+}
+
+/// 启动时前端读当前皮肤 —— 避免每个窗口加载时闪一下默认皮再切换。
+#[tauri::command]
+pub fn get_skin() -> String {
+    config::Config::load().skin.as_str().to_string()
 }
 
 /// 取消当前 pipeline（cancel_pipeline）—— bump gen + 隐藏 overlay。

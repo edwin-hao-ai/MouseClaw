@@ -8,6 +8,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::backend::Backend;
+use crate::skins::SkinId;
 
 /// Bump this whenever shortcut choices / config schema change in a way that
 /// invalidates user's saved choice. Old configs auto-trigger re-Onboarding.
@@ -17,7 +18,8 @@ use crate::backend::Backend;
 ///   v4 → v5: 真正弃用 Control+Super+Space —— ⌃⌘空格 是 macOS「表情与符号」
 ///            系统快捷键。换成 ⌘⇧空格 / ⌘⇧M（macOS 默认未占用）
 ///   v5 → v6: 新增多后端选择（backend 字段）—— Onboarding 多一步选 AI 后端
-pub const CURRENT_CONFIG_VERSION: u32 = 6;
+///   v6 → v7: 新增桌宠皮肤（skin 字段）—— Onboarding 多一步选老鼠风格
+pub const CURRENT_CONFIG_VERSION: u32 = 7;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -27,6 +29,9 @@ pub struct Config {
     /// 用户选的 AI 后端（Claude Code CLI / Codex CLI / OpenClaw CLI）。
     #[serde(default)]
     pub backend: Backend,
+    /// 用户选的桌宠皮肤（6 款老鼠风格）。
+    #[serde(default)]
+    pub skin: SkinId,
     /// Set to true the first time the user completes Onboarding. Until then,
     /// the app doesn't register a global shortcut — clicking the tray or
     /// launching the app re-opens the Onboarding window instead.
@@ -46,6 +51,7 @@ impl Default for Config {
         Self {
             shortcut: "Super+Shift+Space".into(),
             backend: Backend::default(),
+            skin: SkinId::default(),
             onboarded: false,
             version: CURRENT_CONFIG_VERSION,
         }
@@ -141,6 +147,7 @@ mod tests {
         assert!(!c.onboarded);
         assert_eq!(c.version, CURRENT_CONFIG_VERSION);
         assert_eq!(c.backend, Backend::ClaudeCli);
+        assert_eq!(c.skin, SkinId::Classic);
     }
 
     #[test]
