@@ -66,6 +66,14 @@ check "paste_via_clipboard 实现存在"               "grep -q 'fn paste_via_cl
 check "Cmd+V 合成路径走 CGEventFlagCommand"        "grep -q 'CGEventFlagCommand' src-tauri/src/mode_b.rs"
 check "should_use_clipboard_paste 路由函数"        "grep -q 'fn should_use_clipboard_paste' src-tauri/src/mode_b.rs"
 
+echo "── P1 · 系统状态窗 ──"
+check "StatusView.tsx 存在"                        "test -f src/StatusView.tsx"
+check "tray 注册 status 菜单"                      "grep -q '\"status\"' src-tauri/src/tray.rs"
+check "open_status_window 在 tray"                 "grep -q 'fn open_status_window' src-tauri/src/tray.rs"
+check "main.tsx 路由 status"                       "grep -q 'view === \"status\"' src/main.tsx"
+check "capabilities 加 status 窗口"                "grep -q '\"status\"' src-tauri/capabilities/default.json"
+check "StatusView 用 capability_status"            "grep -q 'capability_status' src/StatusView.tsx"
+
 echo "── 构建 / 测试闸门 ──"
 check "前端 bun build 通过"                         "bun run build"
 check "Rust cargo check 通过"                       "cargo check --manifest-path src-tauri/Cargo.toml"
