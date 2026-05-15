@@ -97,12 +97,13 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     };
     let browser_item = MenuItem::with_id(app, "enable-browser", browser_label, true, None::<&str>)?;
 
+    let status  = MenuItem::with_id(app, "status",  "📊 系统状态…",     true, None::<&str>)?;
     let about   = MenuItem::with_id(app, "about",   "ℹ️  关于 MouseClaw", true, None::<&str>)?;
     let sep1    = PredefinedMenuItem::separator(app)?;
     let sep2    = PredefinedMenuItem::separator(app)?;
     let quit    = MenuItem::with_id(app, "quit",    "退出 MouseClaw",     true, Some("CmdOrCtrl+Q"))?;
 
-    let menu = Menu::with_items(app, &[&summon, &history, &skin_submenu, &sep1, &browser_item, &sep2, &about, &quit])?;
+    let menu = Menu::with_items(app, &[&summon, &history, &skin_submenu, &sep1, &browser_item, &status, &sep2, &about, &quit])?;
     let icon = build_template_icon();
 
     TrayIconBuilder::with_id("main-tray")
@@ -140,8 +141,39 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
         "history"         => open_history_window(app),
         "about"           => open_about_dialog(app),
         "enable-browser"  => enable_browser_automation(app),
+        "status"          => open_status_window(app),
         "quit"            => app.exit(0),
         _ => {}
+    }
+}
+
+/// 打开「📊 系统状态」窗口 —— 一眼看到 claude / agent-browser / Chrome CDP / 权限的就绪状态。
+/// 每行都有"去解决"按钮（装 / 启用 / 开权限）。
+fn open_status_window(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("status") {
+        let _ = w.show();
+        activate_app();
+        let _ = w.set_focus();
+        return;
+    }
+    let result = WebviewWindowBuilder::new(
+        app,
+        "status",
+        WebviewUrl::App("index.html?view=status".into()),
+    )
+    .title("MouseClaw — 系统状态")
+    .inner_size(520.0, 560.0)
+    .min_inner_size(420.0, 420.0)
+    .resizable(true)
+    .decorations(true)
+    .focused(true)
+    .build();
+    match result {
+        Ok(w) => {
+            activate_app();
+            let _ = w.set_focus();
+        }
+        Err(e) => eprintln!("[mouseclaw] open status window failed: {e:#}"),
     }
 }
 

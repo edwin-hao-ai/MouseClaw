@@ -96,8 +96,9 @@ pub async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppStat
         Ok(r) => r,
         Err(e) => {
             eprintln!("[mouseclaw] ✘ backend streaming 失败: {e:#}");
-            emit_view(&app, &ViewKind::Blocked { reason: format!("AI 调用失败：{e}") });
-            schedule_auto_hide(&app, &state, 4000);
+            let reason = friendly_backend_error(&format!("{e:#}"), active_backend);
+            emit_view(&app, &ViewKind::Blocked { reason });
+            schedule_auto_hide(&app, &state, 6000);
             return;
         }
     };
@@ -280,10 +281,79 @@ pub async fn on_shortcut_release(app: AppHandle, state: Arc<AppState>) {
     });
 }
 
+/// 把后端 CLI 抛回来的吓人英文 stderr 翻译成用户能执行的中文一句话。
+/// 常见 case：
+///   - 找不到二进制 → 给出 npm install 命令
+///   - 登录过期 / 没 API key → 提示 `claude login` / 检查 env
+///   - rate limit / 5xx → 提示稍后重试
+///   - 其它 → 原样 + 「按 ⌘空格 重试」尾巴
+fn friendly_backend_error(raw: &str, backend: crate::backend::Backend) -> String {
+    let lower = raw.to_lowercase();
+    let bin = backend.binary_name();
+    if lower.contains("找不到") || lower.contains("no such file") || lower.contains("not found")
+        || lower.contains("command not found")
+    {
+        return match backend {
+            crate::backend::Backend::ClaudeCli =>
+                "找不到 claude CLI。装一下：`npm i -g @anthropic-ai/claude-code`，然后跑 `claude login` 登录".into(),
+            crate::backend::Backend::CodexCli =>
+                "找不到 codex CLI。装一下：`npm i -g @openai/codex`，并配好 OpenAI API key".into(),
+            crate::backend::Backend::OpenclawCli =>
+                "找不到 openclaw CLI。装一下：`npm i -g openclaw`，并在 shell 配 provider key".into(),
+        };
+    }
+    if lower.contains("login") || lower.contains("authentic") || lower.contains("unauthorized") || lower.contains("401") {
+        return format!("{bin} 似乎没登录或 token 过期。跑 `{bin} login` 重新登录后再试");
+    }
+    if lower.contains("rate") && lower.contains("limit") {
+        return "API rate limit 触发 — 等 30s 再试一次".into();
+    }
+    if lower.contains("500") || lower.contains("502") || lower.contains("503") || lower.contains("timeout") {
+        return "AI 服务暂时抽风（5xx / 超时）— 重试一次试试".into();
+    }
+    // 兜底：原文截到 200 字 + 重试提示
+    let trimmed: String = raw.chars().take(200).collect();
+    format!("AI 调用失败：{trimmed}\n（按 ⌘⇧空格 重试 · 在托盘点「📊 系统状态」可诊断）")
+}
+
 /// Legacy alias — tray summon uses this. Maps to "tap": press + 800ms + release.
 /// tray 点一下没法 hold，只能模拟一个最短录音。
 pub async fn on_shortcut_pressed(app: AppHandle, state: Arc<AppState>) {
     on_shortcut_press(app.clone(), state.clone()).await;
     tokio::time::sleep(Duration::from_millis(800)).await;
     on_shortcut_release(app, state).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::Backend;
+
+    #[test]
+    fn missing_binary_maps_to_install_command() {
+        let msg = friendly_backend_error("找不到 `claude` CLI", Backend::ClaudeCli);
+        assert!(msg.contains("npm i -g @anthropic-ai/claude-code"));
+        let msg = friendly_backend_error("command not found: codex", Backend::CodexCli);
+        assert!(msg.contains("@openai/codex"));
+    }
+
+    #[test]
+    fn auth_errors_suggest_login() {
+        let msg = friendly_backend_error("401 Unauthorized", Backend::ClaudeCli);
+        assert!(msg.contains("login"));
+    }
+
+    #[test]
+    fn rate_limit_known() {
+        let msg = friendly_backend_error("Error 429: rate limit exceeded", Backend::ClaudeCli);
+        assert!(msg.contains("rate limit"));
+    }
+
+    #[test]
+    fn unknown_errors_truncate_and_add_retry_hint() {
+        let long_err = "a".repeat(500);
+        let msg = friendly_backend_error(&long_err, Backend::ClaudeCli);
+        assert!(msg.chars().count() < 350); // 200 截断 + 重试提示
+        assert!(msg.contains("⌘⇧空格"));
+    }
 }
