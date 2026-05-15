@@ -13,6 +13,7 @@
 
 pub mod audio;
 pub mod backend;
+pub mod browser_bridge;
 pub mod claude_cli;
 pub mod commands;
 pub mod config;
@@ -180,6 +181,8 @@ pub fn run() {
             commands::restart_app,
             commands::save_skin,
             commands::get_skin,
+            commands::enable_browser_automation,
+            commands::capability_status,
         ])
         .setup(move |app| {
             set_accessory_activation_policy();

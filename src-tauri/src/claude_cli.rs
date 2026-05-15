@@ -85,25 +85,61 @@ pub const BROWSER_CAPABILITY_PROMPT: &str = r#"
 /// (1) 看截图给步骤指南；(2) Mode B 写到光标。免得 Claude 误以为能调而不存在的工具。
 pub const NO_BROWSER_CAPABILITY_PROMPT: &str = r#"
 
-## 浏览器操作能力（未装 agent-browser）
-本机**没装** `agent-browser` CLI，所以你**不能主动**打开新页面、点按钮、抓取网站。当用户要求
-浏览器自动化时，按下面 fallback 处理：
+## 浏览器操作能力（未启用）
+本机**目前没启用浏览器自动化** —— Chrome 没在 CDP debug 模式下跑，也没装 agent-browser。
+所以你**不能主动**打开新页面、点按钮、抓取网站。当用户要求浏览器自动化时，按下面 fallback：
 
-1. **截图里看得到目标网页** → 给清晰的"点哪里、填什么"步骤指南，告诉用户自己操作。结尾加一句
-   "想让我自动操作的话，跑 `npm i -g @vercel/agent-browser` 装一下就行"
+1. **截图里看得到目标网页** → 给清晰的"点哪里、填什么"步骤指南，告诉用户自己操作。结尾加一句：
+   "想让我直接帮你点，去托盘菜单点「🌐 启用浏览器自动化」就行 —— 一次配置永久生效"
 2. **用户已经把光标放在某个字段里、想让你生成文本去填** → 用 `[INSERT_AT_CURSOR]...[/INSERT_AT_CURSOR]`
-   走 Mode B 写进去（这条路不依赖 agent-browser）
+   走 Mode B 写进去（这条路不依赖浏览器自动化）
 
-不要假装会用 `agent-browser` —— 调用会直接报"command not found"，对用户毫无帮助。"#;
+不要假装会用浏览器工具 —— 调用会直接失败，对用户毫无帮助。"#;
+
+/// 当用户的 Chrome 以 CDP 模式跑着（`browser_bridge::cdp_is_alive() == true`）+
+/// chrome-devtools MCP 已注册时，把 MCP 工具说明塞进 prompt。
+///
+/// 这是 daily-use 的真正解 —— 不是 headless 的新 Chromium，而是用户**本人正在用**的 Chrome：
+/// 已登录的网站、已开的标签、cookie/session 全在，Claude 可以直接接管。
+pub const CHROME_CDP_CAPABILITY_PROMPT: &str = r#"
+
+## 浏览器操作能力（MCP · 已连到用户实时 Chrome）
+本机的 Chrome 正在 CDP debug port 9222 上跑，并且 `chrome-devtools-mcp` 已经注册到 Claude。
+**这意味着你能直接通过 MCP tools 操作用户当前打开的真 Chrome 窗口** —— 包含他所有的登录态、
+cookies、已开的标签。这跟启动新 Chromium 完全不同。
+
+### 触发条件 & 任务模板
+用户说"在浏览器里…"、"帮我点…"、"在这个网站上…"、"自动填表…" → **必须**用 chrome-devtools MCP 工具。
+典型流程：
+1. `mcp__chrome-devtools__list_pages` —— 看用户当前开的标签页
+2. `mcp__chrome-devtools__select_page` —— 选目标 tab（通常是 frontmost）
+3. `mcp__chrome-devtools__take_snapshot` —— 拿可访问性树（带 uid）
+4. 根据 snapshot 的 uid，用 `mcp__chrome-devtools__click` / `fill` / `fill_form`
+5. `mcp__chrome-devtools__take_screenshot` 截图确认 / 给用户看
+
+### 重要约束
+- **绝对不要随便 `navigate` 走用户当前页**。除非用户明确说"打开 X 网站"，否则只在当前 tab 操作。
+- 不可逆动作（提交订单、发邮件、删数据、汇款）→ 先停下来在回答里说"我准备点 X 按钮，确认吗？"
+  让用户在 follow-up 里回 yes 再继续。
+- 表单里碰到**密码字段**永远跳过 —— 用户必须自己填。
+- 看不懂 snapshot 的语义就再 take_snapshot 一次，**不要凭想象点 uid**。"#;
 
 /// 按本机已安装的能力拼出最终 system prompt。
-/// 目前唯一的可选能力：`agent-browser`（compute use）。无论装没装都注入对应说明，
-/// 保证 Claude 知道自己的"能 / 不能"边界，不会糊弄用户。
+/// 三档：
+///   1. Chrome CDP 活着 + agent-browser 装了 → 两套都注入，让 Claude 自己挑
+///   2. 只有 agent-browser → BROWSER_CAPABILITY_PROMPT
+///   3. 什么都没有 → NO_BROWSER_CAPABILITY_PROMPT（清晰告诉用户怎么装）
 pub fn system_prompt() -> String {
     let mut p = APPEND_SYSTEM_PROMPT.to_string();
-    if find_binary("agent-browser").is_ok() {
+    let cdp_alive = crate::browser_bridge::cdp_is_alive();
+    let has_agent_browser = find_binary("agent-browser").is_ok();
+    if cdp_alive {
+        p.push_str(CHROME_CDP_CAPABILITY_PROMPT);
+    }
+    if has_agent_browser {
         p.push_str(BROWSER_CAPABILITY_PROMPT);
-    } else {
+    }
+    if !cdp_alive && !has_agent_browser {
         p.push_str(NO_BROWSER_CAPABILITY_PROMPT);
     }
     p
@@ -408,14 +444,20 @@ mod tests {
 
     #[test]
     fn system_prompt_always_includes_base_and_browser_branch() {
-        // 不管装没装 agent-browser，system_prompt 都必须告诉 Claude 它的边界 ——
-        // 装了 → BROWSER_CAPABILITY_PROMPT；没装 → NO_BROWSER_CAPABILITY_PROMPT
+        // 不管哪种状态，system_prompt 都必须告诉 Claude 它的"能 / 不能"边界。
+        // 三档：CDP 活着 / agent-browser 装了 / 都没有
         let p = system_prompt();
         assert!(p.starts_with("你是 MouseClaw 桌面助手"));
-        if find_binary("agent-browser").is_ok() {
+        let cdp_alive = crate::browser_bridge::cdp_is_alive();
+        let has_ab = find_binary("agent-browser").is_ok();
+        if cdp_alive {
+            assert!(p.contains("已连到用户实时 Chrome"));
+        }
+        if has_ab {
             assert!(p.contains("agent-browser 已就绪"));
-        } else {
-            assert!(p.contains("未装 agent-browser"));
+        }
+        if !cdp_alive && !has_ab {
+            assert!(p.contains("未启用"));
         }
     }
 

@@ -104,6 +104,30 @@ pub fn get_skin() -> String {
     config::Config::load().skin.as_str().to_string()
 }
 
+/// P0a · 一键启用浏览器自动化：注册 MCP + 启动带 CDP 的 Chrome。
+/// 用户在托盘或 onboarding 里点这个。
+#[tauri::command]
+pub fn enable_browser_automation() -> Result<(), String> {
+    crate::browser_bridge::enable().map_err(|e| format!("{e:#}"))
+}
+
+/// 查询当前各能力的就绪状态 —— 托盘 / health UI 用。
+#[derive(serde::Serialize)]
+pub struct CapabilityStatus {
+    pub claude_cli: bool,
+    pub agent_browser: bool,
+    pub chrome_cdp: bool,
+}
+
+#[tauri::command]
+pub fn capability_status() -> CapabilityStatus {
+    CapabilityStatus {
+        claude_cli: crate::claude_cli::find_binary("claude").is_ok(),
+        agent_browser: crate::claude_cli::find_binary("agent-browser").is_ok(),
+        chrome_cdp: crate::browser_bridge::cdp_is_alive(),
+    }
+}
+
 /// 取消当前 pipeline（cancel_pipeline）—— bump gen + 隐藏 overlay。
 #[tauri::command]
 pub fn cancel_pipeline(app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<(), String> {

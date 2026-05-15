@@ -88,11 +88,21 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
         app, "skin-submenu", "🎨 换个桌宠", true, &skin_refs,
     )?;
 
+    // 浏览器自动化标签 —— 根据当前 CDP 状态显示「启用 / 已启用 ✓」
+    let cdp_alive = crate::browser_bridge::cdp_is_alive();
+    let browser_label = if cdp_alive {
+        "🌐 浏览器自动化：已启用 ✓"
+    } else {
+        "🌐 启用浏览器自动化…"
+    };
+    let browser_item = MenuItem::with_id(app, "enable-browser", browser_label, true, None::<&str>)?;
+
     let about   = MenuItem::with_id(app, "about",   "ℹ️  关于 MouseClaw", true, None::<&str>)?;
     let sep1    = PredefinedMenuItem::separator(app)?;
+    let sep2    = PredefinedMenuItem::separator(app)?;
     let quit    = MenuItem::with_id(app, "quit",    "退出 MouseClaw",     true, Some("CmdOrCtrl+Q"))?;
 
-    let menu = Menu::with_items(app, &[&summon, &history, &skin_submenu, &sep1, &about, &quit])?;
+    let menu = Menu::with_items(app, &[&summon, &history, &skin_submenu, &sep1, &browser_item, &sep2, &about, &quit])?;
     let icon = build_template_icon();
 
     TrayIconBuilder::with_id("main-tray")
@@ -126,11 +136,45 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
         return;
     }
     match id {
-        "summon"  => summon_via_tray(app),
-        "history" => open_history_window(app),
-        "about"   => open_about_dialog(app),
-        "quit"    => app.exit(0),
+        "summon"          => summon_via_tray(app),
+        "history"         => open_history_window(app),
+        "about"           => open_about_dialog(app),
+        "enable-browser"  => enable_browser_automation(app),
+        "quit"            => app.exit(0),
         _ => {}
+    }
+}
+
+/// 托盘点「启用浏览器自动化」—— 注册 chrome-devtools MCP + 启动带 CDP 的 Chrome。
+/// 成功后弹一个 webview 通知窗口（about 复用风格）告诉用户「下次提问就能用了」。
+fn enable_browser_automation(app: &AppHandle) {
+    use tauri::Emitter;
+    println!("[mouseclaw] 🌐 启用浏览器自动化（一键）…");
+    match crate::browser_bridge::enable() {
+        Ok(()) => {
+            println!("[mouseclaw] ✓ 浏览器自动化已就绪 (CDP {} + chrome-devtools MCP)",
+                     crate::browser_bridge::CDP_PORT);
+            // 通过 view-changed 让 overlay 弹一个友好提示（4s 自动隐藏）
+            for (_, w) in app.webview_windows() {
+                let _ = w.emit(crate::events::EV_VIEW_CHANGED, serde_json::json!({
+                    "kind": "reply",
+                    "transcript": "启用浏览器自动化",
+                    "reply": "✅ Chrome 已连上 —— 下次提问可以让我直接操作你的浏览器了。\n\
+                              提示：debug profile 在首次使用前请登录一下要操作的网站。",
+                    "mode": "A",
+                    "streaming": false,
+                }));
+            }
+        }
+        Err(e) => {
+            eprintln!("[mouseclaw] ✘ 启用浏览器自动化失败: {e:#}");
+            for (_, w) in app.webview_windows() {
+                let _ = w.emit(crate::events::EV_VIEW_CHANGED, serde_json::json!({
+                    "kind": "blocked",
+                    "reason": format!("启用失败：{e:#}"),
+                }));
+            }
+        }
     }
 }
 
