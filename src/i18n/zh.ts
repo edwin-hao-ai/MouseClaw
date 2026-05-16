@@ -20,6 +20,8 @@ export const zh: Strings = {
   "bubble.listening": "听着呢…",
   "bubble.thinking": "正在思考",
   "bubble.session_chip": "🔗 续 Session #{id} · 第 {turn} 轮",
+  "bubble.new_session": "新对话",
+  "bubble.error_prefix": "⛔ ",
 
   // Onboarding
   "onboarding.welcome.title": "嘿，我是鼠标龙虾 🦞",

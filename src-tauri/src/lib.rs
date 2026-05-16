@@ -15,6 +15,7 @@ pub mod audio;
 pub mod backend;
 pub mod browser_bridge;
 pub mod claude_cli;
+pub mod clipboard;
 pub mod cursor_follow;
 pub mod commands;
 pub mod config;
@@ -45,10 +46,20 @@ use crate::sessions::SessionStore;
 /// App-wide state. Mutex split: tokio::Mutex for async-accessed bits,
 /// std::Mutex for the cpal Recorder (cpal::Stream is !Send so we never await
 /// while holding the recorder lock).
+/// 「💬 继续追问」按钮 → 新开 Panel 窗口时携带的对话上下文
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PendingPanelContext {
+    pub session_id: u64,
+    pub transcript: String,
+    pub reply: String,
+}
+
 pub struct AppState {
     pub sessions: Mutex<SessionStore>,
     pub last_screenshot: Mutex<Option<std::path::PathBuf>>,
     pub recorder: StdMutex<Option<audio::Recorder>>,
+    /// One-shot panel context —— open_panel_window 写入，前端 take_panel_context 取走 + 清空
+    pub pending_panel_context: StdMutex<Option<PendingPanelContext>>,
     /// 当前选用的 AI 后端 —— pipeline 每次调用前 .lock().await.clone() 读取。
     /// 启动时从 config 灌入；运行期不变（改后端要重新 onboard + 重启）。
     pub backend: Mutex<Backend>,
@@ -67,6 +78,7 @@ impl AppState {
             sessions: Mutex::new(SessionStore::new()?),
             last_screenshot: Mutex::new(None),
             recorder: StdMutex::new(None),
+            pending_panel_context: StdMutex::new(None),
             backend: Mutex::new(backend),
             gen: AtomicU64::new(0),
             follow_cursor: AtomicBool::new(false),
@@ -192,6 +204,13 @@ pub fn run() {
             commands::get_whisper_model,
             commands::save_language,
             commands::get_language,
+            commands::list_clipboard,
+            commands::delete_clipboard_item,
+            commands::toggle_clipboard_pin,
+            commands::clear_clipboard,
+            commands::paste_clipboard_item,
+            commands::open_panel_window,
+            commands::take_panel_context,
         ])
         .setup(move |app| {
             set_accessory_activation_policy();
@@ -202,6 +221,9 @@ pub fn run() {
             // Tray always available (escape valve before/during onboarding)
             // v0.1.8 启动 cursor-follow 后台任务（30fps；由 AtomicBool 控制开 / 关）
             cursor_follow::spawn_follow_loop(app.handle().clone(), app_state.clone());
+
+            // v0.2 启动剪贴板历史捕获 —— 500ms 轮询 changeCount
+            clipboard::spawn_capture_loop();
 
             if let Err(e) = tray::setup(&app.handle()) {
                 eprintln!("[mouseclaw] tray setup failed: {e:#}");

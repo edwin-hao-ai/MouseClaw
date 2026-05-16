@@ -61,6 +61,36 @@ created_by: agent
 
 ---
 
+## i18n：所有用户可见文案必须走翻译表（硬规则 · v0.1.9+）
+
+任何新功能涉及**用户可见的字符串**（标题/按钮/提示/错误/工具提示/菜单文字/对话气泡）必须按以下流程：
+
+### 必做
+1. **前端字符串**：先在 `src/i18n/zh.ts` 加 key + 中文 → 同步在 `src/i18n/en.ts` 加同 key 的英文 → 组件用 `useT()` hook 调用 `t("your.key")`
+2. **类型校验**：所有 key 必须先在 `src/i18n/types.ts` 的 `Strings` interface 里声明 —— 写错 key TS 编译期就报错（这是设计意图）
+3. **Rust 端用户可见字符串**：托盘菜单标签、emit 给前端的 reply/blocked 文案，按 `current_lang` 双语切换（参考 `tray.rs::setup` 里 `s_summon` 等变量的写法）
+4. **支持插值**：变量插到字符串里用 `t("key", { name: "Edwin" })`，对应 zh/en 文件写 `"你好 {name}"` / `"Hi {name}"`
+
+### 反例（PR 拒绝）
+- ❌ 直接在 JSX 写 `<h1>系统状态</h1>` —— 必须 `<h1>{t("status.title")}</h1>`
+- ❌ Rust 里 hardcode `MenuItem::with_id(app, "x", "关于 MouseClaw", ...)` —— 必须按 `current_lang` 分支
+- ❌ 加 key 只更新 zh.ts 不更新 en.ts —— TS 编译会报 `Strings` 接口缺字段
+
+### 加新语言（比如未来加日语）
+1. 新建 `src/i18n/ja.ts`，导出 `const ja: Strings = { ... }`（所有 key 必须齐全，否则 TS 编译失败）
+2. `src/i18n/index.ts` 的 `LANGUAGES` 数组加 `{ id: "ja", label: "日本語", strings: ja }`
+3. `LangId` 类型加 `"ja"`
+4. Rust `save_language` 的 `allowed` 数组加 `"ja"`
+5. 托盘菜单 `tray.rs` 的双语 if-else 改成 match 三分支
+6. 完事
+
+### 例外（可不翻译）
+- 调试日志 / `println!` / `eprintln!` —— 英文为主，开发者看
+- 错误的 stack trace 原文（外部 CLI 抛回来的）—— 用 `friendly_backend_error()` 翻译已知模式即可
+- 代码里的 const 名 / 文件名 / git commit message
+
+> 这条规则因为 v0.1.9 用户反馈「想支持中英文 + 以后可能其他语言」而立。每次写新功能就当成本来就是双语项目 —— 后补成本远高于一开始就做。
+
 ## 代码组织：单文件 ≤ 800 行（硬规则）
 
 **任何源文件不得超过 800 行**，目标 200–400 行。超了就按职责拆模块。

@@ -167,6 +167,96 @@ pub fn get_language() -> String {
     config::Config::load().language
 }
 
+// ────────────────── Clipboard history (v0.2) ──────────────────
+
+#[tauri::command]
+pub fn list_clipboard() -> Vec<crate::clipboard::ClipItem> {
+    crate::clipboard::list_items()
+}
+
+#[tauri::command]
+pub fn delete_clipboard_item(id: u64) -> Result<(), String> {
+    crate::clipboard::delete_item(id).map_err(|e| format!("{e}"))
+}
+
+#[tauri::command]
+pub fn toggle_clipboard_pin(id: u64) -> Result<(), String> {
+    crate::clipboard::toggle_pin(id).map_err(|e| format!("{e}"))
+}
+
+#[tauri::command]
+pub fn clear_clipboard() -> Result<(), String> {
+    crate::clipboard::clear_all().map_err(|e| format!("{e}"))
+}
+
+/// 把某条剪贴板粘贴到当前光标 —— 复用 mode_b 的 paste_via_clipboard 路径。
+/// 流程：拿 text → spawn task → mode_b::write_at_cursor (clipboard fallback)
+#[tauri::command]
+pub async fn paste_clipboard_item(id: u64) -> Result<(), String> {
+    let text = crate::clipboard::get_text(id)
+        .ok_or_else(|| "条目不存在".to_string())?;
+    crate::mode_b::write_at_cursor(&text).await.map_err(|e| format!("{e}"))?;
+    Ok(())
+}
+
+// ────────────────── Panel window (v0.1.10) ──────────────────
+
+/// 「💬 继续追问」按钮 → 开一个独立的 720×560 Panel 窗口接管对话。
+/// 1. 把当前对话上下文塞进 AppState.pending_panel_context
+/// 2. 隐藏 overlay 窗口（mouse 那个透明小框）
+/// 3. 开 / 聚焦 panel webview window
+/// 前端 PanelView 挂载时 invoke `take_panel_context` 取出上下文 + 渲染
+#[tauri::command]
+pub fn open_panel_window(
+    session_id: u64,
+    transcript: String,
+    reply: String,
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    use tauri::WebviewWindowBuilder;
+    use tauri::WebviewUrl;
+
+    // 1. 存上下文
+    *state.pending_panel_context.lock().unwrap() = Some(crate::PendingPanelContext {
+        session_id, transcript, reply,
+    });
+
+    // 2. 隐藏 overlay —— 用户视觉焦点切到新窗口
+    crate::overlay::hide_overlay(&app);
+
+    // 3. 开 / 聚焦 panel 窗口
+    if let Some(w) = app.get_webview_window("panel") {
+        let _ = w.show();
+        let _ = w.set_focus();
+        // 已有窗口的话也要让它知道新上下文 —— emit 一下
+        use tauri::Emitter;
+        let _ = w.emit("panel-context-changed", ());
+        return Ok(());
+    }
+
+    let result = WebviewWindowBuilder::new(
+        &app, "panel",
+        WebviewUrl::App("index.html?view=panel".into()),
+    )
+    .title("MouseClaw — 继续追问")
+    .inner_size(720.0, 560.0)
+    .min_inner_size(480.0, 360.0)
+    .resizable(true).decorations(true).focused(true)
+    .build();
+
+    match result {
+        Ok(w) => { let _ = w.set_focus(); Ok(()) }
+        Err(e) => Err(format!("打开 panel 窗口失败：{e:#}")),
+    }
+}
+
+/// PanelView 挂载时调用 —— 取走一次性上下文 + 清空 state
+#[tauri::command]
+pub fn take_panel_context(state: State<'_, Arc<AppState>>) -> Option<crate::PendingPanelContext> {
+    state.pending_panel_context.lock().unwrap().take()
+}
+
 #[tauri::command]
 pub fn capability_status() -> CapabilityStatus {
     CapabilityStatus {

@@ -144,20 +144,15 @@ export default function App() {
     setContinuing(false);
   }, []);
 
-  // Must be declared BEFORE any early-return JSX below — React hooks rules
-  // require the same number of hook calls on every render, but early returns
-  // for panel/onboarding branches would have skipped this previously.
+  // v0.1.10：点「💬 继续追问」→ 开独立 720×560 Panel 窗口。
+  // 之前 inline 渲染到 320×320 overlay 里完全装不下，UI 全乱（用户实测反馈）。
   const handleExpand = useCallback(() => {
-    if (view.kind === "reply") {
-      setView({
-        kind: "panel",
-        sessionId: 1,
-        turns: [
-          { role: "user", text: view.transcript },
-          { role: "assistant", text: view.reply },
-        ],
-      });
-    }
+    if (view.kind !== "reply") return;
+    invoke("open_panel_window", {
+      sessionId: 1,
+      transcript: view.transcript,
+      reply: view.reply,
+    }).catch(e => console.warn("open_panel_window failed:", e));
   }, [view]);
 
   // ────────────────── Render ──────────────────
@@ -185,7 +180,7 @@ export default function App() {
 
   return (
     <div className="stage stage-mouse-bubble">
-      <BubbleFor view={view} continuing={continuing} onExpand={handleExpand} />
+      <BubbleFor view={view} continuing={continuing} onExpand={handleExpand} onNewSession={handleNewSession} />
       <div className="stage-mouse">
         <PixelMouse
           state={mouseStateFor(view)} skin={skin}
@@ -197,8 +192,8 @@ export default function App() {
   );
 }
 
-interface BubbleForProps { view: ViewKind; continuing: boolean; onExpand: () => void; }
-function BubbleFor({ view, continuing, onExpand }: BubbleForProps) {
+interface BubbleForProps { view: ViewKind; continuing: boolean; onExpand: () => void; onNewSession: () => void; }
+function BubbleFor({ view, continuing, onExpand, onNewSession }: BubbleForProps) {
   switch (view.kind) {
     case "idle":
       return null;
@@ -224,6 +219,7 @@ function BubbleFor({ view, continuing, onExpand }: BubbleForProps) {
           expandable={!streaming && long}
           onExpand={onExpand}
           sessionChip={continuing ? { sessionId: 42, turn: 2 } : undefined}
+          onNewSession={continuing ? onNewSession : undefined}
         />
       );
     }
