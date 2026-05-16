@@ -129,6 +129,13 @@ check "Hub CSS 存在"                              "test -f src/components/Hub.
 check "App.tsx 点桌宠开 Hub"                       "grep -q 'setHubOpen' src/App.tsx"
 check "Hub 用 list_clipboard"                     "grep -q 'list_clipboard' src/components/Hub.tsx"
 
+echo "── v0.1.11 · 分层 tidy（regex 默认开 + LLM opt-in）──"
+check "light_clean 函数存在"                       "grep -q 'pub fn light_clean' src-tauri/src/tidy_up.rs"
+check "ZH_FILLERS 包含口头禅"                       "grep -q 'ZH_FILLERS' src-tauri/src/tidy_up.rs"
+check "EN_FILLER_PATTERNS 用 regex"                  "grep -q 'EN_FILLER_PATTERNS' src-tauri/src/tidy_up.rs"
+check "pipeline 永远跑 light_clean"                  "grep -q 'tidy_up::light_clean' src-tauri/src/pipeline.rs"
+check "LLM tidy 默认关 (default false)"              "grep -q 'fn default_tidy_up.*bool.*false' src-tauri/src/config.rs"
+check "regex crate 已加"                             "grep -q '^regex' src-tauri/Cargo.toml"
 echo "── 构建 / 测试闸门 ──"
 check "前端 bun build 通过"                         "bun run build"
 check "Rust cargo check 通过"                       "cargo check --manifest-path src-tauri/Cargo.toml"

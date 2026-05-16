@@ -75,12 +75,12 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
         ("🦞 Summon", "📜 History…", "🎨 Change pet", "🎙️ Voice model",
          "🌐 Browser automation: enabled ✓", "🌐 Enable browser automation…",
          "📊 System status…", "ℹ️  About MouseClaw", "Quit MouseClaw", "🌐 Language",
-         "✨ Tidy up speech (LLM clean)")
+         "✨ LLM polish voice (+3–8s, off by default)")
     } else {
         ("🦞 召唤老鼠", "📜 查看历史记录…", "🎨 换个桌宠", "🎙️ 语音模型",
          "🌐 浏览器自动化：已启用 ✓", "🌐 启用浏览器自动化…",
          "📊 系统状态…", "ℹ️  关于 MouseClaw", "退出 MouseClaw", "🌐 语言",
-         "✨ 整理语音内容（LLM 清洗）")
+         "✨ LLM 精修语音（+3–8s，默认关）")
     };
 
     let summon  = MenuItem::with_id(app, "summon",  s_summon,  true, None::<&str>)?;
@@ -222,11 +222,17 @@ fn toggle_tidy_up(app: &AppHandle) {
     println!("[mouseclaw] ✨ tidy_up → {now_on}");
     let lang = cfg.language;
     let msg = if now_on {
-        if lang == "en" { "✨ Speech tidy-up: ON. Your voice will be cleaned before sending to AI." }
-        else { "✨ 语音整理：开。说完会自动去口头禅、加标点再发给 AI。" }
+        if lang == "en" {
+            "✨ LLM polish: ON. Voice will be cleaned by AI before sending (adds 3–8s latency, off by default for speed). Regex cleanup still always-on."
+        } else {
+            "✨ LLM 精修：开。说完会先过一次 AI 整理（多 3–8 秒延迟，默认关是为了流畅）。基础 regex 清理一直都在跑。"
+        }
     } else {
-        if lang == "en" { "✋ Speech tidy-up: OFF. Raw Whisper output will be used." }
-        else { "✋ 语音整理：关。直接用 Whisper 原文。" }
+        if lang == "en" {
+            "✋ LLM polish: OFF (default · faster). Regex light cleanup still runs (50ms) — filler words still removed."
+        } else {
+            "✋ LLM 精修：关（默认 · 更快）。Regex 轻量清理仍在跑（50ms），口头禅照样会被去掉。"
+        }
     };
     for (_, w) in app.webview_windows() {
         let _ = w.emit(crate::events::EV_VIEW_CHANGED, serde_json::json!({

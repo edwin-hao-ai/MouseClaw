@@ -288,28 +288,35 @@ pub async fn on_shortcut_release(app: AppHandle, state: Arc<AppState>) {
             hide_overlay(&app_clone);
             return;
         }
-        // v0.1.10 · Typeless 套路：Whisper 原文先过一次 LLM 清洗（去口头禅 + 加标点 + 修自我修正）
-        // 给 Claude 的 question 也变干净 → 回答更准；走 Mode B 写回光标的话用户看到的也是清版
+        // v0.1.10 · 双层 tidy：
+        //   Layer 1 light_clean (50ms, 永远开) —— regex 去口头禅 + 收敛标点
+        //   Layer 2 LLM tidy (3-8s, opt-in)   —— config.tidy_up_enabled 才走
+        // 默认只跑 Layer 1，保流畅；想要精修的用户开 Layer 2。
         tauri::async_runtime::spawn(async move {
             let cfg = crate::config::Config::load();
+
+            // Layer 1: 即时 light clean，无感
+            let light = crate::tidy_up::light_clean(&transcript, &cfg.language);
+            println!("[mouseclaw] transcript (light): {light:?}");
+
+            // Layer 2: opt-in LLM tidy
             let final_transcript = if cfg.tidy_up_enabled {
-                // 30ms 内告诉前端「整理中…」让用户感知；同时跑 tidy（≤5s 超时）
                 let _ = app_clone.emit(EV_VIEW_CHANGED, ViewKind::Thinking {
                     transcript: format!("（{}…）",
-                        if cfg.language == "en" { "tidying voice" } else { "整理语音" }),
+                        if cfg.language == "en" { "polishing voice" } else { "精修语音" }),
                 });
-                match crate::tidy_up::tidy(&transcript, cfg.backend, &cfg.language).await {
+                match crate::tidy_up::tidy(&light, cfg.backend, &cfg.language).await {
                     Ok(cleaned) => {
-                        println!("[mouseclaw] transcript (tidied): {cleaned:?}");
+                        println!("[mouseclaw] transcript (LLM tidied): {cleaned:?}");
                         cleaned
                     }
                     Err(e) => {
-                        eprintln!("[mouseclaw] tidy 失败，用原文: {e}");
-                        transcript
+                        eprintln!("[mouseclaw] LLM tidy 失败，用 light 版兜底: {e}");
+                        light
                     }
                 }
             } else {
-                transcript
+                light
             };
             run_pipeline(final_transcript, app_clone, state_clone).await;
         });
