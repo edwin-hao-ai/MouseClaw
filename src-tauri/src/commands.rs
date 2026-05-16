@@ -72,6 +72,7 @@ pub fn save_shortcut(
         whisper_model: prev.whisper_model,
         language: prev.language,
         tidy_up_enabled: prev.tidy_up_enabled,
+        voice_ime_enabled: prev.voice_ime_enabled,
         onboarded: true,
         version: config::CURRENT_CONFIG_VERSION,
     };
@@ -181,6 +182,21 @@ pub fn save_tidy_up(enabled: bool) -> Result<(), String> {
 #[tauri::command]
 pub fn get_tidy_up() -> bool {
     config::Config::load().tidy_up_enabled
+}
+
+/// 切换 voice IME（fn 长按写到光标）
+#[tauri::command]
+pub fn save_voice_ime(enabled: bool) -> Result<(), String> {
+    let mut cfg = config::Config::load();
+    cfg.voice_ime_enabled = enabled;
+    cfg.save().map_err(|e| format!("保存失败：{e}"))?;
+    crate::voice_ime::set_enabled(enabled);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_voice_ime() -> bool {
+    config::Config::load().voice_ime_enabled
 }
 
 // ────────────────── Clipboard history (v0.2) ──────────────────
