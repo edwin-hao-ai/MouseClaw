@@ -283,13 +283,35 @@ pub async fn on_shortcut_release(app: AppHandle, state: Arc<AppState>) {
                 return;
             }
         };
-        println!("[mouseclaw] transcript: {transcript:?}");
+        println!("[mouseclaw] transcript (raw): {transcript:?}");
         if transcript.is_empty() {
             hide_overlay(&app_clone);
             return;
         }
+        // v0.1.10 · Typeless 套路：Whisper 原文先过一次 LLM 清洗（去口头禅 + 加标点 + 修自我修正）
+        // 给 Claude 的 question 也变干净 → 回答更准；走 Mode B 写回光标的话用户看到的也是清版
         tauri::async_runtime::spawn(async move {
-            run_pipeline(transcript, app_clone, state_clone).await;
+            let cfg = crate::config::Config::load();
+            let final_transcript = if cfg.tidy_up_enabled {
+                // 30ms 内告诉前端「整理中…」让用户感知；同时跑 tidy（≤5s 超时）
+                let _ = app_clone.emit(EV_VIEW_CHANGED, ViewKind::Thinking {
+                    transcript: format!("（{}…）",
+                        if cfg.language == "en" { "tidying voice" } else { "整理语音" }),
+                });
+                match crate::tidy_up::tidy(&transcript, cfg.backend, &cfg.language).await {
+                    Ok(cleaned) => {
+                        println!("[mouseclaw] transcript (tidied): {cleaned:?}");
+                        cleaned
+                    }
+                    Err(e) => {
+                        eprintln!("[mouseclaw] tidy 失败，用原文: {e}");
+                        transcript
+                    }
+                }
+            } else {
+                transcript
+            };
+            run_pipeline(final_transcript, app_clone, state_clone).await;
         });
     });
 }

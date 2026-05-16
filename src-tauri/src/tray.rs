@@ -71,14 +71,16 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let en = current_lang == "en";
 
     let (s_summon, s_history, s_skin, s_model, s_browser_on, s_browser_off,
-         s_status, s_about, s_quit, s_lang_menu) = if en {
+         s_status, s_about, s_quit, s_lang_menu, s_tidy) = if en {
         ("🦞 Summon", "📜 History…", "🎨 Change pet", "🎙️ Voice model",
          "🌐 Browser automation: enabled ✓", "🌐 Enable browser automation…",
-         "📊 System status…", "ℹ️  About MouseClaw", "Quit MouseClaw", "🌐 Language")
+         "📊 System status…", "ℹ️  About MouseClaw", "Quit MouseClaw", "🌐 Language",
+         "✨ Tidy up speech (LLM clean)")
     } else {
         ("🦞 召唤老鼠", "📜 查看历史记录…", "🎨 换个桌宠", "🎙️ 语音模型",
          "🌐 浏览器自动化：已启用 ✓", "🌐 启用浏览器自动化…",
-         "📊 系统状态…", "ℹ️  关于 MouseClaw", "退出 MouseClaw", "🌐 语言")
+         "📊 系统状态…", "ℹ️  关于 MouseClaw", "退出 MouseClaw", "🌐 语言",
+         "✨ 整理语音内容（LLM 清洗）")
     };
 
     let summon  = MenuItem::with_id(app, "summon",  s_summon,  true, None::<&str>)?;
@@ -136,6 +138,11 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
           &lang_en as &dyn tauri::menu::IsMenuItem<tauri::Wry>],
     )?;
 
+    // Tidy-up toggle —— Typeless 套路 LLM 清洗
+    let current_tidy = crate::config::Config::load().tidy_up_enabled;
+    let tidy_item = CheckMenuItem::with_id(app, "toggle-tidy", s_tidy,
+        true, current_tidy, None::<&str>)?;
+
     let status  = MenuItem::with_id(app, "status",  s_status,     true, None::<&str>)?;
     let about   = MenuItem::with_id(app, "about",   s_about, true, None::<&str>)?;
     let sep1    = PredefinedMenuItem::separator(app)?;
@@ -145,7 +152,7 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &[
         &summon, &history,
         &skin_submenu, &model_submenu, &lang_submenu,
-        &sep1, &browser_item, &status,
+        &sep1, &tidy_item, &browser_item, &status,
         &sep2, &about, &quit,
     ])?;
     let icon = build_template_icon();
@@ -196,8 +203,39 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
         "about"           => open_about_dialog(app),
         "enable-browser"  => enable_browser_automation(app),
         "status"          => open_status_window(app),
+        "toggle-tidy"     => toggle_tidy_up(app),
         "quit"            => app.exit(0),
         _ => {}
+    }
+}
+
+/// 切换 tidy-up（语音清洗）开关 —— 托盘 CheckMenuItem 调它
+fn toggle_tidy_up(app: &AppHandle) {
+    use tauri::Emitter;
+    let mut cfg = crate::config::Config::load();
+    cfg.tidy_up_enabled = !cfg.tidy_up_enabled;
+    let now_on = cfg.tidy_up_enabled;
+    if let Err(e) = cfg.save() {
+        eprintln!("[mouseclaw] toggle_tidy_up save: {e}");
+        return;
+    }
+    println!("[mouseclaw] ✨ tidy_up → {now_on}");
+    let lang = cfg.language;
+    let msg = if now_on {
+        if lang == "en" { "✨ Speech tidy-up: ON. Your voice will be cleaned before sending to AI." }
+        else { "✨ 语音整理：开。说完会自动去口头禅、加标点再发给 AI。" }
+    } else {
+        if lang == "en" { "✋ Speech tidy-up: OFF. Raw Whisper output will be used." }
+        else { "✋ 语音整理：关。直接用 Whisper 原文。" }
+    };
+    for (_, w) in app.webview_windows() {
+        let _ = w.emit(crate::events::EV_VIEW_CHANGED, serde_json::json!({
+            "kind": "reply",
+            "transcript": "tidy-up toggle",
+            "reply": msg,
+            "mode": "A",
+            "streaming": false,
+        }));
     }
 }
 

@@ -77,22 +77,37 @@ fn ensure_loaded() -> Result<()> {
     Ok(())
 }
 
-/// Run Whisper on 16 kHz mono f32 samples and return the transcription text.
-/// Forces Chinese language detection but accepts mixed English content.
+/// Whisper 转写 —— 16kHz mono f32 samples → 文本。
+///
+/// v0.1.10 改进（用户反馈：中文识别出来是繁体 + 语言固定 zh 写死）：
+///   1. 跟用户 i18n 语言：zh → "zh" + 简体引导 prompt；en → "en"
+///   2. 简体中文 trick：Whisper 只有一个 "zh" 标签（无 zh-Hans/Hant 分），
+///      `initial_prompt = "以下是普通话的句子。"` 在生态里被验证能稳定偏向简体输出
+///      （社区方案，见 whisper.cpp issue #1450）
 pub fn transcribe(samples: &[f32]) -> Result<String> {
     ensure_loaded()?;
     let guard = CONTEXT.lock().unwrap();
     let (_, ctx) = guard.as_ref().ok_or_else(|| anyhow!("Whisper context not loaded"))?;
 
+    // 从 config 读用户当前 UI 语言 → 决定 Whisper 语言
+    // 用户切到 English 就用英文模型路径；中文用 zh + 简体 prompt
+    let ui_lang = crate::config::Config::load().language;
+    let (lang_code, init_prompt): (&str, Option<&str>) = match ui_lang.as_str() {
+        "en" => ("en", None),
+        _    => ("zh", Some("以下是普通话的句子。")),
+    };
+
     let mut state = ctx.create_state().context("create_state")?;
     let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-    params.set_language(Some("zh"));
+    params.set_language(Some(lang_code));
+    if let Some(prompt) = init_prompt {
+        params.set_initial_prompt(prompt);
+    }
     params.set_translate(false);
     params.set_print_special(false);
     params.set_print_progress(false);
     params.set_print_realtime(false);
     params.set_print_timestamps(false);
-    // Reasonable speed/quality default
     params.set_n_threads(4);
 
     state.full(params, samples).context("whisper full() failed")?;

@@ -27,6 +27,7 @@ pub mod pipeline;
 pub mod screenshot;
 pub mod sessions;
 pub mod skins;
+pub mod tidy_up;
 pub mod transcribe;
 pub mod tray;
 
@@ -211,6 +212,8 @@ pub fn run() {
             commands::paste_clipboard_item,
             commands::open_panel_window,
             commands::take_panel_context,
+            commands::save_tidy_up,
+            commands::get_tidy_up,
         ])
         .setup(move |app| {
             set_accessory_activation_policy();

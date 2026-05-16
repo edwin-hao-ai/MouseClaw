@@ -14,6 +14,7 @@ import { PixelMouse, type MouseState } from "./components/PixelMouse";
 import { Bubble } from "./components/Bubble";
 import { Panel } from "./components/Panel";
 import { RecordingBubble } from "./components/RecordingBubble";
+import { Hub } from "./components/Hub";
 import { EV_VIEW_CHANGED, EV_SKIN_CHANGED, type ViewKind, type SkinId } from "./types";
 import { DEFAULT_SKIN } from "./skins";
 
@@ -44,6 +45,8 @@ export default function App() {
   const [continuing, setContinuing] = useState(false);
   // 当前桌宠皮肤 —— 启动读 config，运行期托盘换皮可热切换（不重启）
   const [skin, setSkin] = useState<SkinId>(DEFAULT_SKIN);
+  // v0.1.10 · 点击桌宠 → Hub 面板（剪贴板 + AI 历史）
+  const [hubOpen, setHubOpen] = useState(false);
 
   // 启动时从 Rust 读当前皮肤（避免闪一下默认 classic 再切换）
   useEffect(() => {
@@ -180,10 +183,19 @@ export default function App() {
 
   return (
     <div className="stage stage-mouse-bubble">
-      <BubbleFor view={view} continuing={continuing} onExpand={handleExpand} onNewSession={handleNewSession} />
-      <div className="stage-mouse">
+      {hubOpen ? (
+        <Hub onClose={() => setHubOpen(false)} />
+      ) : (
+        <BubbleFor view={view} continuing={continuing} onExpand={handleExpand} onNewSession={handleNewSession} />
+      )}
+      <div className="stage-mouse" onClick={() => {
+        // 点桌宠开 Hub —— 但仅在空闲 / 回复完态。录音 / 思考时点不做事
+        if (view.kind === "idle" || view.kind === "reply" || view.kind === "blocked") {
+          setHubOpen(v => !v);
+        }
+      }} style={{ cursor: "pointer" }}>
         <PixelMouse
-          state={mouseStateFor(view)} skin={skin}
+          state={hubOpen ? "think" : mouseStateFor(view)} skin={skin}
           size={view.kind === "idle" ? 64 : 96}
           continuing={continuing}
         />
