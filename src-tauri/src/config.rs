@@ -92,7 +92,8 @@ impl WhisperModel {
 ///   v8 → v9: 新增 language 字段（i18n · zh / en），默认 zh
 ///   v9 → v10: 新增 tidy_up_enabled（Typeless 套路），默认 false
 ///   v10 → v11: 新增 voice_ime_enabled（长按 fn 写到光标），默认 true
-pub const CURRENT_CONFIG_VERSION: u32 = 11;
+///   v11 → v12: 新增 voice_ime_trigger（可选 fn/option/control/right-*），默认 fn
+pub const CURRENT_CONFIG_VERSION: u32 = 12;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -122,6 +123,11 @@ pub struct Config {
     /// 默认开 —— 用户长按 fn 才触发，短按 fn 仍走 macOS 原生行为
     #[serde(default = "default_voice_ime")]
     pub voice_ime_enabled: bool,
+    /// voice IME 的触发键 —— v0.1.12 可在 Onboarding/托盘选
+    /// 取值："fn" / "option" / "control" / "right-shift" / "right-command" / "right-option"
+    /// 默认 fn —— 兼容老 config
+    #[serde(default = "default_voice_ime_trigger")]
+    pub voice_ime_trigger: String,
     /// Set to true the first time the user completes Onboarding. Until then,
     /// the app doesn't register a global shortcut — clicking the tray or
     /// launching the app re-opens the Onboarding window instead.
@@ -141,6 +147,7 @@ fn default_language() -> String { "zh".into() }
 // 用户托盘菜单可一键开。
 fn default_tidy_up() -> bool { false }
 fn default_voice_ime() -> bool { true }
+fn default_voice_ime_trigger() -> String { "fn".into() }
 
 impl Default for Config {
     fn default() -> Self {
@@ -152,6 +159,7 @@ impl Default for Config {
             language: default_language(),
             tidy_up_enabled: default_tidy_up(),
             voice_ime_enabled: default_voice_ime(),
+            voice_ime_trigger: default_voice_ime_trigger(),
             onboarded: false,
             version: CURRENT_CONFIG_VERSION,
         }

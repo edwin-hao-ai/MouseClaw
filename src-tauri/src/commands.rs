@@ -73,6 +73,7 @@ pub fn save_shortcut(
         language: prev.language,
         tidy_up_enabled: prev.tidy_up_enabled,
         voice_ime_enabled: prev.voice_ime_enabled,
+        voice_ime_trigger: prev.voice_ime_trigger,
         onboarded: true,
         version: config::CURRENT_CONFIG_VERSION,
     };
@@ -197,6 +198,26 @@ pub fn save_voice_ime(enabled: bool) -> Result<(), String> {
 #[tauri::command]
 pub fn get_voice_ime() -> bool {
     config::Config::load().voice_ime_enabled
+}
+
+/// 设置 voice IME 触发键
+#[tauri::command]
+pub fn save_voice_ime_trigger(trigger: String) -> Result<(), String> {
+    // 校验是已知值
+    let allowed = ["fn", "option", "control", "right-shift", "right-command", "right-option"];
+    if !allowed.contains(&trigger.as_str()) {
+        return Err(format!("未知 trigger: {trigger}（允许 {:?}）", allowed));
+    }
+    let mut cfg = config::Config::load();
+    cfg.voice_ime_trigger = trigger.clone();
+    cfg.save().map_err(|e| format!("保存失败：{e}"))?;
+    crate::voice_ime::set_trigger(crate::voice_ime::ImeTrigger::from_str(&trigger));
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_voice_ime_trigger() -> String {
+    config::Config::load().voice_ime_trigger
 }
 
 // ────────────────── Clipboard history (v0.2) ──────────────────

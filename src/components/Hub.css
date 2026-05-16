@@ -169,3 +169,23 @@
   cursor: pointer;
 }
 .hub-clear:hover { background: rgba(232,99,140,.2); }
+
+/* v0.1.12 · 右键菜单 */
+.hub-ctx {
+  background: #fff; border: 1px solid var(--line, #ece6dd);
+  border-radius: 8px; padding: 4px;
+  box-shadow: 0 8px 24px rgba(43,38,34,.18);
+  display: flex; flex-direction: column;
+  min-width: 140px;
+  z-index: 10000;
+  animation: hub-in .15s ease;
+  font-size: 12.5px;
+}
+.hub-ctx button {
+  border: 0; background: transparent;
+  text-align: left; padding: 6px 10px; border-radius: 5px;
+  cursor: pointer; font: inherit; color: var(--ink, #2b2622);
+}
+.hub-ctx button:hover {
+  background: rgba(232,99,140,.12); color: var(--accent-primary, #e8638c);
+}

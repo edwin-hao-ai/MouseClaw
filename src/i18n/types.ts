@@ -46,6 +46,18 @@ export interface Strings {
   "onboarding.step.backend": string;
   "onboarding.step.skin": string;
   "onboarding.step.permissions": string;
+  "onboarding.step.voice_ime": string;
+  "onboarding.voice_ime.title": string;
+  "onboarding.voice_ime.subtitle": string;
+  "onboarding.voice_ime.tip": string;
+  "onboarding.voice_ime.disabled": string;
+  "onboarding.cta.next_voice_ime": string;
+  "vime.trigger.fn": string;
+  "vime.trigger.option": string;
+  "vime.trigger.control": string;
+  "vime.trigger.right-shift": string;
+  "vime.trigger.right-command": string;
+  "vime.trigger.right-option": string;
   "onboarding.shortcut.title": string;
   "onboarding.shortcut.hint": string;
   "onboarding.shortcut.zero_conflict": string;
@@ -129,6 +141,8 @@ export interface Strings {
   "hub.unpin": string;
   "hub.clear": string;
   "hub.foot.paste": string;
+  "hub.copy_only": string;
+  "hub.delete": string;
 
   // ── 语言切换 ──
   "lang.zh": string;

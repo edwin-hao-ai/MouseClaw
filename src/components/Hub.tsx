@@ -159,6 +159,27 @@ export function Hub({ onClose }: HubProps) {
     setClips(c => c.map(x => x.id === id ? { ...x, pinned: !x.pinned } : x));
   };
 
+  // 右键菜单：标星 / 复制回剪贴板 / 删除
+  const [ctxMenu, setCtxMenu] = useState<{ id: number; x: number; y: number } | null>(null);
+  useEffect(() => {
+    const onClick = () => setCtxMenu(null);
+    window.addEventListener("click", onClick);
+    return () => window.removeEventListener("click", onClick);
+  }, []);
+  const handleContextMenu = (e: React.MouseEvent, id: number) => {
+    e.preventDefault();
+    setCtxMenu({ id, x: e.clientX, y: e.clientY });
+  };
+  const handleCopyOnly = async (id: number) => {
+    // 把文本写回剪贴板（不粘贴），让用户自己 ⌘V 到任意地方
+    const it = clips.find(c => c.id === id);
+    if (!it) return;
+    try {
+      await navigator.clipboard.writeText(it.text);
+      onClose();
+    } catch (e) { console.warn(e); }
+  };
+
   const handleClear = async () => {
     if (!confirm(lang === "en"
       ? "Clear all clipboard history? Pinned items will also be removed."
@@ -201,7 +222,8 @@ export function Hub({ onClose }: HubProps) {
           return (
             <div key={c.id}
                  className={`hub-item ${i === activeIdx ? "active" : ""}`}
-                 onClick={() => handlePaste(c.id)}>
+                 onClick={() => handlePaste(c.id)}
+                 onContextMenu={(e) => handleContextMenu(e, c.id)}>
               <div className="hub-item-icon" style={{ background: k.bg }}>{k.icon}</div>
               <div className="hub-item-body">
                 <div className="hub-item-text">{c.text.replace(/\n/g, " ⏎ ")}</div>
@@ -237,6 +259,23 @@ export function Hub({ onClose }: HubProps) {
         ))}
       </div>
 
+      {ctxMenu && (
+        <div className="hub-ctx" style={{ position: "fixed", left: ctxMenu.x, top: ctxMenu.y }}
+             onClick={e => e.stopPropagation()}>
+          <button onClick={() => { handlePaste(ctxMenu.id); setCtxMenu(null); }}>
+            {t("hub.foot.paste")}
+          </button>
+          <button onClick={() => { handleCopyOnly(ctxMenu.id); setCtxMenu(null); }}>
+            {t("hub.copy_only")}
+          </button>
+          <button onClick={(e) => { handlePin(ctxMenu.id, e); setCtxMenu(null); }}>
+            {clips.find(x => x.id === ctxMenu.id)?.pinned ? t("hub.unpin") : t("hub.pin")}
+          </button>
+          <button onClick={(e) => { handleDelete(ctxMenu.id, e); setCtxMenu(null); }}>
+            {t("hub.delete")}
+          </button>
+        </div>
+      )}
       <div className="hub-footer">
         <span><kbd>↑↓</kbd> · <kbd>↵</kbd> {t("hub.foot.paste")} · <kbd>⌘1..9</kbd> · <kbd>Esc</kbd></span>
         {tab === "clipboard" && clips.length > 0 && (

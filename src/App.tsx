@@ -55,6 +55,18 @@ export default function App() {
       .catch(() => { /* 浏览器 dev 模式 invoke 不可用 */ });
   }, []);
 
+  // v0.1.12 · ⌘⇧V → 打开 Hub 剪贴板 tab
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    try {
+      const p = listen<string>("open-hub", () => {
+        setHubOpen(true);
+      });
+      p.then((fn) => { unlisten = fn; }).catch(() => {});
+    } catch { /* dev */ }
+    return () => { if (unlisten) unlisten(); };
+  }, []);
+
   // 托盘菜单换皮肤 → Rust 广播 skin-changed → 实时切换，不重启
   useEffect(() => {
     let unlisten: (() => void) | null = null;
