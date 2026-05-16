@@ -36,6 +36,8 @@ export interface Strings {
   "bubble.listening": string;              // "听着呢…"
   "bubble.thinking": string;               // "正在思考"
   "bubble.session_chip": string;           // "🔗 续 Session #{id} · 第 {turn} 轮"
+  "bubble.new_session": string;            // "新对话"
+  "bubble.error_prefix": string;           // "⛔ "
 
   // ── Onboarding ──
   "onboarding.welcome.title": string;

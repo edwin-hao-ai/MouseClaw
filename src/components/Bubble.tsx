@@ -46,12 +46,15 @@ interface BubbleProps {
   scrollable?: boolean;
   /** 渲染为 markdown (v0.1.9)；流式中也可开，半完整 markdown marked 会兜底 */
   markdown?: boolean;
+  /** session chip 旁边显示一个「✨新对话」按钮 (v0.1.9 UX 改进) */
+  onNewSession?: () => void;
 }
 
 export function Bubble({
   text, variant = "default", streaming = false,
   expandable = false, onExpand,
   sessionChip, voiceBars, loading = false, scrollable = false, markdown = false,
+  onNewSession,
 }: BubbleProps) {
   const t = useT();
   // markdown 解析结果 —— 流式期间每个 chunk 都重 parse 是 OK 的（marked 很快）
@@ -64,7 +67,18 @@ export function Bubble({
     <div className={`bubble bubble-${variant}`} role="status" aria-live="polite">
       {sessionChip && (
         <div className="bubble-chip">
-          {t("bubble.session_chip", { id: sessionChip.sessionId, turn: sessionChip.turn })}
+          <span>{t("bubble.session_chip", { id: sessionChip.sessionId, turn: sessionChip.turn })}</span>
+          {onNewSession && (
+            <button
+              type="button"
+              className="bubble-chip-newsession"
+              onClick={onNewSession}
+              title={t("bubble.new_session")}
+              aria-label={t("bubble.new_session")}
+            >
+              ✨ {t("bubble.new_session")}
+            </button>
+          )}
         </div>
       )}
       <div className={`bubble-body ${scrollable ? "bubble-scroll" : ""}`}>
@@ -79,12 +93,13 @@ export function Bubble({
           </span>
         )}
         {loading && (
-          <span className="loading-dots" aria-label="思考中" role="status">
+          <span className="loading-dots" aria-label={t("bubble.thinking")} role="status">
             <span /><span /><span />
           </span>
         )}
         {streaming && <span className="stream-cursor" aria-hidden>▮</span>}
       </div>
+      {loading && <span className="bubble-shimmer" aria-hidden />}
       {expandable && (
         <button
           type="button"

@@ -49,7 +49,7 @@
 .bubble-warn    { background: var(--bubble-warn-bg); }
 .bubble-danger  { background: var(--bubble-danger-bg); color: var(--text-danger); }
 
-/* Pointer triangle */
+/* Pointer triangle —— 普通短气泡用 */
 .bubble::after {
   content: "";
   position: absolute;
@@ -62,18 +62,46 @@
   border-right: 1px solid var(--bubble-border);
   border-bottom: 1px solid var(--bubble-border);
 }
-.bubble-success::after { background: #ffffff; }
-.bubble-warn::after    { background: #ffffff; }
-.bubble-danger::after  { background: #ffffff; }
+.bubble-success::after { background: var(--bubble-success-bg, #f3fbf6); }
+.bubble-warn::after    { background: var(--bubble-warn-bg, #fff7e6); }
+.bubble-danger::after  { background: var(--bubble-danger-bg, #fff4f4); }
 
-/* Session chip */
+/* 长回复气泡：去掉「尖角指向桌宠」的菱形 ——
+   ① 滚动条加上之后菱形漂浮在右下角看起来像 markdown 渲染错误（用户实际反馈）
+   ② "speech bubble" 隐喻只对一两行短回复成立，长段落不合适
+   长气泡用平底卡片 + 上边一个小波浪指向下方桌宠的过渡更干净 */
+.bubble:has(.bubble-scroll)::after { display: none; }
+
+/* Session chip · v0.1.9 加「✨ 新对话」按钮，flex 布局 */
 .bubble-chip {
   font-size: var(--text-meta);
   color: var(--text-link);
   font-weight: 600;
   margin-bottom: 6px;
   letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
+.bubble-chip-newsession {
+  font: inherit;
+  font-size: 11px;
+  background: rgba(232, 99, 140, 0.10);
+  color: var(--accent-primary, #e8638c);
+  border: 1px solid rgba(232, 99, 140, 0.25);
+  border-radius: 999px;
+  padding: 2px 8px;
+  cursor: pointer;
+  letter-spacing: 0;
+  white-space: nowrap;
+  transition: background .15s ease, transform .15s ease;
+}
+.bubble-chip-newsession:hover {
+  background: rgba(232, 99, 140, 0.18);
+  transform: translateY(-1px);
+}
+.bubble-chip-newsession:active { transform: translateY(0); }
 
 /* Body */
 .bubble-body {
@@ -157,27 +185,61 @@
   50%      { transform: scaleY(1); }
 }
 
-/* Loading dots — Thinking 状态，等 Claude 慢回复时的动效 */
+/* Loading dots — Thinking 状态。v0.1.9 升级版：
+   - 三点 + 一根「shimmer 横扫线」，比单纯 bounce 更有"在干活"感
+   - 配合 reduced-motion 退化 */
 .loading-dots {
   display: inline-flex;
   gap: 4px;
   vertical-align: middle;
   margin-left: 8px;
+  position: relative;
+  padding: 2px 4px 2px 2px;
 }
 .loading-dots span {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--accent-primary, #ff7eb6);
+  background: var(--accent-primary, #e8638c);
   display: inline-block;
-  animation: loading-bounce 1.2s ease-in-out infinite;
+  animation: loading-bounce 1.2s cubic-bezier(.4,0,.6,1) infinite;
+  /* 加了内阴影让小球更立体 */
+  box-shadow: inset 0 -1px 0 rgba(0,0,0,.12);
 }
 .loading-dots span:nth-child(1) { animation-delay: 0s; }
 .loading-dots span:nth-child(2) { animation-delay: 0.18s; }
 .loading-dots span:nth-child(3) { animation-delay: 0.36s; }
 @keyframes loading-bounce {
-  0%, 60%, 100% { transform: translateY(0); opacity: 0.35; }
-  30%           { transform: translateY(-5px); opacity: 1; }
+  0%, 70%, 100% { transform: translateY(0)   scale(0.85); opacity: 0.35; }
+  35%           { transform: translateY(-6px) scale(1.1);  opacity: 1; }
+}
+/* 在三点 + Thinking 文本下面加一条 shimmer 进度条 */
+.bubble-shimmer {
+  display: block;
+  height: 2px; margin-top: 6px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(232, 99, 140, 0.5) 50%,
+    transparent 100%
+  );
+  background-size: 50% 100%;
+  background-repeat: no-repeat;
+  animation: shimmer-sweep 1.6s linear infinite;
+  border-radius: 1px;
+}
+@keyframes shimmer-sweep {
+  0%   { background-position: -50% 0; }
+  100% { background-position: 150% 0; }
+}
+
+/* Reduced motion: 用 opacity 脉冲代替 bounce */
+@media (prefers-reduced-motion: reduce) {
+  .loading-dots span {
+    animation: loading-pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes loading-pulse { 0%,100% { opacity: 0.35; } 50% { opacity: 1; } }
+  .bubble-shimmer { animation: none; background: rgba(232, 99, 140, 0.3); }
 }
 
 /* Expand row */

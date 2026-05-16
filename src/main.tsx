@@ -45,6 +45,10 @@ async function bootstrap() {
     makeScrollableDocument("#f5f5f7");
     const { default: StatusView } = await import("./StatusView");
     RootComp = StatusView;
+  } else if (view === "panel") {
+    makeScrollableDocument("#faf7f2");
+    const { default: PanelView } = await import("./PanelView");
+    RootComp = PanelView;
   } else if (view === "onboarding") {
     // Onboarding card brings its own dark glass background; host wraps it
     // in a centered flex container with a faint matching gradient backdrop.

@@ -20,6 +20,8 @@ export const en: Strings = {
   "bubble.listening": "I'm listening…",
   "bubble.thinking": "Thinking",
   "bubble.session_chip": "🔗 Session #{id} · turn {turn}",
+  "bubble.new_session": "New chat",
+  "bubble.error_prefix": "⛔ ",
 
   // Onboarding
   "onboarding.welcome.title": "Hi, I'm MouseClaw 🦞",
