@@ -1,11 +1,10 @@
 /**
- * Four-step Onboarding:
- *   Step 1 — pick a global shortcut
- *   Step 2 — pick an AI backend (Claude Code / Codex / OpenClaw CLI)
- *   Step 3 — pick a desktop pet skin (6 mouse styles)
- *   Step 4 — grant required permissions (Accessibility, Screen Recording, Microphone)
- *
- * Per DESIGN.md §4.5.
+ * Five-step Onboarding (v0.1.12):
+ *   Step 1 — pick a global shortcut (AI summon)
+ *   Step 2 — pick an AI backend
+ *   Step 3 — pick a desktop pet skin
+ *   Step 4 — pick voice IME trigger key (NEW)
+ *   Step 5 — grant required permissions
  */
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -27,8 +26,19 @@ interface PermissionStatus {
   microphone: boolean;
 }
 
+/** voice IME 触发键的 id —— 必须跟 Rust ImeTrigger::as_str() 对齐 */
+export type VoiceImeTrigger =
+  | "fn" | "option" | "control"
+  | "right-shift" | "right-command" | "right-option"
+  | "disabled"; // 用户选不启用
+
 interface OnboardingProps {
-  onComplete: (choice: ShortcutChoice, backend: BackendChoice, skin: SkinId) => void;
+  onComplete: (
+    choice: ShortcutChoice,
+    backend: BackendChoice,
+    skin: SkinId,
+    voiceImeTrigger: VoiceImeTrigger,
+  ) => void;
 }
 
 // OPTIONS / BACKENDS / PERMISSIONS — 函数化，每次渲染时按当前语言重建
@@ -83,10 +93,11 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   const t = useT();
   const OPTIONS = buildOptions(t);
   const PERMISSIONS = buildPermissions(t);
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [selected, setSelected] = useState<ShortcutChoice>("hold-option");
   const [backend, setBackend] = useState<BackendChoice>("claude-cli");
   const [skin, setSkin] = useState<SkinId>(DEFAULT_SKIN);
+  const [voiceImeTrigger, setVoiceImeTrigger] = useState<VoiceImeTrigger>("fn");
   const [perms, setPerms] = useState<PermissionStatus>({
     accessibility: false,
     screen_recording: false,
@@ -109,7 +120,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   }, []);
 
   useEffect(() => {
-    if (step !== 4) return;
+    if (step !== 5) return;
     refreshPerms();
     // 每 1.5 秒刷新一次，让用户授权后立即看到变化
     const timer = setInterval(refreshPerms, 1500);
@@ -249,13 +260,56 @@ export function Onboarding({ onComplete }: OnboardingProps) {
           className="ob-cta"
           onClick={() => setStep(4)}
         >
+          {t("onboarding.cta.next_voice_ime")}
+        </button>
+      </div>
+    );
+  }
+
+  // ── Step 4: 选 voice IME 触发键 (NEW v0.1.12) ─────────────────────────────
+  if (step === 4) {
+    const triggers: VoiceImeTrigger[] = [
+      "fn", "option", "control", "right-shift", "right-command", "right-option", "disabled"
+    ];
+    return (
+      <div className="ob-root">
+        <div className="ob-mouse-stage">
+          <PixelMouse state="listen" size={96} skin={skin} />
+        </div>
+        <h1 className="ob-title">{t("onboarding.voice_ime.title")}</h1>
+        <p className="ob-subtitle">{t("onboarding.voice_ime.subtitle")}</p>
+        <div className="ob-options" role="radiogroup" aria-label={t("onboarding.voice_ime.title")}>
+          {triggers.map(tr => (
+            <button
+              key={tr}
+              type="button"
+              role="radio"
+              aria-checked={voiceImeTrigger === tr}
+              className={`ob-option ${voiceImeTrigger === tr ? "selected" : ""}`}
+              onClick={() => setVoiceImeTrigger(tr)}
+            >
+              <span className="ob-label">
+                {tr === "disabled"
+                  ? t("onboarding.voice_ime.disabled")
+                  : t(`vime.trigger.${tr}` as `vime.trigger.fn`)}
+              </span>
+              {tr === "fn" && <span className="ob-tag">{t("common.recommended")}</span>}
+            </button>
+          ))}
+        </div>
+        <p className="ob-skip-hint">{t("onboarding.voice_ime.tip")}</p>
+        <button
+          type="button"
+          className="ob-cta"
+          onClick={() => setStep(5)}
+        >
           {t("onboarding.cta.next_perms")}
         </button>
       </div>
     );
   }
 
-  // ── Step 4: 权限申请 ──────────────────────────────────────────────────────
+  // ── Step 5: 权限申请 ──────────────────────────────────────────────────────
   return (
     <div className="ob-root">
       <div className="ob-mouse-stage">
@@ -306,7 +360,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       <button
         type="button"
         className={`ob-cta ${!allDone ? "ob-cta-secondary" : ""}`}
-        onClick={() => onComplete(selected, backend, skin)}
+        onClick={() => onComplete(selected, backend, skin, voiceImeTrigger)}
       >
         {allDone ? t("onboarding.cta.finish") : t("onboarding.cta.skip")}
       </button>

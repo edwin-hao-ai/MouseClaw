@@ -23,47 +23,139 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::time::{Duration, Instant};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 use crate::AppState;
 
-/// NSEventModifierFlagFunction —— fn 键的位
-const FN_FLAG: u64 = 1 << 23;
 /// 短按阈值 —— < 300ms 当误触不响应
 const LONG_PRESS_MS: u128 = 300;
+/// 录音上限 —— 防止误触后忘了松开
+const MAX_RECORDING_MS: u64 = 60_000;
 
-/// 触发 voice IME 的 fn 状态机
-struct FnMonitor {
-    pressed_at: AtomicI64, // micros since UNIX_EPOCH, 0 = not pressed
-    triggered: AtomicBool, // 长按已触发 = 等松开做 stop
-    enabled: AtomicBool,   // 用户在托盘可关
+/// 触发键 —— 用户在 Onboarding / 托盘选。
+///
+/// 用 macOS keycode 识别（不是 CGEventFlags）—— FlagsChanged 事件里 keycode 字段
+/// 直接告诉你哪个物理键变了，比纯 flag 位精确（能区分左/右 modifier）。
+///
+/// 标准 macOS modifier keycodes:
+///   54 right-cmd · 55 left-cmd · 56 left-shift · 58 left-option ·
+///   59 left-control · 60 right-shift · 61 right-option · 62 right-control · 63 fn
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImeTrigger {
+    Fn,
+    Option,       // 任意 option（左右都行）
+    Control,      // 任意 control（左右都行）
+    RightShift,
+    RightCommand,
+    RightOption,
 }
 
-static FN_MONITOR: once_cell::sync::Lazy<FnMonitor> = once_cell::sync::Lazy::new(|| FnMonitor {
+impl ImeTrigger {
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "option"        => ImeTrigger::Option,
+            "control"       => ImeTrigger::Control,
+            "right-shift"   => ImeTrigger::RightShift,
+            "right-command" => ImeTrigger::RightCommand,
+            "right-option"  => ImeTrigger::RightOption,
+            _               => ImeTrigger::Fn,
+        }
+    }
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ImeTrigger::Fn            => "fn",
+            ImeTrigger::Option        => "option",
+            ImeTrigger::Control       => "control",
+            ImeTrigger::RightShift    => "right-shift",
+            ImeTrigger::RightCommand  => "right-command",
+            ImeTrigger::RightOption   => "right-option",
+        }
+    }
+    /// 返回这个 trigger 关心哪些 keycode（按下任意一个就算激活）
+    pub fn keycodes(&self) -> &'static [i64] {
+        match self {
+            ImeTrigger::Fn            => &[63],
+            ImeTrigger::Option        => &[58, 61],
+            ImeTrigger::Control       => &[59, 62],
+            ImeTrigger::RightShift    => &[60],
+            ImeTrigger::RightCommand  => &[54],
+            ImeTrigger::RightOption   => &[61],
+        }
+    }
+    /// 显示名（en）
+    pub fn display_en(&self) -> &'static str {
+        match self {
+            ImeTrigger::Fn            => "Hold fn",
+            ImeTrigger::Option        => "Hold ⌥ (option)",
+            ImeTrigger::Control       => "Hold ⌃ (control)",
+            ImeTrigger::RightShift    => "Hold right ⇧",
+            ImeTrigger::RightCommand  => "Hold right ⌘",
+            ImeTrigger::RightOption   => "Hold right ⌥",
+        }
+    }
+    pub fn display_zh(&self) -> &'static str {
+        match self {
+            ImeTrigger::Fn            => "按住 fn",
+            ImeTrigger::Option        => "按住 ⌥ (option)",
+            ImeTrigger::Control       => "按住 ⌃ (control)",
+            ImeTrigger::RightShift    => "按住 右 ⇧",
+            ImeTrigger::RightCommand  => "按住 右 ⌘",
+            ImeTrigger::RightOption   => "按住 右 ⌥",
+        }
+    }
+    pub fn all() -> &'static [ImeTrigger] {
+        &[ImeTrigger::Fn, ImeTrigger::Option, ImeTrigger::Control,
+          ImeTrigger::RightShift, ImeTrigger::RightCommand, ImeTrigger::RightOption]
+    }
+}
+
+/// 触发 voice IME 的状态机（trigger 可配置）
+struct ImeMonitor {
+    pressed_at: AtomicI64,   // micros since UNIX_EPOCH, 0 = not pressed
+    triggered: AtomicBool,   // 长按已触发 = 等松开做 stop
+    enabled: AtomicBool,     // 用户在托盘可关
+    trigger_id: AtomicI64,   // 当前 trigger 的 keycode 集合 ID（用 first keycode 当 ID）
+}
+
+static MONITOR: once_cell::sync::Lazy<ImeMonitor> = once_cell::sync::Lazy::new(|| ImeMonitor {
     pressed_at: AtomicI64::new(0),
     triggered: AtomicBool::new(false),
     enabled: AtomicBool::new(true),
+    trigger_id: AtomicI64::new(63), // fn 默认
 });
 
 pub fn set_enabled(on: bool) {
-    FN_MONITOR.enabled.store(on, Ordering::Relaxed);
+    MONITOR.enabled.store(on, Ordering::Relaxed);
     println!("[mouseclaw] 🎙️ voice-ime enabled = {on}");
 }
 
-pub fn is_enabled() -> bool { FN_MONITOR.enabled.load(Ordering::Relaxed) }
+pub fn is_enabled() -> bool { MONITOR.enabled.load(Ordering::Relaxed) }
+
+/// 切换触发键 —— 托盘 / Onboarding 调它，运行期热切换
+pub fn set_trigger(t: ImeTrigger) {
+    let first = t.keycodes().first().copied().unwrap_or(63);
+    MONITOR.trigger_id.store(first, Ordering::Relaxed);
+    println!("[mouseclaw] 🎙️ voice-ime trigger → {:?}", t);
+}
+
+fn matches_current_trigger(keycode: i64) -> bool {
+    let configured = ImeTrigger::from_str(&crate::config::Config::load().voice_ime_trigger);
+    configured.keycodes().contains(&keycode)
+}
 
 /// 主入口 —— lib.rs setup 时调一次。起后台线程跑 CGEventTap。
 pub fn spawn(app: AppHandle, state: Arc<AppState>) {
-    // 从 config 读初始 enabled
-    FN_MONITOR.enabled.store(
-        crate::config::Config::load().voice_ime_enabled,
-        Ordering::Relaxed,
-    );
+    let cfg = crate::config::Config::load();
+    MONITOR.enabled.store(cfg.voice_ime_enabled, Ordering::Relaxed);
+    let trigger = ImeTrigger::from_str(&cfg.voice_ime_trigger);
+    let first = trigger.keycodes().first().copied().unwrap_or(63);
+    MONITOR.trigger_id.store(first, Ordering::Relaxed);
+    println!("[mouseclaw] 🎙️ voice-ime spawning · trigger={:?}", trigger);
 
     std::thread::Builder::new()
-        .name("mouseclaw-fn-tap".into())
+        .name("mouseclaw-ime-tap".into())
         .spawn(move || run_event_tap(app, state))
-        .expect("spawn fn tap thread");
+        .expect("spawn ime tap thread");
 }
 
 // ────────────────── CGEventTap 部分 ──────────────────
@@ -92,6 +184,8 @@ extern "C" {
     ) -> *mut std::ffi::c_void; // CFMachPortRef
 
     fn CGEventGetFlags(event: *mut std::ffi::c_void) -> u64;
+    /// kCGKeyboardEventKeycode = 9
+    fn CGEventGetIntegerValueField(event: *mut std::ffi::c_void, field: u32) -> i64;
 }
 
 #[link(name = "CoreFoundation", kind = "framework")]
@@ -113,7 +207,7 @@ extern "C" {
     static kCFRunLoopCommonModes: *const std::ffi::c_void;
 }
 
-/// Tap 接收回调（C ABI）—— 仅做最少工作：解析 flags + 转 trigger 给主线程
+/// Tap 接收回调（C ABI）—— 用 keycode 字段精确识别用户选的 trigger 键
 unsafe extern "C" fn tap_callback(
     _proxy: *mut std::ffi::c_void,
     event_type: u32,
@@ -122,39 +216,55 @@ unsafe extern "C" fn tap_callback(
 ) -> *mut std::ffi::c_void {
     // kCGEventFlagsChanged = 12
     if event_type != 12 { return event; }
-    if !FN_MONITOR.enabled.load(Ordering::Relaxed) { return event; }
+    if !MONITOR.enabled.load(Ordering::Relaxed) { return event; }
 
+    // 拿出 keycode —— 哪个物理键变化了
+    let keycode = CGEventGetIntegerValueField(event, 9); // kCGKeyboardEventKeycode = 9
+    if !matches_current_trigger(keycode) {
+        return event;
+    }
+
+    // 检查该 keycode 对应的 flag bit 是否在 flags 中
+    // 不同 modifier 的 flag 位不同；用 trigger.flag_bit() 查
+    let trigger = ImeTrigger::from_str(&crate::config::Config::load().voice_ime_trigger);
+    let flag = trigger_to_flag_bit(trigger);
     let flags = CGEventGetFlags(event);
-    let fn_down = (flags & FN_FLAG) != 0;
+    let is_down = (flags & flag) != 0;
 
-    // 状态切换：把事件发到主线程处理
-    let prev_pressed = FN_MONITOR.pressed_at.load(Ordering::Relaxed) != 0;
-    if fn_down && !prev_pressed {
-        // fn 刚被按下 —— 记录时间，启动 300ms 后的 long-press 检查
+    let prev_pressed = MONITOR.pressed_at.load(Ordering::Relaxed) != 0;
+    if is_down && !prev_pressed {
         let now_us = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_micros() as i64).unwrap_or(0);
-        FN_MONITOR.pressed_at.store(now_us, Ordering::Relaxed);
-
-        // 通过指针拿回 sender —— user_info 是 *const TapState
+        MONITOR.pressed_at.store(now_us, Ordering::Relaxed);
         let st = &*(user_info as *const TapState);
-        let _ = st.tx.send(FnEvent::PressedDown);
-    } else if !fn_down && prev_pressed {
-        // fn 刚被松开 —— 检查是否曾经触发 long-press
-        FN_MONITOR.pressed_at.store(0, Ordering::Relaxed);
+        let _ = st.tx.send(ImeEvent::PressedDown);
+    } else if !is_down && prev_pressed {
+        MONITOR.pressed_at.store(0, Ordering::Relaxed);
         let st = &*(user_info as *const TapState);
-        let was_triggered = FN_MONITOR.triggered.swap(false, Ordering::Relaxed);
+        let was_triggered = MONITOR.triggered.swap(false, Ordering::Relaxed);
         if was_triggered {
-            let _ = st.tx.send(FnEvent::ReleasedAfterLong);
+            let _ = st.tx.send(ImeEvent::ReleasedAfterLong);
         } else {
-            let _ = st.tx.send(FnEvent::ReleasedShortTap);
+            let _ = st.tx.send(ImeEvent::ReleasedShortTap);
         }
     }
     event
 }
 
+fn trigger_to_flag_bit(t: ImeTrigger) -> u64 {
+    match t {
+        ImeTrigger::Fn            => 1 << 23, // kCGEventFlagMaskSecondaryFn
+        ImeTrigger::Option        => 1 << 19, // kCGEventFlagMaskAlternate
+        ImeTrigger::Control       => 1 << 18, // kCGEventFlagMaskControl
+        ImeTrigger::RightShift    => 1 << 17, // kCGEventFlagMaskShift
+        ImeTrigger::RightCommand  => 1 << 20, // kCGEventFlagMaskCommand
+        ImeTrigger::RightOption   => 1 << 19, // kCGEventFlagMaskAlternate
+    }
+}
+
 #[derive(Debug)]
-enum FnEvent {
+enum ImeEvent {
     PressedDown,
     ReleasedAfterLong,
     #[allow(dead_code)]
@@ -162,11 +272,11 @@ enum FnEvent {
 }
 
 struct TapState {
-    tx: std::sync::mpsc::Sender<FnEvent>,
+    tx: std::sync::mpsc::Sender<ImeEvent>,
 }
 
 fn run_event_tap(app: AppHandle, state: Arc<AppState>) {
-    let (tx, rx) = std::sync::mpsc::channel::<FnEvent>();
+    let (tx, rx) = std::sync::mpsc::channel::<ImeEvent>();
 
     // 起一个独立 thread 跑 main runtime 端处理（pressed → 等 300ms → trigger；released → stop+pipeline）
     let app2 = app.clone();
@@ -202,41 +312,72 @@ fn run_event_tap(app: AppHandle, state: Arc<AppState>) {
     }
 }
 
-fn handle_fn_events(rx: std::sync::mpsc::Receiver<FnEvent>, app: AppHandle, state: Arc<AppState>) {
+fn handle_fn_events(rx: std::sync::mpsc::Receiver<ImeEvent>, app: AppHandle, state: Arc<AppState>) {
     while let Ok(ev) = rx.recv() {
         match ev {
-            FnEvent::PressedDown => {
-                // 起一个 300ms 的小定时器，到时如果 fn 还在按 → 真触发
+            ImeEvent::PressedDown => {
                 let app2 = app.clone();
                 let state2 = state.clone();
                 std::thread::spawn(move || {
-                    let started = Instant::now();
                     std::thread::sleep(Duration::from_millis(LONG_PRESS_MS as u64));
-                    // 仍在按吗？
-                    let still_down = FN_MONITOR.pressed_at.load(Ordering::Relaxed) != 0;
-                    if !still_down { return; } // 短按，被忽略
-                    let pressed_us = FN_MONITOR.pressed_at.load(Ordering::Relaxed);
-                    if pressed_us == 0 { return; }
-                    let pressed_at = Instant::now() - started.elapsed(); // ~ press time
-                    let _ = pressed_at;
-                    // 防双触发
-                    if FN_MONITOR.triggered.swap(true, Ordering::Relaxed) {
+                    let still_down = MONITOR.pressed_at.load(Ordering::Relaxed) != 0;
+                    if !still_down { return; }
+                    // 安全检查 #1：密码 / secure input 字段 → 整段拒绝触发
+                    if is_secure_input_active() {
+                        println!("[mouseclaw] 🎙️ secure input active, refuse voice IME");
+                        MONITOR.pressed_at.store(0, Ordering::Relaxed);
                         return;
                     }
-                    println!("[mouseclaw] 🎙️ fn long-press → start voice IME recording");
+                    if MONITOR.triggered.swap(true, Ordering::Relaxed) {
+                        return;
+                    }
+                    let app3 = app2.clone();
+                    println!("[mouseclaw] 🎙️ trigger long-press → start voice IME recording");
                     start_recording_for_ime(app2, state2);
+
+                    // 安全检查 #2：60s 强制截止 —— 防止误触后忘了松开
+                    std::thread::spawn(move || {
+                        let started = Instant::now();
+                        while MONITOR.triggered.load(Ordering::Relaxed) {
+                            if started.elapsed() >= Duration::from_millis(MAX_RECORDING_MS) {
+                                eprintln!("[mouseclaw] 🎙️ 60s 强制截止 voice IME");
+                                MONITOR.pressed_at.store(0, Ordering::Relaxed);
+                                MONITOR.triggered.store(false, Ordering::Relaxed);
+                                // 模拟松开（提交录音）
+                                let app_state = match app3.try_state::<std::sync::Arc<AppState>>() {
+                                    Some(s) => s.inner().clone(),
+                                    None => return,
+                                };
+                                stop_and_paste(app3.clone(), app_state);
+                                return;
+                            }
+                            std::thread::sleep(Duration::from_millis(500));
+                        }
+                    });
                 });
             }
-            FnEvent::ReleasedAfterLong => {
-                println!("[mouseclaw] 🎙️ fn released → stop & transcribe & paste");
+            ImeEvent::ReleasedAfterLong => {
+                println!("[mouseclaw] 🎙️ trigger released → stop & transcribe & paste");
                 stop_and_paste(app.clone(), state.clone());
             }
-            FnEvent::ReleasedShortTap => {
-                // 短按 —— 啥都不做，让用户偶尔单按 fn 是 macOS 原生行为（切语言/dictation 等）
+            ImeEvent::ReleasedShortTap => {
+                // 短按 —— 不响应（让 macOS 原生 modifier 行为正常）
             }
         }
     }
 }
+
+/// 检测前台 app 是否有 SecureKeyboardEntry（密码输入框/终端 sudo 等）
+/// 避免在密码框走 voice IME 把密码暴露给 Whisper / 屏幕。
+#[cfg(target_os = "macos")]
+fn is_secure_input_active() -> bool {
+    extern "C" {
+        fn IsSecureEventInputEnabled() -> bool;
+    }
+    unsafe { IsSecureEventInputEnabled() }
+}
+#[cfg(not(target_os = "macos"))]
+fn is_secure_input_active() -> bool { false }
 
 // ────────────────── 录音 → Whisper → paste 流程 ──────────────────
 
@@ -244,20 +385,20 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
     // 已经在录音（被 ⌘⇧Space 占着）→ 跳过
     if state.recorder.lock().unwrap().is_some() {
         println!("[mouseclaw] 🎙️ recorder busy (occupied by AI summon?), skip voice IME");
-        FN_MONITOR.triggered.store(false, Ordering::Relaxed);
+        MONITOR.triggered.store(false, Ordering::Relaxed);
         return;
     }
     // 检查 Whisper 是否就绪
     if !crate::transcribe::is_available() {
         eprintln!("[mouseclaw] 🎙️ Whisper not ready, skip voice IME");
-        FN_MONITOR.triggered.store(false, Ordering::Relaxed);
+        MONITOR.triggered.store(false, Ordering::Relaxed);
         return;
     }
     let recorder = match crate::audio::Recorder::start() {
         Ok(r) => r,
         Err(e) => {
             eprintln!("[mouseclaw] 🎙️ start recording: {e:#}");
-            FN_MONITOR.triggered.store(false, Ordering::Relaxed);
+            MONITOR.triggered.store(false, Ordering::Relaxed);
             return;
         }
     };

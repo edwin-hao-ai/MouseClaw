@@ -167,6 +167,20 @@ pub fn run() {
                 .with_handler(move |app, shortcut, event| {
                     let app_handle = app.clone();
                     let state: Arc<AppState> = app.state::<Arc<AppState>>().inner().clone();
+                    let sk = format!("{shortcut:?}");
+                    // v0.1.12 ⌘⇧V → 打开 Hub 剪贴板 tab（不走 AI flow）
+                    if sk.contains("KeyV") || sk.contains("Char(\"v\")") || sk.contains("Code(V)") {
+                        if event.state() == ShortcutState::Pressed {
+                            println!("[mouseclaw] 📋 ⌘⇧V → 打开 Hub");
+                            // emit 给前端，前端把 hub 打开 + 切到 clipboard tab
+                            use tauri::Emitter;
+                            for (_, w) in app.webview_windows() {
+                                let _ = w.emit("open-hub", "clipboard");
+                            }
+                            show_mouse(app);
+                        }
+                        return;
+                    }
                     match event.state() {
                         ShortcutState::Pressed => {
                             println!("[mouseclaw] 🦞 shortcut PRESS: {shortcut:?}");
@@ -217,6 +231,8 @@ pub fn run() {
             commands::get_tidy_up,
             commands::save_voice_ime,
             commands::get_voice_ime,
+            commands::save_voice_ime_trigger,
+            commands::get_voice_ime_trigger,
         ])
         .setup(move |app| {
             set_accessory_activation_policy();
@@ -292,6 +308,13 @@ pub fn run() {
                         eprintln!("[mouseclaw] ✘ 快捷键 {} 注册失败：{e}", cfg.shortcut);
                         eprintln!("[mouseclaw]    → 可能被系统或其他 app 占用，重弹 Onboarding");
                         tray::open_onboarding_window(&app.handle());
+                    }
+                }
+                // v0.1.12 · 额外注册 ⌘⇧V → 打开 Hub 剪贴板（生态约定，Raycast/Paste 都用这个）
+                if let Ok(hub_shortcut) = Shortcut::from_str("Super+Shift+KeyV") {
+                    match app.global_shortcut().register(hub_shortcut) {
+                        Ok(()) => println!("[mouseclaw] ✓ ⌘⇧V → Hub 剪贴板 注册成功"),
+                        Err(e) => eprintln!("[mouseclaw] ⌘⇧V 注册失败（可能被其它 app 占）：{e}"),
                     }
                 }
             } else {

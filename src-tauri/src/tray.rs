@@ -149,6 +149,26 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let vime_item = CheckMenuItem::with_id(app, "toggle-voice-ime", s_vime,
         true, current_vime, None::<&str>)?;
 
+    // Voice IME trigger 子菜单 —— Fn/Option/Control/RightShift/RightCmd/RightOption
+    let current_trigger = crate::voice_ime::ImeTrigger::from_str(
+        &crate::config::Config::load().voice_ime_trigger
+    );
+    let mut trigger_items: Vec<CheckMenuItem<tauri::Wry>> = Vec::new();
+    for t in crate::voice_ime::ImeTrigger::all() {
+        let label = if en { t.display_en() } else { t.display_zh() };
+        let item = CheckMenuItem::with_id(
+            app, format!("vime-trigger:{}", t.as_str()),
+            label, true, *t == current_trigger, None::<&str>,
+        )?;
+        trigger_items.push(item);
+    }
+    let trigger_refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> =
+        trigger_items.iter().map(|i| i as &dyn tauri::menu::IsMenuItem<tauri::Wry>).collect();
+    let trigger_submenu_label = if en { "    ↳ IME trigger key" } else { "    ↳ 触发键" };
+    let trigger_submenu = Submenu::with_id_and_items(
+        app, "vime-trigger-submenu", trigger_submenu_label, true, &trigger_refs,
+    )?;
+
     let status  = MenuItem::with_id(app, "status",  s_status,     true, None::<&str>)?;
     let about   = MenuItem::with_id(app, "about",   s_about, true, None::<&str>)?;
     let sep1    = PredefinedMenuItem::separator(app)?;
@@ -158,7 +178,7 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &[
         &summon, &history,
         &skin_submenu, &model_submenu, &lang_submenu,
-        &sep1, &vime_item, &tidy_item, &browser_item, &status,
+        &sep1, &vime_item, &trigger_submenu, &tidy_item, &browser_item, &status,
         &sep2, &about, &quit,
     ])?;
     let icon = build_template_icon();
@@ -203,6 +223,11 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
         change_language(app, lang);
         return;
     }
+    // voice IME 触发键子菜单：id 形如 "vime-trigger:option"
+    if let Some(trigger) = id.strip_prefix("vime-trigger:") {
+        change_ime_trigger(app, trigger);
+        return;
+    }
     match id {
         "summon"          => summon_via_tray(app),
         "history"         => open_history_window(app),
@@ -213,6 +238,35 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
         "toggle-voice-ime"=> toggle_voice_ime(app),
         "quit"            => app.exit(0),
         _ => {}
+    }
+}
+
+/// 换 voice IME 触发键 —— 托盘子菜单调
+fn change_ime_trigger(app: &AppHandle, trigger_str: &str) {
+    use tauri::Emitter;
+    let trigger = crate::voice_ime::ImeTrigger::from_str(trigger_str);
+    let mut cfg = crate::config::Config::load();
+    if cfg.voice_ime_trigger == trigger_str { return; }
+    cfg.voice_ime_trigger = trigger.as_str().to_string();
+    if let Err(e) = cfg.save() {
+        eprintln!("[mouseclaw] change_ime_trigger save: {e}");
+        return;
+    }
+    crate::voice_ime::set_trigger(trigger);
+    let lang = cfg.language;
+    let msg = if lang == "en" {
+        format!("🎙️ IME trigger → {}. Voice IME re-bound. (Restart tray to update menu labels.)", trigger.display_en())
+    } else {
+        format!("🎙️ 语音输入触发键 → {}。已重新绑定。（重启托盘后菜单标签同步。）", trigger.display_zh())
+    };
+    for (_, w) in app.webview_windows() {
+        let _ = w.emit(crate::events::EV_VIEW_CHANGED, serde_json::json!({
+            "kind": "reply",
+            "transcript": "IME trigger change",
+            "reply": msg,
+            "mode": "A",
+            "streaming": false,
+        }));
     }
 }
 
