@@ -1,0 +1,862 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MouseClaw v0.2 · 语音输入法 + 剪贴板历史 + 点击桌宠</title>
+<style>
+  /* DESIGN.md tokens (cheatsheet) */
+  :root {
+    --bg: #faf7f2; --card: #ffffff; --ink: #2b2622; --muted: #8a8178;
+    --pink: #e8638c; --pink-soft: #fce4ec; --pink-deep: #d63d6a;
+    --green: #3fa66a; --green-soft: #e6f4ec;
+    --amber: #d9952b; --amber-soft: #fdf3e0;
+    --blue: #5b8def; --blue-soft: #e8f0fe;
+    --line: #ece6dd; --line-strong: #d8d0c4;
+    --radius-s: 8px; --radius-m: 14px; --radius-l: 22px;
+    --shadow-card: 0 1px 2px rgba(43,38,34,.06), 0 8px 24px rgba(43,38,34,.06);
+    --shadow-bubble: 0 8px 32px rgba(43,38,34,.12);
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --font: -apple-system, "PingFang SC", system-ui, sans-serif;
+    --m-body:#cfcfcf; --m-belly:#fff; --m-ear-in:#ff9bb8; --m-ear-out:#cfcfcf;
+    --m-eye:#1a1a1a; --m-nose:#d63d6a; --m-tail:#8a8a8a; --m-paw:#fff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 15px/1.65 var(--font);
+    -webkit-font-smoothing: antialiased;
+  }
+  /* layout: sticky TOC + content */
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+  .layout { display: grid; grid-template-columns: 220px 1fr; gap: 48px; padding-top: 48px; }
+  .toc {
+    position: sticky; top: 24px; align-self: start;
+    font-size: 13px; line-height: 1.9;
+  }
+  .toc h4 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 8px; }
+  .toc a {
+    display: block; padding: 4px 10px; border-radius: 6px;
+    color: var(--ink); text-decoration: none;
+  }
+  .toc a:hover { background: var(--pink-soft); color: var(--pink-deep); }
+
+  h1 { font-size: 32px; margin: 0 0 4px; letter-spacing: -.02em; }
+  h2 { font-size: 22px; margin: 56px 0 10px; padding-bottom: 8px; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 16px; margin: 24px 0 8px; }
+  .sub { color: var(--muted); margin: 0 0 28px; font-size: 14px; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius-m); padding: 20px 22px;
+    box-shadow: var(--shadow-card);
+  }
+  .card + .card { margin-top: 14px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .grid-6 { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+
+  code, kbd {
+    font-family: var(--mono); font-size: 12.5px;
+    background: #f2ede5; padding: 1.5px 6px; border-radius: 5px;
+  }
+  kbd {
+    background: #fff; border: 1px solid var(--line-strong);
+    box-shadow: 0 1px 0 var(--line-strong);
+    padding: 1px 7px; font-weight: 600;
+  }
+
+  .pill { display: inline-block; font-size: 11px; font-weight: 700;
+          padding: 2px 9px; border-radius: 999px; vertical-align: middle; }
+  .pill-pink   { background: var(--pink-soft);  color: var(--pink-deep); }
+  .pill-green  { background: var(--green-soft); color: var(--green); }
+  .pill-amber  { background: var(--amber-soft); color: var(--amber); }
+  .pill-blue   { background: var(--blue-soft);  color: var(--blue); }
+  .pill-muted  { background: #f0ebe2; color: var(--muted); }
+
+  /* Mock desktop background */
+  .stage {
+    position: relative; min-height: 360px;
+    border-radius: var(--radius-l); overflow: hidden;
+    background:
+      radial-gradient(ellipse at 30% 20%, #5b8def22, transparent 50%),
+      radial-gradient(ellipse at 80% 80%, #e8638c22, transparent 50%),
+      linear-gradient(135deg, #f8efe4, #efe5d5);
+    border: 1px solid var(--line);
+    padding: 20px;
+  }
+  .mock-app {
+    background: rgba(255,255,255,.92); backdrop-filter: blur(8px);
+    border-radius: 10px; padding: 14px 16px;
+    border: 1px solid #00000010; box-shadow: 0 4px 16px #00000010;
+    font-size: 13px; line-height: 1.7;
+  }
+  .mock-toolbar {
+    display: flex; gap: 6px; padding-bottom: 8px; margin-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  .mock-toolbar i { width: 11px; height: 11px; border-radius: 999px; display: inline-block; }
+  .tl-red { background: #ff5f57; } .tl-yellow { background: #febc2e; } .tl-green { background: #28c840; }
+  .mock-cursor {
+    display: inline-block; width: 2px; height: 16px;
+    background: var(--pink-deep); vertical-align: middle; margin-left: 1px;
+    animation: blink 1s steps(2) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* Pixel mouse (16×16 grid, scale to size) */
+  .mouse-svg { image-rendering: pixelated; shape-rendering: crispEdges; }
+  .mouse-stage {
+    position: absolute; display: flex; flex-direction: column; align-items: center;
+    transition: transform .35s cubic-bezier(.4,.0,.2,1);
+  }
+
+  /* Bubble */
+  .bubble {
+    background: #fff; border: 1px solid var(--line);
+    border-radius: 18px; padding: 8px 14px;
+    box-shadow: var(--shadow-bubble);
+    font-size: 13.5px; line-height: 1.5; font-weight: 500;
+    max-width: 280px; position: relative;
+    animation: pop .35s cubic-bezier(.34,1.56,.64,1);
+  }
+  .bubble.success { background: #f3fbf6; }
+  .bubble.warn    { background: #fff7e6; }
+  .bubble.ime     { background: #fce4ec; color: var(--pink-deep); font-weight: 700; }
+  .bubble::after {
+    content: ""; position: absolute; bottom: -7px; left: 24px;
+    width: 14px; height: 14px; background: inherit; transform: rotate(45deg);
+    border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  }
+  @keyframes pop {
+    0% { opacity: 0; transform: translateY(6px) scale(.94); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .voicebars { display: inline-flex; gap: 3px; vertical-align: middle; margin-left: 6px; }
+  .voicebars span {
+    display: inline-block; width: 3px; background: var(--pink);
+    border-radius: 2px; animation: voice .7s ease-in-out infinite;
+  }
+  .voicebars span:nth-child(1) { height: 10px; }
+  .voicebars span:nth-child(2) { height: 16px; animation-delay: .1s; }
+  .voicebars span:nth-child(3) { height: 8px;  animation-delay: .2s; }
+  .voicebars span:nth-child(4) { height: 14px; animation-delay: .3s; }
+  @keyframes voice { 0%,100% { transform: scaleY(.6); } 50% { transform: scaleY(1); } }
+
+  /* Hub panel (clicked pet) */
+  .hub {
+    width: 380px; background: #fff; border: 1px solid var(--line);
+    border-radius: 16px; box-shadow: var(--shadow-bubble);
+    overflow: hidden; font-size: 13px;
+  }
+  .hub-tabs {
+    display: flex; padding: 6px 6px 0; gap: 2px;
+    background: #fafafa; border-bottom: 1px solid var(--line);
+  }
+  .hub-tab {
+    padding: 8px 14px; border-radius: 8px 8px 0 0;
+    font-size: 12.5px; font-weight: 600; color: var(--muted);
+    cursor: pointer; transition: color .15s;
+    border: 0; background: transparent;
+  }
+  .hub-tab.active { color: var(--ink); background: #fff; border: 1px solid var(--line); border-bottom-color: #fff; margin-bottom: -1px; }
+  .hub-search {
+    padding: 10px 12px; border-bottom: 1px solid var(--line);
+    display: flex; gap: 8px; align-items: center;
+  }
+  .hub-search input {
+    flex: 1; border: 0; outline: 0; font: inherit; font-size: 13px;
+    background: #f5f0e7; padding: 6px 10px; border-radius: 8px;
+  }
+  .hub-list { max-height: 320px; overflow-y: auto; }
+  .hub-item {
+    display: flex; gap: 10px; padding: 9px 12px;
+    border-bottom: 1px solid #f4eee3; cursor: pointer;
+    transition: background .12s;
+  }
+  .hub-item:hover { background: var(--pink-soft); }
+  .hub-item.active { background: var(--pink-soft); }
+  .hub-item-icon {
+    width: 24px; height: 24px; border-radius: 6px; flex-shrink: 0;
+    display: grid; place-items: center; font-size: 14px;
+    background: #f0ebe2;
+  }
+  .hub-item-body { flex: 1; min-width: 0; }
+  .hub-item-text {
+    font-size: 12.5px; line-height: 1.4; color: var(--ink);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .hub-item-meta {
+    font-size: 10.5px; color: var(--muted); margin-top: 2px;
+  }
+  .hub-item-key {
+    font-size: 10px; color: var(--muted); padding: 2px 6px;
+    border-radius: 4px; background: #f0ebe2; font-family: var(--mono);
+    align-self: center;
+  }
+  .hub-footer {
+    padding: 8px 12px; font-size: 11px; color: var(--muted);
+    background: #fafafa; border-top: 1px solid var(--line);
+  }
+
+  /* Shortcut table */
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+  td:first-child { white-space: nowrap; }
+
+  /* Flow diagram */
+  .flow { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; }
+  .flow-step {
+    flex: 1 1 0; min-width: 140px;
+    background: #fff; border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 12px;
+    font-size: 12px; line-height: 1.4;
+    position: relative;
+  }
+  .flow-step b { display: block; font-size: 13px; margin-bottom: 4px; }
+  .flow-step::after {
+    content: "→"; position: absolute; right: -14px; top: 50%;
+    transform: translateY(-50%); color: var(--muted); font-weight: 700;
+  }
+  .flow-step:last-child::after { display: none; }
+
+  ul.tight { margin: 6px 0; padding-left: 20px; }
+  ul.tight li { margin: 3px 0; }
+
+  .danger { color: #c0392b; }
+  .ok     { color: var(--green); }
+
+  /* live demo: typing IME */
+  .ime-demo .typed { color: var(--ink); font-weight: 500; }
+  .ime-demo .partial { color: var(--pink-deep); font-weight: 500; }
+
+  hr.soft { border: 0; border-top: 1px solid var(--line); margin: 22px 0; }
+
+  .note {
+    background: var(--amber-soft); color: var(--amber);
+    padding: 10px 14px; border-radius: 10px;
+    font-size: 13px; border-left: 3px solid var(--amber);
+  }
+  .note.green { background: var(--green-soft); color: var(--green); border-left-color: var(--green); }
+  .note.pink  { background: var(--pink-soft); color: var(--pink-deep); border-left-color: var(--pink); }
+
+  /* keycap */
+  .kc {
+    display: inline-block; min-width: 22px; height: 22px; padding: 0 6px;
+    background: #fff; border: 1px solid var(--line-strong);
+    border-bottom-width: 2px; border-radius: 5px;
+    font: 600 12px/22px var(--mono); text-align: center; vertical-align: middle;
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap layout">
+  <!-- ─── Sticky TOC ─── -->
+  <nav class="toc">
+    <h4>章节</h4>
+    <a href="#hero">概览</a>
+    <a href="#shortcuts">① 快捷键分工</a>
+    <a href="#voice-ime">② 长按 ⌥ → 语音输入法</a>
+    <a href="#ai-summon">③ ⌘⇧Space → AI 召唤</a>
+    <a href="#click-pet">④ 点击桌宠 → Hub</a>
+    <a href="#clipboard">⑤ 剪贴板历史</a>
+    <a href="#ai-history">⑥ AI 历史</a>
+    <a href="#new-states">⑦ 新桌宠状态</a>
+    <a href="#privacy">⑧ 隐私 / 安全</a>
+    <a href="#roadmap">⑨ 实现路线图</a>
+  </nav>
+
+  <!-- ─── Main ─── -->
+  <main>
+
+    <section id="hero">
+      <h1>🦞 MouseClaw v0.2 · 桌宠变 daily-use 工具</h1>
+      <p class="sub">语音输入法 + 剪贴板历史 + 点击桌宠唤出 Hub · prototype 2026-05-16</p>
+
+      <div class="card">
+        <p style="margin:0 0 6px;font-weight:600">从 "AI 助手" → "随手就在那儿的桌面伴侣"</p>
+        <p style="margin:0;font-size:13.5px;color:var(--muted)">
+          v0.1 的桌宠只在按 <kbd>⌘⇧Space</kbd> 想问 AI 时才出现。v0.2 把它变成你**日常每分钟都会用**的东西 ——
+          <b>按住 fn 说话就直接打字</b>（语音输入法）/ <b>每次复制都被记下来</b>（剪贴板历史）/
+          <b>点桌宠就能选东西粘贴</b>（不用切第三方 app）。AI 召唤仍在但变成「特殊场景」按钮。
+        </p>
+      </div>
+    </section>
+
+    <!-- ── ① Shortcuts ── -->
+    <section id="shortcuts">
+      <h2>① 三套快捷键的分工</h2>
+      <p class="sub">三种触发方式，三种心智模型，绝不重叠。</p>
+
+      <table class="card" style="padding:0;border-radius:14px;overflow:hidden">
+        <thead style="background:#fafafa">
+          <tr><th>快捷键</th><th>意图</th><th>桌宠去哪</th><th>结果</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="kc">fn</span> 长按 <span class="pill pill-pink">默认</span></td>
+            <td>"<b>帮我打字</b>" — 语音输入法</td>
+            <td>跑到光标位置</td>
+            <td>松开 → 转写文字直接写到光标，**不调 AI**</td>
+          </tr>
+          <tr>
+            <td><span class="kc">⌘</span><span class="kc">⇧</span><span class="kc">Space</span> 按住</td>
+            <td>"<b>帮我想想</b>" — AI 召唤</td>
+            <td>截屏 + 录音 → AI 处理</td>
+            <td>气泡里出回答（Mode A）或写到光标（Mode B）</td>
+          </tr>
+          <tr>
+            <td><span class="kc">⌘</span><span class="kc">⇧</span><span class="kc">V</span> <span class="pill pill-blue">新</span></td>
+            <td>"<b>翻一下我刚复制过什么</b>"</td>
+            <td>就地展开 Hub（剪贴板 tab）</td>
+            <td>选一条 → 粘到光标</td>
+          </tr>
+          <tr>
+            <td>左键<b>点桌宠</b> <span class="pill pill-blue">新</span></td>
+            <td>"<b>看看我的东西</b>"</td>
+            <td>坐下，旁边展开 Hub</td>
+            <td>剪贴板 / AI 历史 / 设置 三个 tab</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="note pink" style="margin-top:14px">
+        <b>为什么选 <kbd>fn</kbd>？</b> macOS 上 fn 单独按时几乎没有原生用途（仅在某些 MBP 上是 "showing emoji"），且
+        Apple 自己的 Dictation 也用 fn——用户已经被训练好「fn = 语音」。⌥ 单独 hold 会跟 ⌥+click/drag 冲突；
+        ⌃ 也是大量 app 内 shortcut 的 modifier。fn 是唯一"安全的孤立键"。
+      </div>
+    </section>
+
+    <!-- ── ② Voice IME ── -->
+    <section id="voice-ime">
+      <h2>② 长按 <kbd>fn</kbd> → 语音输入法（最高频功能）</h2>
+      <p class="sub">桌宠跑到光标边，说话即打字。不调 AI，纯转写。这是 daily-use 的核心场景。</p>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3 style="margin-top:0">交互流程</h3>
+          <div class="flow" style="margin-top:10px">
+            <div class="flow-step">
+              <b>按下 fn (>250ms)</b>
+              桌宠瞬移到光标右下角，pet 进入「type」态：盯着光标，前爪上举做笔状
+            </div>
+            <div class="flow-step">
+              <b>开始说话</b>
+              "voice bars" 跟着音量跳。Whisper 持续 streaming（v1：松开后一次性转）
+            </div>
+            <div class="flow-step">
+              <b>松开 fn</b>
+              转写文本通过剪贴板 fallback / CGEvent 直接写到光标，桌宠原地跳一下 → 消失
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-top:0">边界情况</h3>
+          <ul class="tight" style="font-size:13px">
+            <li><b>终端前台</b> → 仍 suppress（防止意外回车执行命令）</li>
+            <li><b>密码字段</b> → 检测 secure text input → 直接放弃，弹气泡提示</li>
+            <li><b>按下不到 250ms</b> → 视为误触，桌宠不出现</li>
+            <li><b>录音中切走前台</b> → 取消，丢弃录音</li>
+            <li><b>录音 > 60s</b> → 强制截止 + 提示 ("一次最多 60s")</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3>实物演示（模拟）</h3>
+      <div class="stage" style="min-height:280px">
+        <div class="mock-app" style="position:absolute; top:20px; left:20px; right:20px; bottom:90px">
+          <div class="mock-toolbar">
+            <i class="tl-red"></i><i class="tl-yellow"></i><i class="tl-green"></i>
+            <span style="margin-left:10px; color:#888; font-size:11px">飞书 — 项目同步</span>
+          </div>
+          <div class="ime-demo">
+            <p style="margin:0 0 6px">今天的进度：</p>
+            <p style="margin:0">
+              <span class="typed">前端已经接好新的状态机，</span><span class="partial">明天准备开始接</span><span class="mock-cursor"></span>
+            </p>
+          </div>
+        </div>
+
+        <!-- pet + bubble below cursor -->
+        <div class="mouse-stage" style="left:340px; top:140px">
+          <div class="bubble ime">
+            听着呢
+            <span class="voicebars" aria-hidden><span></span><span></span><span></span><span></span></span>
+          </div>
+          <svg class="mouse-svg" width="80" height="80" viewBox="-1 -3 18 18" aria-hidden style="margin-top:6px">
+            <!-- ears, body, eyes (type state — focus on cursor, mouth-ish) -->
+            <rect x="3" y="1" width="2" height="2" fill="var(--m-ear-out)"/>
+            <rect x="2" y="2" width="3" height="2" fill="var(--m-ear-out)"/>
+            <rect x="11" y="1" width="2" height="2" fill="var(--m-ear-out)"/>
+            <rect x="11" y="2" width="3" height="2" fill="var(--m-ear-out)"/>
+            <rect x="3" y="2" width="1" height="1" fill="var(--m-ear-in)"/>
+            <rect x="12" y="2" width="1" height="1" fill="var(--m-ear-in)"/>
+            <rect x="3" y="3" width="10" height="1" fill="var(--m-body)"/>
+            <rect x="2" y="4" width="12" height="3" fill="var(--m-body)"/>
+            <rect x="3" y="7" width="10" height="1" fill="var(--m-body)"/>
+            <rect x="5" y="8" width="6" height="2" fill="var(--m-belly)"/>
+            <rect x="3" y="8" width="2" height="2" fill="var(--m-body)"/>
+            <rect x="11" y="8" width="2" height="2" fill="var(--m-body)"/>
+            <rect x="4" y="10" width="8" height="1" fill="var(--m-body)"/>
+            <rect x="13" y="9" width="1" height="1" fill="var(--m-tail)"/>
+            <rect x="14" y="7" width="1" height="3" fill="var(--m-tail)"/>
+            <!-- eyes looking down-right at cursor -->
+            <rect x="6" y="5" width="1" height="2" fill="var(--m-eye)"/>
+            <rect x="11" y="5" width="1" height="2" fill="var(--m-eye)"/>
+            <!-- nose -->
+            <rect x="7" y="7" width="2" height="1" fill="var(--m-nose)"/>
+            <!-- raised paw (笔状) -->
+            <rect x="2" y="9" width="1" height="3" fill="var(--m-body)"/>
+            <rect x="1" y="8" width="1" height="2" fill="var(--m-body)"/>
+            <rect x="0" y="7" width="1" height="2" fill="var(--m-paw)"/>
+            <!-- normal paws -->
+            <rect x="4" y="11" width="2" height="1" fill="var(--m-paw)"/>
+            <rect x="10" y="11" width="2" height="1" fill="var(--m-paw)"/>
+          </svg>
+        </div>
+
+        <div style="position:absolute; bottom:14px; left:20px; right:20px; font-size:11.5px; color:var(--muted); font-family:var(--mono); text-align:center">
+          ⏯ 按住 <span class="kc" style="font-size:10px">fn</span> 状态 · 灰色已落字 · <span style="color:var(--pink-deep)">粉色</span> 是 streaming partial · 松开会全部转灰
+        </div>
+      </div>
+
+      <div class="note green" style="margin-top:12px">
+        <b>为什么这个比单纯 AI 召唤更高频？</b> 一天里我们「想用语音代替打字」的次数是「问 AI」的 20×。
+        Wispr Flow / SuperWhisper / MacWhisper 整个赛道证明了这个需求。MouseClaw 已经有 Whisper 引擎，
+        加这个功能 = **复用 90% 现有代码**。
+      </div>
+    </section>
+
+    <!-- ── ③ AI summon ── -->
+    <section id="ai-summon">
+      <h2>③ <kbd>⌘⇧Space</kbd> → AI 召唤（不变）</h2>
+      <p class="sub">原 v0.1 的核心功能 —— 截屏 + 录音 + AI 处理 + Mode A / Mode B 输出。这里保留不变。</p>
+
+      <div class="card">
+        <p style="margin:0">
+          桌宠跑到当前位置（不是光标），按住期间录音 + 同时截屏，松开 → Claude/Codex 处理 → 气泡显示回答或写到光标。
+          v0.2 唯一变化：<b>桌宠现在「不跟随鼠标」</b>因为这是 AI mode（区别于 IME mode 的"贴光标"语义）。
+        </p>
+      </div>
+    </section>
+
+    <!-- ── ④ Click pet ── -->
+    <section id="click-pet">
+      <h2>④ 点击桌宠 → Hub（新交互骨架）</h2>
+      <p class="sub">桌宠是"<b>常驻你屏幕角落的小宠物</b>"，点它 = 调出最常用的两个东西：剪贴板 + AI 历史。</p>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3 style="margin-top:0">触发方式</h3>
+          <ul class="tight" style="font-size:13.5px">
+            <li><b>左键点桌宠</b> → 旁边展开 Hub 面板（同窗口内，玻璃质感）</li>
+            <li><b>双击托盘图标</b> → 也打开 Hub（无桌宠状态下的入口）</li>
+            <li><b><kbd>⌘⇧V</kbd></b> → 直接跳到剪贴板 tab + 自动聚焦搜索框</li>
+            <li><b>Esc / 点 Hub 外</b> → 关闭，桌宠归位</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-top:0">Hub 结构</h3>
+          <ul class="tight" style="font-size:13.5px">
+            <li><b>顶部 tabs</b>: 📋 剪贴板 / 💬 AI 历史 / ⚙️ 设置</li>
+            <li><b>搜索框</b>: 实时模糊匹配，跨 tabs 全局</li>
+            <li><b>列表</b>: 可选项, <kbd>↑↓</kbd> 高亮, <kbd>↵</kbd> 选中</li>
+            <li><b>1-9 快选</b>: <kbd>⌘1</kbd>..<kbd>⌘9</kbd> 直接选第 N 条</li>
+            <li><b>底部</b>: 当前 tab 数量 + 「清空」按钮</li>
+          </ul>
+        </div>
+      </div>
+
+      <h3>展开后的样子（剪贴板 tab）</h3>
+      <div class="stage" style="min-height:480px">
+        <!-- pet sitting + hub -->
+        <div class="mouse-stage" style="left:60px; top:120px">
+          <svg class="mouse-svg" width="64" height="64" viewBox="-1 -3 18 18" aria-hidden>
+            <!-- sitting pet (hub state) -->
+            <rect x="3" y="1" width="2" height="2" fill="var(--m-ear-out)"/>
+            <rect x="2" y="2" width="3" height="2" fill="var(--m-ear-out)"/>
+            <rect x="11" y="1" width="2" height="2" fill="var(--m-ear-out)"/>
+            <rect x="11" y="2" width="3" height="2" fill="var(--m-ear-out)"/>
+            <rect x="3" y="2" width="1" height="1" fill="var(--m-ear-in)"/>
+            <rect x="12" y="2" width="1" height="1" fill="var(--m-ear-in)"/>
+            <rect x="3" y="3" width="10" height="1" fill="var(--m-body)"/>
+            <rect x="2" y="4" width="12" height="3" fill="var(--m-body)"/>
+            <rect x="3" y="7" width="10" height="1" fill="var(--m-body)"/>
+            <rect x="4" y="8" width="8" height="3" fill="var(--m-belly)"/>
+            <rect x="3" y="8" width="1" height="3" fill="var(--m-body)"/>
+            <rect x="12" y="8" width="1" height="3" fill="var(--m-body)"/>
+            <rect x="5" y="11" width="6" height="1" fill="var(--m-body)"/>
+            <rect x="13" y="10" width="1" height="2" fill="var(--m-tail)"/>
+            <rect x="14" y="8" width="1" height="2" fill="var(--m-tail)"/>
+            <!-- happy closed eyes ︶ -->
+            <rect x="5" y="6" width="1" height="1" fill="var(--m-eye)"/>
+            <rect x="6" y="5" width="1" height="1" fill="var(--m-eye)"/>
+            <rect x="9" y="5" width="1" height="1" fill="var(--m-eye)"/>
+            <rect x="10" y="6" width="1" height="1" fill="var(--m-eye)"/>
+            <rect x="7" y="7" width="2" height="1" fill="var(--m-nose)"/>
+            <rect x="4" y="12" width="2" height="1" fill="var(--m-paw)"/>
+            <rect x="10" y="12" width="2" height="1" fill="var(--m-paw)"/>
+          </svg>
+        </div>
+
+        <div style="position:absolute; left:160px; top:30px">
+          <div class="hub">
+            <div class="hub-tabs">
+              <button class="hub-tab active">📋 剪贴板 <span class="pill pill-muted" style="font-size:9px;margin-left:2px">47</span></button>
+              <button class="hub-tab">💬 AI 历史</button>
+              <button class="hub-tab">⚙️</button>
+            </div>
+            <div class="hub-search">
+              <span style="color:var(--muted)">🔍</span>
+              <input value="" placeholder="搜索剪贴板…" />
+              <span class="pill pill-muted" style="font-size:9px">⌘F</span>
+            </div>
+            <div class="hub-list">
+              <div class="hub-item active">
+                <div class="hub-item-icon" style="background:#1e88e5;color:#fff">VS</div>
+                <div class="hub-item-body">
+                  <div class="hub-item-text">async function fetchUser(id) { return await db.users.findOne({ id }) }</div>
+                  <div class="hub-item-meta">VS Code · 2 分钟前</div>
+                </div>
+                <span class="hub-item-key">⌘1</span>
+              </div>
+              <div class="hub-item">
+                <div class="hub-item-icon">🌐</div>
+                <div class="hub-item-body">
+                  <div class="hub-item-text">https://github.com/edwin-hao-ai/MouseClaw/pull/42</div>
+                  <div class="hub-item-meta">Chrome · 8 分钟前</div>
+                </div>
+                <span class="hub-item-key">⌘2</span>
+              </div>
+              <div class="hub-item">
+                <div class="hub-item-icon" style="background:#1d6f42;color:#fff">📊</div>
+                <div class="hub-item-body">
+                  <div class="hub-item-text">Q3 营收预期：¥1,240,000（同比 +18%）</div>
+                  <div class="hub-item-meta">Numbers · 23 分钟前</div>
+                </div>
+                <span class="hub-item-key">⌘3</span>
+              </div>
+              <div class="hub-item">
+                <div class="hub-item-icon">🖼</div>
+                <div class="hub-item-body">
+                  <div class="hub-item-text"><i style="color:var(--muted)">[图片 · 1.2 MB · PNG]</i></div>
+                  <div class="hub-item-meta">截屏 · 1 小时前</div>
+                </div>
+                <span class="hub-item-key">⌘4</span>
+              </div>
+              <div class="hub-item">
+                <div class="hub-item-icon">📝</div>
+                <div class="hub-item-body">
+                  <div class="hub-item-text">Hey, are you free for a quick call this afternoon?</div>
+                  <div class="hub-item-meta">飞书 · 今天上午</div>
+                </div>
+                <span class="hub-item-key">⌘5</span>
+              </div>
+              <div class="hub-item">
+                <div class="hub-item-icon" style="background:#000;color:#fff">𝕏</div>
+                <div class="hub-item-body">
+                  <div class="hub-item-text">"the best founders are great storytellers" — naval</div>
+                  <div class="hub-item-meta">X · 昨天</div>
+                </div>
+                <span class="hub-item-key">⌘6</span>
+              </div>
+            </div>
+            <div class="hub-footer">
+              <kbd style="font-size:10px">↑↓</kbd> 浏览 ·
+              <kbd style="font-size:10px">↵</kbd> 粘到光标 ·
+              <kbd style="font-size:10px">⌥↵</kbd> 粘并保留剪贴板 ·
+              <kbd style="font-size:10px">⌫</kbd> 从历史删除
+            </div>
+          </div>
+        </div>
+
+        <div style="position:absolute; bottom:14px; left:20px; right:20px; font-size:11.5px; color:var(--muted); font-family:var(--mono); text-align:center">
+          ↑ 桌宠坐下 + Hub 在右侧展开 · 380px 宽 · 玻璃质感 · 模糊背景
+        </div>
+      </div>
+    </section>
+
+    <!-- ── ⑤ Clipboard history ── -->
+    <section id="clipboard">
+      <h2>⑤ 剪贴板历史的详细设计</h2>
+      <p class="sub">这是 v0.2 真正能让用户每天 "离不开" 的功能。借鉴 Raycast / Paste 的最佳实践。</p>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3 style="margin-top:0">数据模型</h3>
+          <pre style="font-size:11.5px;background:#f5f0e7;padding:10px;border-radius:8px;margin:0;overflow-x:auto"><code>{
+  "id": "0a3f...",
+  "kind": "text" | "image" | "file" | "url",
+  "preview": "前 200 字符",       // 列表显示用
+  "full": "原文..." | path,       // 粘贴时用
+  "app_bundle": "com.microsoft.VSCode",
+  "app_name": "VS Code",
+  "ts": 1715890234,
+  "pinned": false                 // ⭐ 用户标星不删
+}</code></pre>
+          <p style="font-size:12px;color:var(--muted);margin:8px 0 0">
+            存：<code>~/.mouseclaw/clipboard/<i>YYYY-MM-DD</i>.jsonl</code> · 图片存 <code>clipboard/img/<i>id</i>.png</code>
+          </p>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-top:0">捕获策略</h3>
+          <ul class="tight" style="font-size:13px">
+            <li><b>轮询 NSPasteboard <code>changeCount</code></b> 每 500ms（vs 注册 NSPasteboardObserver — 不存在；轮询是 macOS 标准做法）</li>
+            <li><b>排除应用</b>：1Password / Bitwarden / Keychain / Terminal / 用户自定义列表</li>
+            <li><b>排除 "transient"</b> ：NSPasteboardItem 标记 <code>org.nspasteboard.TransientType</code> 的不存（密码管理器约定）</li>
+            <li><b>体积上限</b>：单条文本 1 MB / 图片 5 MB / 文件只存路径</li>
+            <li><b>保留时间</b>：默认 7 天，⭐ 标星的永久</li>
+            <li><b>去重</b>：同内容连续复制 → 只保留最新一条 timestamp</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <h3 style="margin-top:0">列表项交互</h3>
+        <div class="grid-3" style="font-size:12.5px">
+          <div>
+            <b style="color:var(--green)">悬停 (hover)</b>
+            <p style="margin:4px 0 0;color:var(--muted)">展开预览（最多 8 行 full 内容）+ "Copy this" 按钮悬浮</p>
+          </div>
+          <div>
+            <b style="color:var(--blue)">单击 / 回车</b>
+            <p style="margin:4px 0 0;color:var(--muted)">关 Hub → 写到原光标位置（走 Mode B 的 clipboard fallback）</p>
+          </div>
+          <div>
+            <b style="color:var(--pink-deep)">右键</b>
+            <p style="margin:4px 0 0;color:var(--muted)">⭐ 标星 / 编辑 / 复制为纯文本 / 删除 / 排除此 app</p>
+          </div>
+          <div>
+            <b>双击</b>
+            <p style="margin:4px 0 0;color:var(--muted)">复制回剪贴板（不粘贴；让用户自己 ⌘V 到别处）</p>
+          </div>
+          <div>
+            <b>拖出窗口</b>
+            <p style="margin:4px 0 0;color:var(--muted)">⚡ 拖到任意 app → 该 app 接收 drop（文件/文本/图）</p>
+          </div>
+          <div>
+            <b>⌘ + 数字</b>
+            <p style="margin:4px 0 0;color:var(--muted)">不离开键盘的"快速选第 N 条"</p>
+          </div>
+        </div>
+      </div>
+
+      <h3>不同 kind 的视觉处理</h3>
+      <div class="grid-6">
+        <div class="card" style="padding:10px">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">📝 纯文本</div>
+          <div style="font-size:11px">前 60 字符省略<br><span style="color:var(--muted)">flexible</span></div>
+        </div>
+        <div class="card" style="padding:10px">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">🔗 URL</div>
+          <div style="font-size:11px;color:var(--blue)">domain.com<br><span style="color:var(--muted)">解析 title</span></div>
+        </div>
+        <div class="card" style="padding:10px">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">🖼 图片</div>
+          <div style="height:30px;background:linear-gradient(45deg,#a47148,#e8c87a);border-radius:4px"></div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px">缩略图</div>
+        </div>
+        <div class="card" style="padding:10px">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">📄 文件</div>
+          <div style="font-size:11px">README.md<br><span style="color:var(--muted)">~/projects/...</span></div>
+        </div>
+        <div class="card" style="padding:10px">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">💻 代码</div>
+          <div style="font-size:10px;font-family:var(--mono);color:#1e88e5">function() {<br>&nbsp;...</div>
+        </div>
+        <div class="card" style="padding:10px">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">🎨 颜色</div>
+          <div style="display:flex;gap:4px;align-items:center;font-size:11px"><i style="width:14px;height:14px;background:#e8638c;border-radius:3px;display:inline-block"></i> #e8638c</div>
+        </div>
+      </div>
+      <p class="sub" style="margin-top:8px">↑ 自动识别 kind（URL / hex 色值 / file path），用对应图标。</p>
+    </section>
+
+    <!-- ── ⑥ AI history ── -->
+    <section id="ai-history">
+      <h2>⑥ AI 历史的详细设计</h2>
+      <p class="sub">把现有的「📜 查看历史记录」窗合并进 Hub，下放成 tab。</p>
+
+      <div class="card">
+        <p style="margin:0 0 10px">
+          列表项 = <b>一个 session</b>（不是 turn）。点 session → 在 Hub 内展开当 session 的全部 turns。
+          支持搜索（全文 + 时间筛选）。从这里可以："📋 复制回答" / "🔄 继续这个对话"（重新激活 session）/ "🗑 删除"。
+        </p>
+
+        <div style="background:#fafafa;border:1px solid var(--line);border-radius:10px;padding:12px;font-size:12.5px">
+          <div style="font-weight:600;margin-bottom:8px">最近 7 天</div>
+          <div style="border-bottom:1px solid var(--line); padding:8px 0; display:flex; align-items:start; gap:10px">
+            <span style="font-size:18px">🦞</span>
+            <div style="flex:1">
+              <div style="font-weight:600">总结这个 Nature 论文</div>
+              <div style="color:var(--muted);font-size:11px">2 turns · 5 分钟前 · Claude</div>
+            </div>
+            <span class="pill pill-muted">⌘1</span>
+          </div>
+          <div style="border-bottom:1px solid var(--line); padding:8px 0; display:flex; align-items:start; gap:10px">
+            <span style="font-size:18px">🐭</span>
+            <div style="flex:1">
+              <div style="font-weight:600">把这段中文翻译成正式英文</div>
+              <div style="color:var(--muted);font-size:11px">1 turn · 1 小时前 · Codex</div>
+            </div>
+            <span class="pill pill-muted">⌘2</span>
+          </div>
+          <div style="padding:8px 0; display:flex; align-items:start; gap:10px">
+            <span style="font-size:18px">🥷</span>
+            <div style="flex:1">
+              <div style="font-weight:600">这个 bug 怎么修</div>
+              <div style="color:var(--muted);font-size:11px">5 turns · 昨天 · Claude · 有截图</div>
+            </div>
+            <span class="pill pill-muted">⌘3</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── ⑦ New states ── -->
+    <section id="new-states">
+      <h2>⑦ 桌宠状态全集（v0.2 新增 3 个）</h2>
+      <p class="sub">现有 6 个 + 新增 3 个 = 9 个状态。每个有独特的 anatomy + 微动画。</p>
+
+      <div class="grid-3">
+        <div class="card" style="text-align:center">
+          <svg class="mouse-svg" width="96" height="96" viewBox="-1 -3 18 18"><rect x="3" y="1" width="2" height="2" fill="var(--m-ear-out)"/><rect x="2" y="2" width="3" height="2" fill="var(--m-ear-out)"/><rect x="11" y="1" width="2" height="2" fill="var(--m-ear-out)"/><rect x="11" y="2" width="3" height="2" fill="var(--m-ear-out)"/><rect x="3" y="2" width="1" height="1" fill="var(--m-ear-in)"/><rect x="12" y="2" width="1" height="1" fill="var(--m-ear-in)"/><rect x="3" y="3" width="10" height="1" fill="var(--m-body)"/><rect x="2" y="4" width="12" height="3" fill="var(--m-body)"/><rect x="3" y="7" width="10" height="1" fill="var(--m-body)"/><rect x="5" y="8" width="6" height="2" fill="var(--m-belly)"/><rect x="3" y="8" width="2" height="2" fill="var(--m-body)"/><rect x="11" y="8" width="2" height="2" fill="var(--m-body)"/><rect x="4" y="10" width="8" height="1" fill="var(--m-body)"/><rect x="13" y="9" width="1" height="1" fill="var(--m-tail)"/><rect x="14" y="7" width="1" height="3" fill="var(--m-tail)"/><rect x="6" y="5" width="1" height="2" fill="var(--m-eye)"/><rect x="11" y="5" width="1" height="2" fill="var(--m-eye)"/><rect x="7" y="7" width="2" height="1" fill="var(--m-nose)"/><rect x="2" y="9" width="1" height="3" fill="var(--m-body)"/><rect x="1" y="8" width="1" height="2" fill="var(--m-body)"/><rect x="0" y="7" width="1" height="2" fill="var(--m-paw)"/><rect x="4" y="11" width="2" height="1" fill="var(--m-paw)"/><rect x="10" y="11" width="2" height="1" fill="var(--m-paw)"/></svg>
+          <div style="font-weight:600;margin-top:6px">type <span class="pill pill-pink">新</span></div>
+          <div style="font-size:11.5px;color:var(--muted)">语音 IME · 盯光标 + 笔状前爪</div>
+        </div>
+
+        <div class="card" style="text-align:center">
+          <svg class="mouse-svg" width="96" height="96" viewBox="-1 -3 18 18"><rect x="3" y="1" width="2" height="2" fill="var(--m-ear-out)"/><rect x="2" y="2" width="3" height="2" fill="var(--m-ear-out)"/><rect x="11" y="1" width="2" height="2" fill="var(--m-ear-out)"/><rect x="11" y="2" width="3" height="2" fill="var(--m-ear-out)"/><rect x="3" y="2" width="1" height="1" fill="var(--m-ear-in)"/><rect x="12" y="2" width="1" height="1" fill="var(--m-ear-in)"/><rect x="3" y="3" width="10" height="1" fill="var(--m-body)"/><rect x="2" y="4" width="12" height="3" fill="var(--m-body)"/><rect x="3" y="7" width="10" height="1" fill="var(--m-body)"/><rect x="4" y="8" width="8" height="3" fill="var(--m-belly)"/><rect x="3" y="8" width="1" height="3" fill="var(--m-body)"/><rect x="12" y="8" width="1" height="3" fill="var(--m-body)"/><rect x="5" y="11" width="6" height="1" fill="var(--m-body)"/><rect x="13" y="10" width="1" height="2" fill="var(--m-tail)"/><rect x="14" y="8" width="1" height="2" fill="var(--m-tail)"/><rect x="5" y="6" width="1" height="1" fill="var(--m-eye)"/><rect x="6" y="5" width="1" height="1" fill="var(--m-eye)"/><rect x="9" y="5" width="1" height="1" fill="var(--m-eye)"/><rect x="10" y="6" width="1" height="1" fill="var(--m-eye)"/><rect x="7" y="7" width="2" height="1" fill="var(--m-nose)"/><rect x="4" y="12" width="2" height="1" fill="var(--m-paw)"/><rect x="10" y="12" width="2" height="1" fill="var(--m-paw)"/></svg>
+          <div style="font-weight:600;margin-top:6px">hub <span class="pill pill-pink">新</span></div>
+          <div style="font-size:11.5px;color:var(--muted)">坐下 + 弯眼 ︶ · 旁边展开 Hub</div>
+        </div>
+
+        <div class="card" style="text-align:center">
+          <svg class="mouse-svg" width="96" height="96" viewBox="-1 -3 18 18"><rect x="3" y="1" width="2" height="2" fill="var(--m-ear-out)"/><rect x="2" y="2" width="3" height="2" fill="var(--m-ear-out)"/><rect x="11" y="1" width="2" height="2" fill="var(--m-ear-out)"/><rect x="11" y="2" width="3" height="2" fill="var(--m-ear-out)"/><rect x="3" y="2" width="1" height="1" fill="var(--m-ear-in)"/><rect x="12" y="2" width="1" height="1" fill="var(--m-ear-in)"/><rect x="3" y="3" width="10" height="1" fill="var(--m-body)"/><rect x="2" y="4" width="12" height="3" fill="var(--m-body)"/><rect x="3" y="7" width="10" height="1" fill="var(--m-body)"/><rect x="5" y="8" width="6" height="2" fill="var(--m-belly)"/><rect x="3" y="8" width="2" height="2" fill="var(--m-body)"/><rect x="11" y="8" width="2" height="2" fill="var(--m-body)"/><rect x="4" y="10" width="8" height="1" fill="var(--m-body)"/><rect x="13" y="9" width="1" height="1" fill="var(--m-tail)"/><rect x="14" y="7" width="1" height="3" fill="var(--m-tail)"/><rect x="5" y="5" width="1" height="2" fill="var(--m-eye)"/><rect x="10" y="5" width="1" height="2" fill="var(--m-eye)"/><rect x="7" y="7" width="2" height="1" fill="var(--m-nose)"/><rect x="4" y="11" width="2" height="1" fill="var(--m-paw)"/><!-- clipboard in paw -->
+          <rect x="9" y="10" width="3" height="3" fill="#fff" stroke="#1a1a1a" stroke-width=".3"/>
+          <rect x="10" y="11" width="2" height="1" fill="var(--m-eye)"/>
+          </svg>
+          <div style="font-weight:600;margin-top:6px">paste <span class="pill pill-pink">新</span></div>
+          <div style="font-size:11.5px;color:var(--muted)">爪子拎着剪贴板 · 一闪而过</div>
+        </div>
+      </div>
+
+      <p class="sub" style="margin-top:14px">⤴ 三个新状态。6 款已有皮肤都要画对应的 type/hub/paste 像素图 — 标准化方式：复用 listen 的眼/身，只换 paw + accessory.</p>
+    </section>
+
+    <!-- ── ⑧ Privacy ── -->
+    <section id="privacy">
+      <h2>⑧ 隐私 / 安全考虑（剪贴板的硬约束）</h2>
+      <p class="sub">剪贴板历史是最敏感的本地数据。任何 daily-use 剪贴板工具的成败关键在这里。</p>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3 style="margin-top:0;color:var(--green)">✅ 必做</h3>
+          <ul class="tight" style="font-size:13px">
+            <li><b>遵守 transient 类型</b>：检测 <code>org.nspasteboard.TransientType</code> / <code>org.nspasteboard.ConcealedType</code> → 完全不存（1Password/Bitwarden 等都打这个标）</li>
+            <li><b>默认排除应用</b>：1Password, Bitwarden, Dashlane, KeePass, Keychain Access, Terminal/iTerm/Warp</li>
+            <li><b>纯本地存储</b>：永远不上传，永远不进 telemetry。clipboard.jsonl 在 <code>~/.mouseclaw/</code>，权限 0600</li>
+            <li><b>磁盘加密</b>：v0.2 用 macOS Keychain 存对称密钥 → 文件 AES-256 加密（仅当前用户能读）</li>
+            <li><b>用户可清空 / 暂停</b>：Hub 底部「暂停记录」开关 + 「清空全部」按钮（带确认）</li>
+            <li><b>密码/secure 字段提示</b>：粘贴前检测前台是否 secure-text-input → 拒绝并提示</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h3 style="margin-top:0;color:var(--amber)">⚠️ 不做</h3>
+          <ul class="tight" style="font-size:13px">
+            <li>不做云同步（哪怕用户要求 — 这是 daily-use 工具，多设备同步是另一个完全不同的安全模型）</li>
+            <li>不上传任何剪贴板内容到 AI 后端（AI 召唤是单独的流程，不复用剪贴板数据）</li>
+            <li>不做"基于剪贴板内容的智能推荐"（会激励我们偷看用户内容）</li>
+            <li>不记录密码管理器粘贴出来的内容（即使用户没把它加排除名单）</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="note" style="margin-top:14px">
+        <b>第一次启动剪贴板功能要弹的 onboarding：</b> "我会在本地记录你的复制历史，永远不联网。
+        默认会跳过密码管理器和终端。可以随时关掉。" + 一个清晰的 ✅ / ❌ 选择。
+      </div>
+    </section>
+
+    <!-- ── ⑨ Roadmap ── -->
+    <section id="roadmap">
+      <h2>⑨ 实现路线图（建议）</h2>
+
+      <table class="card" style="padding:0;border-radius:14px;overflow:hidden">
+        <thead style="background:#fafafa">
+          <tr><th>阶段</th><th>范围</th><th>预估</th><th>难点</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><b>P0</b> <span class="pill pill-pink">必做</span></td>
+            <td>剪贴板历史捕获 + 持久化 + Hub 列表 UI</td>
+            <td>1 天</td>
+            <td>NSPasteboard 轮询的省电策略；transient 标志识别</td>
+          </tr>
+          <tr>
+            <td><b>P0</b> <span class="pill pill-pink">必做</span></td>
+            <td>点击桌宠 → Hub 展开 + Tabs 框架</td>
+            <td>0.5 天</td>
+            <td>Tauri 窗口尺寸动态调整（pet-only → pet+hub）</td>
+          </tr>
+          <tr>
+            <td><b>P1</b> <span class="pill pill-blue">高优</span></td>
+            <td>长按 fn → 语音输入法（写到光标）</td>
+            <td>1 天</td>
+            <td>fn 单键长按检测；与系统 Dictation 抢占；< 250ms 误触保护</td>
+          </tr>
+          <tr>
+            <td><b>P1</b> <span class="pill pill-blue">高优</span></td>
+            <td>⌘⇧V 直接打开 Hub + 自动聚焦剪贴板搜索</td>
+            <td>0.5 天</td>
+            <td>全局快捷键注册（已有基础设施）</td>
+          </tr>
+          <tr>
+            <td><b>P2</b></td>
+            <td>AI 历史 tab 合并进 Hub（替代独立 history 窗口）</td>
+            <td>0.5 天</td>
+            <td>复用 read_history 命令；session 视图重排</td>
+          </tr>
+          <tr>
+            <td><b>P2</b></td>
+            <td>kind 自动识别（URL / 颜色 / 文件路径）+ 图片预览</td>
+            <td>0.5 天</td>
+            <td>NSPasteboard image type 读取；缩略图缓存</td>
+          </tr>
+          <tr>
+            <td><b>P3</b></td>
+            <td>磁盘 AES 加密 + Keychain 密钥管理</td>
+            <td>0.5 天</td>
+            <td>macOS Security framework 集成</td>
+          </tr>
+          <tr>
+            <td><b>P3</b></td>
+            <td>⌘1..9 快选 / 拖出 Hub 到 app / 桌宠 3 个新状态</td>
+            <td>1 天</td>
+            <td>NSDragging 协议；新 sprite 设计（6 款皮肤 × 3 新状态 = 18 个新像素图）</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="note green" style="margin-top:14px">
+        <b>建议执行顺序</b>：先 P0（剪贴板 + Hub）→ 用户上手用 1-2 天 → 然后 P1（语音 IME）→ 再 P2/P3。
+        理由：剪贴板和 Hub 这两块解锁了 daily-use 价值；语音 IME 是锦上添花但实现成本类似。
+      </div>
+    </section>
+
+    <section style="margin-top:64px; padding-bottom:80px; color:var(--muted); font-size:12.5px; text-align:center">
+      🦞 MouseClaw v0.2 · prototype 2026-05-16 · 等你拍板后再写 Rust/React
+    </section>
+
+  </main>
+</div>
+
+</body>
+</html>
