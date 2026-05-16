@@ -131,7 +131,10 @@ pub struct Config {
 
 fn legacy_version() -> u32 { 1 }
 fn default_language() -> String { "zh".into() }
-fn default_tidy_up() -> bool { true }
+// LLM tidy 默认**关** —— Claude CLI 调用每次 +3-8s，对 AI 召唤流程是过度优化。
+// 只有写到光标的语音 IME 场景值得开（精修文本，用户看到的就是它）。
+// 用户托盘菜单可一键开。
+fn default_tidy_up() -> bool { false }
 
 impl Default for Config {
     fn default() -> Self {
