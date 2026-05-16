@@ -71,6 +71,18 @@ pub const EXCLUDED_BUNDLES: &[&str] = &[
 pub static HISTORY: once_cell::sync::Lazy<Arc<RwLock<VecDeque<ClipItem>>>> =
     once_cell::sync::Lazy::new(|| Arc::new(RwLock::new(VecDeque::with_capacity(64))));
 
+/// 暂停开关 —— 用户托盘点「⏸️ 暂停记录」时置为 true，捕获 loop 看到就跳过新条目
+/// 已经存的不影响；恢复后继续记录。
+pub static PAUSED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_paused(p: bool) {
+    PAUSED.store(p, std::sync::atomic::Ordering::Relaxed);
+    println!("[mouseclaw] 📋 clipboard paused = {p}");
+}
+pub fn is_paused() -> bool {
+    PAUSED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 fn jsonl_path() -> Result<PathBuf> {
     let home = std::env::var_os("HOME").context("HOME not set")?;
     Ok(PathBuf::from(home).join(".mouseclaw/clipboard.jsonl"))
@@ -245,6 +257,9 @@ fn frontmost_app() -> (String, String) {
 fn frontmost_app() -> (String, String) { (String::new(), String::new()) }
 
 fn on_clipboard_changed() -> Result<()> {
+    if is_paused() {
+        return Ok(()); // 用户托盘暂停了
+    }
     if is_transient() {
         println!("[mouseclaw] 📋 transient/concealed —— 跳过记录");
         return Ok(());

@@ -71,18 +71,20 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let en = current_lang == "en";
 
     let (s_summon, s_history, s_skin, s_model, s_browser_on, s_browser_off,
-         s_status, s_about, s_quit, s_lang_menu, s_tidy, s_vime) = if en {
+         s_status, s_about, s_quit, s_lang_menu, s_tidy, s_vime, s_pause) = if en {
         ("🦞 Summon", "📜 History…", "🎨 Change pet", "🎙️ Voice model",
          "🌐 Browser automation: enabled ✓", "🌐 Enable browser automation…",
          "📊 System status…", "ℹ️  About MouseClaw", "Quit MouseClaw", "🌐 Language",
          "✨ LLM polish voice (+3–8s, off by default)",
-         "🎙️ Voice IME (hold fn → type at cursor)")
+         "🎙️ Voice IME (hold fn → type at cursor)",
+         "⏸️ Pause clipboard recording")
     } else {
         ("🦞 召唤老鼠", "📜 查看历史记录…", "🎨 换个桌宠", "🎙️ 语音模型",
          "🌐 浏览器自动化：已启用 ✓", "🌐 启用浏览器自动化…",
          "📊 系统状态…", "ℹ️  关于 MouseClaw", "退出 MouseClaw", "🌐 语言",
          "✨ LLM 精修语音（+3–8s，默认关）",
-         "🎙️ 语音输入法（长按 fn → 写到光标）")
+         "🎙️ 语音输入法（长按 fn → 写到光标）",
+         "⏸️ 暂停剪贴板记录")
     };
 
     let summon  = MenuItem::with_id(app, "summon",  s_summon,  true, None::<&str>)?;
@@ -148,6 +150,10 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let current_vime = crate::config::Config::load().voice_ime_enabled;
     let vime_item = CheckMenuItem::with_id(app, "toggle-voice-ime", s_vime,
         true, current_vime, None::<&str>)?;
+    // 剪贴板暂停开关
+    let current_paused = crate::config::Config::load().clipboard_paused;
+    let pause_item = CheckMenuItem::with_id(app, "toggle-clipboard-pause", s_pause,
+        true, current_paused, None::<&str>)?;
 
     // Voice IME trigger 子菜单 —— Fn/Option/Control/RightShift/RightCmd/RightOption
     let current_trigger = crate::voice_ime::ImeTrigger::from_str(
@@ -178,7 +184,7 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &[
         &summon, &history,
         &skin_submenu, &model_submenu, &lang_submenu,
-        &sep1, &vime_item, &trigger_submenu, &tidy_item, &browser_item, &status,
+        &sep1, &vime_item, &trigger_submenu, &tidy_item, &pause_item, &browser_item, &status,
         &sep2, &about, &quit,
     ])?;
     let icon = build_template_icon();
@@ -190,15 +196,26 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
         .menu(&menu)
         .on_menu_event(handle_menu_event)
         .on_tray_icon_event(|tray, event| {
-            // Left-click on the icon body → summon (same as shortcut)
-            if let TrayIconEvent::Click {
-                button: MouseButton::Left,
-                button_state: MouseButtonState::Up,
-                ..
-            } = event
-            {
-                let app = tray.app_handle();
-                summon_via_tray(app);
+            use tauri::Emitter;
+            let app = tray.app_handle();
+            match event {
+                // v0.1.13 · 双击托盘 → 打开 Hub（prototype Section ④ 入口之一）
+                TrayIconEvent::DoubleClick { button: MouseButton::Left, .. } => {
+                    println!("[mouseclaw] 📋 tray double-click → open Hub");
+                    for (_, w) in app.webview_windows() {
+                        let _ = w.emit("open-hub", "clipboard");
+                    }
+                    crate::overlay::show_mouse(app);
+                }
+                // 单击托盘 → 召唤
+                TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    button_state: MouseButtonState::Up,
+                    ..
+                } => {
+                    summon_via_tray(app);
+                }
+                _ => {}
             }
         })
         .build(app)?;
@@ -236,8 +253,36 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
         "status"          => open_status_window(app),
         "toggle-tidy"     => toggle_tidy_up(app),
         "toggle-voice-ime"=> toggle_voice_ime(app),
+        "toggle-clipboard-pause" => toggle_clipboard_pause(app),
         "quit"            => app.exit(0),
         _ => {}
+    }
+}
+
+/// 切换剪贴板暂停（隐私 ⑧）
+fn toggle_clipboard_pause(app: &AppHandle) {
+    use tauri::Emitter;
+    let mut cfg = crate::config::Config::load();
+    cfg.clipboard_paused = !cfg.clipboard_paused;
+    let now_paused = cfg.clipboard_paused;
+    if let Err(e) = cfg.save() {
+        eprintln!("[mouseclaw] toggle_clipboard_pause save: {e}");
+        return;
+    }
+    crate::clipboard::set_paused(now_paused);
+    let lang = cfg.language;
+    let msg = if now_paused {
+        if lang == "en" { "⏸️ Clipboard recording paused. New copies won't be saved until you resume." }
+        else { "⏸️ 剪贴板记录已暂停。新复制的内容不会被记录，直到你恢复。" }
+    } else {
+        if lang == "en" { "▶️ Clipboard recording resumed." }
+        else { "▶️ 剪贴板记录已恢复。" }
+    };
+    for (_, w) in app.webview_windows() {
+        let _ = w.emit(crate::events::EV_VIEW_CHANGED, serde_json::json!({
+            "kind": "reply", "transcript": "clipboard pause",
+            "reply": msg, "mode": "A", "streaming": false,
+        }));
     }
 }
 

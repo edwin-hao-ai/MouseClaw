@@ -89,6 +89,9 @@ export function Hub({ onClose }: HubProps) {
   // Focus search on mount + tab change
   useEffect(() => { searchRef.current?.focus(); }, [tab]);
 
+  // v0.1.13 · 点 session 展开 turns
+  const [expandedSessionId, setExpandedSessionId] = useState<number | null>(null);
+
   // Filtered list
   const filtered = useMemo(() => {
     if (tab === "clipboard") {
@@ -244,19 +247,48 @@ export function Hub({ onClose }: HubProps) {
             </div>
           );
         })}
-        {tab === "history" && (filtered as HistorySession[]).map((s, i) => (
-          <div key={s.session_id} className={`hub-item ${i === activeIdx ? "active" : ""}`}>
-            <div className="hub-item-icon">🦞</div>
-            <div className="hub-item-body">
-              <div className="hub-item-text">
-                {s.turns[0]?.text || t("hub.empty.history")}
+        {tab === "history" && (filtered as HistorySession[]).map((s, i) => {
+          const isExpanded = expandedSessionId === s.session_id;
+          return (
+            <div key={s.session_id} className="hub-history-block">
+              <div
+                className={`hub-item ${i === activeIdx ? "active" : ""}`}
+                onClick={() => setExpandedSessionId(isExpanded ? null : s.session_id)}
+              >
+                <div className="hub-item-icon">{isExpanded ? "▼" : "▶"}</div>
+                <div className="hub-item-body">
+                  <div className="hub-item-text">
+                    {s.turns[0]?.text || t("hub.empty.history")}
+                  </div>
+                  <div className="hub-item-meta">
+                    {t("history.turn_count", { count: s.turns.length })} · {new Date(s.started_at).toLocaleString()}
+                  </div>
+                </div>
               </div>
-              <div className="hub-item-meta">
-                {t("history.turn_count", { count: s.turns.length })} · {new Date(s.started_at).toLocaleString()}
-              </div>
+              {isExpanded && (
+                <div className="hub-history-turns">
+                  {s.turns.map((turn, ti) => (
+                    <div key={ti} className={`hub-turn hub-turn-${turn.role}`}>
+                      <span className="hub-turn-role">
+                        {turn.role === "user" ? t("history.role.user") : t("history.role.assistant")}
+                      </span>
+                      <span className="hub-turn-text">{turn.text}</span>
+                    </div>
+                  ))}
+                  <div className="hub-history-actions">
+                    <button onClick={async () => {
+                      // 复制最后一条 assistant 回答到剪贴板
+                      const last = [...s.turns].reverse().find(t => t.role === "assistant");
+                      if (last) {
+                        try { await navigator.clipboard.writeText(last.text); } catch {}
+                      }
+                    }}>📋 {t("hub.copy_only")}</button>
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {ctxMenu && (
