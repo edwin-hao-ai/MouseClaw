@@ -71,16 +71,18 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let en = current_lang == "en";
 
     let (s_summon, s_history, s_skin, s_model, s_browser_on, s_browser_off,
-         s_status, s_about, s_quit, s_lang_menu, s_tidy) = if en {
+         s_status, s_about, s_quit, s_lang_menu, s_tidy, s_vime) = if en {
         ("🦞 Summon", "📜 History…", "🎨 Change pet", "🎙️ Voice model",
          "🌐 Browser automation: enabled ✓", "🌐 Enable browser automation…",
          "📊 System status…", "ℹ️  About MouseClaw", "Quit MouseClaw", "🌐 Language",
-         "✨ LLM polish voice (+3–8s, off by default)")
+         "✨ LLM polish voice (+3–8s, off by default)",
+         "🎙️ Voice IME (hold fn → type at cursor)")
     } else {
         ("🦞 召唤老鼠", "📜 查看历史记录…", "🎨 换个桌宠", "🎙️ 语音模型",
          "🌐 浏览器自动化：已启用 ✓", "🌐 启用浏览器自动化…",
          "📊 系统状态…", "ℹ️  关于 MouseClaw", "退出 MouseClaw", "🌐 语言",
-         "✨ LLM 精修语音（+3–8s，默认关）")
+         "✨ LLM 精修语音（+3–8s，默认关）",
+         "🎙️ 语音输入法（长按 fn → 写到光标）")
     };
 
     let summon  = MenuItem::with_id(app, "summon",  s_summon,  true, None::<&str>)?;
@@ -142,6 +144,10 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let current_tidy = crate::config::Config::load().tidy_up_enabled;
     let tidy_item = CheckMenuItem::with_id(app, "toggle-tidy", s_tidy,
         true, current_tidy, None::<&str>)?;
+    // Voice IME toggle —— 长按 fn 写到光标
+    let current_vime = crate::config::Config::load().voice_ime_enabled;
+    let vime_item = CheckMenuItem::with_id(app, "toggle-voice-ime", s_vime,
+        true, current_vime, None::<&str>)?;
 
     let status  = MenuItem::with_id(app, "status",  s_status,     true, None::<&str>)?;
     let about   = MenuItem::with_id(app, "about",   s_about, true, None::<&str>)?;
@@ -152,7 +158,7 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &[
         &summon, &history,
         &skin_submenu, &model_submenu, &lang_submenu,
-        &sep1, &tidy_item, &browser_item, &status,
+        &sep1, &vime_item, &tidy_item, &browser_item, &status,
         &sep2, &about, &quit,
     ])?;
     let icon = build_template_icon();
@@ -204,8 +210,46 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
         "enable-browser"  => enable_browser_automation(app),
         "status"          => open_status_window(app),
         "toggle-tidy"     => toggle_tidy_up(app),
+        "toggle-voice-ime"=> toggle_voice_ime(app),
         "quit"            => app.exit(0),
         _ => {}
+    }
+}
+
+/// 切换 voice IME（长按 fn → 写到光标）
+fn toggle_voice_ime(app: &AppHandle) {
+    use tauri::Emitter;
+    let mut cfg = crate::config::Config::load();
+    cfg.voice_ime_enabled = !cfg.voice_ime_enabled;
+    let now_on = cfg.voice_ime_enabled;
+    if let Err(e) = cfg.save() {
+        eprintln!("[mouseclaw] toggle_voice_ime save: {e}");
+        return;
+    }
+    #[cfg(target_os = "macos")]
+    crate::voice_ime::set_enabled(now_on);
+    let lang = cfg.language;
+    let msg = if now_on {
+        if lang == "en" {
+            "🎙️ Voice IME: ON. Hold fn key for >300ms then speak; release → typed at cursor. Short tap on fn still works (macOS default)."
+        } else {
+            "🎙️ 语音输入法：开。按住 fn 键 >300ms 开始说话，松开 → 文字写到光标。短按 fn 仍走 macOS 原生行为。"
+        }
+    } else {
+        if lang == "en" {
+            "✋ Voice IME: OFF. fn key restored to macOS default behavior."
+        } else {
+            "✋ 语音输入法：关。fn 键恢复 macOS 原生行为。"
+        }
+    };
+    for (_, w) in app.webview_windows() {
+        let _ = w.emit(crate::events::EV_VIEW_CHANGED, serde_json::json!({
+            "kind": "reply",
+            "transcript": "voice IME toggle",
+            "reply": msg,
+            "mode": "A",
+            "streaming": false,
+        }));
     }
 }
 

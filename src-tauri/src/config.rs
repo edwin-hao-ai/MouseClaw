@@ -90,8 +90,9 @@ impl WhisperModel {
 ///   v6 → v7: 新增桌宠皮肤（skin 字段）—— Onboarding 多一步选老鼠风格
 ///   v7 → v8: 新增可选 Whisper 模型（whisper_model 字段，默认 small）
 ///   v8 → v9: 新增 language 字段（i18n · zh / en），默认 zh
-///   v9 → v10: 新增 tidy_up_enabled（Typeless 套路），默认 true
-pub const CURRENT_CONFIG_VERSION: u32 = 10;
+///   v9 → v10: 新增 tidy_up_enabled（Typeless 套路），默认 false
+///   v10 → v11: 新增 voice_ime_enabled（长按 fn 写到光标），默认 true
+pub const CURRENT_CONFIG_VERSION: u32 = 11;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -117,6 +118,10 @@ pub struct Config {
     /// 短文本（< 8 字）和后端不可用时自动跳过，不影响响应。
     #[serde(default = "default_tidy_up")]
     pub tidy_up_enabled: bool,
+    /// 长按 fn → 语音输入到光标（v0.1.11 voice IME）
+    /// 默认开 —— 用户长按 fn 才触发，短按 fn 仍走 macOS 原生行为
+    #[serde(default = "default_voice_ime")]
+    pub voice_ime_enabled: bool,
     /// Set to true the first time the user completes Onboarding. Until then,
     /// the app doesn't register a global shortcut — clicking the tray or
     /// launching the app re-opens the Onboarding window instead.
@@ -135,6 +140,7 @@ fn default_language() -> String { "zh".into() }
 // 只有写到光标的语音 IME 场景值得开（精修文本，用户看到的就是它）。
 // 用户托盘菜单可一键开。
 fn default_tidy_up() -> bool { false }
+fn default_voice_ime() -> bool { true }
 
 impl Default for Config {
     fn default() -> Self {
@@ -145,6 +151,7 @@ impl Default for Config {
             whisper_model: WhisperModel::default(),
             language: default_language(),
             tidy_up_enabled: default_tidy_up(),
+            voice_ime_enabled: default_voice_ime(),
             onboarded: false,
             version: CURRENT_CONFIG_VERSION,
         }

@@ -28,6 +28,7 @@ pub mod screenshot;
 pub mod sessions;
 pub mod skins;
 pub mod tidy_up;
+pub mod voice_ime;
 pub mod transcribe;
 pub mod tray;
 
@@ -214,6 +215,8 @@ pub fn run() {
             commands::take_panel_context,
             commands::save_tidy_up,
             commands::get_tidy_up,
+            commands::save_voice_ime,
+            commands::get_voice_ime,
         ])
         .setup(move |app| {
             set_accessory_activation_policy();
@@ -227,6 +230,10 @@ pub fn run() {
 
             // v0.2 启动剪贴板历史捕获 —— 500ms 轮询 changeCount
             clipboard::spawn_capture_loop();
+
+            // v0.1.11 启动 fn 长按监听 —— CGEventTap on FlagsChanged
+            #[cfg(target_os = "macos")]
+            voice_ime::spawn(app.handle().clone(), app_state.clone());
 
             if let Err(e) = tray::setup(&app.handle()) {
                 eprintln!("[mouseclaw] tray setup failed: {e:#}");
