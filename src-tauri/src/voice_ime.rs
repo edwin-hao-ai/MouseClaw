@@ -21,7 +21,7 @@
 #![cfg(target_os = "macos")]
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
 
@@ -110,18 +110,27 @@ impl ImeTrigger {
 }
 
 /// 触发 voice IME 的状态机（trigger 可配置）
+///
+/// ⚠️ v0.1.14 修：tap_callback 在 FFI hot path 上，**不能**调 Config::load()
+///   （那会每次按键都读 + parse JSON 文件，跟其他线程写 config 也会撞）。
+/// 所以这里把 trigger 的 keycodes 和 flag_bit 缓存进 atomic，set_trigger 时更新。
 struct ImeMonitor {
-    pressed_at: AtomicI64,   // micros since UNIX_EPOCH, 0 = not pressed
-    triggered: AtomicBool,   // 长按已触发 = 等松开做 stop
-    enabled: AtomicBool,     // 用户在托盘可关
-    trigger_id: AtomicI64,   // 当前 trigger 的 keycode 集合 ID（用 first keycode 当 ID）
+    pressed_at: AtomicI64,    // micros since UNIX_EPOCH, 0 = not pressed
+    triggered: AtomicBool,    // 长按已触发 = 等松开做 stop
+    enabled: AtomicBool,      // 用户在托盘可关
+    // 缓存：当前 trigger 关心的两个 keycode（不需要的填 -1）+ flag bit
+    trigger_kc1: AtomicI64,
+    trigger_kc2: AtomicI64,
+    trigger_flag: AtomicU64,
 }
 
 static MONITOR: once_cell::sync::Lazy<ImeMonitor> = once_cell::sync::Lazy::new(|| ImeMonitor {
     pressed_at: AtomicI64::new(0),
     triggered: AtomicBool::new(false),
     enabled: AtomicBool::new(true),
-    trigger_id: AtomicI64::new(63), // fn 默认
+    trigger_kc1: AtomicI64::new(63), // fn 默认
+    trigger_kc2: AtomicI64::new(-1),
+    trigger_flag: AtomicU64::new(1 << 23), // fn flag
 });
 
 pub fn set_enabled(on: bool) {
@@ -132,15 +141,20 @@ pub fn set_enabled(on: bool) {
 pub fn is_enabled() -> bool { MONITOR.enabled.load(Ordering::Relaxed) }
 
 /// 切换触发键 —— 托盘 / Onboarding 调它，运行期热切换
+/// 把 keycodes + flag 一次性缓存进 atomic，hot path 上就只读 atomic
 pub fn set_trigger(t: ImeTrigger) {
-    let first = t.keycodes().first().copied().unwrap_or(63);
-    MONITOR.trigger_id.store(first, Ordering::Relaxed);
+    let kcs = t.keycodes();
+    MONITOR.trigger_kc1.store(kcs.first().copied().unwrap_or(-1), Ordering::Relaxed);
+    MONITOR.trigger_kc2.store(kcs.get(1).copied().unwrap_or(-1), Ordering::Relaxed);
+    MONITOR.trigger_flag.store(trigger_to_flag_bit(t), Ordering::Relaxed);
     println!("[mouseclaw] 🎙️ voice-ime trigger → {:?}", t);
 }
 
-fn matches_current_trigger(keycode: i64) -> bool {
-    let configured = ImeTrigger::from_str(&crate::config::Config::load().voice_ime_trigger);
-    configured.keycodes().contains(&keycode)
+#[inline]
+fn cached_matches(keycode: i64) -> bool {
+    let kc1 = MONITOR.trigger_kc1.load(Ordering::Relaxed);
+    let kc2 = MONITOR.trigger_kc2.load(Ordering::Relaxed);
+    keycode == kc1 || (kc2 >= 0 && keycode == kc2)
 }
 
 /// 主入口 —— lib.rs setup 时调一次。起后台线程跑 CGEventTap。
@@ -148,8 +162,8 @@ pub fn spawn(app: AppHandle, state: Arc<AppState>) {
     let cfg = crate::config::Config::load();
     MONITOR.enabled.store(cfg.voice_ime_enabled, Ordering::Relaxed);
     let trigger = ImeTrigger::from_str(&cfg.voice_ime_trigger);
-    let first = trigger.keycodes().first().copied().unwrap_or(63);
-    MONITOR.trigger_id.store(first, Ordering::Relaxed);
+    // 把 keycodes + flag 缓存进 atomic（hot path 用）
+    set_trigger(trigger);
     println!("[mouseclaw] 🎙️ voice-ime spawning · trigger={:?}", trigger);
 
     std::thread::Builder::new()
@@ -220,14 +234,12 @@ unsafe extern "C" fn tap_callback(
 
     // 拿出 keycode —— 哪个物理键变化了
     let keycode = CGEventGetIntegerValueField(event, 9); // kCGKeyboardEventKeycode = 9
-    if !matches_current_trigger(keycode) {
+    if !cached_matches(keycode) {
         return event;
     }
 
-    // 检查该 keycode 对应的 flag bit 是否在 flags 中
-    // 不同 modifier 的 flag 位不同；用 trigger.flag_bit() 查
-    let trigger = ImeTrigger::from_str(&crate::config::Config::load().voice_ime_trigger);
-    let flag = trigger_to_flag_bit(trigger);
+    // ⚠️ 全部走 atomic 缓存 —— 严禁在这个 FFI hot path 上做文件 I/O
+    let flag = MONITOR.trigger_flag.load(Ordering::Relaxed);
     let flags = CGEventGetFlags(event);
     let is_down = (flags & flag) != 0;
 
@@ -406,7 +418,7 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
     crate::overlay::emit_view(&app, &crate::events::ViewKind::VoiceImeListening);
 
     // v0.1.13 安全 #3：记录当前前台 app 的 bundle id —— 录音中切走就取消
-    let start_bundle = frontmost_bundle();
+    let start_bundle = std::panic::catch_unwind(frontmost_bundle).unwrap_or_default();
     let app2 = app.clone();
     let state2 = state.clone();
     std::thread::spawn(move || {
@@ -417,7 +429,7 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
             if !MONITOR.triggered.load(Ordering::Relaxed) { return; }
             // 时间到上限 → 让 60s cutoff 处理，不重复触发
             if started.elapsed() >= Duration::from_millis(MAX_RECORDING_MS) { return; }
-            let cur = frontmost_bundle();
+            let cur = std::panic::catch_unwind(frontmost_bundle).unwrap_or_default();
             if !cur.is_empty() && !start_bundle.is_empty() && cur != start_bundle {
                 println!("[mouseclaw] 🎙️ 前台 {start_bundle} → {cur}，取消录音（不写入）");
                 MONITOR.pressed_at.store(0, Ordering::Relaxed);

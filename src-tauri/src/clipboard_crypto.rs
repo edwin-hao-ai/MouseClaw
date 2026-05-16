@@ -27,6 +27,11 @@ use aes_gcm::{
 };
 use base64::{Engine, engine::general_purpose::STANDARD as B64};
 use security_framework::passwords::{get_generic_password, set_generic_password};
+use std::sync::OnceLock;
+
+/// ⚠️ v0.1.14 修：cipher 用 OnceLock 缓存，**不要**每次写盘都打开 Keychain。
+/// 之前每次复制都调一次 Keychain → 量级太大可能崩，或被 macOS 限速。
+static CIPHER: OnceLock<Aes256Gcm> = OnceLock::new();
 
 const KEYCHAIN_SERVICE: &str = "com.mouseclaw.clipboard";
 const KEYCHAIN_ACCOUNT: &str = "encryption-key-v1";
@@ -56,10 +61,14 @@ fn ensure_key() -> Result<[u8; 32]> {
     Ok(key)
 }
 
-fn cipher() -> Result<Aes256Gcm> {
+fn cipher() -> Result<&'static Aes256Gcm> {
+    if let Some(c) = CIPHER.get() { return Ok(c); }
     let key_bytes = ensure_key()?;
     let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
-    Ok(Aes256Gcm::new(key))
+    let c = Aes256Gcm::new(key);
+    // 失败说明已经被别的线程 set 了 —— 取那个
+    let _ = CIPHER.set(c);
+    Ok(CIPHER.get().expect("cipher just set"))
 }
 
 /// 加密一行 JSON 字符串 → base64 字符串（nonce + ciphertext）

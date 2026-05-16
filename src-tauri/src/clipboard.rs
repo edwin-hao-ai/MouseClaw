@@ -137,6 +137,33 @@ pub fn load_from_disk() -> Result<()> {
     Ok(())
 }
 
+/// 标记 "我们有未写盘的修改" + 自启一个 debounce 写盘任务
+/// 解决：用户连续复制 5 次 → 5 次完整加密 + 全文件覆盖写。
+/// 改成：每次 mark dirty，500ms 内合并写一次。
+static DIRTY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static FLUSH_PENDING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn schedule_save() {
+    DIRTY.store(true, std::sync::atomic::Ordering::Relaxed);
+    if FLUSH_PENDING
+        .compare_exchange(false, true,
+            std::sync::atomic::Ordering::SeqCst,
+            std::sync::atomic::Ordering::SeqCst)
+        .is_err()
+    {
+        return; // 已经有任务在排队了
+    }
+    std::thread::spawn(|| {
+        std::thread::sleep(Duration::from_millis(500));
+        FLUSH_PENDING.store(false, std::sync::atomic::Ordering::SeqCst);
+        if !DIRTY.swap(false, std::sync::atomic::Ordering::SeqCst) { return; }
+        let hist = HISTORY.read().unwrap();
+        if let Err(e) = save_to_disk(&hist) {
+            eprintln!("[mouseclaw] 📋 debounced save_to_disk: {e}");
+        }
+    });
+}
+
 /// 持久化到磁盘 —— v0.1.14 起整文件 AES-256-GCM 加密。
 /// 文件格式：第一行 magic `__mc_v1`，之后每行 = base64(nonce + ciphertext) of one ClipItem JSON
 fn save_to_disk(hist: &VecDeque<ClipItem>) -> Result<()> {
@@ -182,25 +209,34 @@ fn trim_locked(hist: &mut VecDeque<ClipItem>) {
 }
 
 /// 启动后台轮询任务 —— 进程启动时调一次，永久跑。
-/// 不依赖 AppHandle，纯独立任务。
+/// v0.1.14 修：每次循环用 catch_unwind 兜，单次 cocoa FFI 崩了不杀整个进程
 pub fn spawn_capture_loop() {
-    std::thread::spawn(|| {
+    std::thread::Builder::new()
+        .name("mouseclaw-clipboard".into())
+        .spawn(|| {
         if let Err(e) = load_from_disk() {
             eprintln!("[mouseclaw] clipboard load_from_disk: {e}");
         }
-        // 不需要 tokio runtime，cocoa 同步调用 OK
         let mut last_count: i64 = current_change_count();
         loop {
             std::thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
-            let cur = current_change_count();
-            if cur != last_count {
-                last_count = cur;
-                if let Err(e) = on_clipboard_changed() {
-                    eprintln!("[mouseclaw] clipboard capture: {e}");
+            // panic guard：一次 cocoa 调用崩了不连累整个线程
+            let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let cur = current_change_count();
+                if cur != last_count {
+                    last_count = cur;
+                    if let Err(e) = on_clipboard_changed() {
+                        eprintln!("[mouseclaw] clipboard capture: {e}");
+                    }
                 }
+            }));
+            if r.is_err() {
+                eprintln!("[mouseclaw] 📋 capture cycle panicked — 继续下一轮");
+                // 重置 changeCount 探针，下次重新 baseline
+                last_count = current_change_count();
             }
         }
-    });
+    }).expect("spawn clipboard thread");
 }
 
 #[cfg(target_os = "macos")]
@@ -325,11 +361,11 @@ fn on_clipboard_changed() -> Result<()> {
         .map(|d| d.as_nanos() as u64).unwrap_or(ts);
 
     let mut hist = HISTORY.write().unwrap();
-    // Dedupe：如果最后一条文本跟新内容一样，只更新 ts，不新增
     if let Some(last) = hist.back_mut() {
         if last.text == text {
             last.ts = ts;
-            let _ = save_to_disk(&hist);
+            drop(hist);
+            schedule_save();
             return Ok(());
         }
     }
@@ -338,7 +374,8 @@ fn on_clipboard_changed() -> Result<()> {
         ts, pinned: false,
     });
     trim_locked(&mut hist);
-    save_to_disk(&hist)?;
+    drop(hist);
+    schedule_save();
     Ok(())
 }
 
