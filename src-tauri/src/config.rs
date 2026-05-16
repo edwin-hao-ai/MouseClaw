@@ -22,7 +22,9 @@ pub enum WhisperModel {
 }
 
 impl Default for WhisperModel {
-    fn default() -> Self { WhisperModel::Small }
+    // 默认仍是 Base —— 59MB 首装最快。想要 90% 中文准度的用户去托盘
+    // 「🎙️ 语音模型」自己切到 Small (190MB)，后台下载即可。
+    fn default() -> Self { WhisperModel::Base }
 }
 
 impl WhisperModel {
@@ -65,10 +67,10 @@ impl WhisperModel {
     }
     pub fn from_str(s: &str) -> Self {
         match s {
-            "base" => WhisperModel::Base,
+            "small" => WhisperModel::Small,
             "medium" => WhisperModel::Medium,
             "turbo" => WhisperModel::Turbo,
-            _ => WhisperModel::Small,
+            _ => WhisperModel::Base, // 兜底 base —— 跟 Default 对齐
         }
     }
     pub fn all() -> &'static [WhisperModel] {
@@ -220,8 +222,8 @@ mod tests {
         assert_eq!(c.version, CURRENT_CONFIG_VERSION);
         assert_eq!(c.backend, Backend::ClaudeCli);
         assert_eq!(c.skin, SkinId::Classic);
-        // v0.1.8 默认升 Small（中文质量大跳，仍在 RAM 上限内）
-        assert_eq!(c.whisper_model, WhisperModel::Small);
+        // 默认 Base —— 体积最小（59MB），首装最快。
+        assert_eq!(c.whisper_model, WhisperModel::Base);
     }
 
     #[test]
@@ -238,9 +240,9 @@ mod tests {
     }
 
     #[test]
-    fn whisper_unknown_falls_back_to_small() {
-        assert_eq!(WhisperModel::from_str(""), WhisperModel::Small);
-        assert_eq!(WhisperModel::from_str("nope"), WhisperModel::Small);
+    fn whisper_unknown_falls_back_to_base() {
+        assert_eq!(WhisperModel::from_str(""), WhisperModel::Base);
+        assert_eq!(WhisperModel::from_str("nope"), WhisperModel::Base);
     }
 
     #[test]
