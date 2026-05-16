@@ -170,6 +170,57 @@
 }
 .hub-clear:hover { background: rgba(232,99,140,.2); }
 
+/* v0.1.13 · AI 历史 session 展开 turns */
+.hub-history-block {
+  border-bottom: 1px solid #f4eee3;
+}
+.hub-history-turns {
+  background: #fafafa;
+  padding: 8px 14px 10px 46px;
+  font-size: 12px;
+  border-top: 1px solid #f4eee3;
+}
+.hub-turn {
+  margin: 6px 0;
+  line-height: 1.5;
+}
+.hub-turn-role {
+  display: inline-block;
+  font-weight: 700;
+  font-size: 10.5px;
+  color: var(--accent-primary, #e8638c);
+  margin-right: 6px;
+  background: rgba(232,99,140,.08);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.hub-turn-assistant .hub-turn-role {
+  color: var(--green, #3fa66a);
+  background: rgba(63,166,106,.1);
+}
+.hub-turn-text {
+  color: var(--ink, #2b2622);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.hub-history-actions {
+  margin-top: 10px;
+  display: flex; gap: 6px;
+}
+.hub-history-actions button {
+  border: 1px solid var(--line, #ece6dd);
+  background: #fff;
+  font: 600 11px inherit;
+  padding: 4px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--ink, #2b2622);
+}
+.hub-history-actions button:hover {
+  background: rgba(232,99,140,.08);
+  border-color: var(--accent-primary, #e8638c);
+}
+
 /* v0.1.12 · 右键菜单 */
 .hub-ctx {
   background: #fff; border: 1px solid var(--line, #ece6dd);

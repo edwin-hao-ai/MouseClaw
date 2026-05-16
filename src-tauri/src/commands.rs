@@ -74,6 +74,7 @@ pub fn save_shortcut(
         tidy_up_enabled: prev.tidy_up_enabled,
         voice_ime_enabled: prev.voice_ime_enabled,
         voice_ime_trigger: prev.voice_ime_trigger,
+        clipboard_paused: prev.clipboard_paused,
         onboarded: true,
         version: config::CURRENT_CONFIG_VERSION,
     };
@@ -218,6 +219,20 @@ pub fn save_voice_ime_trigger(trigger: String) -> Result<(), String> {
 #[tauri::command]
 pub fn get_voice_ime_trigger() -> String {
     config::Config::load().voice_ime_trigger
+}
+
+#[tauri::command]
+pub fn save_clipboard_paused(paused: bool) -> Result<(), String> {
+    let mut cfg = config::Config::load();
+    cfg.clipboard_paused = paused;
+    cfg.save().map_err(|e| format!("保存失败：{e}"))?;
+    crate::clipboard::set_paused(paused);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_clipboard_paused() -> bool {
+    crate::clipboard::is_paused()
 }
 
 // ────────────────── Clipboard history (v0.2) ──────────────────

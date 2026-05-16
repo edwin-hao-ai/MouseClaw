@@ -93,7 +93,8 @@ impl WhisperModel {
 ///   v9 → v10: 新增 tidy_up_enabled（Typeless 套路），默认 false
 ///   v10 → v11: 新增 voice_ime_enabled（长按 fn 写到光标），默认 true
 ///   v11 → v12: 新增 voice_ime_trigger（可选 fn/option/control/right-*），默认 fn
-pub const CURRENT_CONFIG_VERSION: u32 = 12;
+///   v12 → v13: 新增 clipboard_paused（剪贴板暂停开关），默认 false
+pub const CURRENT_CONFIG_VERSION: u32 = 13;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -128,6 +129,10 @@ pub struct Config {
     /// 默认 fn —— 兼容老 config
     #[serde(default = "default_voice_ime_trigger")]
     pub voice_ime_trigger: String,
+    /// 剪贴板捕获暂停开关 —— v0.1.13 隐私强化
+    /// 默认 false（开启捕获）。用户点托盘「⏸️ 暂停剪贴板记录」时为 true。
+    #[serde(default)]
+    pub clipboard_paused: bool,
     /// Set to true the first time the user completes Onboarding. Until then,
     /// the app doesn't register a global shortcut — clicking the tray or
     /// launching the app re-opens the Onboarding window instead.
@@ -160,6 +165,7 @@ impl Default for Config {
             tidy_up_enabled: default_tidy_up(),
             voice_ime_enabled: default_voice_ime(),
             voice_ime_trigger: default_voice_ime_trigger(),
+            clipboard_paused: false,
             onboarded: false,
             version: CURRENT_CONFIG_VERSION,
         }

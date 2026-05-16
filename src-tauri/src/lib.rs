@@ -233,6 +233,8 @@ pub fn run() {
             commands::get_voice_ime,
             commands::save_voice_ime_trigger,
             commands::get_voice_ime_trigger,
+            commands::save_clipboard_paused,
+            commands::get_clipboard_paused,
         ])
         .setup(move |app| {
             set_accessory_activation_policy();
@@ -246,6 +248,10 @@ pub fn run() {
 
             // v0.2 启动剪贴板历史捕获 —— 500ms 轮询 changeCount
             clipboard::spawn_capture_loop();
+            // 用户上次会话设过暂停的话，恢复状态
+            if cfg.clipboard_paused {
+                clipboard::set_paused(true);
+            }
 
             // v0.1.11 启动 fn 长按监听 —— CGEventTap on FlagsChanged
             #[cfg(target_os = "macos")]

@@ -388,7 +388,6 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
         MONITOR.triggered.store(false, Ordering::Relaxed);
         return;
     }
-    // 检查 Whisper 是否就绪
     if !crate::transcribe::is_available() {
         eprintln!("[mouseclaw] 🎙️ Whisper not ready, skip voice IME");
         MONITOR.triggered.store(false, Ordering::Relaxed);
@@ -403,10 +402,66 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
         }
     };
     *state.recorder.lock().unwrap() = Some(recorder);
-    // 召唤桌宠到光标 + listening 视图
     crate::overlay::show_mouse(&app);
     crate::overlay::emit_view(&app, &crate::events::ViewKind::Listening);
+
+    // v0.1.13 安全 #3：记录当前前台 app 的 bundle id —— 录音中切走就取消
+    let start_bundle = frontmost_bundle();
+    let app2 = app.clone();
+    let state2 = state.clone();
+    std::thread::spawn(move || {
+        let started = Instant::now();
+        loop {
+            std::thread::sleep(Duration::from_millis(400));
+            // 已经被 stop_and_paste 收掉了 → 退出
+            if !MONITOR.triggered.load(Ordering::Relaxed) { return; }
+            // 时间到上限 → 让 60s cutoff 处理，不重复触发
+            if started.elapsed() >= Duration::from_millis(MAX_RECORDING_MS) { return; }
+            let cur = frontmost_bundle();
+            if !cur.is_empty() && !start_bundle.is_empty() && cur != start_bundle {
+                println!("[mouseclaw] 🎙️ 前台 {start_bundle} → {cur}，取消录音（不写入）");
+                MONITOR.pressed_at.store(0, Ordering::Relaxed);
+                MONITOR.triggered.store(false, Ordering::Relaxed);
+                // 丢弃录音数据
+                if let Some(rec) = state2.recorder.lock().unwrap().take() {
+                    let _ = rec.stop_and_take();
+                }
+                crate::overlay::emit_view(&app2, &crate::events::ViewKind::Blocked {
+                    reason: if crate::config::Config::load().language == "en" {
+                        "Voice input cancelled — frontmost app changed.".into()
+                    } else {
+                        "前台 app 切走 — 已取消语音输入，未写入。".into()
+                    },
+                });
+                tokio::runtime::Handle::try_current().map(|h| h.spawn(async move {
+                    tokio::time::sleep(Duration::from_millis(2000)).await;
+                    crate::overlay::hide_overlay(&app2);
+                })).ok();
+                return;
+            }
+        }
+    });
 }
+
+/// 拿当前前台 app 的 bundle id
+#[cfg(target_os = "macos")]
+fn frontmost_bundle() -> String {
+    use cocoa::base::{id, nil};
+    use objc::{class, msg_send, sel, sel_impl};
+    unsafe {
+        let ws: id = msg_send![class!(NSWorkspace), sharedWorkspace];
+        if ws == nil { return String::new(); }
+        let app: id = msg_send![ws, frontmostApplication];
+        if app == nil { return String::new(); }
+        let bid: id = msg_send![app, bundleIdentifier];
+        if bid == nil { return String::new(); }
+        let p: *const std::os::raw::c_char = msg_send![bid, UTF8String];
+        if p.is_null() { return String::new(); }
+        std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned()
+    }
+}
+#[cfg(not(target_os = "macos"))]
+fn frontmost_bundle() -> String { String::new() }
 
 fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
     let recorder = state.recorder.lock().unwrap().take();
