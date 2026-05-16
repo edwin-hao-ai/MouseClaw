@@ -101,6 +101,19 @@ export const zh: Strings = {
   "error.generic": "出错了：{message}",
   "error.tauri_unavailable": "在浏览器模式下，Tauri 命令不可用",
 
+  // Hub
+  "hub.title": "快捷面板",
+  "hub.tab.clipboard": "剪贴板",
+  "hub.tab.history": "AI 历史",
+  "hub.search.clipboard": "搜索剪贴板…",
+  "hub.search.history": "搜索 AI 对话…",
+  "hub.empty.clipboard": "还没有复制过任何内容。试着 ⌘C 一些文字。",
+  "hub.empty.history": "还没有 AI 对话历史。按快捷键说话试试。",
+  "hub.pin": "标星 · 永久保留",
+  "hub.unpin": "取消标星",
+  "hub.clear": "清空全部",
+  "hub.foot.paste": "粘贴到光标",
+
   // 语言
   "lang.zh": "中文",
   "lang.en": "English",

@@ -117,6 +117,19 @@ export interface Strings {
   "error.generic": string;
   "error.tauri_unavailable": string;
 
+  // ── Hub（点击桌宠面板） ──
+  "hub.title": string;
+  "hub.tab.clipboard": string;
+  "hub.tab.history": string;
+  "hub.search.clipboard": string;
+  "hub.search.history": string;
+  "hub.empty.clipboard": string;
+  "hub.empty.history": string;
+  "hub.pin": string;
+  "hub.unpin": string;
+  "hub.clear": string;
+  "hub.foot.paste": string;
+
   // ── 语言切换 ──
   "lang.zh": string;
   "lang.en": string;

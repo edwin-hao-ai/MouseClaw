@@ -101,6 +101,19 @@ export const en: Strings = {
   "error.generic": "Something went wrong: {message}",
   "error.tauri_unavailable": "Tauri commands unavailable in browser-only mode",
 
+  // Hub
+  "hub.title": "Quick panel",
+  "hub.tab.clipboard": "Clipboard",
+  "hub.tab.history": "AI history",
+  "hub.search.clipboard": "Search clipboard…",
+  "hub.search.history": "Search AI conversations…",
+  "hub.empty.clipboard": "No clipboard items yet. Try copying something with ⌘C.",
+  "hub.empty.history": "No AI history yet. Press the shortcut to start.",
+  "hub.pin": "Pin · keep forever",
+  "hub.unpin": "Unpin",
+  "hub.clear": "Clear all",
+  "hub.foot.paste": "paste to cursor",
+
   // Language
   "lang.zh": "中文",
   "lang.en": "English",

@@ -71,6 +71,7 @@ pub fn save_shortcut(
         skin,
         whisper_model: prev.whisper_model,
         language: prev.language,
+        tidy_up_enabled: prev.tidy_up_enabled,
         onboarded: true,
         version: config::CURRENT_CONFIG_VERSION,
     };
@@ -165,6 +166,21 @@ pub fn save_language(lang: String, app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn get_language() -> String {
     config::Config::load().language
+}
+
+/// 切换语音整理（Typeless 套路） · 托盘菜单 / 状态窗调用
+#[tauri::command]
+pub fn save_tidy_up(enabled: bool) -> Result<(), String> {
+    let mut cfg = config::Config::load();
+    cfg.tidy_up_enabled = enabled;
+    cfg.save().map_err(|e| format!("保存失败：{e}"))?;
+    println!("[mouseclaw] tidy_up_enabled → {enabled}");
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_tidy_up() -> bool {
+    config::Config::load().tidy_up_enabled
 }
 
 // ────────────────── Clipboard history (v0.2) ──────────────────

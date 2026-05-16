@@ -90,7 +90,8 @@ impl WhisperModel {
 ///   v6 → v7: 新增桌宠皮肤（skin 字段）—— Onboarding 多一步选老鼠风格
 ///   v7 → v8: 新增可选 Whisper 模型（whisper_model 字段，默认 small）
 ///   v8 → v9: 新增 language 字段（i18n · zh / en），默认 zh
-pub const CURRENT_CONFIG_VERSION: u32 = 9;
+///   v9 → v10: 新增 tidy_up_enabled（Typeless 套路），默认 true
+pub const CURRENT_CONFIG_VERSION: u32 = 10;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -110,6 +111,12 @@ pub struct Config {
     /// 加新语言：枚举改成 string + 前端 LANGUAGES 表加项即可，Rust 这边不卡。
     #[serde(default = "default_language")]
     pub language: String,
+    /// 是否启用语音转写后的 LLM 清洗（v0.1.10 · Typeless 套路）。
+    /// 开启时：Whisper 出文本 → 快速 Claude/Codex 调用清掉口头禅 / 加标点 / 修自我修正
+    /// 关掉时：Whisper 原始输出直接用
+    /// 短文本（< 8 字）和后端不可用时自动跳过，不影响响应。
+    #[serde(default = "default_tidy_up")]
+    pub tidy_up_enabled: bool,
     /// Set to true the first time the user completes Onboarding. Until then,
     /// the app doesn't register a global shortcut — clicking the tray or
     /// launching the app re-opens the Onboarding window instead.
@@ -124,6 +131,7 @@ pub struct Config {
 
 fn legacy_version() -> u32 { 1 }
 fn default_language() -> String { "zh".into() }
+fn default_tidy_up() -> bool { true }
 
 impl Default for Config {
     fn default() -> Self {
@@ -133,6 +141,7 @@ impl Default for Config {
             skin: SkinId::default(),
             whisper_model: WhisperModel::default(),
             language: default_language(),
+            tidy_up_enabled: default_tidy_up(),
             onboarded: false,
             version: CURRENT_CONFIG_VERSION,
         }
