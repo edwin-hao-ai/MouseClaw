@@ -89,38 +89,74 @@ fn jsonl_path() -> Result<PathBuf> {
 }
 
 /// 启动时从磁盘读历史 → 灌进 in-memory。容错：损坏的行跳过。
+/// v0.1.14：支持加密格式（首行 __mc_v1 magic）；老 plain JSONL 自动迁移。
 pub fn load_from_disk() -> Result<()> {
     let path = jsonl_path()?;
     if !path.exists() { return Ok(()); }
     let text = std::fs::read_to_string(&path)?;
     let mut hist = HISTORY.write().unwrap();
     hist.clear();
-    for line in text.lines() {
+    let mut lines = text.lines();
+    let first = lines.next().unwrap_or("");
+    let encrypted = crate::clipboard_crypto::is_encrypted_format(first);
+    let iter: Box<dyn Iterator<Item = &str>> = if encrypted {
+        Box::new(lines)
+    } else {
+        // 重头来 —— first 也是数据行
+        Box::new(text.lines())
+    };
+    let mut loaded = 0usize;
+    let mut errors = 0usize;
+    for line in iter {
         let line = line.trim();
         if line.is_empty() { continue; }
-        if let Ok(item) = serde_json::from_str::<ClipItem>(line) {
+        let plain = if encrypted {
+            match crate::clipboard_crypto::decrypt_line(line) {
+                Ok(s) => s,
+                Err(e) => { errors += 1; eprintln!("[mouseclaw] 📋 解密失败 (跳过): {e}"); continue; }
+            }
+        } else {
+            line.to_string()
+        };
+        if let Ok(item) = serde_json::from_str::<ClipItem>(&plain) {
             hist.push_back(item);
+            loaded += 1;
         }
     }
-    // 修剪掉超量的非标星历史
     trim_locked(&mut hist);
-    println!("[mouseclaw] 📋 clipboard history: 加载 {} 条", hist.len());
+    println!("[mouseclaw] 📋 clipboard history: 加载 {loaded} 条 (errors={errors}, encrypted={encrypted})");
+    drop(hist);
+    // 老格式 → 自动用加密格式重写
+    if !encrypted && loaded > 0 {
+        if let Err(e) = save_to_disk(&HISTORY.read().unwrap()) {
+            eprintln!("[mouseclaw] 📋 加密升级写入失败: {e}");
+        } else {
+            println!("[mouseclaw] 🔐 老 plain JSONL 已升级到加密格式");
+        }
+    }
     Ok(())
 }
 
-/// 持久化到磁盘 —— 完整覆盖写（不是 append），因为 trim/dedupe 之后 indices 会变。
-/// 量级 50 条 × 平均 1KB = 50KB，写一次 OK 不卡。
+/// 持久化到磁盘 —— v0.1.14 起整文件 AES-256-GCM 加密。
+/// 文件格式：第一行 magic `__mc_v1`，之后每行 = base64(nonce + ciphertext) of one ClipItem JSON
 fn save_to_disk(hist: &VecDeque<ClipItem>) -> Result<()> {
     let path = jsonl_path()?;
     if let Some(parent) = path.parent() { let _ = std::fs::create_dir_all(parent); }
-    let mut s = String::with_capacity(hist.len() * 256);
+    let mut s = String::with_capacity(hist.len() * 320);
+    s.push_str(crate::clipboard_crypto::file_magic());
+    s.push('\n');
     for item in hist {
-        let line = serde_json::to_string(item)?;
-        s.push_str(&line);
-        s.push('\n');
+        let plain = serde_json::to_string(item)?;
+        match crate::clipboard_crypto::encrypt_line(&plain) {
+            Ok(enc) => { s.push_str(&enc); s.push('\n'); }
+            Err(e) => {
+                // 加密失败兜底：写明文 + 警告（避免数据彻底丢）
+                eprintln!("[mouseclaw] 📋 ⚠️ 加密失败 fallback plain: {e}");
+                s.push_str(&plain); s.push('\n');
+            }
+        }
     }
     std::fs::write(&path, s)?;
-    // 0600 权限 —— 仅当前用户能读
     #[cfg(unix)] {
         use std::os::unix::fs::PermissionsExt;
         let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));

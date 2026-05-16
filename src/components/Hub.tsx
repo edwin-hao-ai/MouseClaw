@@ -162,6 +162,21 @@ export function Hub({ onClose }: HubProps) {
     setClips(c => c.map(x => x.id === id ? { ...x, pinned: !x.pinned } : x));
   };
 
+  // Hover 预览（>500ms 显示完整内容浮层）
+  const [preview, setPreview] = useState<{ id: number; x: number; y: number } | null>(null);
+  const previewTimerRef = useRef<number | null>(null);
+  const handleEnterItem = (id: number, e: React.MouseEvent) => {
+    if (previewTimerRef.current) window.clearTimeout(previewTimerRef.current);
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    previewTimerRef.current = window.setTimeout(() => {
+      setPreview({ id, x: rect.right + 8, y: rect.top });
+    }, 500);
+  };
+  const handleLeaveItem = () => {
+    if (previewTimerRef.current) window.clearTimeout(previewTimerRef.current);
+    setPreview(null);
+  };
+
   // 右键菜单：标星 / 复制回剪贴板 / 删除
   const [ctxMenu, setCtxMenu] = useState<{ id: number; x: number; y: number } | null>(null);
   useEffect(() => {
@@ -226,7 +241,16 @@ export function Hub({ onClose }: HubProps) {
             <div key={c.id}
                  className={`hub-item ${i === activeIdx ? "active" : ""}`}
                  onClick={() => handlePaste(c.id)}
-                 onContextMenu={(e) => handleContextMenu(e, c.id)}>
+                 onContextMenu={(e) => handleContextMenu(e, c.id)}
+                 onMouseEnter={(e) => handleEnterItem(c.id, e)}
+                 onMouseLeave={handleLeaveItem}
+                 draggable
+                 onDragStart={(e) => {
+                   // 拖出 Hub → 拖到任意 app → 接收方收到 text/plain
+                   // macOS Finder/任何文本字段/编辑器都能 drop（prototype Section ⑤）
+                   e.dataTransfer.setData("text/plain", c.text);
+                   e.dataTransfer.effectAllowed = "copy";
+                 }}>
               <div className="hub-item-icon" style={{ background: k.bg }}>{k.icon}</div>
               <div className="hub-item-body">
                 <div className="hub-item-text">{c.text.replace(/\n/g, " ⏎ ")}</div>
@@ -291,6 +315,21 @@ export function Hub({ onClose }: HubProps) {
         })}
       </div>
 
+      {preview && (() => {
+        const item = clips.find(c => c.id === preview.id);
+        if (!item) return null;
+        // 自动 clamp 位置，避免超出右边屏幕
+        const maxLeft = Math.min(preview.x, window.innerWidth - 320);
+        return (
+          <div className="hub-preview"
+               style={{ position: "fixed", left: maxLeft, top: preview.y }}>
+            <div className="hub-preview-text">{item.text}</div>
+            <div className="hub-preview-meta">
+              {item.app_name || "?"} · {item.text.length} {t("common.search").length > 3 ? "chars" : "字"}
+            </div>
+          </div>
+        );
+      })()}
       {ctxMenu && (
         <div className="hub-ctx" style={{ position: "fixed", left: ctxMenu.x, top: ctxMenu.y }}
              onClick={e => e.stopPropagation()}>

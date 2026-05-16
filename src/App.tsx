@@ -29,12 +29,13 @@ function mouseStateFor(view: ViewKind): MouseState {
     case "idle":             return "sleep";
     case "onboarding":       return "listen";
     case "listening":        return "listen";
+    case "voice-ime-listening": return "type"; // 长按触发键说话 → 笔状前爪 sprite
     case "thinking":         return "think";
     case "reply":            return view.streaming ? "think"
                                   : view.mode === "B" ? "write" : "jump";
     case "panel":            return "think";
     case "mode-b-countdown": return "write";
-    case "mode-b-inserting": return "write";
+    case "mode-b-inserting": return "paste"; // v0.1.14: 拎剪贴板 sprite
     case "blocked":          return "block";
   }
 }
@@ -207,7 +208,7 @@ export default function App() {
         }
       }} style={{ cursor: "pointer" }}>
         <PixelMouse
-          state={hubOpen ? "think" : mouseStateFor(view)} skin={skin}
+          state={hubOpen ? "hub" : mouseStateFor(view)} skin={skin}
           size={view.kind === "idle" ? 64 : 96}
           continuing={continuing}
         />
@@ -223,6 +224,9 @@ function BubbleFor({ view, continuing, onExpand, onNewSession }: BubbleForProps)
       return null;
     case "listening":
       // Whisper recording active. User presses shortcut again (or clicks ◼) to stop.
+      return <RecordingBubble />;
+    case "voice-ime-listening":
+      // v0.1.14 · 语音输入法中（长按触发键），桌宠 sprite 用 "type" 态
       return <RecordingBubble />;
     case "thinking":
       // 慢 —— Claude 调用要 10-30s，给个动态 loading 让用户知道在干活
