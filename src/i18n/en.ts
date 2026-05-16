@@ -1,0 +1,106 @@
+/** English strings. Mirror of zh.ts — every key must be present. */
+import type { Strings } from "./types";
+
+export const en: Strings = {
+  // common
+  "common.ok": "OK",
+  "common.cancel": "Cancel",
+  "common.confirm": "Confirm",
+  "common.next": "Next",
+  "common.back": "Back",
+  "common.done": "Done",
+  "common.retry": "Retry",
+  "common.close": "Close",
+  "common.search": "Search",
+  "common.loading": "Loading…",
+  "common.recommended": "Recommended",
+
+  // Bubble
+  "bubble.expand_to_panel": "💬 Continue chat",
+  "bubble.listening": "I'm listening…",
+  "bubble.thinking": "Thinking",
+  "bubble.session_chip": "🔗 Session #{id} · turn {turn}",
+
+  // Onboarding
+  "onboarding.welcome.title": "Hi, I'm MouseClaw 🦞",
+  "onboarding.welcome.subtitle": "Hold a shortcut to talk, release to send to AI. Pick one that doesn't clash with other apps.",
+  "onboarding.step.shortcut": "Shortcut",
+  "onboarding.step.backend": "AI backend",
+  "onboarding.step.skin": "Pick a pet",
+  "onboarding.step.permissions": "Permissions",
+  "onboarding.shortcut.title": "Hi, I'm MouseClaw 🦞",
+  "onboarding.shortcut.hint": "Hold the shortcut to talk, release to send.",
+  "onboarding.shortcut.zero_conflict": "No conflicts · Recommended",
+  "onboarding.backend.title": "Pick an AI backend",
+  "onboarding.backend.subtitle": "MouseClaw hands your voice + screenshot to this one.",
+  "onboarding.backend.uncertain_hint": "Not sure? Go with Claude Code CLI (most mature).",
+  "onboarding.skin.title": "Pick your pet 🦞",
+  "onboarding.skin.subtitle": "6 mouse styles · Switch any time from the tray.",
+  "onboarding.perms.title": "Grant required permissions",
+  "onboarding.perms.subtitle": "Click \"Open\" to bring up the system dialog. Tick MouseClaw.",
+  "onboarding.perms.go_open": "Open",
+  "onboarding.perms.granted": "Granted",
+  "onboarding.perms.requested_restart": "Requested · Restart to apply",
+  "onboarding.cta.next_backend": "Next: Pick AI backend →",
+  "onboarding.cta.next_skin": "Next: Pick your pet →",
+  "onboarding.cta.next_perms": "Next: Permissions →",
+  "onboarding.cta.finish": "Finish & restart MouseClaw 🦞",
+  "onboarding.cta.skip": "I granted them manually → Finish & restart",
+  "onboarding.skip_hint.all_done": "Clicking will restart the app — required to make screen recording take effect.",
+  "onboarding.skip_hint.partial": "If you've ticked MouseClaw in System Settings, click above to finish. It'll re-check after restart.",
+  "perms.accessibility.title": "Accessibility",
+  "perms.accessibility.desc": "Required for global shortcuts. Go to System Settings → Privacy → Accessibility.",
+  "perms.screen.title": "Screen Recording",
+  "perms.screen.desc": "Required to send a screenshot to AI. Go to System Settings → Privacy → Screen Recording.",
+  "perms.mic.title": "Microphone",
+  "perms.mic.desc": "Required for voice input. Go to System Settings → Privacy → Microphone.",
+
+  // Status window
+  "status.title": "🦞 System status",
+  "status.subtitle": "Auto-refreshes every 1.5s. Items turn green the moment you grant them.",
+  "status.all_good": "✓ All ready — you're good to go",
+  "status.partial": "⚠ Some items aren't ready — see below",
+  "status.row.claude.title": "Claude Code CLI",
+  "status.row.claude.good": "Ready — AI backend available",
+  "status.row.claude.bad": "Not installed. Run: npm i -g @anthropic-ai/claude-code",
+  "status.row.cdp.title": "Chrome browser automation (recommended)",
+  "status.row.cdp.good": "Connected to your Chrome — can drive the real browser",
+  "status.row.cdp.bad": "Not enabled. Let MouseClaw spin up a dedicated CDP-enabled Chrome profile.",
+  "status.row.cdp.action": "🌐 Enable",
+  "status.row.cdp.enabling": "Enabling…",
+  "status.row.agentbrowser.title": "agent-browser CLI (fallback · headless)",
+  "status.row.agentbrowser.good": "Available as a headless browser (separate from your Chrome)",
+  "status.row.agentbrowser.bad": "Not installed (optional). Run: npm i -g @vercel/agent-browser",
+  "status.row.acc.title": "Permission · Accessibility",
+  "status.row.acc.good": "Global shortcuts will work",
+  "status.row.acc.bad": "Not granted. System Settings → Privacy → Accessibility.",
+  "status.row.scr.title": "Permission · Screen Recording",
+  "status.row.scr.good": "Screenshot-to-AI works",
+  "status.row.scr.bad": "Not granted. System Settings → Privacy → Screen Recording.",
+  "status.row.mic.title": "Permission · Microphone",
+  "status.row.mic.good": "Voice input works",
+  "status.row.mic.bad": "Not granted. System Settings → Privacy → Microphone.",
+  "status.action.go": "Open",
+  "status.tip.first_use": "💡 First time you enable browser automation, MouseClaw opens a dedicated debug-profile Chrome (separate from your daily one). Log into the sites you want to automate in that Chrome, then MouseClaw's chrome-devtools MCP can drive it.",
+
+  // History
+  "history.title": "📜 Conversation history",
+  "history.empty": "No history yet. Try pressing the shortcut once.",
+  "history.turn_count": "{count} turns",
+  "history.session_label": "Session #{id}",
+  "history.role.user": "You",
+  "history.role.assistant": "🦞",
+
+  // About
+  "about.title": "About MouseClaw 🦞",
+  "about.tagline": "Desktop AI sidekick · Hold-to-talk · Always one tap away",
+
+  // Errors
+  "error.generic": "Something went wrong: {message}",
+  "error.tauri_unavailable": "Tauri commands unavailable in browser-only mode",
+
+  // Language
+  "lang.zh": "中文",
+  "lang.en": "English",
+  "lang.menu_title": "🌐 Language",
+};

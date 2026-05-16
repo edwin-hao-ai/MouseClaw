@@ -67,3 +67,7 @@ pub const EV_VIEW_CHANGED: &str = "view-changed";
 /// 桌宠皮肤切换事件。payload 是 SkinId 的 kebab-case 字符串（如 "lab"）。
 /// 前端 App.tsx 订阅它实时更新 PixelMouse 的 skin prop —— 不重启就能换皮肤。
 pub const EV_SKIN_CHANGED: &str = "skin-changed";
+
+/// 语言切换事件 —— payload 是 lang id ("zh" / "en")。前端 i18n module 监听
+/// 它来热切换所有 UI 文案，无需重启窗口。
+pub const EV_LANG_CHANGED: &str = "lang-changed";

@@ -190,6 +190,8 @@ pub fn run() {
             commands::capability_status,
             commands::save_whisper_model,
             commands::get_whisper_model,
+            commands::save_language,
+            commands::get_language,
         ])
         .setup(move |app| {
             set_accessory_activation_policy();

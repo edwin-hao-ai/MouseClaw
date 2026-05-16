@@ -89,7 +89,8 @@ impl WhisperModel {
 ///   v5 → v6: 新增多后端选择（backend 字段）—— Onboarding 多一步选 AI 后端
 ///   v6 → v7: 新增桌宠皮肤（skin 字段）—— Onboarding 多一步选老鼠风格
 ///   v7 → v8: 新增可选 Whisper 模型（whisper_model 字段，默认 small）
-pub const CURRENT_CONFIG_VERSION: u32 = 8;
+///   v8 → v9: 新增 language 字段（i18n · zh / en），默认 zh
+pub const CURRENT_CONFIG_VERSION: u32 = 9;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -105,6 +106,10 @@ pub struct Config {
     /// 用户选的 Whisper 转写模型（默认 Small —— 中文质量好且不超 RAM 上限）。
     #[serde(default)]
     pub whisper_model: WhisperModel,
+    /// UI 语言（i18n · zh / en）。默认 zh —— 与原默认中文体验对齐。
+    /// 加新语言：枚举改成 string + 前端 LANGUAGES 表加项即可，Rust 这边不卡。
+    #[serde(default = "default_language")]
+    pub language: String,
     /// Set to true the first time the user completes Onboarding. Until then,
     /// the app doesn't register a global shortcut — clicking the tray or
     /// launching the app re-opens the Onboarding window instead.
@@ -118,6 +123,7 @@ pub struct Config {
 }
 
 fn legacy_version() -> u32 { 1 }
+fn default_language() -> String { "zh".into() }
 
 impl Default for Config {
     fn default() -> Self {
@@ -126,6 +132,7 @@ impl Default for Config {
             backend: Backend::default(),
             skin: SkinId::default(),
             whisper_model: WhisperModel::default(),
+            language: default_language(),
             onboarded: false,
             version: CURRENT_CONFIG_VERSION,
         }

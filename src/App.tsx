@@ -220,6 +220,7 @@ function BubbleFor({ view, continuing, onExpand }: BubbleForProps) {
           variant={variant}
           streaming={streaming}
           scrollable={long}
+          markdown
           expandable={!streaming && long}
           onExpand={onExpand}
           sessionChip={continuing ? { sessionId: 42, turn: 2 } : undefined}
