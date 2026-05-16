@@ -16,6 +16,7 @@ pub mod backend;
 pub mod browser_bridge;
 pub mod claude_cli;
 pub mod clipboard;
+pub mod clipboard_crypto;
 pub mod cursor_follow;
 pub mod commands;
 pub mod config;

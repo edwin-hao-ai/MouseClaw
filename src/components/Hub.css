@@ -221,6 +221,32 @@
   border-color: var(--accent-primary, #e8638c);
 }
 
+/* v0.1.14 · hover 预览浮层 —— 显示完整内容 (>500ms hover) */
+.hub-preview {
+  max-width: 320px; max-height: 240px;
+  background: #fff; border: 1px solid var(--line, #ece6dd);
+  border-radius: 10px; padding: 10px 12px;
+  box-shadow: 0 12px 36px rgba(43,38,34,.15);
+  font-size: 12.5px; line-height: 1.55;
+  z-index: 9999;
+  pointer-events: none;
+  animation: hub-in .15s ease;
+}
+.hub-preview-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow: hidden;
+  color: var(--ink, #2b2622);
+  mask-image: linear-gradient(180deg, #000 0, #000 calc(100% - 32px), transparent 100%);
+  -webkit-mask-image: linear-gradient(180deg, #000 0, #000 calc(100% - 32px), transparent 100%);
+}
+.hub-preview-meta {
+  margin-top: 6px; padding-top: 6px;
+  border-top: 1px solid var(--line, #ece6dd);
+  font-size: 10.5px; color: var(--text-secondary, #8a8178);
+}
+
 /* v0.1.12 · 右键菜单 */
 .hub-ctx {
   background: #fff; border: 1px solid var(--line, #ece6dd);

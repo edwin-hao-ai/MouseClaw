@@ -15,7 +15,11 @@
 import "./PixelMouse.css";
 import { getSkin, type Skin, type SkinId } from "../skins";
 
-export type MouseState = "sleep" | "listen" | "think" | "write" | "jump" | "block";
+export type MouseState =
+  | "sleep" | "listen" | "think" | "write" | "jump" | "block"
+  | "type"   // v0.1.14 · 语音 IME 中：盯光标，前爪举笔状
+  | "hub"    // v0.1.14 · Hub 打开：坐下，弯眼 ︶
+  | "paste"; // v0.1.14 · 粘贴动作：爪子拎剪贴板，闪一下
 
 interface PixelMouseProps {
   state: MouseState;
@@ -171,7 +175,27 @@ function Eyes({ state, skin }: { state: MouseState; skin: Skin }) {
       </>
     );
   }
-  // listen / think / block — alert 2-px
+  // v0.1.14 · type 状态：眼睛盯右下角（光标在那）
+  if (state === "type") {
+    return (
+      <>
+        <rect x="6"  y="5" width="1" height="2" fill={e} />
+        <rect x="11" y="5" width="1" height="2" fill={e} />
+      </>
+    );
+  }
+  // v0.1.14 · hub 状态：弯眼 ︶（开心闭眼）
+  if (state === "hub") {
+    return (
+      <>
+        <rect x="5"  y="6" width="1" height="1" fill={e} />
+        <rect x="6"  y="5" width="1" height="1" fill={e} />
+        <rect x="9"  y="5" width="1" height="1" fill={e} />
+        <rect x="10" y="6" width="1" height="1" fill={e} />
+      </>
+    );
+  }
+  // listen / think / block / paste — alert 2-px
   return (
     <>
       <rect x="5"  y="5" width="1" height="2" fill={e} />
@@ -208,6 +232,31 @@ function Extras({ state, skin }: { state: MouseState; skin: Skin }) {
       <>
         <rect x="7" y="-2" width="2" height="2" fill="var(--danger)" />
         <rect x="7" y="1"  width="2" height="1" fill="var(--danger)" />
+      </>
+    );
+  }
+  // v0.1.14 · type 状态：前爪举起，像握笔（左边外伸 + 笔尖一点高亮）
+  if (state === "type") {
+    return (
+      <>
+        <rect x="2" y="9"  width="1" height="3" fill={p.body} />
+        <rect x="1" y="8"  width="1" height="2" fill={p.body} />
+        <rect x="0" y="7"  width="1" height="2" fill={p.paw} />
+        <rect x="-1" y="6" width="1" height="1" fill={p.nose} />
+      </>
+    );
+  }
+  // v0.1.14 · paste 状态：右爪拎一个白色「剪贴板」小方块
+  if (state === "paste") {
+    return (
+      <>
+        {/* 剪贴板矩形 */}
+        <rect x="13" y="10" width="3" height="3" fill="#ffffff" />
+        <rect x="13" y="10" width="3" height="1" fill={p.body} />
+        {/* 中间两条线表示纸上的字 */}
+        <rect x="14" y="11" width="1" height="1" fill={p.eye} />
+        {/* 爪子伸出 */}
+        <rect x="12" y="10" width="1" height="2" fill={p.paw} />
       </>
     );
   }

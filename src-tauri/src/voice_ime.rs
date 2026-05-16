@@ -403,7 +403,7 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
     };
     *state.recorder.lock().unwrap() = Some(recorder);
     crate::overlay::show_mouse(&app);
-    crate::overlay::emit_view(&app, &crate::events::ViewKind::Listening);
+    crate::overlay::emit_view(&app, &crate::events::ViewKind::VoiceImeListening);
 
     // v0.1.13 安全 #3：记录当前前台 app 的 bundle id —— 录音中切走就取消
     let start_bundle = frontmost_bundle();

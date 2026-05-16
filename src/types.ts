@@ -7,6 +7,7 @@ export type ViewKind =
   | { kind: "idle" }
   | { kind: "onboarding" }
   | { kind: "listening" }     // after shortcut; awaiting user text/voice
+  | { kind: "voice-ime-listening" }  // v0.1.14: hold-trigger voice IME 中
   | { kind: "thinking"; transcript: string }
   | { kind: "reply"; transcript: string; reply: string; mode: "A" | "B"; insertText?: string; streaming?: boolean }
   | { kind: "panel"; sessionId: number; turns: Turn[] }

@@ -9,6 +9,9 @@ pub enum ViewKind {
     Idle,
     Onboarding,
     Listening,
+    /// v0.1.14 · 语音 IME 中（长按触发键说话）—— 跟 Listening 区分，桌宠用 type 态
+    #[serde(rename = "voice-ime-listening")]
+    VoiceImeListening,
     Thinking { transcript: String },
     Reply {
         transcript: String,
