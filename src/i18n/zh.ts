@@ -1,0 +1,106 @@
+/** 中文 · 默认/兜底语言。新增 key 必须先在这里写。 */
+import type { Strings } from "./types";
+
+export const zh: Strings = {
+  // 通用
+  "common.ok": "好",
+  "common.cancel": "取消",
+  "common.confirm": "确认",
+  "common.next": "下一步",
+  "common.back": "返回",
+  "common.done": "完成",
+  "common.retry": "重试",
+  "common.close": "关闭",
+  "common.search": "搜索",
+  "common.loading": "加载中…",
+  "common.recommended": "推荐",
+
+  // 桌宠
+  "bubble.expand_to_panel": "💬 继续追问",
+  "bubble.listening": "听着呢…",
+  "bubble.thinking": "正在思考",
+  "bubble.session_chip": "🔗 续 Session #{id} · 第 {turn} 轮",
+
+  // Onboarding
+  "onboarding.welcome.title": "嘿，我是鼠标龙虾 🦞",
+  "onboarding.welcome.subtitle": "按住快捷键说话，松开发给 AI。选一个不和别的应用冲突的键。",
+  "onboarding.step.shortcut": "选快捷键",
+  "onboarding.step.backend": "选 AI 后端",
+  "onboarding.step.skin": "挑桌宠",
+  "onboarding.step.permissions": "开启权限",
+  "onboarding.shortcut.title": "嘿，我是鼠标龙虾 🦞",
+  "onboarding.shortcut.hint": "按住快捷键说话，松开发给 AI。",
+  "onboarding.shortcut.zero_conflict": "零冲突 · 推荐",
+  "onboarding.backend.title": "选一个 AI 后端",
+  "onboarding.backend.subtitle": "MouseClaw 把语音 + 截图交给它处理。",
+  "onboarding.backend.uncertain_hint": "不确定就选 Claude Code CLI（最成熟）。",
+  "onboarding.skin.title": "挑一只你的桌宠 🦞",
+  "onboarding.skin.subtitle": "6 款老鼠风格 · 随时可在托盘菜单「换个桌宠」切换。",
+  "onboarding.perms.title": "开启必要权限",
+  "onboarding.perms.subtitle": "点「去开启」会弹出系统授权框，按提示勾选 MouseClaw。",
+  "onboarding.perms.go_open": "去开启",
+  "onboarding.perms.granted": "已授权",
+  "onboarding.perms.requested_restart": "已请求 · 重启生效",
+  "onboarding.cta.next_backend": "下一步：选 AI 后端 →",
+  "onboarding.cta.next_skin": "下一步：挑桌宠 →",
+  "onboarding.cta.next_perms": "下一步：开启权限 →",
+  "onboarding.cta.finish": "完成并重启 MouseClaw 🦞",
+  "onboarding.cta.skip": "已在系统设置里开好了 → 完成并重启",
+  "onboarding.skip_hint.all_done": "点击后会重启 App —— 这是让屏幕录制权限生效的必要步骤。",
+  "onboarding.skip_hint.partial": "如果已经手动在系统设置勾选了 MouseClaw，可以直接点上面完成。重启后会重新检测。",
+  "perms.accessibility.title": "辅助功能",
+  "perms.accessibility.desc": "全局快捷键必须。前往「系统设置 → 隐私与安全性 → 辅助功能」开启。",
+  "perms.screen.title": "屏幕录制",
+  "perms.screen.desc": "截图给 AI 看必须。前往「系统设置 → 隐私与安全性 → 屏幕录制」开启。",
+  "perms.mic.title": "麦克风",
+  "perms.mic.desc": "语音输入必须。前往「系统设置 → 隐私与安全性 → 麦克风」开启。",
+
+  // Status window
+  "status.title": "🦞 系统状态",
+  "status.subtitle": "每 1.5s 自动刷新。授权完成后这里会立刻变绿。",
+  "status.all_good": "✓ 全部就绪 — 可以正常使用了",
+  "status.partial": "⚠ 还有项目未就绪 — 见下方",
+  "status.row.claude.title": "Claude Code CLI",
+  "status.row.claude.good": "已就绪 — AI 后端可用",
+  "status.row.claude.bad": "未安装。跑：npm i -g @anthropic-ai/claude-code",
+  "status.row.cdp.title": "Chrome 浏览器自动化（推荐路径）",
+  "status.row.cdp.good": "已连上你的 Chrome — 可直接操作真浏览器",
+  "status.row.cdp.bad": "未启用。让 MouseClaw 自动开一个带 CDP 的专用 Chrome profile。",
+  "status.row.cdp.action": "🌐 一键启用",
+  "status.row.cdp.enabling": "启用中…",
+  "status.row.agentbrowser.title": "agent-browser CLI（备选 · headless）",
+  "status.row.agentbrowser.good": "可用作 headless 浏览器（不连你当前 Chrome）",
+  "status.row.agentbrowser.bad": "未装（可选）。跑：npm i -g @vercel/agent-browser",
+  "status.row.acc.title": "权限 · 辅助功能",
+  "status.row.acc.good": "全局快捷键能工作",
+  "status.row.acc.bad": "未授权。前往「系统设置 → 隐私 → 辅助功能」开启。",
+  "status.row.scr.title": "权限 · 屏幕录制",
+  "status.row.scr.good": "截屏给 AI 看可用",
+  "status.row.scr.bad": "未授权。前往「系统设置 → 隐私 → 屏幕录制」开启。",
+  "status.row.mic.title": "权限 · 麦克风",
+  "status.row.mic.good": "语音输入可用",
+  "status.row.mic.bad": "未授权。前往「系统设置 → 隐私 → 麦克风」开启。",
+  "status.action.go": "去开启",
+  "status.tip.first_use": "💡 浏览器自动化第一次启用后，会开一个专用 debug profile 的 Chrome（跟你日常用的隔离开）。在那个 Chrome 里登录一次你要操作的网站，之后 MouseClaw 就能用 chrome-devtools MCP 帮你操作了。",
+
+  // History
+  "history.title": "📜 对话历史",
+  "history.empty": "还没有对话历史。试着按一次快捷键。",
+  "history.turn_count": "{count} 轮",
+  "history.session_label": "Session #{id}",
+  "history.role.user": "你",
+  "history.role.assistant": "🦞",
+
+  // About
+  "about.title": "关于 MouseClaw 🦞",
+  "about.tagline": "桌面 AI 助手 · 按住说话 · 随时召唤",
+
+  // 错误
+  "error.generic": "出错了：{message}",
+  "error.tauri_unavailable": "在浏览器模式下，Tauri 命令不可用",
+
+  // 语言
+  "lang.zh": "中文",
+  "lang.en": "English",
+  "lang.menu_title": "🌐 语言",
+};

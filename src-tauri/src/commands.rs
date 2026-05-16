@@ -63,13 +63,14 @@ pub fn save_shortcut(
 
     let backend = Backend::from_choice(&backend);
     let skin = SkinId::from_str(skin.as_deref().unwrap_or(""));
-    // 保留用户之前选的 whisper 模型（如果是重走 onboarding，不要被重置成 default）
-    let prev_model = config::Config::load().whisper_model;
+    // 保留用户之前选的 whisper 模型 + 语言（重走 onboarding 不要被重置成 default）
+    let prev = config::Config::load();
     let cfg = config::Config {
         shortcut: new_str.clone(),
         backend,
         skin,
-        whisper_model: prev_model,
+        whisper_model: prev.whisper_model,
+        language: prev.language,
         onboarded: true,
         version: config::CURRENT_CONFIG_VERSION,
     };
@@ -139,6 +140,31 @@ pub fn save_whisper_model(model: String) -> Result<(), String> {
 #[tauri::command]
 pub fn get_whisper_model() -> String {
     config::Config::load().whisper_model.as_str().to_string()
+}
+
+/// 切换 UI 语言 —— 任意窗口 / 托盘调它。
+/// 1. 持久化进 config.json
+/// 2. 广播 EV_LANG_CHANGED；前端 i18n module 监听切换，所有 UI 立即重渲染
+#[tauri::command]
+pub fn save_language(lang: String, app: AppHandle) -> Result<(), String> {
+    // 简单校验：只接受已知的 lang id（防止脏数据进 config）
+    let allowed = ["zh", "en"];
+    if !allowed.contains(&lang.as_str()) {
+        return Err(format!("不支持的语言：{lang} (允许：{:?})", allowed));
+    }
+    let mut cfg = config::Config::load();
+    cfg.language = lang.clone();
+    cfg.save().map_err(|e| format!("保存失败：{e}"))?;
+    for (_, w) in app.webview_windows() {
+        let _ = w.emit(crate::events::EV_LANG_CHANGED, lang.clone());
+    }
+    println!("[mouseclaw] 🌐 language → {lang}");
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_language() -> String {
+    config::Config::load().language
 }
 
 #[tauri::command]

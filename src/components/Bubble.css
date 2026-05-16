@@ -16,18 +16,20 @@
   animation: bubble-in var(--duration-bubble-in) var(--ease-default);
 }
 
-/* v0.1.8: 长回复气泡内部可滚动 —— 不再强迫用户去 Panel 才能看完 */
+/* v0.1.8 修：长回复气泡内部可滚动。
+   关键 bug：原来 .bubble-body 是 display:inline，加 max-height/overflow 都不生效。
+   .bubble-scroll 必须强制 block 才能挂上 max-height + overflow。 */
 .bubble-scroll {
+  display: block !important;
   max-height: 320px;
   overflow-y: auto;
   /* 自定义滚动条：细 + 半透明，不抢戏 */
   scrollbar-width: thin;
   scrollbar-color: rgba(0,0,0,0.25) transparent;
-  /* 给底部留点呼吸空间，最后一行不顶到 scrollbar 边 */
   padding-right: 4px;
-  /* 顶/底 fade mask 提示「还有更多 / 上面还有」 */
-  mask-image: linear-gradient(to bottom, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
+}
+.bubble-scroll .bubble-text {
+  display: block; /* span 也得 block，否则文本撑不开内滚区 */
 }
 .bubble-scroll::-webkit-scrollbar { width: 6px; }
 .bubble-scroll::-webkit-scrollbar-track { background: transparent; }
@@ -82,6 +84,42 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* v0.1.9: Markdown 渲染样式 —— 让 ** / `` / 列表 / 代码块 等真的好看
+   渲染逻辑在 Bubble.tsx 用 marked 解析，这里只管样式。 */
+.bubble-md { line-height: 1.55; }
+.bubble-md > :first-child { margin-top: 0; }
+.bubble-md > :last-child { margin-bottom: 0; }
+.bubble-md p { margin: 0.4em 0; }
+.bubble-md strong { font-weight: 700; color: var(--ink, #2b2622); }
+.bubble-md em { font-style: italic; }
+.bubble-md code {
+  background: rgba(0,0,0,0.06); padding: 1px 5px;
+  border-radius: 4px; font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+  font-size: 0.88em;
+}
+.bubble-md pre {
+  background: rgba(0,0,0,0.05); padding: 8px 10px;
+  border-radius: 8px; margin: 0.5em 0;
+  overflow-x: auto; font-size: 0.85em;
+  line-height: 1.4;
+}
+.bubble-md pre code { background: transparent; padding: 0; }
+.bubble-md ul, .bubble-md ol { margin: 0.4em 0; padding-left: 1.4em; }
+.bubble-md li { margin: 0.15em 0; }
+.bubble-md a { color: var(--text-link, #5b8def); text-decoration: underline; }
+.bubble-md h1, .bubble-md h2, .bubble-md h3 {
+  margin: 0.6em 0 0.3em; font-weight: 700;
+}
+.bubble-md h1 { font-size: 1.15em; }
+.bubble-md h2 { font-size: 1.08em; }
+.bubble-md h3 { font-size: 1em; }
+.bubble-md blockquote {
+  border-left: 3px solid var(--line, #ece6dd);
+  padding-left: 0.7em; margin: 0.4em 0;
+  color: var(--text-secondary, #6a6259);
+}
+.bubble-md hr { border: 0; border-top: 1px solid var(--line, #ece6dd); margin: 0.6em 0; }
 
 /* Streaming cursor */
 .stream-cursor {

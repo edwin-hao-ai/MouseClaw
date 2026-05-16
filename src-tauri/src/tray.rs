@@ -66,8 +66,23 @@ fn build_template_icon() -> Image<'static> {
 }
 
 pub fn setup(app: &AppHandle) -> tauri::Result<()> {
-    let summon  = MenuItem::with_id(app, "summon",  "🦞 召唤老鼠",       true, None::<&str>)?;
-    let history = MenuItem::with_id(app, "history", "📜 查看历史记录…",  true, None::<&str>)?;
+    // 当前语言决定所有菜单文案 —— 一处 lookup，下面所有标签从 (s_*) 取
+    let current_lang = crate::config::Config::load().language;
+    let en = current_lang == "en";
+
+    let (s_summon, s_history, s_skin, s_model, s_browser_on, s_browser_off,
+         s_status, s_about, s_quit, s_lang_menu) = if en {
+        ("🦞 Summon", "📜 History…", "🎨 Change pet", "🎙️ Voice model",
+         "🌐 Browser automation: enabled ✓", "🌐 Enable browser automation…",
+         "📊 System status…", "ℹ️  About MouseClaw", "Quit MouseClaw", "🌐 Language")
+    } else {
+        ("🦞 召唤老鼠", "📜 查看历史记录…", "🎨 换个桌宠", "🎙️ 语音模型",
+         "🌐 浏览器自动化：已启用 ✓", "🌐 启用浏览器自动化…",
+         "📊 系统状态…", "ℹ️  关于 MouseClaw", "退出 MouseClaw", "🌐 语言")
+    };
+
+    let summon  = MenuItem::with_id(app, "summon",  s_summon,  true, None::<&str>)?;
+    let history = MenuItem::with_id(app, "history", s_history, true, None::<&str>)?;
 
     // 「🎨 换个桌宠 ▸」子菜单 —— 6 款 SkinId，当前选中的打勾
     let current_skin = crate::config::Config::load().skin;
@@ -86,16 +101,12 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let skin_refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> =
         skin_items.iter().map(|i| i as &dyn tauri::menu::IsMenuItem<tauri::Wry>).collect();
     let skin_submenu = Submenu::with_id_and_items(
-        app, "skin-submenu", "🎨 换个桌宠", true, &skin_refs,
+        app, "skin-submenu", s_skin, true, &skin_refs,
     )?;
 
     // 浏览器自动化标签 —— 根据当前 CDP 状态显示「启用 / 已启用 ✓」
     let cdp_alive = crate::browser_bridge::cdp_is_alive();
-    let browser_label = if cdp_alive {
-        "🌐 浏览器自动化：已启用 ✓"
-    } else {
-        "🌐 启用浏览器自动化…"
-    };
+    let browser_label = if cdp_alive { s_browser_on } else { s_browser_off };
     let browser_item = MenuItem::with_id(app, "enable-browser", browser_label, true, None::<&str>)?;
 
     // 「🎙️ 语音模型 ▸」子菜单 —— 4 档 Whisper 模型，当前选中打勾
@@ -111,18 +122,29 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let model_refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> =
         model_items.iter().map(|i| i as &dyn tauri::menu::IsMenuItem<tauri::Wry>).collect();
     let model_submenu = Submenu::with_id_and_items(
-        app, "whisper-submenu", "🎙️ 语音模型", true, &model_refs,
+        app, "whisper-submenu", s_model, true, &model_refs,
     )?;
 
-    let status  = MenuItem::with_id(app, "status",  "📊 系统状态…",     true, None::<&str>)?;
-    let about   = MenuItem::with_id(app, "about",   "ℹ️  关于 MouseClaw", true, None::<&str>)?;
+    // 「🌐 语言」子菜单 —— v0.1.9 i18n
+    let lang_zh = CheckMenuItem::with_id(app, "lang:zh", "🇨🇳 中文",
+        true, current_lang == "zh", None::<&str>)?;
+    let lang_en = CheckMenuItem::with_id(app, "lang:en", "🇬🇧 English",
+        true, current_lang == "en", None::<&str>)?;
+    let lang_submenu = Submenu::with_id_and_items(
+        app, "lang-submenu", s_lang_menu, true,
+        &[&lang_zh as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
+          &lang_en as &dyn tauri::menu::IsMenuItem<tauri::Wry>],
+    )?;
+
+    let status  = MenuItem::with_id(app, "status",  s_status,     true, None::<&str>)?;
+    let about   = MenuItem::with_id(app, "about",   s_about, true, None::<&str>)?;
     let sep1    = PredefinedMenuItem::separator(app)?;
     let sep2    = PredefinedMenuItem::separator(app)?;
-    let quit    = MenuItem::with_id(app, "quit",    "退出 MouseClaw",     true, Some("CmdOrCtrl+Q"))?;
+    let quit    = MenuItem::with_id(app, "quit",    s_quit,  true, Some("CmdOrCtrl+Q"))?;
 
     let menu = Menu::with_items(app, &[
         &summon, &history,
-        &skin_submenu, &model_submenu,
+        &skin_submenu, &model_submenu, &lang_submenu,
         &sep1, &browser_item, &status,
         &sep2, &about, &quit,
     ])?;
@@ -161,6 +183,11 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
     // Whisper 模型子菜单：id 形如 "whisper:small" / "whisper:turbo"
     if let Some(model_name) = id.strip_prefix("whisper:") {
         change_whisper_model(app, model_name);
+        return;
+    }
+    // 语言子菜单：id 形如 "lang:zh" / "lang:en"
+    if let Some(lang) = id.strip_prefix("lang:") {
+        change_language(app, lang);
         return;
     }
     match id {
@@ -238,6 +265,40 @@ fn enable_browser_automation(app: &AppHandle) {
 }
 
 /// 托盘子菜单点击 → 持久化 + 广播 skin-changed。
+/// 托盘点语言 → 持久化 + 广播 EV_LANG_CHANGED。前端 i18n 热切换。
+/// 注意：托盘菜单本身的标签**不会**热更新（Tauri menu item 不支持 set_text），
+/// 所以提示用户重启 / 下次启动看到的菜单是新语言。
+fn change_language(app: &AppHandle, lang: &str) {
+    use tauri::Emitter;
+    if !(lang == "zh" || lang == "en") { return; }
+    let mut cfg = crate::config::Config::load();
+    if cfg.language == lang { return; }
+    cfg.language = lang.to_string();
+    if let Err(e) = cfg.save() {
+        eprintln!("[mouseclaw] change_language save: {e}");
+        return;
+    }
+    for (_, w) in app.webview_windows() {
+        let _ = w.emit(crate::events::EV_LANG_CHANGED, lang.to_string());
+    }
+    println!("[mouseclaw] 🌐 tray: language → {lang} (托盘标签下次启动生效)");
+    // 友好提示
+    let tip = if lang == "en" {
+        "🌐 Language switched. Restart MouseClaw to update the tray menu labels."
+    } else {
+        "🌐 已切换语言。重启 MouseClaw 以更新托盘菜单文字。"
+    };
+    for (_, w) in app.webview_windows() {
+        let _ = w.emit(crate::events::EV_VIEW_CHANGED, serde_json::json!({
+            "kind": "reply",
+            "transcript": "language",
+            "reply": tip,
+            "mode": "A",
+            "streaming": false,
+        }));
+    }
+}
+
 /// 托盘点 Whisper 模型 → 持久化 + 触发后台下载（如缺）+ 通知用户。
 fn change_whisper_model(app: &AppHandle, name: &str) {
     use tauri::Emitter;

@@ -12,6 +12,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { PixelMouse } from "./PixelMouse";
 import type { BackendChoice, SkinId } from "../types";
 import { SKINS, DEFAULT_SKIN } from "../skins";
+import { useT } from "../i18n";
 import "./Onboarding.css";
 
 export type ShortcutChoice =
@@ -30,61 +31,58 @@ interface OnboardingProps {
   onComplete: (choice: ShortcutChoice, backend: BackendChoice, skin: SkinId) => void;
 }
 
-const OPTIONS: Array<{
-  id: ShortcutChoice; label: string; keyHint: string; tag?: string;
-}> = [
-  { id: "hold-option", label: "按住 ⌃ + ⌘ + 空格", keyHint: "⌃ ⌘ Space", tag: "零冲突 · 推荐" },
-  { id: "hold-cmd",    label: "按住 ⌃ + ⌘ + M",    keyHint: "⌃ ⌘ M" },
+// OPTIONS / BACKENDS / PERMISSIONS — 函数化，每次渲染时按当前语言重建
+function buildOptions(t: ReturnType<typeof useT>) {
+  return [
+    { id: "hold-option" as ShortcutChoice,
+      label: t("onboarding.shortcut.hint").includes("Hold") ? "Hold ⌃ + ⌘ + Space" : "按住 ⌃ + ⌘ + 空格",
+      keyHint: "⌃ ⌘ Space", tag: t("onboarding.shortcut.zero_conflict") },
+    { id: "hold-cmd" as ShortcutChoice,
+      label: t("onboarding.shortcut.hint").includes("Hold") ? "Hold ⌃ + ⌘ + M" : "按住 ⌃ + ⌘ + M",
+      keyHint: "⌃ ⌘ M" },
+  ];
+}
+
+const BACKENDS_META: Array<{ id: BackendChoice; label: string; descKey: string; tag?: string }> = [
+  { id: "claude-cli", label: "Claude Code CLI", descKey: "claude", tag: "common.recommended" },
+  { id: "codex-cli",  label: "OpenAI Codex CLI", descKey: "codex" },
+  { id: "openclaw-cli", label: "OpenClaw CLI",  descKey: "openclaw" },
 ];
 
-const BACKENDS: Array<{
-  id: BackendChoice; label: string; desc: string; tag?: string;
-}> = [
-  {
-    id: "claude-cli",
-    label: "Claude Code CLI",
-    desc: "最成熟 · 原生 agentic + 读图。需已装并登录 claude。",
-    tag: "推荐",
-  },
-  {
-    id: "codex-cli",
-    label: "OpenAI Codex CLI",
-    desc: "codex exec 非交互模式。需 npm i -g @openai/codex 并配好 key。",
-  },
-  {
-    id: "openclaw-cli",
-    label: "OpenClaw CLI",
-    desc: "openclaw agent --local。需 npm i -g openclaw 并配好 provider key。",
-  },
-];
+function backendDesc(id: BackendChoice, t: ReturnType<typeof useT>): string {
+  // 这块描述不上升到 i18n key 表（太琐碎），直接走双语 inline
+  const en = t("onboarding.shortcut.hint").includes("Hold");
+  switch (id) {
+    case "claude-cli":
+      return en
+        ? "Most mature · native agentic + image reading. Needs claude installed & logged in."
+        : "最成熟 · 原生 agentic + 读图。需已装并登录 claude。";
+    case "codex-cli":
+      return en
+        ? "codex exec non-interactive mode. Needs npm i -g @openai/codex + OpenAI key."
+        : "codex exec 非交互模式。需 npm i -g @openai/codex 并配好 key。";
+    case "openclaw-cli":
+      return en
+        ? "openclaw agent --local. Needs npm i -g openclaw + provider key in shell."
+        : "openclaw agent --local。需 npm i -g openclaw 并配好 provider key。";
+  }
+}
 
-const PERMISSIONS: Array<{
-  key: keyof PermissionStatus;
-  icon: string;
-  title: string;
-  desc: string;
-}> = [
-  {
-    key: "accessibility",
-    icon: "⌨️",
-    title: "辅助功能",
-    desc: "全局快捷键必须。前往「系统设置 → 隐私与安全性 → 辅助功能」开启。",
-  },
-  {
-    key: "screen_recording",
-    icon: "🖥️",
-    title: "屏幕录制",
-    desc: "截图给 AI 看必须。前往「系统设置 → 隐私与安全性 → 屏幕录制」开启。",
-  },
-  {
-    key: "microphone",
-    icon: "🎙️",
-    title: "麦克风",
-    desc: "语音输入必须。前往「系统设置 → 隐私与安全性 → 麦克风」开启。",
-  },
-];
+function buildPermissions(t: ReturnType<typeof useT>) {
+  return [
+    { key: "accessibility" as const, icon: "⌨️",
+      title: t("perms.accessibility.title"), desc: t("perms.accessibility.desc") },
+    { key: "screen_recording" as const, icon: "🖥️",
+      title: t("perms.screen.title"), desc: t("perms.screen.desc") },
+    { key: "microphone" as const, icon: "🎙️",
+      title: t("perms.mic.title"), desc: t("perms.mic.desc") },
+  ];
+}
 
 export function Onboarding({ onComplete }: OnboardingProps) {
+  const t = useT();
+  const OPTIONS = buildOptions(t);
+  const PERMISSIONS = buildPermissions(t);
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [selected, setSelected] = useState<ShortcutChoice>("hold-option");
   const [backend, setBackend] = useState<BackendChoice>("claude-cli");
@@ -145,11 +143,8 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         <div className="ob-mouse-stage">
           <PixelMouse state="listen" size={96} skin={skin} />
         </div>
-        <h1 className="ob-title">嘿，我是鼠标龙虾 🦞</h1>
-        <p className="ob-subtitle">
-          <strong>按住</strong> 快捷键说话，<strong>松开</strong> 发给 AI。<br />
-          选一个不和别的应用冲突的键。
-        </p>
+        <h1 className="ob-title">{t("onboarding.welcome.title")}</h1>
+        <p className="ob-subtitle">{t("onboarding.welcome.subtitle")}</p>
         <div className="ob-options" role="radiogroup" aria-label="选择触发快捷键">
           {OPTIONS.map(opt => (
             <button
@@ -171,7 +166,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
           className="ob-cta"
           onClick={() => setStep(2)}
         >
-          下一步：选 AI 后端 →
+          {t("onboarding.cta.next_backend")}
         </button>
       </div>
     );
@@ -184,13 +179,13 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         <div className="ob-mouse-stage">
           <PixelMouse state="think" size={96} skin={skin} />
         </div>
-        <h1 className="ob-title">选一个 AI 后端</h1>
+        <h1 className="ob-title">{t("onboarding.backend.title")}</h1>
         <p className="ob-subtitle">
-          MouseClaw 把语音 + 截图交给它处理。<br />
-          不确定就选 <strong>Claude Code CLI</strong>（最成熟）。
+          {t("onboarding.backend.subtitle")}<br />
+          {t("onboarding.backend.uncertain_hint")}
         </p>
-        <div className="ob-options" role="radiogroup" aria-label="选择 AI 后端">
-          {BACKENDS.map(b => (
+        <div className="ob-options" role="radiogroup" aria-label={t("onboarding.backend.title")}>
+          {BACKENDS_META.map(b => (
             <button
               key={b.id}
               type="button"
@@ -200,8 +195,8 @@ export function Onboarding({ onComplete }: OnboardingProps) {
               onClick={() => setBackend(b.id)}
             >
               <span className="ob-label">{b.label}</span>
-              <span className="ob-perm-desc">{b.desc}</span>
-              {b.tag && <span className="ob-tag">{b.tag}</span>}
+              <span className="ob-perm-desc">{backendDesc(b.id, t)}</span>
+              {b.tag && <span className="ob-tag">{t(b.tag as "common.recommended")}</span>}
             </button>
           ))}
         </div>
@@ -210,7 +205,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
           className="ob-cta"
           onClick={() => setStep(3)}
         >
-          下一步：挑桌宠 →
+          {t("onboarding.cta.next_skin")}
         </button>
       </div>
     );
@@ -223,14 +218,12 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         <div className="ob-mouse-stage">
           <PixelMouse state="listen" size={96} skin={skin} />
         </div>
-        <h1 className="ob-title">挑一只你的桌宠 🦞</h1>
-        <p className="ob-subtitle">
-          6 款老鼠风格 · 随时可在<strong>托盘菜单「换个桌宠」</strong>切换。
-        </p>
+        <h1 className="ob-title">{t("onboarding.skin.title")}</h1>
+        <p className="ob-subtitle">{t("onboarding.skin.subtitle")}</p>
         <div
           className="ob-options"
           role="radiogroup"
-          aria-label="选择桌宠皮肤"
+          aria-label={t("onboarding.skin.title")}
           style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}
         >
           {SKINS.map(s => (
@@ -256,7 +249,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
           className="ob-cta"
           onClick={() => setStep(4)}
         >
-          下一步：开启权限 →
+          {t("onboarding.cta.next_perms")}
         </button>
       </div>
     );
@@ -268,11 +261,8 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       <div className="ob-mouse-stage">
         <PixelMouse state={allDone ? "jump" : "think"} size={96} skin={skin} />
       </div>
-      <h1 className="ob-title">开启必要权限</h1>
-      <p className="ob-subtitle">
-        点「去开启」会弹出系统授权框，按提示勾选 MouseClaw。<br />
-        辅助功能 / 麦克风授权后会自动变绿；<strong>屏幕录制需要重启 App 才生效</strong>。
-      </p>
+      <h1 className="ob-title">{t("onboarding.perms.title")}</h1>
+      <p className="ob-subtitle">{t("onboarding.perms.subtitle")}</p>
 
       <div className="ob-perm-list">
         {PERMISSIONS.map(p => {
@@ -292,10 +282,10 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                 <span className="ob-perm-desc">{p.desc}</span>
               </div>
               {granted ? (
-                <span className="ob-perm-check" aria-label="已授权">✓</span>
+                <span className="ob-perm-check" aria-label={t("onboarding.perms.granted")}>✓</span>
               ) : pendingRestart ? (
-                <span className="ob-perm-pending" aria-label="已请求，重启生效">
-                  已请求 · 重启生效
+                <span className="ob-perm-pending" aria-label={t("onboarding.perms.requested_restart")}>
+                  {t("onboarding.perms.requested_restart")}
                 </span>
               ) : (
                 <button
@@ -303,7 +293,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
                   className="ob-perm-btn"
                   onClick={() => handleOpenPref(p.key)}
                 >
-                  去开启
+                  {t("onboarding.perms.go_open")}
                 </button>
               )}
             </div>
@@ -318,13 +308,11 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         className={`ob-cta ${!allDone ? "ob-cta-secondary" : ""}`}
         onClick={() => onComplete(selected, backend, skin)}
       >
-        {allDone ? "完成并重启 MouseClaw 🦞" : "已在系统设置里开好了 → 完成并重启"}
+        {allDone ? t("onboarding.cta.finish") : t("onboarding.cta.skip")}
       </button>
 
       <p className="ob-skip-hint">
-        {allDone
-          ? "点击后会重启 App —— 这是让屏幕录制权限生效的必要步骤。"
-          : "如果你已经在「系统设置 → 隐私与安全性」里手动勾选了 MouseClaw，可以直接点上面完成。重启后会重新检测。"}
+        {allDone ? t("onboarding.skip_hint.all_done") : t("onboarding.skip_hint.partial")}
       </p>
     </div>
   );
