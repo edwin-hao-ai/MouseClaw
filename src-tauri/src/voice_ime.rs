@@ -456,20 +456,26 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
 }
 
 /// 拿当前前台 app 的 bundle id
+/// v0.1.15 修：包 NSAutoreleasePool —— frontmostApplication / bundleIdentifier 都返 autoreleased
 #[cfg(target_os = "macos")]
 fn frontmost_bundle() -> String {
     use cocoa::base::{id, nil};
     use objc::{class, msg_send, sel, sel_impl};
     unsafe {
-        let ws: id = msg_send![class!(NSWorkspace), sharedWorkspace];
-        if ws == nil { return String::new(); }
-        let app: id = msg_send![ws, frontmostApplication];
-        if app == nil { return String::new(); }
-        let bid: id = msg_send![app, bundleIdentifier];
-        if bid == nil { return String::new(); }
-        let p: *const std::os::raw::c_char = msg_send![bid, UTF8String];
-        if p.is_null() { return String::new(); }
-        std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned()
+        let pool: id = msg_send![class!(NSAutoreleasePool), new];
+        let result = (|| -> String {
+            let ws: id = msg_send![class!(NSWorkspace), sharedWorkspace];
+            if ws == nil { return String::new(); }
+            let app: id = msg_send![ws, frontmostApplication];
+            if app == nil { return String::new(); }
+            let bid: id = msg_send![app, bundleIdentifier];
+            if bid == nil { return String::new(); }
+            let p: *const std::os::raw::c_char = msg_send![bid, UTF8String];
+            if p.is_null() { return String::new(); }
+            std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned()
+        })();
+        if pool != nil { let _: () = msg_send![pool, drain]; }
+        result
     }
 }
 #[cfg(not(target_os = "macos"))]
