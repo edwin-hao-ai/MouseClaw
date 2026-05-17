@@ -94,7 +94,8 @@ impl WhisperModel {
 ///   v10 → v11: 新增 voice_ime_enabled（长按 fn 写到光标），默认 true
 ///   v11 → v12: 新增 voice_ime_trigger（可选 fn/option/control/right-*），默认 fn
 ///   v12 → v13: 新增 clipboard_paused（剪贴板暂停开关），默认 false
-pub const CURRENT_CONFIG_VERSION: u32 = 13;
+///   v13 → v14: 新增 workspace_path（AI 调用时的 cwd），默认 None
+pub const CURRENT_CONFIG_VERSION: u32 = 14;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -133,6 +134,10 @@ pub struct Config {
     /// 默认 false（开启捕获）。用户点托盘「⏸️ 暂停剪贴板记录」时为 true。
     #[serde(default)]
     pub clipboard_paused: bool,
+    /// 工作区路径 (v0.1.21) —— AI 调用时以此为 cwd，让 Claude 知道在哪个项目里。
+    /// 用户在托盘「📁 设置工作区…」选；默认 None = 走 macOS 系统默认 cwd（home）
+    #[serde(default)]
+    pub workspace_path: Option<String>,
     /// Set to true the first time the user completes Onboarding. Until then,
     /// the app doesn't register a global shortcut — clicking the tray or
     /// launching the app re-opens the Onboarding window instead.
@@ -166,6 +171,7 @@ impl Default for Config {
             voice_ime_enabled: default_voice_ime(),
             voice_ime_trigger: default_voice_ime_trigger(),
             clipboard_paused: false,
+            workspace_path: None,
             onboarded: false,
             version: CURRENT_CONFIG_VERSION,
         }

@@ -299,6 +299,11 @@ fn build_prompt(
             )
         })
         .unwrap_or_default();
+    // v0.1.21 · 工作区路径 → AI 知道在哪个项目里读写
+    let workspace_line = crate::config::Config::load().workspace_path
+        .map(|p| format!("\n\n📁 当前工作区：{p}\n\
+             你的 Read/Write/Edit/Bash/Grep 工具默认以此为根，可以直接读改这里面的文件。"))
+        .unwrap_or_default();
     let trail_line = trail_summary.map(|s| {
         let mut out = String::new();
         out.push_str("\n\n🐭 鼠标标注（v0.1.20）：");
@@ -310,7 +315,7 @@ fn build_prompt(
         out
     }).unwrap_or_default();
     format!(
-        "{transcript}\n\n截图位置：{}{cursor_line}{context_line}{trail_line}",
+        "{transcript}\n\n截图位置：{}{cursor_line}{context_line}{workspace_line}{trail_line}",
         image_path.display()
     )
 }
@@ -338,8 +343,16 @@ where
     let sys_prompt = system_prompt();
     let claude_bin = find_claude_binary()?;
 
-    let mut child = tokio::process::Command::new(&claude_bin)
-        .env("PATH", expanded_path())
+    let mut cmd = tokio::process::Command::new(&claude_bin);
+    cmd.env("PATH", expanded_path());
+    // v0.1.21 · 工作区 cwd —— 让 Claude 知道在哪个项目里读/改文件
+    if let Some(ws) = crate::config::Config::load().workspace_path {
+        if std::path::Path::new(&ws).is_dir() {
+            cmd.current_dir(&ws);
+            println!("[mouseclaw] 📁 claude cwd = {ws}");
+        }
+    }
+    let mut child = cmd
         .args([
             "-p",
             &prompt,

@@ -18,6 +18,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use tauri::{AppHandle, Emitter, Manager};
+
+use serde::Serialize;
 
 /// 一个采样点
 #[derive(Debug, Clone, Copy)]
@@ -28,6 +31,15 @@ pub struct TrailPoint {
     pub left_button: bool, // 当时左键是按下的吗？
 }
 
+/// 给前端 DrawOverlay 的 payload —— x/y/t + drawing flag
+#[derive(Serialize, Clone, Copy)]
+struct TrailPointEvent {
+    x: f64,
+    y: f64,
+    t: u64,
+    drawing: bool,
+}
+
 /// 全局 trail 缓冲 —— Arc<Mutex<Vec<TrailPoint>>>
 pub static TRAIL: once_cell::sync::Lazy<Arc<Mutex<Vec<TrailPoint>>>> =
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(Vec::with_capacity(128))));
@@ -36,26 +48,82 @@ pub static TRAIL: once_cell::sync::Lazy<Arc<Mutex<Vec<TrailPoint>>>> =
 static SAMPLING: AtomicBool = AtomicBool::new(false);
 
 /// 开始采样 —— 在 on_shortcut_press 里调
-pub fn start() {
+/// v0.1.21：还会向 "draw" 窗口 emit trail-point 事件，让 React canvas 实时画线
+pub fn start(app: AppHandle) {
     if SAMPLING.swap(true, Ordering::SeqCst) {
         return; // 已经在跑
     }
     TRAIL.lock().unwrap().clear();
+    // 通知 overlay 清空旧轨迹
+    let _ = app.emit_to("draw", "trail-clear", ());
+    show_draw_overlay(&app);
+
     let start = Instant::now();
     std::thread::Builder::new().name("mouseclaw-cursor-trail".into()).spawn(move || {
         while SAMPLING.load(Ordering::Relaxed) {
-            let r = std::panic::catch_unwind(|| {
+            let app_ref = &app;
+            let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 if let Some((x, y, btn)) = sample_cursor() {
                     let t_ms = start.elapsed().as_millis() as u64;
                     TRAIL.lock().unwrap().push(TrailPoint {
                         x, y, t_ms, left_button: btn,
                     });
+                    // 推给 overlay 实时画
+                    let _ = app_ref.emit_to("draw", "trail-point", TrailPointEvent {
+                        x, y, t: t_ms, drawing: btn,
+                    });
                 }
-            });
+            }));
             if r.is_err() { eprintln!("[mouseclaw] 🐭 trail sample panic, 继续"); }
-            std::thread::sleep(Duration::from_millis(80));
+            std::thread::sleep(Duration::from_millis(60));
+        }
+        // 采样结束 → 隐藏 overlay（让用户看回干净屏幕）
+        // 给前端 1.5s 看自己刚画的，再隐
+        std::thread::sleep(Duration::from_millis(1500));
+        if let Some(w) = app.get_webview_window("draw") {
+            let _ = w.hide();
         }
     }).ok();
+}
+
+/// 开 / 显示全屏透明画板 overlay
+fn show_draw_overlay(app: &AppHandle) {
+    use tauri::{WebviewWindowBuilder, WebviewUrl};
+    if let Some(w) = app.get_webview_window("draw") {
+        let _ = w.show();
+        // 确保点击穿透 + 不抢焦点
+        let _ = w.set_ignore_cursor_events(true);
+        // 提到最上层
+        let _ = w.set_always_on_top(true);
+        return;
+    }
+
+    // 拿屏幕 logical 尺寸来设置窗口大小
+    let (sw, sh) = primary_screen_logical_size().unwrap_or((1440.0, 900.0));
+    let builder = WebviewWindowBuilder::new(
+        app, "draw",
+        WebviewUrl::App("index.html?view=draw".into()),
+    )
+    .title("MouseClaw — Draw")
+    .inner_size(sw, sh)
+    .position(0.0, 0.0)
+    .resizable(false)
+    .decorations(false)
+    .transparent(true)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .focused(false)
+    .accept_first_mouse(false)
+    .visible_on_all_workspaces(true)
+    .shadow(false);
+
+    match builder.build() {
+        Ok(w) => {
+            // 关键：点击穿透 —— 用户的点击照样落到底层 app
+            let _ = w.set_ignore_cursor_events(true);
+        }
+        Err(e) => eprintln!("[mouseclaw] 🎨 draw overlay build: {e}"),
+    }
 }
 
 /// 停止采样 + 拿出 trail（move 出来，buffer 清空）

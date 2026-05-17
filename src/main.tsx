@@ -53,6 +53,14 @@ async function bootstrap() {
     makeScrollableDocument("#faf7f2");
     const { default: HubView } = await import("./HubView");
     RootComp = HubView;
+  } else if (view === "draw") {
+    // 全屏透明 overlay，不能用 scrollable document
+    document.documentElement.style.background = "transparent";
+    document.body.style.background = "transparent";
+    const root = document.getElementById("root");
+    if (root) root.style.background = "transparent";
+    const { default: DrawOverlay } = await import("./DrawOverlay");
+    RootComp = DrawOverlay;
   } else if (view === "onboarding") {
     // Onboarding card brings its own dark glass background; host wraps it
     // in a centered flex container with a faint matching gradient backdrop.

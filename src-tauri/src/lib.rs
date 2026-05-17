@@ -243,6 +243,8 @@ pub fn run() {
             commands::get_voice_ime_trigger,
             commands::save_clipboard_paused,
             commands::get_clipboard_paused,
+            commands::save_workspace_path,
+            commands::get_workspace_path,
         ])
         .setup(move |app| {
             set_accessory_activation_policy();

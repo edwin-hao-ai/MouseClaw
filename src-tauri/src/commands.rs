@@ -75,6 +75,7 @@ pub fn save_shortcut(
         voice_ime_enabled: prev.voice_ime_enabled,
         voice_ime_trigger: prev.voice_ime_trigger,
         clipboard_paused: prev.clipboard_paused,
+        workspace_path: prev.workspace_path,
         onboarded: true,
         version: config::CURRENT_CONFIG_VERSION,
     };
@@ -233,6 +234,30 @@ pub fn save_clipboard_paused(paused: bool) -> Result<(), String> {
 #[tauri::command]
 pub fn get_clipboard_paused() -> bool {
     crate::clipboard::is_paused()
+}
+
+/// v0.1.21 · 设置工作区路径
+/// 传 None / 空字符串 = 清除（回到默认 cwd）
+#[tauri::command]
+pub fn save_workspace_path(path: Option<String>) -> Result<(), String> {
+    let mut cfg = config::Config::load();
+    let p = path.and_then(|s| if s.trim().is_empty() { None } else { Some(s) });
+    // 校验路径存在 + 是目录
+    if let Some(ref pp) = p {
+        let pb = std::path::PathBuf::from(pp);
+        if !pb.is_dir() {
+            return Err(format!("路径不存在或不是目录：{pp}"));
+        }
+    }
+    cfg.workspace_path = p.clone();
+    cfg.save().map_err(|e| format!("保存失败：{e}"))?;
+    println!("[mouseclaw] 📁 workspace → {p:?}");
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_workspace_path() -> Option<String> {
+    config::Config::load().workspace_path
 }
 
 // ────────────────── Clipboard history (v0.2) ──────────────────

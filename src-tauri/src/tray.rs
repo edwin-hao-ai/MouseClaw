@@ -72,6 +72,18 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let current_lang = crate::config::Config::load().language;
     let en = current_lang == "en";
 
+    let current_workspace = crate::config::Config::load().workspace_path;
+    let workspace_short = current_workspace.as_ref()
+        .map(|p| std::path::Path::new(p).file_name().and_then(|n| n.to_str())
+                  .map(|s| s.to_string()).unwrap_or_else(|| p.clone()))
+        .unwrap_or_else(|| if en { "(none)".into() } else { "(未设)".into() });
+
+    let s_workspace_label = if en {
+        format!("📁 Workspace: {workspace_short}")
+    } else {
+        format!("📁 工作区：{workspace_short}")
+    };
+
     let (s_summon, s_history, s_clipboard, s_skin, s_model, s_browser_on, s_browser_off,
          s_status, s_about, s_quit, s_lang_menu, s_tidy, s_vime, s_pause) = if en {
         ("🦞 Summon", "📜 History…", "📋 Clipboard… ⌘⇧V",
@@ -181,18 +193,42 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         app, "vime-trigger-submenu", trigger_submenu_label, true, &trigger_refs,
     )?;
 
+    // v0.1.21 · 工作区设置（指向同一窗口的设置项；用户点 → 弹 NSOpenPanel）
+    let workspace_item = MenuItem::with_id(
+        app, "set-workspace", &s_workspace_label, true, None::<&str>
+    )?;
+    // 「清除工作区」只有已设时才显示
+    let clear_workspace_item = if current_workspace.is_some() {
+        Some(MenuItem::with_id(
+            app, "clear-workspace",
+            if en { "    ↳ Clear workspace" } else { "    ↳ 清除工作区" },
+            true, None::<&str>
+        )?)
+    } else { None };
+
     let status  = MenuItem::with_id(app, "status",  s_status,     true, None::<&str>)?;
     let about   = MenuItem::with_id(app, "about",   s_about, true, None::<&str>)?;
     let sep1    = PredefinedMenuItem::separator(app)?;
     let sep2    = PredefinedMenuItem::separator(app)?;
     let quit    = MenuItem::with_id(app, "quit",    s_quit,  true, Some("CmdOrCtrl+Q"))?;
 
-    let menu = Menu::with_items(app, &[
+    let mut items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = vec![
         &summon, &clipboard_item, &history,
         &skin_submenu, &model_submenu, &lang_submenu,
-        &sep1, &vime_item, &trigger_submenu, &tidy_item, &pause_item, &browser_item, &status,
-        &sep2, &about, &quit,
-    ])?;
+        &sep1, &vime_item, &trigger_submenu, &tidy_item, &pause_item,
+        &workspace_item,
+    ];
+    if let Some(ref clr) = clear_workspace_item {
+        items.push(clr as &dyn tauri::menu::IsMenuItem<tauri::Wry>);
+    }
+    items.extend([
+        &browser_item as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
+        &status as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
+        &sep2,
+        &about,
+        &quit,
+    ]);
+    let menu = Menu::with_items(app, &items)?;
     Ok(menu)
 }
 
@@ -289,8 +325,73 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
         "toggle-tidy"     => { toggle_tidy_up(app); rebuild_tray_menu(app); }
         "toggle-voice-ime"=> { toggle_voice_ime(app); rebuild_tray_menu(app); }
         "toggle-clipboard-pause" => { toggle_clipboard_pause(app); rebuild_tray_menu(app); }
+        "set-workspace"   => { set_workspace_via_picker(app); rebuild_tray_menu(app); }
+        "clear-workspace" => {
+            let _ = crate::commands::save_workspace_path(None);
+            rebuild_tray_menu(app);
+            use tauri::Emitter;
+            let lang = crate::config::Config::load().language;
+            let msg = if lang == "en" {
+                "📁 Workspace cleared. AI will run from default cwd."
+            } else {
+                "📁 工作区已清除。AI 将走默认目录。"
+            };
+            for (_, w) in app.webview_windows() {
+                let _ = w.emit(crate::events::EV_VIEW_CHANGED, serde_json::json!({
+                    "kind": "reply", "transcript": "workspace clear",
+                    "reply": msg, "mode": "A", "streaming": false,
+                }));
+            }
+        }
         "quit"            => app.exit(0),
         _ => {}
+    }
+}
+
+/// 弹原生 NSOpenPanel 选目录 → 存进 config
+/// 用 osascript 触发 —— Tauri 的 dialog plugin 也能做但要额外配权限
+fn set_workspace_via_picker(app: &AppHandle) {
+    use tauri::Emitter;
+    let lang = crate::config::Config::load().language;
+    let prompt = if lang == "en" {
+        "Choose your project folder so AI can read & edit its files"
+    } else {
+        "选择项目目录，让 AI 能读写里面的文件"
+    };
+    // osascript: choose folder
+    let script = format!(
+        r#"set folderPath to POSIX path of (choose folder with prompt "{}")
+        return folderPath"#,
+        prompt.replace('"', "\\\"")
+    );
+    let out = std::process::Command::new("osascript")
+        .args(["-e", &script])
+        .output();
+    let path = match out {
+        Ok(o) if o.status.success() => {
+            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if s.is_empty() { return; }
+            // POSIX path 末尾常带 /，去掉
+            s.trim_end_matches('/').to_string()
+        }
+        _ => return, // 用户取消 / 命令失败
+    };
+
+    match crate::commands::save_workspace_path(Some(path.clone())) {
+        Ok(()) => {
+            let msg = if lang == "en" {
+                format!("📁 Workspace → {path}. AI will run from this folder.")
+            } else {
+                format!("📁 工作区 → {path}。AI 会在此目录里读写文件。")
+            };
+            for (_, w) in app.webview_windows() {
+                let _ = w.emit(crate::events::EV_VIEW_CHANGED, serde_json::json!({
+                    "kind": "reply", "transcript": "workspace set",
+                    "reply": msg, "mode": "A", "streaming": false,
+                }));
+            }
+        }
+        Err(e) => eprintln!("[mouseclaw] 📁 save_workspace_path: {e}"),
     }
 }
 
