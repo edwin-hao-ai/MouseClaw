@@ -50,3 +50,4 @@ marketing/
 
 # Whisper model bundled into the .app at build time (fetched by scripts/fetch-whisper-model.sh)
 src-tauri/resources/ggml-*.bin
+.claude/scheduled_tasks.lock
