@@ -1,6 +1,6 @@
 [package]
 name = "mouseclaw"
-version = "0.1.0"
+version = "0.1.24"
 description = "🦞 鼠标龙虾 — 像素小老鼠 AI 桌面助手"
 authors = ["edwin-hao-ai"]
 edition = "2021"

@@ -31,6 +31,7 @@ pub mod screenshot;
 pub mod sessions;
 pub mod skins;
 pub mod tidy_up;
+pub mod update_check;
 pub mod voice_ime;
 pub mod transcribe;
 pub mod tray;
@@ -266,6 +267,9 @@ pub fn run() {
             // v0.1.11 启动 fn 长按监听 —— CGEventTap on FlagsChanged
             #[cfg(target_os = "macos")]
             voice_ime::spawn(app.handle().clone(), app_state.clone());
+
+            // v0.1.24 启动 60s 后做一次版本检查
+            update_check::spawn(app.handle().clone());
 
             if let Err(e) = tray::setup(&app.handle()) {
                 eprintln!("[mouseclaw] tray setup failed: {e:#}");
