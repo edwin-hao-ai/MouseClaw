@@ -239,16 +239,33 @@ pub fn spawn_capture_loop() {
     }).expect("spawn clipboard thread");
 }
 
+/// 在 autorelease pool 里跑 cocoa 调用 —— v0.1.15 修崩溃元凶
+/// 之前 clipboard 后台 std::thread 直接 msg_send 不带 pool，
+/// 每次复制都泄露多个 autoreleased 对象，攒一会必崩。
+#[cfg(target_os = "macos")]
+#[inline]
+fn with_pool<R>(f: impl FnOnce() -> R) -> R {
+    use cocoa::base::{id, nil};
+    use objc::{class, msg_send, sel, sel_impl};
+    unsafe {
+        let pool: id = msg_send![class!(NSAutoreleasePool), new];
+        if pool == nil { return f(); } // 兜底，理论上不会
+        let r = f();
+        let _: () = msg_send![pool, drain];
+        r
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn current_change_count() -> i64 {
     use cocoa::base::{id, nil};
     use objc::{class, msg_send, sel, sel_impl};
-    unsafe {
+    with_pool(|| unsafe {
         let pb: id = msg_send![class!(NSPasteboard), generalPasteboard];
         if pb == nil { return -1; }
         let c: i64 = msg_send![pb, changeCount];
         c
-    }
+    })
 }
 #[cfg(not(target_os = "macos"))]
 fn current_change_count() -> i64 { -1 }
@@ -257,9 +274,8 @@ fn current_change_count() -> i64 { -1 }
 #[cfg(target_os = "macos")]
 fn is_transient() -> bool {
     use cocoa::base::{id, nil};
-    use cocoa::foundation::{NSArray, NSString};
     use objc::{class, msg_send, sel, sel_impl};
-    unsafe {
+    with_pool(|| unsafe {
         let pb: id = msg_send![class!(NSPasteboard), generalPasteboard];
         if pb == nil { return false; }
         let types: id = msg_send![pb, types];
@@ -267,6 +283,7 @@ fn is_transient() -> bool {
         let count: usize = msg_send![types, count];
         for i in 0..count {
             let t: id = msg_send![types, objectAtIndex: i];
+            if t == nil { continue; }
             let cstr_ptr: *const std::os::raw::c_char = msg_send![t, UTF8String];
             if cstr_ptr.is_null() { continue; }
             let s = std::ffi::CStr::from_ptr(cstr_ptr).to_string_lossy();
@@ -276,10 +293,8 @@ fn is_transient() -> bool {
                 return true;
             }
         }
-        // 防止 unused warning
-        let _ = NSString::alloc(nil); let _ = NSArray::arrayWithObject(nil, nil);
         false
-    }
+    })
 }
 #[cfg(not(target_os = "macos"))]
 fn is_transient() -> bool { false }
@@ -290,16 +305,22 @@ fn current_pasteboard_text() -> Option<String> {
     use cocoa::base::{id, nil};
     use cocoa::foundation::NSString;
     use objc::{class, msg_send, sel, sel_impl};
-    unsafe {
+    with_pool(|| unsafe {
         let pb: id = msg_send![class!(NSPasteboard), generalPasteboard];
         if pb == nil { return None; }
+        // ns_type 是 alloc/init —— retained, 不会被 pool 释放。我们手动 release。
         let ns_type = NSString::alloc(nil).init_str("public.utf8-plain-text");
         let str_obj: id = msg_send![pb, stringForType: ns_type];
-        if str_obj == nil { return None; }
-        let ptr: *const std::os::raw::c_char = msg_send![str_obj, UTF8String];
-        if ptr.is_null() { return None; }
-        Some(std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned())
-    }
+        let result = if str_obj == nil {
+            None
+        } else {
+            let ptr: *const std::os::raw::c_char = msg_send![str_obj, UTF8String];
+            if ptr.is_null() { None }
+            else { Some(std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned()) }
+        };
+        let _: () = msg_send![ns_type, release];
+        result
+    })
 }
 #[cfg(not(target_os = "macos"))]
 fn current_pasteboard_text() -> Option<String> { None }
@@ -309,7 +330,7 @@ fn current_pasteboard_text() -> Option<String> { None }
 fn frontmost_app() -> (String, String) {
     use cocoa::base::{id, nil};
     use objc::{class, msg_send, sel, sel_impl};
-    unsafe {
+    with_pool(|| unsafe {
         let workspace: id = msg_send![class!(NSWorkspace), sharedWorkspace];
         if workspace == nil { return (String::new(), String::new()); }
         let app: id = msg_send![workspace, frontmostApplication];
@@ -323,7 +344,7 @@ fn frontmost_app() -> (String, String) {
             std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned()
         };
         (to_str(bundle), to_str(name))
-    }
+    })
 }
 #[cfg(not(target_os = "macos"))]
 fn frontmost_app() -> (String, String) { (String::new(), String::new()) }

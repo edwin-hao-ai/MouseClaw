@@ -159,58 +159,64 @@ fn paste_via_clipboard(text: &str) -> Result<()> {
     use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation};
     use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 
+    // v0.1.15 autorelease pool —— mode_b 在 tokio blocking 线程跑，仍无 ObjC pool
+    // 用 inner closure 跑业务，外层 unsafe 块保证 drain 一定执行。
     unsafe {
-        let pb: id = msg_send![class!(NSPasteboard), generalPasteboard];
-        if pb == nil { bail!("NSPasteboard generalPasteboard returned nil"); }
+        let pool: id = msg_send![class!(NSAutoreleasePool), new];
+        let res: Result<()> = (|| {
+            let pb: id = msg_send![class!(NSPasteboard), generalPasteboard];
+            if pb == nil { bail!("NSPasteboard generalPasteboard returned nil"); }
 
-        // ── 1. snapshot 原剪贴板（只存 plain-text 一种 flavor）
-        let ns_type_string = NSString::alloc(nil).init_str("public.utf8-plain-text");
-        let old_str_obj: id = msg_send![pb, stringForType: ns_type_string];
-        let old_str: Option<String> = if old_str_obj == nil {
-            None
-        } else {
-            let ptr: *const std::os::raw::c_char = msg_send![old_str_obj, UTF8String];
-            if ptr.is_null() {
-                None
-            } else {
-                Some(std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned())
-            }
-        };
+            // alloc/init = retained，需要手动 release
+            let ns_type_string = NSString::alloc(nil).init_str("public.utf8-plain-text");
+            let old_str_obj: id = msg_send![pb, stringForType: ns_type_string];
+            let old_str: Option<String> = if old_str_obj == nil { None } else {
+                let ptr: *const std::os::raw::c_char = msg_send![old_str_obj, UTF8String];
+                if ptr.is_null() { None }
+                else { Some(std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned()) }
+            };
 
-        // ── 2. 写我们的 text 进 pasteboard
-        let _: i64 = msg_send![pb, clearContents];
-        let ns_text = NSString::alloc(nil).init_str(text);
-        let types = NSArray::arrayWithObject(nil, ns_type_string);
-        let _: bool = msg_send![pb, declareTypes: types owner: nil];
-        let ok: bool = msg_send![pb, setString: ns_text forType: ns_type_string];
-        if !ok { bail!("NSPasteboard setString 失败"); }
-
-        // ── 3. 合成 Cmd+V
-        let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
-            .map_err(|_| anyhow::anyhow!("CGEventSource::new failed"))?;
-        // V 键 keycode = 9 on macOS
-        const V_KEYCODE: u16 = 9;
-        let down = CGEvent::new_keyboard_event(source.clone(), V_KEYCODE, true)
-            .map_err(|_| anyhow::anyhow!("CGEvent v-down failed"))?;
-        down.set_flags(CGEventFlags::CGEventFlagCommand);
-        down.post(CGEventTapLocation::HID);
-        let up = CGEvent::new_keyboard_event(source.clone(), V_KEYCODE, false)
-            .map_err(|_| anyhow::anyhow!("CGEvent v-up failed"))?;
-        up.set_flags(CGEventFlags::CGEventFlagCommand);
-        up.post(CGEventTapLocation::HID);
-
-        // ── 4. 等 paste 完成
-        std::thread::sleep(std::time::Duration::from_millis(250));
-
-        // ── 5. 恢复原 plain-text
-        if let Some(prev) = old_str {
             let _: i64 = msg_send![pb, clearContents];
-            let ns_prev = NSString::alloc(nil).init_str(prev.as_str());
+            let ns_text = NSString::alloc(nil).init_str(text);
+            let types = NSArray::arrayWithObject(nil, ns_type_string);
             let _: bool = msg_send![pb, declareTypes: types owner: nil];
-            let _: bool = msg_send![pb, setString: ns_prev forType: ns_type_string];
-        }
+            let ok: bool = msg_send![pb, setString: ns_text forType: ns_type_string];
+
+            // 合成 Cmd+V 之前先 release ns_text
+            let _: () = msg_send![ns_text, release];
+
+            if !ok {
+                let _: () = msg_send![ns_type_string, release];
+                bail!("NSPasteboard setString 失败");
+            }
+
+            let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
+                .map_err(|_| anyhow::anyhow!("CGEventSource::new failed"))?;
+            const V_KEYCODE: u16 = 9;
+            let down = CGEvent::new_keyboard_event(source.clone(), V_KEYCODE, true)
+                .map_err(|_| anyhow::anyhow!("CGEvent v-down failed"))?;
+            down.set_flags(CGEventFlags::CGEventFlagCommand);
+            down.post(CGEventTapLocation::HID);
+            let up = CGEvent::new_keyboard_event(source.clone(), V_KEYCODE, false)
+                .map_err(|_| anyhow::anyhow!("CGEvent v-up failed"))?;
+            up.set_flags(CGEventFlags::CGEventFlagCommand);
+            up.post(CGEventTapLocation::HID);
+
+            std::thread::sleep(std::time::Duration::from_millis(250));
+
+            if let Some(prev) = old_str {
+                let _: i64 = msg_send![pb, clearContents];
+                let ns_prev = NSString::alloc(nil).init_str(prev.as_str());
+                let _: bool = msg_send![pb, declareTypes: types owner: nil];
+                let _: bool = msg_send![pb, setString: ns_prev forType: ns_type_string];
+                let _: () = msg_send![ns_prev, release];
+            }
+            let _: () = msg_send![ns_type_string, release];
+            Ok(())
+        })();
+        if pool != nil { let _: () = msg_send![pool, drain]; }
+        res
     }
-    Ok(())
 }
 
 #[cfg(target_os = "macos")]
