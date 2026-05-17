@@ -368,6 +368,38 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       <p className="ob-skip-hint">
         {allDone ? t("onboarding.skip_hint.all_done") : t("onboarding.skip_hint.partial")}
       </p>
+
+      {/* v0.1.17 快捷键 cheat sheet —— 解决 ⌘⇧V 发现性问题 */}
+      <div className="ob-cheatsheet">
+        <div className="ob-cheatsheet-title">{t("onboarding.cheatsheet.title")}</div>
+        <table>
+          <tbody>
+            <tr>
+              <td><kbd>⌘</kbd><kbd>⇧</kbd><kbd>Space</kbd></td>
+              <td>{t("onboarding.cheatsheet.summon")}</td>
+            </tr>
+            <tr>
+              <td><kbd>⌘</kbd><kbd>⇧</kbd><kbd>V</kbd></td>
+              <td>{t("onboarding.cheatsheet.clipboard")}</td>
+            </tr>
+            <tr>
+              <td><kbd>{voiceImeTrigger === "disabled" ? "—" :
+                voiceImeTrigger === "fn" ? "fn"
+                : voiceImeTrigger === "option" ? "⌥"
+                : voiceImeTrigger === "control" ? "⌃"
+                : voiceImeTrigger === "right-shift" ? "right ⇧"
+                : voiceImeTrigger === "right-command" ? "right ⌘"
+                : "right ⌥"}</kbd></td>
+              <td>{t("onboarding.cheatsheet.voice_ime")}</td>
+            </tr>
+            <tr>
+              <td>🖱️</td>
+              <td>{t("onboarding.cheatsheet.click_pet")}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p className="ob-cheatsheet-foot">{t("onboarding.cheatsheet.tray_hint")}</p>
+      </div>
     </div>
   );
 }

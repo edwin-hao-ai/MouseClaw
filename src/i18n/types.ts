@@ -78,6 +78,12 @@ export interface Strings {
   "onboarding.cta.skip": string;
   "onboarding.skip_hint.all_done": string;
   "onboarding.skip_hint.partial": string;
+  "onboarding.cheatsheet.title": string;
+  "onboarding.cheatsheet.summon": string;
+  "onboarding.cheatsheet.clipboard": string;
+  "onboarding.cheatsheet.voice_ime": string;
+  "onboarding.cheatsheet.click_pet": string;
+  "onboarding.cheatsheet.tray_hint": string;
   "perms.accessibility.title": string;
   "perms.accessibility.desc": string;
   "perms.screen.title": string;

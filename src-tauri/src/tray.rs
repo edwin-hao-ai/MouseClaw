@@ -65,21 +65,25 @@ fn build_template_icon() -> Image<'static> {
     Image::new_owned(rgba, SIZE as u32, SIZE as u32)
 }
 
-pub fn setup(app: &AppHandle) -> tauri::Result<()> {
-    // 当前语言决定所有菜单文案 —— 一处 lookup，下面所有标签从 (s_*) 取
+/// 构建托盘菜单 —— 抽出来以便每次单选切换后重建（fix multi-check bug · v0.1.17）
+/// 之前点不同 skin/model/lang 后旧勾不消、新勾叠加 → 看起来像多选。
+/// 改成每次切换都用最新 config rebuild 整个 Menu + tray.set_menu()，单选语义保证。
+pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let current_lang = crate::config::Config::load().language;
     let en = current_lang == "en";
 
-    let (s_summon, s_history, s_skin, s_model, s_browser_on, s_browser_off,
+    let (s_summon, s_history, s_clipboard, s_skin, s_model, s_browser_on, s_browser_off,
          s_status, s_about, s_quit, s_lang_menu, s_tidy, s_vime, s_pause) = if en {
-        ("🦞 Summon", "📜 History…", "🎨 Change pet", "🎙️ Voice model",
+        ("🦞 Summon", "📜 History…", "📋 Clipboard… ⌘⇧V",
+         "🎨 Change pet", "🎙️ Voice model",
          "🌐 Browser automation: enabled ✓", "🌐 Enable browser automation…",
          "📊 System status…", "ℹ️  About MouseClaw", "Quit MouseClaw", "🌐 Language",
          "✨ LLM polish voice (+3–8s, off by default)",
          "🎙️ Voice IME (hold fn → type at cursor)",
          "⏸️ Pause clipboard recording")
     } else {
-        ("🦞 召唤老鼠", "📜 查看历史记录…", "🎨 换个桌宠", "🎙️ 语音模型",
+        ("🦞 召唤老鼠", "📜 查看历史记录…", "📋 剪贴板… ⌘⇧V",
+         "🎨 换个桌宠", "🎙️ 语音模型",
          "🌐 浏览器自动化：已启用 ✓", "🌐 启用浏览器自动化…",
          "📊 系统状态…", "ℹ️  关于 MouseClaw", "退出 MouseClaw", "🌐 语言",
          "✨ LLM 精修语音（+3–8s，默认关）",
@@ -89,6 +93,8 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
 
     let summon  = MenuItem::with_id(app, "summon",  s_summon,  true, None::<&str>)?;
     let history = MenuItem::with_id(app, "history", s_history, true, None::<&str>)?;
+    // v0.1.17 · 显式剪贴板入口（解决 ⌘⇧V 发现性问题）
+    let clipboard_item = MenuItem::with_id(app, "open-clipboard", s_clipboard, true, None::<&str>)?;
 
     // 「🎨 换个桌宠 ▸」子菜单 —— 6 款 SkinId，当前选中的打勾
     let current_skin = crate::config::Config::load().skin;
@@ -182,17 +188,38 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let quit    = MenuItem::with_id(app, "quit",    s_quit,  true, Some("CmdOrCtrl+Q"))?;
 
     let menu = Menu::with_items(app, &[
-        &summon, &history,
+        &summon, &clipboard_item, &history,
         &skin_submenu, &model_submenu, &lang_submenu,
         &sep1, &vime_item, &trigger_submenu, &tidy_item, &pause_item, &browser_item, &status,
         &sep2, &about, &quit,
     ])?;
+    Ok(menu)
+}
+
+/// 单选项切换后调一次，重建整个菜单确保只有 1 个 ✓
+pub fn rebuild_tray_menu(app: &AppHandle) {
+    let Some(tray) = app.tray_by_id("main-tray") else {
+        eprintln!("[mouseclaw] rebuild_tray_menu: tray not found");
+        return;
+    };
+    match build_menu(app) {
+        Ok(menu) => {
+            if let Err(e) = tray.set_menu(Some(menu)) {
+                eprintln!("[mouseclaw] tray.set_menu: {e}");
+            }
+        }
+        Err(e) => eprintln!("[mouseclaw] build_menu: {e}"),
+    }
+}
+
+pub fn setup(app: &AppHandle) -> tauri::Result<()> {
+    let menu = build_menu(app)?;
     let icon = build_template_icon();
 
     TrayIconBuilder::with_id("main-tray")
         .icon(icon)
         .icon_as_template(true)
-        .tooltip("MouseClaw 🦞 — 按 Cmd+Shift+Space 召唤")
+        .tooltip("MouseClaw 🦞 — 按 Cmd+Shift+Space 召唤  ·  ⌘⇧V 看剪贴板")
         .menu(&menu)
         .on_menu_event(handle_menu_event)
         .on_tray_icon_event(|tray, event| {
@@ -227,32 +254,41 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
     // 皮肤子菜单：id 形如 "skin:lab" / "skin:cyber"
     if let Some(skin_name) = id.strip_prefix("skin:") {
         change_skin(app, skin_name);
+        rebuild_tray_menu(app);
         return;
     }
     // Whisper 模型子菜单：id 形如 "whisper:small" / "whisper:turbo"
     if let Some(model_name) = id.strip_prefix("whisper:") {
         change_whisper_model(app, model_name);
+        rebuild_tray_menu(app);
         return;
     }
     // 语言子菜单：id 形如 "lang:zh" / "lang:en"
     if let Some(lang) = id.strip_prefix("lang:") {
         change_language(app, lang);
+        rebuild_tray_menu(app);
         return;
     }
     // voice IME 触发键子菜单：id 形如 "vime-trigger:option"
     if let Some(trigger) = id.strip_prefix("vime-trigger:") {
         change_ime_trigger(app, trigger);
+        rebuild_tray_menu(app);
         return;
     }
     match id {
         "summon"          => summon_via_tray(app),
+        "open-clipboard"  => {
+            if let Err(e) = crate::commands::open_hub_window(app.clone()) {
+                eprintln!("[mouseclaw] open-clipboard: {e}");
+            }
+        }
         "history"         => open_history_window(app),
         "about"           => open_about_dialog(app),
         "enable-browser"  => enable_browser_automation(app),
         "status"          => open_status_window(app),
-        "toggle-tidy"     => toggle_tidy_up(app),
-        "toggle-voice-ime"=> toggle_voice_ime(app),
-        "toggle-clipboard-pause" => toggle_clipboard_pause(app),
+        "toggle-tidy"     => { toggle_tidy_up(app); rebuild_tray_menu(app); }
+        "toggle-voice-ime"=> { toggle_voice_ime(app); rebuild_tray_menu(app); }
+        "toggle-clipboard-pause" => { toggle_clipboard_pause(app); rebuild_tray_menu(app); }
         "quit"            => app.exit(0),
         _ => {}
     }
