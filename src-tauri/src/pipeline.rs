@@ -62,6 +62,29 @@ pub async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppStat
 
     emit_view(&app, &ViewKind::Thinking { transcript: transcript.clone() });
 
+    // v0.1.20 · 拿出已采样的鼠标轨迹（on_shortcut_release 烘到 screenshot 上的那批）
+    let trail_summary = state.last_trail.lock().await.take().and_then(|trail| {
+        if trail.is_empty() { return None; }
+        let total = trail.len();
+        let drawn: usize = trail.iter().filter(|p| p.left_button).count();
+        let dt_ms = trail.last().map(|p| p.t_ms).unwrap_or(0);
+        // 取 annotation 段的端点（按下→松开）
+        let mut spans: Vec<(usize, usize)> = vec![];
+        let mut span_start: Option<usize> = None;
+        for (i, p) in trail.iter().enumerate() {
+            match (p.left_button, span_start) {
+                (true, None) => span_start = Some(i),
+                (false, Some(s)) => { spans.push((s, i.saturating_sub(1))); span_start = None; }
+                _ => {}
+            }
+        }
+        if let Some(s) = span_start { spans.push((s, trail.len() - 1)); }
+        Some(format!(
+            "用户按住快捷键 {:.1}s，采了 {total} 个光标点，其中 {drawn} 个点是按住左键画的（{} 段标注）。",
+            dt_ms as f32 / 1000.0, spans.len()
+        ))
+    });
+
     // 3. 流式调用当前后端 —— 边收边 emit Reply{streaming:true}，气泡实时长出来。
     //    节流：最多每 90ms emit 一次，避免 IPC 被 token 级事件刷爆。
     let active_backend = state.backend.lock().await.clone();
@@ -74,6 +97,7 @@ pub async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppStat
         &img_path,
         frontmost.as_deref(),
         cursor_ctx.as_ref(),
+        trail_summary.as_deref(),
         |accumulated| {
             let now = std::time::Instant::now();
             if now.duration_since(last_emit) >= Duration::from_millis(90) {
@@ -225,6 +249,10 @@ pub async fn on_shortcut_press(app: AppHandle, state: Arc<AppState>) {
     };
     *state.recorder.lock().unwrap() = Some(recorder);
 
+    // v0.1.20 · 启动鼠标轨迹采样，让 AI 知道用户"圈了哪里"
+    #[cfg(target_os = "macos")]
+    crate::cursor_trail::start();
+
     // 截图并行（不阻塞录音）
     let state_clone = state.clone();
     let app_clone = app.clone();
@@ -239,7 +267,7 @@ pub async fn on_shortcut_press(app: AppHandle, state: Arc<AppState>) {
     });
 }
 
-/// 松开快捷键：停止录音 + Whisper 转写 + 跑 pipeline。
+/// 松开快捷键：停止录音 + 收尾轨迹 + Whisper 转写 + 跑 pipeline。
 pub async fn on_shortcut_release(app: AppHandle, state: Arc<AppState>) {
     let recorder = {
         let mut g = state.recorder.lock().unwrap();
@@ -248,6 +276,30 @@ pub async fn on_shortcut_release(app: AppHandle, state: Arc<AppState>) {
     let Some(recorder) = recorder else {
         return; // 没在录音 → 忽略
     };
+
+    // v0.1.20 · 停轨迹采样，拿到点列。烘到 screenshot 上。
+    #[cfg(target_os = "macos")]
+    let trail = crate::cursor_trail::stop_and_take();
+    #[cfg(not(target_os = "macos"))]
+    let trail: Vec<crate::cursor_trail::TrailPoint> = Vec::new();
+
+    if !trail.is_empty() {
+        let annotated = state.last_screenshot.lock().await.clone();
+        if let Some(path) = annotated {
+            let trail_clone = trail.clone();
+            let _ = tokio::task::spawn_blocking(move || {
+                #[cfg(target_os = "macos")]
+                if let Err(e) = crate::cursor_trail::render_onto_screenshot(&path, &trail_clone) {
+                    eprintln!("[mouseclaw] 🐭 render trail failed: {e}");
+                } else {
+                    println!("[mouseclaw] 🐭 trail {} points 已烘到 {}",
+                             trail_clone.len(), path.display());
+                }
+            }).await;
+        }
+        // 把 trail 也存进 AppState，给 run_pipeline 加进 prompt 上下文
+        *state.last_trail.lock().await = Some(trail);
+    }
 
     emit_view(&app, &ViewKind::Thinking { transcript: "(转写中…)".into() });
 

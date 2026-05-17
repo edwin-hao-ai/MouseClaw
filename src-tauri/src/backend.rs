@@ -71,6 +71,7 @@ pub async fn ask_streaming<F>(
     image: &Path,
     frontmost: Option<&str>,
     cursor: Option<&CursorContext>,
+    trail_summary: Option<&str>,
     on_chunk: F,
 ) -> Result<String>
 where
@@ -78,12 +79,15 @@ where
 {
     match backend {
         Backend::ClaudeCli => {
-            crate::claude_cli::ask_claude_streaming(transcript, image, frontmost, cursor, on_chunk)
-                .await
+            crate::claude_cli::ask_claude_streaming(
+                transcript, image, frontmost, cursor, trail_summary, on_chunk
+            ).await
         }
-        Backend::CodexCli => codex_streaming(transcript, image, frontmost, cursor, on_chunk).await,
+        Backend::CodexCli => codex_streaming(
+            transcript, image, frontmost, cursor, trail_summary, on_chunk
+        ).await,
         Backend::OpenclawCli => {
-            openclaw_streaming(transcript, image, frontmost, cursor, on_chunk).await
+            openclaw_streaming(transcript, image, frontmost, cursor, trail_summary, on_chunk).await
         }
     }
 }
@@ -148,6 +152,7 @@ async fn codex_streaming<F>(
     image: &Path,
     frontmost: Option<&str>,
     cursor: Option<&CursorContext>,
+    trail_summary: Option<&str>,
     on_chunk: F,
 ) -> Result<String>
 where
@@ -158,7 +163,7 @@ where
     let prompt = format!(
         "{}\n\n{}",
         crate::claude_cli::system_prompt(),
-        crate::claude_cli::build_prompt_pub(transcript, image, frontmost, cursor)
+        crate::claude_cli::build_prompt_pub(transcript, image, frontmost, cursor, trail_summary)
     );
     spawn_and_stream(&bin, &["exec", "--skip-git-repo-check", &prompt], on_chunk).await
 }
@@ -170,6 +175,7 @@ async fn openclaw_streaming<F>(
     image: &Path,
     frontmost: Option<&str>,
     cursor: Option<&CursorContext>,
+    trail_summary: Option<&str>,
     on_chunk: F,
 ) -> Result<String>
 where
@@ -180,7 +186,7 @@ where
     let prompt = format!(
         "{}\n\n{}",
         crate::claude_cli::system_prompt(),
-        crate::claude_cli::build_prompt_pub(transcript, image, frontmost, cursor)
+        crate::claude_cli::build_prompt_pub(transcript, image, frontmost, cursor, trail_summary)
     );
     spawn_and_stream(&bin, &["agent", "--local", "-m", &prompt], on_chunk).await
 }

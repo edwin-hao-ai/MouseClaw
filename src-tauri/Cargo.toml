@@ -31,6 +31,7 @@ aes-gcm = { version = "0.10", features = ["alloc"] }
 base64 = "0.22"
 rand = "0.8"
 security-framework = "2"
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.26"
@@ -39,3 +40,6 @@ block = "0.1"
 core-graphics = "0.24"
 core-foundation = "0.10"
 libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3.27.0"

@@ -18,6 +18,7 @@ pub mod claude_cli;
 pub mod clipboard;
 pub mod clipboard_crypto;
 pub mod cursor_follow;
+pub mod cursor_trail;
 pub mod commands;
 pub mod config;
 pub mod events;
@@ -61,6 +62,8 @@ pub struct PendingPanelContext {
 pub struct AppState {
     pub sessions: Mutex<SessionStore>,
     pub last_screenshot: Mutex<Option<std::path::PathBuf>>,
+    /// v0.1.20 · 上一次 AI 召唤的鼠标轨迹（已烘到 screenshot 上 + 送 prompt）
+    pub last_trail: Mutex<Option<Vec<cursor_trail::TrailPoint>>>,
     pub recorder: StdMutex<Option<audio::Recorder>>,
     /// One-shot panel context —— open_panel_window 写入，前端 take_panel_context 取走 + 清空
     pub pending_panel_context: StdMutex<Option<PendingPanelContext>>,
@@ -84,6 +87,7 @@ impl AppState {
         Ok(Self {
             sessions: Mutex::new(SessionStore::new()?),
             last_screenshot: Mutex::new(None),
+            last_trail: Mutex::new(None),
             recorder: StdMutex::new(None),
             pending_panel_context: StdMutex::new(None),
             prev_frontmost_pid: StdMutex::new(None),

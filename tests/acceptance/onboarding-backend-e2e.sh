@@ -189,6 +189,17 @@ check "包含 maps URL scheme"                       "grep -q 'maps://?q=' src-t
 check "包含 osascript / pandoc / shortcuts"        "grep -q 'osascript' src-tauri/src/claude_cli.rs && grep -q 'shortcuts run' src-tauri/src/claude_cli.rs"
 check "不可逆动作 confirm 规则"                    "grep -q '不可逆动作必须先 confirm' src-tauri/src/claude_cli.rs"
 
+echo "── v0.1.20 · 鼠标轨迹采样 + 烘图 ──"
+check "cursor_trail 模块"                          "test -f src-tauri/src/cursor_trail.rs"
+check "TrailPoint 含 left_button"                  "grep -q 'left_button: bool' src-tauri/src/cursor_trail.rs"
+check "render_onto_screenshot 烘图函数"            "grep -q 'pub fn render_onto_screenshot' src-tauri/src/cursor_trail.rs"
+check "pipeline 启动 cursor_trail"                 "grep -q 'cursor_trail::start' src-tauri/src/pipeline.rs"
+check "pipeline 烘图 + 存 trail"                   "grep -q 'render_onto_screenshot' src-tauri/src/pipeline.rs"
+check "AppState 有 last_trail"                     "grep -q 'last_trail' src-tauri/src/lib.rs"
+check "build_prompt 接 trail_summary"              "grep -q 'trail_summary' src-tauri/src/claude_cli.rs"
+check "prompt 解释粉红色 = 标注"                   "grep -q '粉红色标注覆盖' src-tauri/src/claude_cli.rs"
+check "image crate 已加"                           "grep -q 'image = ' src-tauri/Cargo.toml"
+
 echo "── 构建 / 测试闸门 ──"
 check "前端 bun build 通过"                         "bun run build"
 check "Rust cargo check 通过"                       "cargo check --manifest-path src-tauri/Cargo.toml"
