@@ -207,9 +207,9 @@
       <span>★ GitHub</span>
     </a>
   </div>
-  <p class="version" id="version-line">v0.1.23 · Apple Silicon · ~5 MB</p>
+  <p class="version" id="version-line">v0.1.25 · Apple Silicon · ~60 MB · notarized</p>
 
-  <video src="assets/demo.mp4" autoplay muted loop playsinline poster="assets/hero.png"></video>
+  <video id="demo-video" src="assets/demo-en.mp4" autoplay muted loop playsinline poster="assets/hero.png"></video>
 </section>
 
 <!-- ───────── Three modes ───────── -->
@@ -363,6 +363,16 @@ curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scri
     document.body.classList.toggle("zh", lang === "zh");
     document.getElementById("lang-en").classList.toggle("active", lang === "en");
     document.getElementById("lang-zh").classList.toggle("active", lang === "zh");
+    // swap demo video source so the language matches the page
+    const v = document.getElementById("demo-video");
+    if (v) {
+      const next = "assets/demo-" + (lang === "zh" ? "zh" : "en") + ".mp4";
+      if (!v.src.endsWith(next)) {
+        v.src = next;
+        v.load();
+        v.play().catch(() => {});
+      }
+    }
     try { localStorage.setItem("mouseclaw.landing.lang", lang); } catch {}
   }
   // 启动时优先用 localStorage > navigator.language

@@ -30,9 +30,9 @@ Three modes, one pet.
 
 <div align="center">
 
-<a href="docs/assets/demo.mp4"><img src="docs/assets/demo.gif" alt="MouseClaw demo" width="720" /></a>
+<a href="docs/assets/demo-en.mp4"><img src="docs/assets/demo-en.gif" alt="MouseClaw demo (EN)" width="720" /></a>
 
-*24-second tour — click for full MP4*
+*35-second tour · [▶ Watch the EN MP4](docs/assets/demo-en.mp4) · [▶ 看中文版](docs/assets/demo-zh.mp4)*
 
 </div>
 
@@ -108,9 +108,9 @@ MouseClaw（鼠标龙虾）是一只睡在你 macOS 屏幕角落的像素老鼠�
 
 <div align="center">
 
-<a href="docs/assets/demo.mp4"><img src="docs/assets/demo.gif" alt="MouseClaw 演示" width="720" /></a>
+<a href="docs/assets/demo-zh.mp4"><img src="docs/assets/demo-zh.gif" alt="MouseClaw 演示（中文）" width="720" /></a>
 
-*24 秒预览 — 点击看完整 MP4*
+*35 秒预览 · [▶ 看中文 MP4](docs/assets/demo-zh.mp4) · [▶ Watch the EN version](docs/assets/demo-en.mp4)*
 
 </div>
 
