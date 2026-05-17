@@ -197,12 +197,14 @@ async fn run_quick_llm(backend: crate::backend::Backend, prompt: &str) -> Result
         crate::backend::Backend::ClaudeCli => "claude",
         crate::backend::Backend::CodexCli => "codex",
         crate::backend::Backend::OpenclawCli => "openclaw",
+        crate::backend::Backend::HermesAgent => "hermes",
     };
     let bin_path = crate::claude_cli::find_binary(bin)?;
 
     // Claude: `claude -p "<prompt>"` 单次调用，无 streaming
     // Codex: `codex exec --skip-git-repo-check "<prompt>"`
     // OpenClaw: `openclaw agent --local -m "<prompt>"`
+    // Hermes: `hermes -z "<prompt>"` 干净的单次模式
     let args: Vec<String> = match backend {
         crate::backend::Backend::ClaudeCli => {
             vec!["-p".into(), prompt.into(),
@@ -214,6 +216,9 @@ async fn run_quick_llm(backend: crate::backend::Backend, prompt: &str) -> Result
         }
         crate::backend::Backend::OpenclawCli => {
             vec!["agent".into(), "--local".into(), "-m".into(), prompt.into()]
+        }
+        crate::backend::Backend::HermesAgent => {
+            vec!["-z".into(), prompt.into()]
         }
     };
 

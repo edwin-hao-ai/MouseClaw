@@ -57,6 +57,7 @@ const BACKENDS_META: Array<{ id: BackendChoice; label: string; descKey: string; 
   { id: "claude-cli", label: "Claude Code CLI", descKey: "claude", tag: "common.recommended" },
   { id: "codex-cli",  label: "OpenAI Codex CLI", descKey: "codex" },
   { id: "openclaw-cli", label: "OpenClaw CLI",  descKey: "openclaw" },
+  { id: "hermes-agent", label: "Hermes Agent (Nous Research)", descKey: "hermes" },
 ];
 
 function backendDesc(id: BackendChoice, t: ReturnType<typeof useT>): string {
@@ -75,6 +76,10 @@ function backendDesc(id: BackendChoice, t: ReturnType<typeof useT>): string {
       return en
         ? "openclaw agent --local. Needs npm i -g openclaw + provider key in shell."
         : "openclaw agent --local。需 npm i -g openclaw 并配好 provider key。";
+    case "hermes-agent":
+      return en
+        ? "Hermes -z one-shot mode. Self-improving agent from Nous Research. Needs hermes installed + setup."
+        : "hermes -z 单次模式。Nous Research 的自学习 agent。需先装 hermes 并配 provider key。";
   }
 }
 

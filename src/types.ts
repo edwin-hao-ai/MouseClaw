@@ -26,7 +26,7 @@ export type ShortcutChoice =
   | "double-cmd"    | "hold-cmd";
 
 /** AI backend choice — matches Rust `Backend::from_choice`. */
-export type BackendChoice = "claude-cli" | "codex-cli" | "openclaw-cli";
+export type BackendChoice = "claude-cli" | "codex-cli" | "openclaw-cli" | "hermes-agent";
 
 /** Re-export SkinId here for convenience (single source of truth lives in src/skins.ts). */
 export type { SkinId } from "./skins";

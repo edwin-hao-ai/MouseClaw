@@ -394,6 +394,8 @@ fn friendly_backend_error(raw: &str, backend: crate::backend::Backend) -> String
                 "找不到 codex CLI。装一下：`npm i -g @openai/codex`，并配好 OpenAI API key".into(),
             crate::backend::Backend::OpenclawCli =>
                 "找不到 openclaw CLI。装一下：`npm i -g openclaw`，并在 shell 配 provider key".into(),
+            crate::backend::Backend::HermesAgent =>
+                "找不到 hermes CLI。装一下：`curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash`，然后跑 `hermes setup` 配 API key".into(),
         };
     }
     if lower.contains("login") || lower.contains("authentic") || lower.contains("unauthorized") || lower.contains("401") {

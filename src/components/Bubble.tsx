@@ -63,38 +63,33 @@ export function Bubble({
     [text, markdown]
   );
 
-  // v0.1.22 · 流式期间智能滚动：用户在底部 → 跟着新内容；用户往上翻 → 不打扰
-  // 流完后强制滚到顶，让用户看到完整回答的开头（之前会停在最后的滚动位置，看起来像"上面缺一块"）
+  // v0.1.23 · 永远从顶看 —— 用户反馈「上面好像缺一块」就是流式自动滚到底引起的。
+  // 改成：流式期间也保持 scrollTop=0（除非用户手动往下翻去看最新 token），
+  // 用户读长回复的自然方向是从上到下，看不到开头才是真问题。
   const scrollRef = useRef<HTMLDivElement>(null);
-  const userScrolledUpRef = useRef(false);
-  const prevStreamingRef = useRef(streaming);
+  const userScrolledRef = useRef(false);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || !scrollable) return;
-    if (streaming) {
-      // 流式中：用户没自己滚动 → 跟着到底；否则不动
-      if (!userScrolledUpRef.current) {
-        el.scrollTop = el.scrollHeight;
-      }
-    } else if (prevStreamingRef.current) {
-      // 刚从 streaming → 终态：滚到顶让用户看见完整开头
+    // 用户没主动滚过 → 一直钉在顶部
+    if (!userScrolledRef.current) {
       el.scrollTop = 0;
-      userScrolledUpRef.current = false;
     }
-    prevStreamingRef.current = streaming;
   }, [text, streaming, scrollable]);
 
-  // 监听用户手动滚动
+  // 用户开始滚动后就不再强制定位
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || !scrollable) return;
     const onScroll = () => {
-      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 8;
-      userScrolledUpRef.current = !atBottom;
+      if (el.scrollTop > 4) userScrolledRef.current = true;
     };
     el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      userScrolledRef.current = false;
+    };
   }, [scrollable]);
 
   return (
