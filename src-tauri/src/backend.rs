@@ -26,6 +26,7 @@ pub enum Backend {
     ClaudeCli,
     CodexCli,
     OpenclawCli,
+    HermesAgent, // v0.1.23 · Nous Research 的 Hermes Agent
 }
 
 impl Default for Backend {
@@ -41,6 +42,7 @@ impl Backend {
             Backend::ClaudeCli => "Claude Code CLI",
             Backend::CodexCli => "OpenAI Codex CLI",
             Backend::OpenclawCli => "OpenClaw CLI",
+            Backend::HermesAgent => "Hermes Agent (Nous Research)",
         }
     }
 
@@ -50,6 +52,7 @@ impl Backend {
             Backend::ClaudeCli => "claude",
             Backend::CodexCli => "codex",
             Backend::OpenclawCli => "openclaw",
+            Backend::HermesAgent => "hermes",
         }
     }
 
@@ -58,6 +61,7 @@ impl Backend {
         match s {
             "codex-cli" | "codex" => Backend::CodexCli,
             "openclaw-cli" | "openclaw" => Backend::OpenclawCli,
+            "hermes-agent" | "hermes" => Backend::HermesAgent,
             _ => Backend::ClaudeCli,
         }
     }
@@ -88,6 +92,9 @@ where
         ).await,
         Backend::OpenclawCli => {
             openclaw_streaming(transcript, image, frontmost, cursor, trail_summary, on_chunk).await
+        }
+        Backend::HermesAgent => {
+            hermes_streaming(transcript, image, frontmost, cursor, trail_summary, on_chunk).await
         }
     }
 }
@@ -198,6 +205,31 @@ where
     spawn_and_stream(&bin, &["agent", "--local", "-m", &prompt], on_chunk).await
 }
 
+/// Hermes Agent (Nous Research) · `hermes -z "<prompt>"` 单次模式
+/// 不走 stream-json，stdout 是纯文本，spawn_and_stream 逐行累计即可
+async fn hermes_streaming<F>(
+    transcript: &str,
+    image: &Path,
+    frontmost: Option<&str>,
+    cursor: Option<&CursorContext>,
+    trail_summary: Option<&str>,
+    on_chunk: F,
+) -> Result<String>
+where
+    F: FnMut(&str),
+{
+    let bin = crate::claude_cli::find_binary("hermes")
+        .map_err(|e| anyhow::anyhow!("{e}\n装一下：curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash"))?;
+    let prompt = format!(
+        "{}\n\n{}",
+        crate::claude_cli::system_prompt(),
+        crate::claude_cli::build_prompt_pub(transcript, image, frontmost, cursor, trail_summary)
+    );
+    // -z = 单次 stdin→stdout 干净输出（适合脚本管道）
+    // --ignore-rules 跟我们的 system_prompt 不冲突，保留 hermes 自身的 tool 能力
+    spawn_and_stream(&bin, &["-z", &prompt], on_chunk).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -208,6 +240,8 @@ mod tests {
         assert_eq!(Backend::from_choice("codex"), Backend::CodexCli);
         assert_eq!(Backend::from_choice("openclaw-cli"), Backend::OpenclawCli);
         assert_eq!(Backend::from_choice("openclaw"), Backend::OpenclawCli);
+        assert_eq!(Backend::from_choice("hermes-agent"), Backend::HermesAgent);
+        assert_eq!(Backend::from_choice("hermes"), Backend::HermesAgent);
         assert_eq!(Backend::from_choice("claude-cli"), Backend::ClaudeCli);
     }
 
@@ -227,6 +261,7 @@ mod tests {
         assert_eq!(Backend::ClaudeCli.binary_name(), "claude");
         assert_eq!(Backend::CodexCli.binary_name(), "codex");
         assert_eq!(Backend::OpenclawCli.binary_name(), "openclaw");
+        assert_eq!(Backend::HermesAgent.binary_name(), "hermes");
     }
 
     #[test]

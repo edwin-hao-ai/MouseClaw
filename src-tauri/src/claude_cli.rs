@@ -223,6 +223,8 @@ pub fn expanded_path() -> String {
         format!("{home}/.bun/bin"),
         format!("{home}/.cargo/bin"),
         format!("{home}/.local/bin"),
+        // v0.1.23 · Hermes 安装 ~/.hermes 但 binary 也在 ~/.local/bin（上面已包含）
+        // 这里只确保官方路径都覆盖；hermes 真实路径就是 ~/.local/bin/hermes
         "/opt/homebrew/bin".to_string(),
         "/opt/homebrew/sbin".to_string(),
         "/usr/local/bin".to_string(),

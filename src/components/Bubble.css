@@ -18,19 +18,24 @@
 
 /* v0.1.8 修：长回复气泡内部可滚动。
    关键 bug：原来 .bubble-body 是 display:inline，加 max-height/overflow 都不生效。
-   .bubble-scroll 必须强制 block 才能挂上 max-height + overflow。 */
+   .bubble-scroll 必须强制 block 才能挂上 max-height + overflow。
+   v0.1.23 修：margin 折叠导致顶部看起来"缺一块" —— 加 contain:layout 隔离 */
 .bubble-scroll {
   display: block !important;
   max-height: 320px;
   overflow-y: auto;
-  /* 自定义滚动条：细 + 半透明，不抢戏 */
   scrollbar-width: thin;
   scrollbar-color: rgba(0,0,0,0.25) transparent;
   padding-right: 4px;
+  /* 阻止子元素的 margin 漏出去导致顶部空一截 */
+  contain: layout;
 }
 .bubble-scroll .bubble-text {
-  display: block; /* span 也得 block，否则文本撑不开内滚区 */
+  display: block;
 }
+/* 显式干掉 markdown 第一个 / 最后一个子元素的 margin，杜绝顶/底白空 */
+.bubble-scroll .bubble-md > *:first-child { margin-top: 0 !important; }
+.bubble-scroll .bubble-md > *:last-child  { margin-bottom: 0 !important; }
 .bubble-scroll::-webkit-scrollbar { width: 6px; }
 .bubble-scroll::-webkit-scrollbar-track { background: transparent; }
 .bubble-scroll::-webkit-scrollbar-thumb {
