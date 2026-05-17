@@ -112,6 +112,10 @@ where
 {
     let mut cmd = tokio::process::Command::new(bin);
     cmd.env("PATH", crate::claude_cli::expanded_path());
+    // v0.1.25 · ~/.mouseclaw/provider.env 里的 key 灌进子进程
+    //   让 Codex / OpenClaw / Hermes 看到 OPENAI_API_KEY / AI_GATEWAY_API_KEY / etc.
+    //   不用用户改 shell rc。已在 OS env 里的同名变量不覆盖（shell 优先）。
+    crate::provider_env::apply_to(&mut cmd);
     // v0.1.21 · 工作区 cwd
     if let Some(ws) = crate::config::Config::load().workspace_path {
         if std::path::Path::new(&ws).is_dir() {

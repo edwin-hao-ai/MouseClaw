@@ -148,10 +148,20 @@ pub fn current_state() -> Option<ModelState> {
 }
 
 /// 当前 active 模型缺失就后台下载（用 curl，零依赖）。切换模型时也会再调一次。
+///
+/// v0.1.25：base 模型已经打进 app bundle（`Resources/models/ggml-base-q5_1.bin`）。
+/// 首启动如果用户目录缺 base，先尝试从 bundle 拷贝 → 0 网络 OOTB 体验。
+/// small / medium / turbo 没打包（太重），缺就走原来的 curl 下载流程。
 pub fn kick_off_download_if_missing() {
     let target = active_model();
     if is_available() {
         *DOWNLOAD_STATE.lock().unwrap() = Some(ModelState::Ready);
+        return;
+    }
+    // 先尝试从 bundle 兜底（仅 base —— small/medium/turbo 没打包）
+    if try_seed_from_bundle(target).unwrap_or(false) {
+        *DOWNLOAD_STATE.lock().unwrap() = Some(ModelState::Ready);
+        println!("[mouseclaw] Whisper {:?} 从 bundle 拷贝到 ~/.mouseclaw/models/", target);
         return;
     }
     *DOWNLOAD_STATE.lock().unwrap() = Some(ModelState::Downloading);
@@ -205,4 +215,46 @@ pub fn kick_off_download_if_missing() {
 fn dest_path_for(m: crate::config::WhisperModel) -> Result<PathBuf> {
     let home = std::env::var_os("HOME").ok_or_else(|| anyhow!("no HOME"))?;
     Ok(PathBuf::from(home).join(".mouseclaw/models").join(m.filename()))
+}
+
+/// 找 app bundle 里的 model 资源。Tauri 把 `resources/ggml-base-q5_1.bin`
+/// 安装成 `MouseClaw.app/Contents/Resources/models/ggml-base-q5_1.bin`。
+///
+/// 当前 exe 在 `MouseClaw.app/Contents/MacOS/MouseClaw`，所以资源在
+/// `current_exe()/../../Resources/models/<filename>`。
+///
+/// 找不到（dev `cargo run` 启动 / 或非 base 模型）→ 返回 None。
+fn bundle_resource_path(m: crate::config::WhisperModel) -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let resources = exe.parent()?.parent()?.join("Resources");
+    let candidate = resources.join("models").join(m.filename());
+    if candidate.is_file() {
+        Some(candidate)
+    } else {
+        // dev 模式 fallback：仓库里的 src-tauri/resources/
+        let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join(m.filename());
+        if dev.is_file() {
+            Some(dev)
+        } else {
+            None
+        }
+    }
+}
+
+/// 把 bundle 里的模型 copy 到 ~/.mouseclaw/models/ 一次。
+/// 返回 Ok(true) 表示已就绪，Ok(false) 表示 bundle 里没这个 model。
+fn try_seed_from_bundle(m: crate::config::WhisperModel) -> Result<bool> {
+    let Some(src) = bundle_resource_path(m) else {
+        return Ok(false);
+    };
+    let dst = dest_path_for(m)?;
+    if let Some(parent) = dst.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    std::fs::copy(&src, &dst).with_context(|| {
+        format!("copy {} → {}", src.display(), dst.display())
+    })?;
+    Ok(true)
 }

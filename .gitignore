@@ -44,3 +44,9 @@ mddock.md
 *.dmg
 marketing/
 # (mp4/gif intentionally committed for README)
+
+# Awareness daemon's local state (gitignored, machine-local)
+.awareness/
+
+# Whisper model bundled into the .app at build time (fetched by scripts/fetch-whisper-model.sh)
+src-tauri/resources/ggml-*.bin

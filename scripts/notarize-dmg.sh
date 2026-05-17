@@ -1,25 +1,58 @@
 #!/usr/bin/env bash
 # Notarize an already-signed MouseClaw dmg.
 #
-# Prereqs (run once):
-#   1. Get an Apple Developer Program account ($99/yr).
-#   2. Create an app-specific password at appleid.apple.com → Sign-In and Security.
-#   3. Find your Team ID at developer.apple.com → Membership.
-#   4. Store the creds in Keychain so we never type them again:
-#      xcrun notarytool store-credentials mouseclaw \
-#          --apple-id "you@example.com" \
-#          --team-id "ABCDE12345" \
-#          --password "abcd-efgh-ijkl-mnop"
-#   5. Verify it works: xcrun notarytool history --keychain-profile mouseclaw
+# Default uses the **OCTAgentNotary** keychain profile (shared with our other
+# projects — Awareness / OCT). Override via $MOUSECLAW_NOTARY_PROFILE.
+#
+# One-time setup (Apple Developer Program account required, $99/yr):
+#   1. Generate an app-specific password at appleid.apple.com → Sign-In
+#      and Security → App-Specific Passwords. Format: xxxx-xxxx-xxxx-xxxx
+#   2. Team ID lives at developer.apple.com → Membership (10-char string).
+#   3. Store in Keychain (so xcrun reads it without prompting):
+#        xcrun notarytool store-credentials "OCTAgentNotary" \
+#            --apple-id "120298858@qq.com" \
+#            --team-id  "5XNDF727Y6" \
+#            --password "<app-specific-password>"
+#   4. Verify it works:  xcrun notarytool history --keychain-profile OCTAgentNotary
 #
 # Then just run: bash scripts/notarize-dmg.sh [path/to/dmg]
-# Defaults to project-root MouseClaw_0.1.0_aarch64.dmg.
+# Defaults to the most recently-built dmg in project root.
 
 set -euo pipefail
 
-DMG="${1:-$(dirname "$0")/../MouseClaw_0.1.0_aarch64.dmg}"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Auto-pick newest MouseClaw_*.dmg if no arg
+DEFAULT_DMG="$(ls -t "$ROOT"/MouseClaw_*_aarch64.dmg 2>/dev/null | head -1 || true)"
+DMG="${1:-$DEFAULT_DMG}"
+if [ -z "${DMG:-}" ]; then
+  echo "❌ No dmg found in $ROOT. Run \`bun tauri build\` or pass a path."
+  exit 1
+fi
 DMG="$(realpath "$DMG")"
-PROFILE="${MOUSECLAW_NOTARY_PROFILE:-mouseclaw}"
+# Profile priority (override via $MOUSECLAW_NOTARY_PROFILE):
+#   1. OCTAgentNotary       (Beijing VGO Co;Ltd / 5XNDF727Y6, 120298858@qq.com)
+#   2. AwarenessClawNotary  (same team, set up earlier for the Awareness project)
+PROFILE="${MOUSECLAW_NOTARY_PROFILE:-}"
+if [ -z "$PROFILE" ]; then
+  for candidate in OCTAgentNotary AwarenessClawNotary mouseclaw; do
+    if xcrun notarytool history --keychain-profile "$candidate" >/dev/null 2>&1; then
+      PROFILE="$candidate"; break
+    fi
+  done
+fi
+if [ -z "$PROFILE" ]; then
+  cat >&2 <<'HINT'
+❌ No notarization keychain profile found. Set one up:
+
+   xcrun notarytool store-credentials "OCTAgentNotary" \
+     --apple-id "120298858@qq.com" \
+     --team-id  "5XNDF727Y6" \
+     --password "<app-specific-password from appleid.apple.com>"
+
+Then re-run this script.
+HINT
+  exit 1
+fi
 
 if [ ! -f "$DMG" ]; then
   echo "❌ dmg not found: $DMG"
