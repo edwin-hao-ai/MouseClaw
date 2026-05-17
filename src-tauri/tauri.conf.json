@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "MouseClaw",
-  "version": "0.1.24",
+  "version": "0.1.25",
   "identifier": "com.edwinhao.mouseclaw",
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run build",
+    "beforeBuildCommand": "bash scripts/fetch-whisper-model.sh && bun run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -40,6 +40,9 @@
   "bundle": {
     "active": true,
     "targets": "dmg",
+    "resources": {
+      "resources/ggml-base-q5_1.bin": "models/ggml-base-q5_1.bin"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

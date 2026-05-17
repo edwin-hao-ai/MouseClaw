@@ -6,6 +6,30 @@ versioning follows [SemVer](https://semver.org/).
 
 ---
 
+## [0.1.25] · 2026-05-17
+
+### English
+
+#### Added
+- **Bundled Whisper base model** (`ggml-base-q5_1.bin`, ~57MB). First launch no longer waits on a 60MB download — voice IME works offline immediately. Larger models (small/medium/turbo) still download on demand.
+- **`~/.mouseclaw/provider.env`** convention — drop `OPENAI_API_KEY` / `AI_GATEWAY_API_KEY` / `ANTHROPIC_API_KEY` etc. into one file, MouseClaw passes them to spawned CLI backends. No more shell-rc gymnastics. Template at `docs/provider-env-template.md`.
+- **All 4 backends verified via Vercel AI Gateway** (Claude Code / Codex / Hermes ✅; OpenClaw partial — needs valid gateway model id).
+
+#### Changed
+- `scripts/notarize-dmg.sh` defaults to keychain profile `OCTAgentNotary` (shared with our other projects); auto-picks the newest `MouseClaw_*_aarch64.dmg` if no path is passed.
+
+### 中文
+
+#### 新增
+- **Whisper base 模型打进安装包**（57MB）。首次启动不用等下载，离线就能用语音 IME。更大的 small/medium/turbo 仍按需下载。
+- **`~/.mouseclaw/provider.env`** 约定 —— 把 `OPENAI_API_KEY` / `AI_GATEWAY_API_KEY` / `ANTHROPIC_API_KEY` 写一个文件，MouseClaw 直接灌给 CLI 子进程，不用改 shell rc。模板：`docs/provider-env-template.md`。
+- **4 个后端实测过 Vercel AI Gateway**（Claude Code / Codex / Hermes ✅；OpenClaw 部分跑通）。
+
+#### 调整
+- `scripts/notarize-dmg.sh` 默认 keychain profile `OCTAgentNotary`，无参数时自动选最新 `MouseClaw_*_aarch64.dmg`。
+
+---
+
 ## [0.1.24] · 2026-05-17
 
 ### English

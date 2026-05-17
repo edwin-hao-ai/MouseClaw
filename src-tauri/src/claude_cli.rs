@@ -347,6 +347,8 @@ where
 
     let mut cmd = tokio::process::Command::new(&claude_bin);
     cmd.env("PATH", expanded_path());
+    // v0.1.25 · provider.env 里的 ANTHROPIC_* / 自定义 base URL 也透给 Claude CLI
+    crate::provider_env::apply_to(&mut cmd);
     // v0.1.21 · 工作区 cwd —— 让 Claude 知道在哪个项目里读/改文件
     if let Some(ws) = crate::config::Config::load().workspace_path {
         if std::path::Path::new(&ws).is_dir() {

@@ -27,6 +27,7 @@ pub mod mode_b;
 pub mod overlay;
 pub mod permissions;
 pub mod pipeline;
+pub mod provider_env;
 pub mod screenshot;
 pub mod sessions;
 pub mod skins;
