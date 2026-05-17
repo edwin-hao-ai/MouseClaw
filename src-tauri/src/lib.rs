@@ -169,16 +169,13 @@ pub fn run() {
                     let app_handle = app.clone();
                     let state: Arc<AppState> = app.state::<Arc<AppState>>().inner().clone();
                     let sk = format!("{shortcut:?}");
-                    // v0.1.12 ⌘⇧V → 打开 Hub 剪贴板 tab（不走 AI flow）
+                    // v0.1.12 ⌘⇧V → 打开 Hub 剪贴板（v0.1.16 改成独立窗口）
                     if sk.contains("KeyV") || sk.contains("Char(\"v\")") || sk.contains("Code(V)") {
                         if event.state() == ShortcutState::Pressed {
-                            println!("[mouseclaw] 📋 ⌘⇧V → 打开 Hub");
-                            // emit 给前端，前端把 hub 打开 + 切到 clipboard tab
-                            use tauri::Emitter;
-                            for (_, w) in app.webview_windows() {
-                                let _ = w.emit("open-hub", "clipboard");
+                            println!("[mouseclaw] 📋 ⌘⇧V → 打开 Hub 窗口");
+                            if let Err(e) = commands::open_hub_window(app.clone()) {
+                                eprintln!("[mouseclaw] open_hub_window: {e}");
                             }
-                            show_mouse(app);
                         }
                         return;
                     }
@@ -228,6 +225,7 @@ pub fn run() {
             commands::paste_clipboard_item,
             commands::open_panel_window,
             commands::take_panel_context,
+            commands::open_hub_window,
             commands::save_tidy_up,
             commands::get_tidy_up,
             commands::save_voice_ime,

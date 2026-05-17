@@ -141,13 +141,13 @@ export function Hub({ onClose }: HubProps) {
   useEffect(() => { setActiveIdx(0); }, [q, tab]);
 
   const handlePaste = async (id: number) => {
-    onClose(); // 先关 Hub —— 焦点回到用户原 app
-    // 略微等待焦点切换完成（macOS focus restore ~80ms）
+    onClose(); // 先隐 Hub 窗口 → 焦点回到用户原 app
+    // macOS 窗口 hide() 异步 + 焦点切换有延时（实测 ~150ms），保险 200ms
     setTimeout(() => {
       invoke("paste_clipboard_item", { id }).catch(e => {
         console.warn("paste_clipboard_item failed:", e);
       });
-    }, 100);
+    }, 200);
   };
 
   const handleDelete = async (id: number, e: React.MouseEvent) => {

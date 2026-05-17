@@ -199,13 +199,12 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
             use tauri::Emitter;
             let app = tray.app_handle();
             match event {
-                // v0.1.13 · 双击托盘 → 打开 Hub（prototype Section ④ 入口之一）
+                // v0.1.13 · 双击托盘 → 打开 Hub（v0.1.16 改独立窗口）
                 TrayIconEvent::DoubleClick { button: MouseButton::Left, .. } => {
-                    println!("[mouseclaw] 📋 tray double-click → open Hub");
-                    for (_, w) in app.webview_windows() {
-                        let _ = w.emit("open-hub", "clipboard");
+                    println!("[mouseclaw] 📋 tray double-click → open Hub window");
+                    if let Err(e) = crate::commands::open_hub_window(app.clone()) {
+                        eprintln!("[mouseclaw] tray double-click open hub: {e}");
                     }
-                    crate::overlay::show_mouse(app);
                 }
                 // 单击托盘 → 召唤
                 TrayIconEvent::Click {
