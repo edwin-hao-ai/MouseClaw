@@ -42,3 +42,5 @@ models/
 entities/
 mddock.md
 *.dmg
+marketing/
+# (mp4/gif intentionally committed for README)

@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MouseClaw 🦞 — A pixel-art desktop AI that lives where your cursor is</title>
+<meta name="description" content="Hold a shortcut, speak, release. MouseClaw screenshots + transcribes + asks your favorite AI CLI. Voice IME, clipboard history, computer use — all in 5MB." />
+<meta property="og:title" content="MouseClaw 🦞" />
+<meta property="og:description" content="A pixel-art desktop AI that lives where your cursor is." />
+<meta property="og:image" content="https://edwin-hao-ai.github.io/MouseClaw/assets/hero.png" />
+<meta property="og:type" content="website" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🦞%3C/text%3E%3C/svg%3E" />
+<style>
+  :root {
+    --bg:#faf7f2; --ink:#2b2622; --muted:#8a8178;
+    --pink:#e8638c; --pink-dark:#d63d6a; --pink-soft:#fce4ec;
+    --green:#3fa66a; --line:#ece6dd; --card:#ffffff;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --font: -apple-system, "PingFang SC", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.65 var(--font);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .lang-switch {
+    position: fixed; top: 18px; right: 18px;
+    z-index: 100; display: flex; gap: 4px;
+    background: rgba(255,255,255,.7); backdrop-filter: blur(10px);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 4px;
+  }
+  .lang-switch button {
+    border: 0; background: transparent;
+    font: inherit; font-size: 13px; font-weight: 600;
+    padding: 5px 12px; border-radius: 999px;
+    cursor: pointer; color: var(--muted);
+  }
+  .lang-switch button.active {
+    background: var(--pink); color: #fff;
+  }
+
+  section { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  /* Hero */
+  .hero {
+    text-align: center; padding: 80px 24px 60px;
+    background: radial-gradient(ellipse at top, var(--pink-soft) 0%, transparent 55%);
+  }
+  .hero .badge {
+    display: inline-block; padding: 4px 12px;
+    background: rgba(232,99,140,0.12); color: var(--pink-dark);
+    border: 1px solid rgba(232,99,140,0.3);
+    border-radius: 999px; font-size: 12px; font-weight: 700;
+    margin-bottom: 24px;
+  }
+  .hero h1 {
+    font-size: clamp(40px, 7vw, 88px); font-weight: 800;
+    letter-spacing: -0.03em; margin: 0 0 18px; line-height: 1.1;
+  }
+  .hero h1 .pink {
+    background: linear-gradient(135deg, var(--pink) 0%, var(--pink-dark) 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero p.tagline {
+    font-size: clamp(18px, 2vw, 22px); color: var(--muted);
+    max-width: 640px; margin: 0 auto 36px; line-height: 1.5;
+  }
+  .hero .cta {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 14px 28px; background: var(--ink); color: var(--bg);
+    border-radius: 12px; text-decoration: none; font-weight: 600;
+    box-shadow: 0 8px 20px rgba(43,38,34,.16);
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .hero .cta:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(43,38,34,.22); }
+  .hero .cta-secondary {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 14px 28px; margin-left: 14px;
+    color: var(--ink); text-decoration: none; font-weight: 600;
+    border: 2px solid var(--ink); border-radius: 12px;
+  }
+  .hero .version {
+    margin-top: 16px; font-size: 13px; color: var(--muted); font-family: var(--mono);
+  }
+  .hero video, .hero img.demo {
+    margin-top: 64px; max-width: 920px; width: 100%;
+    border-radius: 16px;
+    box-shadow: 0 30px 80px rgba(43,38,34,.18);
+    border: 1px solid var(--line);
+  }
+
+  /* 3-mode grid */
+  .modes {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 18px; margin: 80px auto;
+  }
+  @media (max-width: 740px) { .modes { grid-template-columns: 1fr; } }
+  .mode-card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; padding: 28px 24px;
+  }
+  .mode-card .ico { font-size: 32px; margin-bottom: 8px; }
+  .mode-card h3 { margin: 0 0 6px; font-size: 18px; font-weight: 700; }
+  .mode-card kbd {
+    display: inline-block; padding: 3px 9px;
+    background: #fff; border: 1px solid var(--line);
+    border-bottom-width: 2px; border-radius: 6px;
+    font: 600 13px var(--mono); margin: 4px 2px 8px 0;
+  }
+  .mode-card p { margin: 6px 0 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
+
+  /* Features */
+  h2.section-title {
+    font-size: 32px; font-weight: 800; margin: 60px 0 28px;
+    letter-spacing: -0.02em;
+  }
+  .feat {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 16px; margin-bottom: 60px;
+  }
+  @media (max-width: 740px) { .feat { grid-template-columns: 1fr; } }
+  .feat-card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 12px; padding: 22px;
+  }
+  .feat-card .ico { font-size: 22px; margin-right: 8px; }
+  .feat-card b { font-weight: 700; }
+  .feat-card p { color: var(--muted); margin: 6px 0 0; line-height: 1.55; }
+
+  /* Privacy */
+  .privacy-bar {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 24px 28px; margin: 40px 0; display: flex; gap: 20px; align-items: flex-start;
+  }
+  .privacy-bar .ico { font-size: 30px; }
+  .privacy-bar ul { margin: 6px 0 0; padding-left: 20px; color: var(--muted); }
+  .privacy-bar li { margin: 3px 0; }
+
+  /* Install */
+  .install code, code {
+    background: var(--ink); color: var(--bg);
+    padding: 1.5px 8px; border-radius: 4px;
+    font-family: var(--mono); font-size: 13px;
+  }
+  .install pre {
+    background: var(--ink); color: var(--bg);
+    padding: 14px 18px; border-radius: 10px;
+    overflow-x: auto; font: 13px/1.6 var(--mono);
+    margin: 12px 0;
+  }
+  .install pre code { background: transparent; padding: 0; }
+
+  footer {
+    border-top: 1px solid var(--line); margin-top: 80px;
+    padding: 40px 24px; text-align: center; color: var(--muted);
+    font-size: 13px;
+  }
+  footer a { color: var(--pink-dark); text-decoration: none; }
+
+  /* hidden helper */
+  [data-lang="zh"] { display: none; }
+  body.zh [data-lang="en"] { display: none; }
+  body.zh [data-lang="zh"] { display: inherit; }
+  body.zh tr[data-lang="zh"], body.zh div[data-lang="zh"], body.zh section[data-lang="zh"] { display: block; }
+  body.zh td[data-lang="zh"] { display: table-cell; }
+</style>
+</head>
+<body>
+
+<nav class="lang-switch" role="tablist">
+  <button id="lang-en" class="active" onclick="setLang('en')">EN</button>
+  <button id="lang-zh" onclick="setLang('zh')">中文</button>
+</nav>
+
+<!-- ───────── Hero ───────── -->
+<section class="hero">
+  <span class="badge" data-lang="en">v0.1.23 · macOS · pre-1.0</span>
+  <span class="badge" data-lang="zh">v0.1.23 · macOS · 内测中</span>
+
+  <h1 data-lang="en">
+    A pixel pet AI<br/>that lives where<br/>your <span class="pink">cursor is</span>.
+  </h1>
+  <h1 data-lang="zh">
+    一只在<span class="pink">光标边</span>住的<br/>像素 AI 桌宠。
+  </h1>
+
+  <p class="tagline" data-lang="en">
+    Hold a shortcut. Speak. Release.<br/>
+    MouseClaw screenshots, hears you, and runs your favorite AI CLI to do the thing.
+  </p>
+  <p class="tagline" data-lang="zh">
+    按住快捷键 → 说话 → 松开。<br/>
+    截屏 + 语音 + 你已经用熟的那个 AI CLI（Claude/Codex/OpenClaw/Hermes）= 真动手。
+  </p>
+
+  <div>
+    <a class="cta" href="https://github.com/edwin-hao-ai/MouseClaw/releases/latest" id="download-cta">
+      <span data-lang="en">⬇  Download for macOS</span>
+      <span data-lang="zh">⬇  下载 macOS 版</span>
+    </a>
+    <a class="cta-secondary" href="https://github.com/edwin-hao-ai/MouseClaw">
+      <span>★ GitHub</span>
+    </a>
+  </div>
+  <p class="version" id="version-line">v0.1.23 · Apple Silicon · ~5 MB</p>
+
+  <video src="assets/demo.mp4" autoplay muted loop playsinline poster="assets/hero.png"></video>
+</section>
+
+<!-- ───────── Three modes ───────── -->
+<section>
+  <h2 class="section-title" data-lang="en">3 modes, 1 pet.</h2>
+  <h2 class="section-title" data-lang="zh">三种模式，一只宠物。</h2>
+  <div class="modes">
+    <div class="mode-card">
+      <div class="ico">🦞</div>
+      <h3 data-lang="en">AI summon</h3>
+      <h3 data-lang="zh">AI 召唤</h3>
+      <kbd>⌘</kbd><kbd>⇧</kbd><kbd>Space</kbd>
+      <p data-lang="en">Hold, speak, release. Screenshot + voice get a markdown reply in a speech bubble. Streaming.</p>
+      <p data-lang="zh">按住、说话、松开。截图 + 语音 → markdown 流式回到气泡。</p>
+    </div>
+    <div class="mode-card">
+      <div class="ico">🎙️</div>
+      <h3 data-lang="en">Voice IME</h3>
+      <h3 data-lang="zh">语音输入法</h3>
+      <kbd>hold fn</kbd>
+      <p data-lang="en">Whisper transcription typed directly at your cursor. No AI call, no latency. Configurable trigger key.</p>
+      <p data-lang="zh">Whisper 转写 → 直接写到你光标位置。不调 AI，不延迟。触发键可改。</p>
+    </div>
+    <div class="mode-card">
+      <div class="ico">📋</div>
+      <h3 data-lang="en">Clipboard hub</h3>
+      <h3 data-lang="zh">剪贴板 Hub</h3>
+      <kbd>⌘</kbd><kbd>⇧</kbd><kbd>V</kbd>
+      <p data-lang="en">Everything you copied — searchable, pin-able, encrypted. Drag out, paste back, or right-click for more.</p>
+      <p data-lang="zh">所有复制过的内容 — 可搜、可标星、加密保存。拖出、粘回、右键更多。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ───────── Why ───────── -->
+<section>
+  <h2 class="section-title" data-lang="en">Why bother?</h2>
+  <h2 class="section-title" data-lang="zh">为什么值得装？</h2>
+  <div class="feat">
+    <div class="feat-card">
+      <span class="ico">⚡</span><b data-lang="en">Zero context switch.</b><b data-lang="zh">零切换成本。</b>
+      <p data-lang="en">No window to open, no app to focus. The pet is already there. Hold-speak-done.</p>
+      <p data-lang="zh">不用开窗口、不用切应用。桌宠已经在那。按住-说话-完事。</p>
+    </div>
+    <div class="feat-card">
+      <span class="ico">🎯</span><b data-lang="en">Circle the bug.</b><b data-lang="zh">圈选 bug。</b>
+      <p data-lang="en">Hold shortcut, hold left mouse + drag — your highlight is baked into the screenshot. AI knows exactly what you mean.</p>
+      <p data-lang="zh">按住快捷键、按住左键拖 — 你画的粉红圈直接烘进截图。AI 一眼看懂你说哪。</p>
+    </div>
+    <div class="feat-card">
+      <span class="ico">🧠</span><b data-lang="en">4 AI brains.</b><b data-lang="zh">4 个 AI 后端。</b>
+      <p data-lang="en">Claude Code · OpenAI Codex · OpenClaw · Hermes. Pick the CLI you've already authed.</p>
+      <p data-lang="zh">Claude Code · OpenAI Codex · OpenClaw · Hermes Agent。挑你登过的那个。</p>
+    </div>
+    <div class="feat-card">
+      <span class="ico">📁</span><b data-lang="en">Workspace-aware.</b><b data-lang="zh">工作区感知。</b>
+      <p data-lang="en">Point at your project once → "fix this bug" actually edits the right files. <code>Read</code>/<code>Edit</code>/<code>Bash</code> all run with cwd set.</p>
+      <p data-lang="zh">指一次项目目录 → 「修这个 bug」是真的改文件。AI 的工具全以那为 cwd。</p>
+    </div>
+    <div class="feat-card">
+      <span class="ico">🖱️</span><b data-lang="en">Computer use.</b><b data-lang="zh">真的能动手。</b>
+      <p data-lang="en">"Go here" pointing at a place → opens Maps. "Convert this page to Word" → does it. macOS URL schemes + Claude's Bash tool.</p>
+      <p data-lang="zh">指地名说「去这里」 → 开 Maps。「把这页转 Word」 → 转。macOS URL schemes + Bash 工具。</p>
+    </div>
+    <div class="feat-card">
+      <span class="ico">🌐</span><b data-lang="en">Real-Chrome bridge.</b><b data-lang="zh">桥接你的真 Chrome。</b>
+      <p data-lang="en">One click enables <code>chrome-devtools-mcp</code> against a dedicated debug profile. AI drives your tabs with your logins.</p>
+      <p data-lang="zh">一键启用 <code>chrome-devtools-mcp</code> 对接专用 debug profile。AI 用你登录态操作 tab。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ───────── Privacy ───────── -->
+<section>
+  <h2 class="section-title" data-lang="en">Privacy by default.</h2>
+  <h2 class="section-title" data-lang="zh">隐私默认开。</h2>
+  <div class="privacy-bar">
+    <div class="ico">🔐</div>
+    <div>
+      <div data-lang="en">
+        <ul>
+          <li><b>Clipboard encrypted</b> — AES-256-GCM, key in macOS Keychain, file mode 0600.</li>
+          <li><b>Transient content ignored</b> — 1Password, Bitwarden, terminal sudo prompts never recorded.</li>
+          <li><b>Voice + screenshot stay local</b> until you call AI. Temp files you can inspect.</li>
+          <li><b>Workspace path is opt-in.</b> No automatic file scanning.</li>
+          <li><b>Pause anytime</b> from the tray menu — flips a single AtomicBool.</li>
+        </ul>
+      </div>
+      <div data-lang="zh">
+        <ul>
+          <li><b>剪贴板加密</b> — AES-256-GCM，密钥存 macOS Keychain，文件权限 0600。</li>
+          <li><b>遵守 transient 标志</b> — 1Password / Bitwarden / 终端 sudo 永远不记。</li>
+          <li><b>语音 + 截图本地保存</b>，只在你召唤 AI 时才发出去。</li>
+          <li><b>工作区路径 opt-in</b>，没设就不扫文件。</li>
+          <li><b>托盘菜单一键暂停</b> — 切个 atomic 就好。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────── Install ───────── -->
+<section class="install">
+  <h2 class="section-title" data-lang="en">Install in 30 seconds.</h2>
+  <h2 class="section-title" data-lang="zh">30 秒装好。</h2>
+  <ol data-lang="en" style="font-size:15px; line-height:1.8;">
+    <li>Click the big <b>Download</b> button above</li>
+    <li>Open the <code>.dmg</code>, drag MouseClaw to Applications</li>
+    <li>First launch: <i>right-click</i> → "Open" → "Open" again (Gatekeeper, since not notarized yet)</li>
+    <li>Walk through 5-step onboarding (pick shortcut, AI backend, skin, voice key, grant permissions)</li>
+    <li>Hold <code>⌘⇧Space</code> anywhere and speak — try "what's on my screen"</li>
+  </ol>
+  <ol data-lang="zh" style="font-size:15px; line-height:1.8;">
+    <li>点上面那个大大的 <b>下载</b> 按钮</li>
+    <li>打开 <code>.dmg</code>，把 MouseClaw 拖到 Applications</li>
+    <li>第一次启动：<i>右键</i> → 「打开」→ 再点「打开」（公证还没做，先过 Gatekeeper）</li>
+    <li>走 5 步 Onboarding（选快捷键、AI 后端、皮肤、语音键、给权限）</li>
+    <li>在任意 app 按住 <code>⌘⇧Space</code> 说话 — 试一句「看下我屏幕上有啥」</li>
+  </ol>
+
+  <p data-lang="en" style="margin-top:24px; color:var(--muted)">
+    Need an AI CLI? Run one of:
+  </p>
+  <p data-lang="zh" style="margin-top:24px; color:var(--muted)">
+    还没装 AI CLI？跑下面任一条：
+  </p>
+  <pre><code>npm i -g @anthropic-ai/claude-code && claude login
+npm i -g @openai/codex && codex login
+npm i -g openclaw
+curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash</code></pre>
+</section>
+
+<footer>
+  <div data-lang="en">
+    Built with care · Apache-2.0 · macOS 14+ Apple Silicon ·
+    <a href="https://github.com/edwin-hao-ai/MouseClaw">GitHub</a> ·
+    <a href="https://github.com/edwin-hao-ai/MouseClaw/issues">Issues</a> ·
+    <a href="https://github.com/edwin-hao-ai/MouseClaw/releases">Releases</a>
+  </div>
+  <div data-lang="zh">
+    用心打磨 · Apache-2.0 · macOS 14+ Apple Silicon ·
+    <a href="https://github.com/edwin-hao-ai/MouseClaw">GitHub</a> ·
+    <a href="https://github.com/edwin-hao-ai/MouseClaw/issues">问题反馈</a> ·
+    <a href="https://github.com/edwin-hao-ai/MouseClaw/releases">所有版本</a>
+  </div>
+</footer>
+
+<script>
+  // 语言切换 —— 不刷新页面
+  function setLang(lang) {
+    document.body.classList.toggle("zh", lang === "zh");
+    document.getElementById("lang-en").classList.toggle("active", lang === "en");
+    document.getElementById("lang-zh").classList.toggle("active", lang === "zh");
+    try { localStorage.setItem("mouseclaw.landing.lang", lang); } catch {}
+  }
+  // 启动时优先用 localStorage > navigator.language
+  (function() {
+    let lang;
+    try { lang = localStorage.getItem("mouseclaw.landing.lang"); } catch {}
+    if (!lang) lang = (navigator.language || "").startsWith("zh") ? "zh" : "en";
+    setLang(lang);
+  })();
+
+  // 从 version.json 拿最新版本号显示
+  fetch("version.json", { cache: "no-store" })
+    .then(r => r.ok ? r.json() : null)
+    .then(v => {
+      if (!v) return;
+      const line = document.getElementById("version-line");
+      const cta  = document.getElementById("download-cta");
+      if (v.latest) line.textContent = `${v.latest} · Apple Silicon · ${v.size_mb ?? "~5"} MB`;
+      if (v.dmg_url) cta.href = v.dmg_url;
+    }).catch(() => {});
+</script>
+</body>
+</html>
