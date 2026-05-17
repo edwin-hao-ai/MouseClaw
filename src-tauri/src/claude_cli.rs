@@ -272,16 +272,18 @@ pub fn build_prompt_pub(
     image_path: &Path,
     frontmost_app: Option<&str>,
     cursor: Option<&CursorContext>,
+    trail_summary: Option<&str>,
 ) -> String {
-    build_prompt(transcript, image_path, frontmost_app, cursor)
+    build_prompt(transcript, image_path, frontmost_app, cursor, trail_summary)
 }
 
-/// 拼接发给 Claude 的最终 prompt（transcript + 截图路径 + 光标位置 + 前台 app）。
+/// 拼接发给 Claude 的最终 prompt（transcript + 截图路径 + 光标位置 + 前台 app + 鼠标轨迹）。
 fn build_prompt(
     transcript: &str,
     image_path: &Path,
     frontmost_app: Option<&str>,
     cursor: Option<&CursorContext>,
+    trail_summary: Option<&str>,
 ) -> String {
     let context_line = frontmost_app
         .map(|t| format!("\n上下文窗口：{t}"))
@@ -297,8 +299,18 @@ fn build_prompt(
             )
         })
         .unwrap_or_default();
+    let trail_line = trail_summary.map(|s| {
+        let mut out = String::new();
+        out.push_str("\n\n🐭 鼠标标注（v0.1.20）：");
+        out.push_str(s);
+        out.push_str("\n⚠️ 截图上的粉红色线 / 端点圆都是用户在按住快捷键期间画的标注，");
+        out.push_str("用鼠标圈选他要让你重点看的东西。粉红色越粗 = 用户越重点强调。");
+        out.push_str("灰色细线是辅助轨迹（光标移动路径，背景信息）。");
+        out.push_str("你的回答应该围绕粉红色标注覆盖的内容展开。");
+        out
+    }).unwrap_or_default();
     format!(
-        "{transcript}\n\n截图位置：{}{cursor_line}{context_line}",
+        "{transcript}\n\n截图位置：{}{cursor_line}{context_line}{trail_line}",
         image_path.display()
     )
 }
@@ -316,12 +328,13 @@ pub async fn ask_claude_streaming<F>(
     image_path: &Path,
     frontmost_app: Option<&str>,
     cursor: Option<&CursorContext>,
+    trail_summary: Option<&str>,
     mut on_chunk: F,
 ) -> Result<String>
 where
     F: FnMut(&str),
 {
-    let prompt = build_prompt(transcript, image_path, frontmost_app, cursor);
+    let prompt = build_prompt(transcript, image_path, frontmost_app, cursor, trail_summary);
     let sys_prompt = system_prompt();
     let claude_bin = find_claude_binary()?;
 
@@ -400,7 +413,7 @@ pub async fn ask_claude(
     frontmost_app: Option<&str>,
     cursor: Option<&CursorContext>,
 ) -> Result<String> {
-    ask_claude_streaming(transcript, image_path, frontmost_app, cursor, |_| {}).await
+    ask_claude_streaming(transcript, image_path, frontmost_app, cursor, None, |_| {}).await
 }
 
 /// 把 Mode B inner text 里 Claude 常加的装饰剥掉 —— prompt 已经禁止过，但 LLM 经常忘。
@@ -540,6 +553,7 @@ mod tests {
             Path::new("/tmp/frame.png"),
             Some("Visual Studio Code"),
             Some(&cursor),
+            None,
         );
         assert!(p.contains("/tmp/frame.png"));
         assert!(p.contains("x=100"));
