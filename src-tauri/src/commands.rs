@@ -350,8 +350,8 @@ pub fn open_panel_window(
         WebviewUrl::App("index.html?view=panel".into()),
     )
     .title("MouseClaw — 继续追问")
-    .inner_size(720.0, 560.0)
-    .min_inner_size(480.0, 360.0)
+    .inner_size(480.0, 560.0)
+    .min_inner_size(380.0, 380.0)
     .resizable(true).decorations(true).focused(true)
     .build();
 

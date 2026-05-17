@@ -1,20 +1,18 @@
 /* Panel — DESIGN.md §4.2 */
 
 .panel {
+  /* v0.1.22: 独立窗口下铺满；max 限制只在 inline 模式生效 */
   position: relative;
-  width: 400px;
-  max-height: 480px;
+  width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   background: var(--panel-bg);
-  backdrop-filter: blur(40px);
-  -webkit-backdrop-filter: blur(40px);
   border: 1px solid var(--bubble-border);
-  border-radius: var(--radius-3xl);
+  border-radius: 12px;
   box-shadow: var(--shadow-panel);
   overflow: hidden;
   color: var(--text-primary);
-  animation: panel-in var(--duration-panel-expand) var(--ease-default);
 }
 
 @keyframes panel-in {
@@ -69,9 +67,10 @@
   color: var(--text-primary);
 }
 
-/* Body */
+/* Body —— flex:1 拿剩余空间 + min-height:0 让 flex 子项允许收缩才能 overflow scroll */
 .panel-body {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   padding: var(--space-4) 18px;
   overflow-y: auto;
   font-size: var(--text-body);
@@ -99,8 +98,40 @@
 }
 .turn-assistant-text {
   color: var(--text-primary);
-  white-space: pre-wrap;
 }
+
+/* v0.1.22 · Panel 里的 markdown 渲染样式（跟 Bubble.css 的 .bubble-md 同套规则） */
+.turn-md { line-height: 1.6; }
+.turn-md > :first-child { margin-top: 0; }
+.turn-md > :last-child { margin-bottom: 0; }
+.turn-md p { margin: 0.5em 0; }
+.turn-md strong { font-weight: 700; color: var(--text-primary); }
+.turn-md em { font-style: italic; }
+.turn-md code {
+  background: rgba(0,0,0,0.06); padding: 1px 5px;
+  border-radius: 4px; font-family: var(--font-mono); font-size: 0.88em;
+}
+.turn-md pre {
+  background: rgba(0,0,0,0.05); padding: 10px 12px;
+  border-radius: 8px; margin: 0.6em 0;
+  overflow-x: auto; font-size: 0.85em; line-height: 1.4;
+}
+.turn-md pre code { background: transparent; padding: 0; }
+.turn-md ul, .turn-md ol { margin: 0.5em 0; padding-left: 1.5em; }
+.turn-md li { margin: 0.2em 0; }
+.turn-md a { color: var(--text-link); text-decoration: underline; }
+.turn-md h1, .turn-md h2, .turn-md h3 {
+  margin: 0.7em 0 0.35em; font-weight: 700;
+}
+.turn-md h1 { font-size: 1.2em; }
+.turn-md h2 { font-size: 1.1em; }
+.turn-md h3 { font-size: 1em; }
+.turn-md blockquote {
+  border-left: 3px solid var(--bubble-border);
+  padding-left: 0.8em; margin: 0.5em 0;
+  color: var(--text-bubble-dim);
+}
+.turn-md hr { border: 0; border-top: 1px solid var(--bubble-border); margin: 0.7em 0; }
 
 /* Input row */
 .panel-input {

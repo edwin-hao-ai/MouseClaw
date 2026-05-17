@@ -6,7 +6,7 @@
  * 否则 Claude 返回的 `**关键点**` 会被原样显示，体验很差。
  * 安全：marked 默认会逃逸 HTML，不会 XSS。
  */
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { marked } from "marked";
 import { useT } from "../i18n";
 import "./Bubble.css";
@@ -63,6 +63,40 @@ export function Bubble({
     [text, markdown]
   );
 
+  // v0.1.22 · 流式期间智能滚动：用户在底部 → 跟着新内容；用户往上翻 → 不打扰
+  // 流完后强制滚到顶，让用户看到完整回答的开头（之前会停在最后的滚动位置，看起来像"上面缺一块"）
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const userScrolledUpRef = useRef(false);
+  const prevStreamingRef = useRef(streaming);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !scrollable) return;
+    if (streaming) {
+      // 流式中：用户没自己滚动 → 跟着到底；否则不动
+      if (!userScrolledUpRef.current) {
+        el.scrollTop = el.scrollHeight;
+      }
+    } else if (prevStreamingRef.current) {
+      // 刚从 streaming → 终态：滚到顶让用户看见完整开头
+      el.scrollTop = 0;
+      userScrolledUpRef.current = false;
+    }
+    prevStreamingRef.current = streaming;
+  }, [text, streaming, scrollable]);
+
+  // 监听用户手动滚动
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !scrollable) return;
+    const onScroll = () => {
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 8;
+      userScrolledUpRef.current = !atBottom;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [scrollable]);
+
   return (
     <div className={`bubble bubble-${variant}`} role="status" aria-live="polite">
       {sessionChip && (
@@ -81,7 +115,7 @@ export function Bubble({
           )}
         </div>
       )}
-      <div className={`bubble-body ${scrollable ? "bubble-scroll" : ""}`}>
+      <div ref={scrollRef} className={`bubble-body ${scrollable ? "bubble-scroll" : ""}`}>
         {markdown && html != null ? (
           <div className="bubble-text bubble-md" dangerouslySetInnerHTML={{ __html: html }} />
         ) : (

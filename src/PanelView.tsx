@@ -96,9 +96,10 @@ export default function PanelView() {
 
   return (
     <div style={{
-      height: "100vh", padding: "16px",
-      background: "linear-gradient(180deg, #faf7f2 0%, #f5f0e7 100%)",
+      width: "100vw", height: "100vh",
+      background: "#faf7f2",
       fontFamily: "-apple-system, 'PingFang SC', system-ui, sans-serif",
+      overflow: "hidden",
     }}>
       <Panel
         sessionId={ctx.session_id}
