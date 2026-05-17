@@ -45,16 +45,14 @@ export default function HubView() {
 
   return (
     <div style={{
-      // host 容器：全屏 + 居中 + 暗背景半透明（点外面会触发 onBlur 关掉）
+      // v0.1.18：Hub 直接铺满整个独立窗口（窗口本身 420×480）
+      // 之前外层加 24px paddingTop + maxWidth 540 浪费空间又不一致
       width: "100vw", height: "100vh",
-      display: "grid", placeItems: "start center",
-      paddingTop: 24,
-      background: "transparent",
+      background: "#faf7f2",
       fontFamily: "-apple-system, 'PingFang SC', system-ui, sans-serif",
+      overflow: "hidden",
     }}>
-      <div style={{ width: "100%", maxWidth: 540 }}>
-        <Hub onClose={close} />
-      </div>
+      <Hub onClose={close} />
     </div>
   );
 }

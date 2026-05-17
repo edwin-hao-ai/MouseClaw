@@ -21,6 +21,7 @@ pub mod cursor_follow;
 pub mod commands;
 pub mod config;
 pub mod events;
+pub mod frontmost;
 pub mod mode_b;
 pub mod overlay;
 pub mod permissions;
@@ -63,6 +64,9 @@ pub struct AppState {
     pub recorder: StdMutex<Option<audio::Recorder>>,
     /// One-shot panel context —— open_panel_window 写入，前端 take_panel_context 取走 + 清空
     pub pending_panel_context: StdMutex<Option<PendingPanelContext>>,
+    /// v0.1.18 · 打开 Hub 前记下当时的前台 app pid
+    /// 用户点条目粘贴时，先 activate 这个 pid 让原 app 重新成 frontmost，再 ⌘V
+    pub prev_frontmost_pid: StdMutex<Option<i32>>,
     /// 当前选用的 AI 后端 —— pipeline 每次调用前 .lock().await.clone() 读取。
     /// 启动时从 config 灌入；运行期不变（改后端要重新 onboard + 重启）。
     pub backend: Mutex<Backend>,
@@ -82,6 +86,7 @@ impl AppState {
             last_screenshot: Mutex::new(None),
             recorder: StdMutex::new(None),
             pending_panel_context: StdMutex::new(None),
+            prev_frontmost_pid: StdMutex::new(None),
             backend: Mutex::new(backend),
             gen: AtomicU64::new(0),
             follow_cursor: AtomicBool::new(false),

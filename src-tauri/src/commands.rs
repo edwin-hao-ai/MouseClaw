@@ -257,12 +257,29 @@ pub fn clear_clipboard() -> Result<(), String> {
     crate::clipboard::clear_all().map_err(|e| format!("{e}"))
 }
 
-/// 把某条剪贴板粘贴到当前光标 —— 复用 mode_b 的 paste_via_clipboard 路径。
-/// 流程：拿 text → spawn task → mode_b::write_at_cursor (clipboard fallback)
+/// 把某条剪贴板粘贴到原 app 光标 —— v0.1.18 双段焦点切换 + 粘贴
+/// 流程：
+///   1. 拿 text
+///   2. 把开 Hub 前记下的 pid 显式 activate → 那个 app 重新成 frontmost
+///   3. 等 80ms 让焦点稳定
+///   4. mode_b::write_at_cursor —— 自动识别 native / Electron 走 CGEvent 或 clipboard ⌘V
 #[tauri::command]
-pub async fn paste_clipboard_item(id: u64) -> Result<(), String> {
+pub async fn paste_clipboard_item(
+    id: u64,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
     let text = crate::clipboard::get_text(id)
         .ok_or_else(|| "条目不存在".to_string())?;
+
+    // 拿出并清空 prev pid（一次性）
+    let prev_pid = state.prev_frontmost_pid.lock().unwrap().take();
+    #[cfg(target_os = "macos")]
+    if let Some(pid) = prev_pid {
+        let ok = crate::frontmost::activate_pid(pid);
+        println!("[mouseclaw] 📋 paste: activate pid {pid} → {ok}");
+        // 给 macOS 一点时间完成焦点切换 + window ordering
+        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+    }
     crate::mode_b::write_at_cursor(&text).await.map_err(|e| format!("{e}"))?;
     Ok(())
 }
@@ -325,15 +342,22 @@ pub fn take_panel_context(state: State<'_, Arc<AppState>>) -> Option<crate::Pend
     state.pending_panel_context.lock().unwrap().take()
 }
 
-/// 打开剪贴板 / AI 历史 Hub —— 独立窗口（不再钉在 overlay）
-/// v0.1.16：旧方案钉在 overlay 上，桌宠跟随鼠标 + 遮挡内容，用户体验差。
-#[tauri::command]
-pub fn open_hub_window(app: AppHandle) -> Result<(), String> {
+/// 内部入口 —— 非 #[tauri::command]，可从托盘 / 全局快捷键等地方调
+/// v0.1.18：缩小窗口 420×480，开窗前记下用户当时的前台 app pid。
+pub fn open_hub_window_inner(app: &AppHandle) -> Result<(), String> {
     use tauri::WebviewWindowBuilder;
     use tauri::WebviewUrl;
 
-    // 隐藏 overlay 让用户聚焦切到 Hub
-    crate::overlay::hide_overlay(&app);
+    // 1. 记下当前前台 app 的 pid（必须在我们抢焦点前做）
+    #[cfg(target_os = "macos")] {
+        let pid = crate::frontmost::current_frontmost_pid();
+        if let Some(state) = app.try_state::<Arc<AppState>>() {
+            *state.prev_frontmost_pid.lock().unwrap() = pid;
+        }
+        println!("[mouseclaw] 📋 open_hub: 记下 prev frontmost pid = {pid:?}");
+    }
+
+    crate::overlay::hide_overlay(app);
 
     if let Some(w) = app.get_webview_window("hub") {
         let _ = w.show();
@@ -342,12 +366,12 @@ pub fn open_hub_window(app: AppHandle) -> Result<(), String> {
     }
 
     let result = WebviewWindowBuilder::new(
-        &app, "hub",
+        app, "hub",
         WebviewUrl::App("index.html?view=hub".into()),
     )
     .title("MouseClaw — 剪贴板")
-    .inner_size(540.0, 640.0)
-    .min_inner_size(420.0, 400.0)
+    .inner_size(420.0, 480.0)
+    .min_inner_size(360.0, 360.0)
     .resizable(true)
     .decorations(true)
     .always_on_top(true)
@@ -358,6 +382,12 @@ pub fn open_hub_window(app: AppHandle) -> Result<(), String> {
         Ok(w) => { let _ = w.set_focus(); Ok(()) }
         Err(e) => Err(format!("打开 Hub 窗口失败：{e:#}")),
     }
+}
+
+/// Tauri 命令包装 —— 前端 invoke("open_hub_window") 用
+#[tauri::command]
+pub fn open_hub_window(app: AppHandle) -> Result<(), String> {
+    open_hub_window_inner(&app)
 }
 
 #[tauri::command]

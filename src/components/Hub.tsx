@@ -125,11 +125,15 @@ export function Hub({ onClose }: HubProps) {
       } else if (e.key === "Tab") {
         e.preventDefault();
         setTab(t => t === "clipboard" ? "history" : "clipboard");
-      } else if (e.metaKey && /^[1-9]$/.test(e.key)) {
-        e.preventDefault();
-        const idx = parseInt(e.key) - 1;
-        if (tab === "clipboard" && filtered[idx]) {
-          handlePaste((filtered[idx] as ClipItem).id);
+      } else if (/^[1-9]$/.test(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        // v0.1.18 · 改用纯 1-9（不带 ⌘）—— 免冲突。
+        // 但用户在搜索框打字时不能拦：只有搜索框为空时才接管
+        if (q.trim().length === 0) {
+          e.preventDefault();
+          const idx = parseInt(e.key) - 1;
+          if (tab === "clipboard" && filtered[idx]) {
+            handlePaste((filtered[idx] as ClipItem).id);
+          }
         }
       }
     };
@@ -260,7 +264,7 @@ export function Hub({ onClose }: HubProps) {
                 </div>
               </div>
               <div className="hub-item-actions">
-                {i < 9 && <span className="hub-item-key">⌘{i + 1}</span>}
+                {i < 9 && q.trim().length === 0 && <span className="hub-item-key">{i + 1}</span>}
                 <button className="hub-act" onClick={e => handlePin(c.id, e)}
                         title={c.pinned ? t("hub.unpin") : t("hub.pin")}>
                   {c.pinned ? "★" : "☆"}
@@ -348,7 +352,7 @@ export function Hub({ onClose }: HubProps) {
         </div>
       )}
       <div className="hub-footer">
-        <span><kbd>↑↓</kbd> · <kbd>↵</kbd> {t("hub.foot.paste")} · <kbd>⌘1..9</kbd> · <kbd>Esc</kbd></span>
+        <span><kbd>↑↓</kbd> · <kbd>↵</kbd> {t("hub.foot.paste")} · <kbd>1..9</kbd> · <kbd>Esc</kbd></span>
         {tab === "clipboard" && clips.length > 0 && (
           <button className="hub-clear" onClick={handleClear}>{t("hub.clear")}</button>
         )}
