@@ -2,15 +2,16 @@
    Slides in from beside the pet. Uses DESIGN.md tokens. */
 
 .hub {
-  width: 360px; max-height: 480px;
+  /* v0.1.18: 独立窗口下铺满；inline 也兼容 */
+  width: 100%; height: 100%;
+  max-height: 100vh;
   background: #fff;
   border: 1px solid var(--line, #ece6dd);
-  border-radius: 14px;
-  box-shadow: 0 8px 32px rgba(43,38,34,.12);
+  border-radius: 0;
+  box-shadow: none;
   overflow: hidden;
   display: flex; flex-direction: column;
   font-size: 13px;
-  animation: hub-in .25s cubic-bezier(.34,1.56,.64,1);
   font-family: var(--font-stack, -apple-system, "PingFang SC", system-ui, sans-serif);
 }
 @keyframes hub-in {
