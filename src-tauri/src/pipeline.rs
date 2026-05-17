@@ -249,9 +249,9 @@ pub async fn on_shortcut_press(app: AppHandle, state: Arc<AppState>) {
     };
     *state.recorder.lock().unwrap() = Some(recorder);
 
-    // v0.1.20 · 启动鼠标轨迹采样，让 AI 知道用户"圈了哪里"
+    // v0.1.20 · 启动鼠标轨迹采样 + 实时 overlay（v0.1.21）
     #[cfg(target_os = "macos")]
-    crate::cursor_trail::start();
+    crate::cursor_trail::start(app.clone());
 
     // 截图并行（不阻塞录音）
     let state_clone = state.clone();

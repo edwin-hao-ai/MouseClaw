@@ -103,8 +103,15 @@ async fn spawn_and_stream<F>(
 where
     F: FnMut(&str),
 {
-    let mut child = tokio::process::Command::new(bin)
-        .env("PATH", crate::claude_cli::expanded_path())
+    let mut cmd = tokio::process::Command::new(bin);
+    cmd.env("PATH", crate::claude_cli::expanded_path());
+    // v0.1.21 · 工作区 cwd
+    if let Some(ws) = crate::config::Config::load().workspace_path {
+        if std::path::Path::new(&ws).is_dir() {
+            cmd.current_dir(&ws);
+        }
+    }
+    let mut child = cmd
         .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
