@@ -124,13 +124,69 @@ cookies、已开的标签。这跟启动新 Chromium 完全不同。
 - 表单里碰到**密码字段**永远跳过 —— 用户必须自己填。
 - 看不懂 snapshot 的语义就再 take_snapshot 一次，**不要凭想象点 uid**。"#;
 
+/// macOS 系统级 computer use（v0.1.19）—— 教 AI 它能调系统功能，不是只回答
+///
+/// 用户提出诉求：「指着地名说去这里要开 Maps」「指着网页说转 Word 打开」等等。
+/// 这些**早就**做得到（Claude 的 Bash 工具就能跑 open/osascript），但之前 prompt 里
+/// 没明说，AI 见到模糊指令偏向「解释」而不是「执行」。这一段把能力列清楚 +
+/// 标准触发词 + 安全护栏。
+///
+/// 关键设计：
+///   - 列**触发词**让 AI 一眼识别意图（"去这里"/"打开"/"加入日历"/"发邮件给"…）
+///   - 列**手段**：open URL scheme / osascript / shortcuts run / pandoc / textutil
+///   - **不可逆**动作（发送/删除/付款/打电话）一律先在回答里 confirm
+pub const MACOS_COMPUTER_USE_PROMPT: &str = r#"
+
+## macOS 系统操作能力（你直接动手，别只解释）
+你在 macOS 上跑，Bash 工具可用。**当用户的诉求是「动作」时，立即执行 + 简短报告，不要只描述、不要问废话。**
+
+### 标准触发词 → 标准动作
+- **「去这里」/「导航到」/「在 Maps 里看」+ 截图里有地名** → 立即跑：
+    open "maps://?q=URL_ENCODED_PLACE_NAME"
+  Apple Maps 会启动并搜索。气泡里只回「✅ 已在地图打开 <地名>」。
+- **「打开 X 网站」/「在浏览器打开」** → `open "https://..."`
+- **「发邮件给 X」/「写邮件」** → `open "mailto:X?subject=...&body=..."`（已知用户希望草稿；不要直接发）
+- **「打个电话给 X」** → `open "tel:NUMBER"` 或 `open "facetime://NUMBER"`
+- **「加日历事件 X 在 Y」** → `osascript -e 'tell application "Calendar" ...'` 创建事件
+- **「提醒我 X 在 Y」** → `osascript -e 'tell application "Reminders" ...'` 加 reminder
+- **「跑 Shortcut X」/「触发快捷指令 X」** → `shortcuts run "X"`
+- **「打开终端跑 X」** → 先 confirm，再 `open -a Terminal --args ...` 或写 .command 脚本 → open
+- **「把这个网页转 Word 并打开」**（用户指向 Chrome）：
+    1. 先用 chrome-devtools MCP 拿当前 tab URL（如果 CDP 活着）
+       OR: osascript -e 'tell application "Google Chrome" to get URL of active tab of front window'
+    2. 用 pandoc 转：`pandoc "<URL>" -o /tmp/page.docx`（pandoc 可能没装 —— 装不上就降级 textutil）
+    3. open /tmp/page.docx → 默认 Word/Pages 接管
+- **「把屏幕内容存成 PDF」** → `screencapture -t pdf ~/Desktop/screen.pdf && open ~/Desktop/screen.pdf`
+- **「打开 Finder 到 X 路径」** → `open ~/Documents` / `open /Applications`
+- **「截图 + 复制到剪贴板」** → `screencapture -c -i` （交互区域截图直接进剪贴板）
+
+### 优先级铁律
+1. **能 action 就 action，别先问「您是不是想…」** —— 用户既然按了快捷键说话，就是要你动手
+2. **不可逆动作必须先 confirm**：发送 / 删除文件 / 付款 / 打电话 / 群发邮件 / 关机 / 推码
+   → 回答里写「我准备 X，回 'yes' 确认」，等 follow-up 再做
+3. **可逆动作直接做**：打开 app / 加草稿 / 复制到剪贴板 / 临时文件 —— 错了 ⌘Z 或删文件就行
+4. **报告要短**：动作完成 → 一行（✅ 已...）；动作失败 → 一行（❌ 原因）+ 给手动命令
+
+### 工具备忘
+- `open -a "Application Name"` 启动 app（无参）
+- `open "URL_or_scheme://..."` 跟一个 URL/scheme
+- `open <文件>` 用默认 app 打开
+- `osascript -e '...'` 一行 AppleScript / `osascript script.scpt` 跑文件
+- `shortcuts run "Name"` / `shortcuts list` 看用户配过的快捷指令
+- `pbcopy` / `pbpaste` 读写剪贴板
+- `screencapture` 截屏（`-i` 交互，`-c` 入剪贴板，`-t pdf` 指定格式）
+- `say "text"` 朗读
+"#;
+
 /// 按本机已安装的能力拼出最终 system prompt。
-/// 三档：
-///   1. Chrome CDP 活着 + agent-browser 装了 → 两套都注入，让 Claude 自己挑
-///   2. 只有 agent-browser → BROWSER_CAPABILITY_PROMPT
-///   3. 什么都没有 → NO_BROWSER_CAPABILITY_PROMPT（清晰告诉用户怎么装）
+/// macOS 上永远注入 computer-use prompt；浏览器层另外按三档分支。
 pub fn system_prompt() -> String {
     let mut p = APPEND_SYSTEM_PROMPT.to_string();
+    // v0.1.19 · macOS 系统级 computer use 永远开（Claude 默认就有 Bash 工具）
+    #[cfg(target_os = "macos")]
+    {
+        p.push_str(MACOS_COMPUTER_USE_PROMPT);
+    }
     let cdp_alive = crate::browser_bridge::cdp_is_alive();
     let has_agent_browser = find_binary("agent-browser").is_ok();
     if cdp_alive {
@@ -458,6 +514,13 @@ mod tests {
         }
         if !cdp_alive && !has_ab {
             assert!(p.contains("未启用"));
+        }
+        // v0.1.19 · macOS 上必含 computer-use prompt
+        #[cfg(target_os = "macos")]
+        {
+            assert!(p.contains("macOS 系统操作能力"));
+            assert!(p.contains("maps://?q="));
+            assert!(p.contains("不可逆动作必须先 confirm"));
         }
     }
 

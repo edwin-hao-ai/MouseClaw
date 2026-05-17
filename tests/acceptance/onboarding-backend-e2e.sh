@@ -126,7 +126,7 @@ check "save_tidy_up 命令注册"                     "grep -q 'save_tidy_up' sr
 check "托盘有 toggle-tidy"                        "grep -q 'toggle-tidy' src-tauri/src/tray.rs"
 check "Hub 组件存在"                              "test -f src/components/Hub.tsx"
 check "Hub CSS 存在"                              "test -f src/components/Hub.css"
-check "App.tsx 点桌宠开 Hub"                       "grep -q 'setHubOpen' src/App.tsx"
+check "App.tsx 点桌宠开 Hub 窗口"                   "grep -q 'open_hub_window' src/App.tsx"
 check "Hub 用 list_clipboard"                     "grep -q 'list_clipboard' src/components/Hub.tsx"
 
 echo "── v0.1.11 · 分层 tidy（regex 默认开 + LLM opt-in）──"
@@ -151,7 +151,7 @@ check "托盘有 vime-trigger-submenu"                "grep -q 'vime-trigger-sub
 check "Onboarding 5 步带 VoiceImeTrigger 类型"     "grep -q 'export type VoiceImeTrigger' src/components/Onboarding.tsx"
 check "OnboardingView 调 save_voice_ime"           "grep -q 'save_voice_ime' src/OnboardingView.tsx"
 check "⌘⇧V 注册"                                  "grep -q 'Super+Shift+KeyV' src-tauri/src/lib.rs"
-check "App.tsx 监听 open-hub"                       "grep -q 'open-hub' src/App.tsx"
+check "HubView 独立窗口路由"                        "test -f src/HubView.tsx && grep -q 'view === \"hub\"' src/main.tsx"
 check "voice IME secure input 检查"                "grep -q 'IsSecureEventInputEnabled' src-tauri/src/voice_ime.rs"
 check "60s 强制截止"                                "grep -q 'MAX_RECORDING_MS: u64 = 60_000' src-tauri/src/voice_ime.rs"
 check "Hub 右键菜单"                                "grep -q 'onContextMenu' src/components/Hub.tsx"
@@ -182,6 +182,12 @@ check "Keychain set_generic_password"               "grep -q 'set_generic_passwo
 check "file magic __mc_v1"                          "grep -q '__mc_v1' src-tauri/src/clipboard_crypto.rs"
 check "save_to_disk 走加密"                          "grep -q 'encrypt_line' src-tauri/src/clipboard.rs"
 check "load_from_disk 自动迁移加密"                  "grep -q 'is_encrypted_format' src-tauri/src/clipboard.rs"
+
+echo "── v0.1.19 · macOS computer use 提示 ──"
+check "MACOS_COMPUTER_USE_PROMPT 存在"             "grep -q 'MACOS_COMPUTER_USE_PROMPT' src-tauri/src/claude_cli.rs"
+check "包含 maps URL scheme"                       "grep -q 'maps://?q=' src-tauri/src/claude_cli.rs"
+check "包含 osascript / pandoc / shortcuts"        "grep -q 'osascript' src-tauri/src/claude_cli.rs && grep -q 'shortcuts run' src-tauri/src/claude_cli.rs"
+check "不可逆动作 confirm 规则"                    "grep -q '不可逆动作必须先 confirm' src-tauri/src/claude_cli.rs"
 
 echo "── 构建 / 测试闸门 ──"
 check "前端 bun build 通过"                         "bun run build"
