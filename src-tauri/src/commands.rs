@@ -325,6 +325,41 @@ pub fn take_panel_context(state: State<'_, Arc<AppState>>) -> Option<crate::Pend
     state.pending_panel_context.lock().unwrap().take()
 }
 
+/// 打开剪贴板 / AI 历史 Hub —— 独立窗口（不再钉在 overlay）
+/// v0.1.16：旧方案钉在 overlay 上，桌宠跟随鼠标 + 遮挡内容，用户体验差。
+#[tauri::command]
+pub fn open_hub_window(app: AppHandle) -> Result<(), String> {
+    use tauri::WebviewWindowBuilder;
+    use tauri::WebviewUrl;
+
+    // 隐藏 overlay 让用户聚焦切到 Hub
+    crate::overlay::hide_overlay(&app);
+
+    if let Some(w) = app.get_webview_window("hub") {
+        let _ = w.show();
+        let _ = w.set_focus();
+        return Ok(());
+    }
+
+    let result = WebviewWindowBuilder::new(
+        &app, "hub",
+        WebviewUrl::App("index.html?view=hub".into()),
+    )
+    .title("MouseClaw — 剪贴板")
+    .inner_size(540.0, 640.0)
+    .min_inner_size(420.0, 400.0)
+    .resizable(true)
+    .decorations(true)
+    .always_on_top(true)
+    .focused(true)
+    .build();
+
+    match result {
+        Ok(w) => { let _ = w.set_focus(); Ok(()) }
+        Err(e) => Err(format!("打开 Hub 窗口失败：{e:#}")),
+    }
+}
+
 #[tauri::command]
 pub fn capability_status() -> CapabilityStatus {
     CapabilityStatus {

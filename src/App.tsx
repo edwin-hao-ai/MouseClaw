@@ -14,7 +14,6 @@ import { PixelMouse, type MouseState } from "./components/PixelMouse";
 import { Bubble } from "./components/Bubble";
 import { Panel } from "./components/Panel";
 import { RecordingBubble } from "./components/RecordingBubble";
-import { Hub } from "./components/Hub";
 import { EV_VIEW_CHANGED, EV_SKIN_CHANGED, type ViewKind, type SkinId } from "./types";
 import { DEFAULT_SKIN } from "./skins";
 
@@ -46,8 +45,6 @@ export default function App() {
   const [continuing, setContinuing] = useState(false);
   // 当前桌宠皮肤 —— 启动读 config，运行期托盘换皮可热切换（不重启）
   const [skin, setSkin] = useState<SkinId>(DEFAULT_SKIN);
-  // v0.1.10 · 点击桌宠 → Hub 面板（剪贴板 + AI 历史）
-  const [hubOpen, setHubOpen] = useState(false);
 
   // 启动时从 Rust 读当前皮肤（避免闪一下默认 classic 再切换）
   useEffect(() => {
@@ -56,17 +53,6 @@ export default function App() {
       .catch(() => { /* 浏览器 dev 模式 invoke 不可用 */ });
   }, []);
 
-  // v0.1.12 · ⌘⇧V → 打开 Hub 剪贴板 tab
-  useEffect(() => {
-    let unlisten: (() => void) | null = null;
-    try {
-      const p = listen<string>("open-hub", () => {
-        setHubOpen(true);
-      });
-      p.then((fn) => { unlisten = fn; }).catch(() => {});
-    } catch { /* dev */ }
-    return () => { if (unlisten) unlisten(); };
-  }, []);
 
   // 托盘菜单换皮肤 → Rust 广播 skin-changed → 实时切换，不重启
   useEffect(() => {
@@ -196,19 +182,15 @@ export default function App() {
 
   return (
     <div className="stage stage-mouse-bubble">
-      {hubOpen ? (
-        <Hub onClose={() => setHubOpen(false)} />
-      ) : (
-        <BubbleFor view={view} continuing={continuing} onExpand={handleExpand} onNewSession={handleNewSession} />
-      )}
+      <BubbleFor view={view} continuing={continuing} onExpand={handleExpand} onNewSession={handleNewSession} />
       <div className="stage-mouse" onClick={() => {
-        // 点桌宠开 Hub —— 但仅在空闲 / 回复完态。录音 / 思考时点不做事
+        // 点桌宠开 Hub —— v0.1.16 改成开独立窗口（不再 inline）
         if (view.kind === "idle" || view.kind === "reply" || view.kind === "blocked") {
-          setHubOpen(v => !v);
+          invoke("open_hub_window").catch(e => console.warn("open_hub_window:", e));
         }
       }} style={{ cursor: "pointer" }}>
         <PixelMouse
-          state={hubOpen ? "hub" : mouseStateFor(view)} skin={skin}
+          state={mouseStateFor(view)} skin={skin}
           size={view.kind === "idle" ? 64 : 96}
           continuing={continuing}
         />
