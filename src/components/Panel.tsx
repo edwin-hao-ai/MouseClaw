@@ -2,8 +2,36 @@
  * Long-form expanded panel — DESIGN.md §4.2.
  * Renders session header + scrolling conversation history + follow-up input row.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { marked } from "marked";
 import "./Panel.css";
+
+marked.setOptions({ gfm: true, breaks: true });
+function renderMd(text: string): string {
+  try { return marked.parse(text, { async: false }) as string; }
+  catch { return text; }
+}
+
+/** 单条对话渲染 —— v0.1.22 assistant 走 markdown，user 保持简洁引用样式 */
+function PanelTurn({ turn }: { turn: Turn }) {
+  const html = useMemo(
+    () => turn.role === "assistant" ? renderMd(turn.text) : "",
+    [turn.role, turn.text]
+  );
+  if (turn.role === "user") {
+    return (
+      <div className="panel-turn turn-user">
+        <div className="turn-user-text">{turn.text}</div>
+      </div>
+    );
+  }
+  return (
+    <div className="panel-turn turn-assistant">
+      <div className="turn-assistant-text turn-md" dangerouslySetInnerHTML={{ __html: html }} />
+      {turn.streaming && <span className="stream-cursor" aria-hidden>▮</span>}
+    </div>
+  );
+}
 
 export interface Turn {
   /** "user" or "assistant" — drives styling. */
@@ -72,16 +100,7 @@ export function Panel({
 
       <div className="panel-body" ref={bodyRef}>
         {turns.map((turn, i) => (
-          <div key={i} className={`panel-turn turn-${turn.role}`}>
-            {turn.role === "user" ? (
-              <div className="turn-user-text">{turn.text}</div>
-            ) : (
-              <div className="turn-assistant-text">
-                {turn.text}
-                {turn.streaming && <span className="stream-cursor" aria-hidden>▮</span>}
-              </div>
-            )}
-          </div>
+          <PanelTurn key={i} turn={turn} />
         ))}
       </div>
 
