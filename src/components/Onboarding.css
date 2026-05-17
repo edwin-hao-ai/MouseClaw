@@ -251,3 +251,53 @@
   text-align: center;
   line-height: 1.5;
 }
+
+/* v0.1.17 · 快捷键 cheat sheet —— Onboarding 最后一页 */
+.ob-cheatsheet {
+  margin-top: 18px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+.ob-cheatsheet-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+.ob-cheatsheet table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.ob-cheatsheet td {
+  padding: 4px 6px;
+  vertical-align: middle;
+  color: var(--text-dim);
+}
+.ob-cheatsheet td:first-child {
+  width: 30%;
+  white-space: nowrap;
+  text-align: right;
+}
+.ob-cheatsheet kbd {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 2px 7px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 5px;
+  font-family: var(--font-mono, ui-monospace, Menlo, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+}
+.ob-cheatsheet-foot {
+  margin-top: 10px;
+  margin-bottom: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+  opacity: 0.7;
+  line-height: 1.5;
+}
