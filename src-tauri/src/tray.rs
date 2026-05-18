@@ -142,10 +142,9 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
           &lang_en as &dyn tauri::menu::IsMenuItem<tauri::Wry>],
     )?;
 
-    // Tidy-up toggle —— Typeless 套路 LLM 清洗
-    let current_tidy = crate::config::Config::load().tidy_up_enabled;
-    let tidy_item = CheckMenuItem::with_id(app, "toggle-tidy", s_tidy,
-        true, current_tidy, None::<&str>)?;
+    // v0.3.3 · tidy_up 默认 ON + 强制 Haiku 4.5（成本 ~$0.0003/次）—— 不再需要托盘 toggle
+    // 用户想关可以编辑 ~/.mouseclaw/config.json 的 tidy_up_enabled。
+    let _ = s_tidy;
     // Voice IME toggle —— 长按 fn 写到光标
     let current_vime = crate::config::Config::load().voice_ime_enabled;
     let vime_item = CheckMenuItem::with_id(app, "toggle-voice-ime", s_vime,
@@ -204,7 +203,7 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let mut items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = vec![
         &summon, &clipboard_item, &history,
         &skin_picker_item, &anchor_submenu, &lang_submenu,
-        &sep1, &vime_item, &trigger_submenu, &tidy_item, &pause_item,
+        &sep1, &vime_item, &trigger_submenu, &pause_item,
         &workspace_item,
     ];
     if let Some(ref clr) = clear_workspace_item {
@@ -319,7 +318,7 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
             }
         }
         "status"          => open_status_window(app),
-        "toggle-tidy"     => { toggle_tidy_up(app); rebuild_tray_menu(app); }
+        // toggle-tidy removed in v0.3.3 — tidy_up is default-on via Haiku
         "toggle-voice-ime"=> { toggle_voice_ime(app); rebuild_tray_menu(app); }
         "toggle-clipboard-pause" => { toggle_clipboard_pause(app); rebuild_tray_menu(app); }
         "toggle-autostart" => { toggle_autostart(app); rebuild_tray_menu(app); }

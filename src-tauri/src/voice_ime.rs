@@ -470,10 +470,14 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
             let to_delete = typed.len() - prefix;
             let to_type: String = new_chars[prefix..].iter().collect();
             if to_delete > 0 {
-                let _ = crate::mode_b::delete_chars(to_delete);
+                if let Err(e) = crate::mode_b::delete_chars(to_delete) {
+                    eprintln!("[mouseclaw] 🎙️ delete_chars failed: {e} — Accessibility 权限？");
+                }
             }
             if !to_type.is_empty() {
-                let _ = crate::mode_b::type_unicode_sync(&to_type);
+                if let Err(e) = crate::mode_b::type_unicode_sync(&to_type) {
+                    eprintln!("[mouseclaw] 🎙️ type_unicode_sync failed: {e} — Accessibility 权限？");
+                }
             }
             typed = new_chars;
             // 同步进 shared state 让 stop_and_paste 知道当前 typed 是什么

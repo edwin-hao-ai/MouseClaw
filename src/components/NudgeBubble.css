@@ -7,17 +7,18 @@
 .nudge-bubble {
   position: absolute;
   bottom: 78px;
-  /* v0.1.32 · 居中于 pet 上方，左右对称 —— 之前 right:4 让 bubble 向左延伸超出
-     320×320 窗口左边界被切。改用 transform 居中后 240px 宽 bubble 完整可见。 */
   left: 50%;
   transform: translateX(-50%);
   width: 240px;
-  background: var(--bubble-bg, linear-gradient(135deg, #ffffff, #fbfbfd));
+  background: #ffffff;
   color: #1a1a2e;
-  border-radius: var(--radius-md, 12px);
-  box-shadow: var(--bubble-shadow,
-    0 18px 36px rgba(0,0,0,0.35),
-    0 0 0 1px rgba(255,255,255,0.04));
+  border-radius: 14px;
+  /* v0.3.3 · 跟 PetMenu 一致 —— 实色 border + 三层 shadow，告别"飘"感 */
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.10),
+    0 8px 16px rgba(0, 0, 0, 0.12),
+    0 24px 48px rgba(0, 0, 0, 0.18);
   padding: 12px 14px 10px;
   z-index: 9;
   animation: nudge-in 360ms cubic-bezier(.34, 1.56, .64, 1) both;
@@ -34,18 +35,19 @@
   .nudge-bubble { animation: none; }
 }
 
-/* tail pointing down at the pet — centered like the bubble */
+/* tail pointing down at the pet — centered + border continuity */
 .nudge-bubble::after {
   content: "";
   position: absolute;
   bottom: -6px;
   left: 50%;
-  margin-left: -6px;     /* center 12px-wide tail */
+  margin-left: -6px;
   width: 12px;
   height: 12px;
-  background: var(--bubble-bg, #fff);
+  background: #ffffff;
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   transform: rotate(45deg);
-  box-shadow: 2px 2px 4px rgba(0,0,0,0.06);
 }
 
 .nudge-msg {

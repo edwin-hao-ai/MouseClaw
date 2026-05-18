@@ -7,38 +7,48 @@
 
 .pet-menu {
   position: absolute;
-  /* sits above-right of the pet inside the 320×320 overlay */
+  /* v0.3.3 · 居中于桌宠上方（跟 NudgeBubble 一致），左右对称 */
   bottom: 78px;
-  right: 4px;
-  width: 198px;
-  background: var(--bubble-bg, linear-gradient(135deg, #ffffff, #fbfbfd));
+  left: 50%;
+  transform: translateX(-50%);
+  width: 220px;
+  background: #ffffff;
   color: #1a1a2e;
-  border-radius: var(--radius-md, 12px);
-  box-shadow: var(--bubble-shadow,
-    0 18px 36px rgba(0,0,0,0.35),
-    0 0 0 1px rgba(255,255,255,0.04));
+  border-radius: 14px;
+  /* v0.3.3 · 强化边框 + 多层阴影 —— 之前太"飘"看不清边界
+     1px hairline border + 半透明 contour + 两层 shadow（近+远） */
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.10),
+    0 8px 16px rgba(0, 0, 0, 0.12),
+    0 24px 48px rgba(0, 0, 0, 0.18);
   padding: 6px;
   z-index: 10;
   animation: pet-menu-in 180ms cubic-bezier(.2,.7,.3,1) both;
   font: 13px/1.45 -apple-system, "PingFang SC", system-ui, sans-serif;
 }
 
-/* tail pointing at the pet (down-right corner) */
+/* tail pointing down at the pet — centered + border-matched */
 .pet-menu::after {
   content: "";
   position: absolute;
   bottom: -6px;
-  right: 28px;
+  left: 50%;
+  margin-left: -6px;
   width: 12px;
   height: 12px;
-  background: var(--bubble-bg, #fff);
+  background: #ffffff;
+  /* 给 tail 同样的 border 一半 → 边界连续 */
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   transform: rotate(45deg);
-  box-shadow: 2px 2px 4px rgba(0,0,0,0.06);
+  /* 不要 shadow，否则 tail 会显得有"两层" */
 }
 
 @keyframes pet-menu-in {
-  0%   { opacity: 0; transform: translateY(6px) scale(0.96); }
-  100% { opacity: 1; transform: translateY(0)   scale(1); }
+  /* keep translateX(-50%) horizontal centering through animation */
+  0%   { opacity: 0; transform: translateX(-50%) translateY(6px) scale(0.96); }
+  100% { opacity: 1; transform: translateX(-50%) translateY(0)   scale(1); }
 }
 
 .pet-menu-item {
