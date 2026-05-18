@@ -76,6 +76,9 @@ pub struct AppState {
     pub stream_session: StdMutex<Option<transcribe_stream::StreamSession>>,
     /// v0.2 · streaming polling task 通过这个 flag 知道何时退出
     pub streaming_active: AtomicBool,
+    /// v0.3.1 · voice IME 流式 type-as-you-speak —— poller 实时更新已 paste 的字符串。
+    /// stop_and_paste 拿它跟 final cleaned 求 LCP，仅删/补 delta，避免删除整段+重写的闪烁。
+    pub ime_typed: StdMutex<String>,
     /// One-shot panel context —— open_panel_window 写入，前端 take_panel_context 取走 + 清空
     pub pending_panel_context: StdMutex<Option<PendingPanelContext>>,
     /// v0.1.18 · 打开 Hub 前记下当时的前台 app pid
@@ -105,6 +108,7 @@ impl AppState {
             recorder: StdMutex::new(None),
             stream_session: StdMutex::new(None),
             streaming_active: AtomicBool::new(false),
+            ime_typed: StdMutex::new(String::new()),
             pending_panel_context: StdMutex::new(None),
             prev_frontmost_pid: StdMutex::new(None),
             backend: Mutex::new(backend),

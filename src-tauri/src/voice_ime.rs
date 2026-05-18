@@ -414,8 +414,76 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
         }
     };
     *state.recorder.lock().unwrap() = Some(recorder);
+    // v0.3.1 · streaming: create sherpa session + start poller for live typing
+    match crate::transcribe_stream::StreamSession::new() {
+        Ok(s) => *state.stream_session.lock().unwrap() = Some(s),
+        Err(e) => eprintln!("[mouseclaw] 🎙️ StreamSession::new for IME failed: {e:#}"),
+    }
+    state.streaming_active.store(true, Ordering::SeqCst);
     crate::overlay::show_mouse(&app);
     crate::overlay::emit_view(&app, &crate::events::ViewKind::VoiceImeListening);
+
+    // v0.3.1 · 流式 type-as-you-speak —— 150ms 一次轮询，partial 增量直接 paste 到光标
+    // 走 sherpa partial 与上一次已 type 的文本求 longest common prefix，
+    // 删掉发散部分 + paste 新部分。模型自我纠错时回退 N char，再写新。
+    // 已 type 的字符串同步进 state.ime_typed，stop_and_paste 拿它做 final delta。
+    {
+        let mut g = state.ime_typed.lock().unwrap();
+        g.clear();
+    }
+    let state_stream = state.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut ticker = tokio::time::interval(Duration::from_millis(150));
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut typed: Vec<char> = Vec::new();
+        loop {
+            ticker.tick().await;
+            if !state_stream.streaming_active.load(Ordering::SeqCst) {
+                break;
+            }
+            let samples = {
+                let g = state_stream.recorder.lock().unwrap();
+                match g.as_ref() {
+                    Some(r) => r.drain_resampled_16k(),
+                    None => break,
+                }
+            };
+            if samples.is_empty() { continue; }
+            let partial = {
+                let mut g = state_stream.stream_session.lock().unwrap();
+                if let Some(s) = g.as_mut() {
+                    s.accept(&samples);
+                    s.partial()
+                } else {
+                    continue;
+                }
+            };
+            let new_chars: Vec<char> = partial.chars().collect();
+            if new_chars == typed { continue; }
+            let mut prefix = 0;
+            while prefix < typed.len()
+                && prefix < new_chars.len()
+                && typed[prefix] == new_chars[prefix]
+            {
+                prefix += 1;
+            }
+            let to_delete = typed.len() - prefix;
+            let to_type: String = new_chars[prefix..].iter().collect();
+            if to_delete > 0 {
+                let _ = crate::mode_b::delete_chars(to_delete);
+            }
+            if !to_type.is_empty() {
+                let _ = crate::mode_b::type_unicode_sync(&to_type);
+            }
+            typed = new_chars;
+            // 同步进 shared state 让 stop_and_paste 知道当前 typed 是什么
+            if let Ok(mut g) = state_stream.ime_typed.lock() {
+                *g = partial.clone();
+            }
+            println!("[mouseclaw] 🎙️ partial typed: {:?}", partial);
+        }
+        println!("[mouseclaw] 🎙️ IME streaming poller exited");
+    });
 
     // v0.1.13 安全 #3：记录当前前台 app 的 bundle id —— 录音中切走就取消
     let start_bundle = std::panic::catch_unwind(frontmost_bundle).unwrap_or_default();
@@ -482,6 +550,8 @@ fn frontmost_bundle() -> String {
 fn frontmost_bundle() -> String { String::new() }
 
 fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
+    // v0.3.1 · 停止 streaming poller —— 让它最后一帧完成后退出
+    state.streaming_active.store(false, Ordering::SeqCst);
     let recorder = state.recorder.lock().unwrap().take();
     let Some(recorder) = recorder else { return; };
 
@@ -490,9 +560,9 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
     });
 
     tauri::async_runtime::spawn_blocking(move || {
-        // v0.3 · sherpa streaming（一次性 batch 模式）—— 没有 partial UI 需求
-        // 直接 stop 拿全样本 → 新建 StreamSession → accept all → finalize
-        let samples = match recorder.stop_drain_remaining_16k() {
+        // v0.3.1 · streaming poller 已 paste 增量了，这里只需 stop + finalize
+        // sherpa 拿到最终 transcript → 跟 poller 已 paste 的对比 → 仅补足 delta
+        let remaining = match recorder.stop_drain_remaining_16k() {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("[mouseclaw] 🎙️ stop_drain_remaining_16k: {e}");
@@ -500,17 +570,21 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
                 return;
             }
         };
-        let raw = match crate::transcribe_stream::StreamSession::new()
-            .and_then(|mut s| { s.accept(&samples); s.finalize() })
-        {
-            Ok(t) => t,
-            Err(e) => {
-                eprintln!("[mouseclaw] 🎙️ sherpa 失败: {e}");
-                crate::overlay::emit_view(&app, &crate::events::ViewKind::Blocked {
-                    reason: format!("transcribe failed: {e}"),
-                });
-                return;
+        let session = state.stream_session.lock().unwrap().take();
+        let raw = if let Some(mut sess) = session {
+            if !remaining.is_empty() { sess.accept(&remaining); }
+            match sess.finalize() {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("[mouseclaw] 🎙️ sherpa finalize 失败: {e}");
+                    crate::overlay::emit_view(&app, &crate::events::ViewKind::Blocked {
+                        reason: format!("transcribe failed: {e}"),
+                    });
+                    return;
+                }
             }
+        } else {
+            String::new()
         };
         let cfg = crate::config::Config::load();
         let cleaned = crate::tidy_up::light_clean(&raw, &cfg.language);
@@ -519,13 +593,34 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
             crate::overlay::hide_overlay(&app);
             return;
         }
-        println!("[mouseclaw] 🎙️ paste → {cleaned:?}");
+        println!("[mouseclaw] 🎙️ final → {cleaned:?}");
 
-        // 切回 async 跑 write_at_cursor（它内部会 spawn_blocking）
+        // v0.3.1 · 最终 reconciliation —— LCP delta，避免删除全部+重写的视觉闪烁
+        // typed = poller 最后实际 paste 的字符；cleaned = light_clean 后的最终干净版
+        // 走 longest common prefix → 删 diverging suffix → 补 new suffix
+        // 通常 LCP 很长（cleaned ≈ typed 减去 sherpa 自我纠错那点点），所以删的字很少
+        let typed = state.ime_typed.lock().unwrap().clone();
+        let typed_chars: Vec<char> = typed.chars().collect();
+        let cleaned_chars: Vec<char> = cleaned.chars().collect();
+        let mut prefix = 0;
+        while prefix < typed_chars.len()
+            && prefix < cleaned_chars.len()
+            && typed_chars[prefix] == cleaned_chars[prefix]
+        {
+            prefix += 1;
+        }
+        let to_delete = typed_chars.len() - prefix;
+        let to_type: String = cleaned_chars[prefix..].iter().collect();
+        println!("[mouseclaw] 🎙️ reconcile: del {to_delete} char, type +{:?}", to_type);
+
         let app2 = app.clone();
-        let cleaned_for_async = cleaned.clone();
         tauri::async_runtime::spawn(async move {
-            match crate::mode_b::write_at_cursor(&cleaned_for_async).await {
+            if to_delete > 0 {
+                let _ = tokio::task::spawn_blocking(move || {
+                    let _ = crate::mode_b::delete_chars(to_delete);
+                }).await;
+            }
+            match crate::mode_b::write_at_cursor(&to_type).await {
                 Ok(()) => {
                     crate::overlay::emit_view(&app2, &crate::events::ViewKind::Reply {
                         transcript: "voice IME".into(),
@@ -534,7 +629,6 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
                         insert_text: None,
                         streaming: false,
                     });
-                    // 1.5s 后隐藏
                     tokio::time::sleep(Duration::from_millis(1500)).await;
                     crate::overlay::hide_overlay(&app2);
                 }

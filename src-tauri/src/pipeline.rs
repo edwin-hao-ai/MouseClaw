@@ -255,19 +255,20 @@ pub async fn on_shortcut_press(app: AppHandle, state: Arc<AppState>) {
     }
     state.streaming_active.store(true, std::sync::atomic::Ordering::SeqCst);
 
-    // v0.2 · 200ms 轮询任务 —— 把 recorder buffer 喂进 sherpa stream，emit 实时 partial
+    // v0.3.1 · 150ms 轮询任务 —— 把 recorder buffer 喂进 sherpa stream，emit 实时 partial
+    // 之前 200ms 偏慢；150ms 给"边说边出"更紧凑的感觉
     let state_stream = state.clone();
     let app_stream = app.clone();
     tauri::async_runtime::spawn(async move {
-        let mut ticker = tokio::time::interval(std::time::Duration::from_millis(200));
+        let mut ticker = tokio::time::interval(std::time::Duration::from_millis(150));
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut last_partial = String::new();
+        let mut total_samples_fed: usize = 0;
         loop {
             ticker.tick().await;
             if !state_stream.streaming_active.load(std::sync::atomic::Ordering::SeqCst) {
                 break;
             }
-            // 拿样本
             let samples = {
                 let g = state_stream.recorder.lock().unwrap();
                 match g.as_ref() {
@@ -276,7 +277,7 @@ pub async fn on_shortcut_press(app: AppHandle, state: Arc<AppState>) {
                 }
             };
             if samples.is_empty() { continue; }
-            // 喂 + 拿当前 partial
+            total_samples_fed += samples.len();
             let partial = {
                 let mut g = state_stream.stream_session.lock().unwrap();
                 if let Some(s) = g.as_mut() {
@@ -286,12 +287,14 @@ pub async fn on_shortcut_press(app: AppHandle, state: Arc<AppState>) {
                     continue;
                 }
             };
-            // 只在变化时 emit，省 IPC
             if partial != last_partial {
+                println!("[mouseclaw] 🎤 partial ({} samples fed): {:?}",
+                    total_samples_fed, partial);
                 last_partial = partial.clone();
                 emit_view(&app_stream, &ViewKind::Listening { partial });
             }
         }
+        println!("[mouseclaw] 🎤 streaming poller exited (total {} samples fed)", total_samples_fed);
     });
 
     // v0.1.20 · 启动鼠标轨迹采样 + 实时 overlay（v0.1.21）

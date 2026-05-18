@@ -160,7 +160,10 @@ fn ensure_loaded() -> Result<()> {
     config.model_config.tokens = Some(
         dir.join(MODEL_FILES[3]).to_string_lossy().into_owned(),
     );
-    config.enable_endpoint = true;
+    // v0.3.1 · push-to-talk 模式不要 endpoint 自动切段 —— 用户主动控制开始/结束
+    // 如果开 endpoint，sherpa 在停顿时会自动 commit 一段并 reset stream，
+    // 之后 get_result 只返回新段的文字（旧段被丢掉），用户感觉"流式断了"。
+    config.enable_endpoint = false;
     config.decoding_method = Some("greedy_search".into());
 
     let rec = OnlineRecognizer::create(&config)

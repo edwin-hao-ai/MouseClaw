@@ -140,6 +140,46 @@ pub async fn write_at_cursor(_text: &str) -> Result<()> {
     bail!("Mode B not implemented on non-macOS yet")
 }
 
+/// v0.3.1 · 流式语音输入用 —— 同步快速 paste，不走 clipboard 路径。
+/// 直接用 unicode keyboard event 注入，不污染剪贴板，跟 paste_via_clipboard 区分。
+/// 给 voice_ime streaming poller 每 150ms 调用，必须返回快（无 await）。
+#[cfg(target_os = "macos")]
+pub fn type_unicode_sync(text: &str) -> Result<()> {
+    type_unicode_string(text)
+}
+#[cfg(not(target_os = "macos"))]
+pub fn type_unicode_sync(_text: &str) -> Result<()> {
+    bail!("type_unicode_sync only on macOS")
+}
+
+/// v0.3.1 · 流式语音输入用 —— 删除光标前 `n` 个 char。
+/// 给 sherpa partial 自我纠错时回退用：发 n 次 backspace key event (keycode 51)。
+/// 注意：`n` 是 char 数（中文 1 char = 1 backspace）—— 已和 type_unicode_string 一致。
+#[cfg(target_os = "macos")]
+pub fn delete_chars(n: usize) -> Result<()> {
+    if n == 0 { return Ok(()); }
+    use core_graphics::event::{CGEvent, CGEventTapLocation};
+    use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+    let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
+        .map_err(|_| anyhow::anyhow!("CGEventSource::new failed"))?;
+    // keycode 51 = Delete (Backspace) on macOS
+    const BACKSPACE_KEYCODE: u16 = 51;
+    for _ in 0..n {
+        let down = CGEvent::new_keyboard_event(source.clone(), BACKSPACE_KEYCODE, true)
+            .map_err(|_| anyhow::anyhow!("CGEvent backspace down failed"))?;
+        down.post(CGEventTapLocation::HID);
+        let up = CGEvent::new_keyboard_event(source.clone(), BACKSPACE_KEYCODE, false)
+            .map_err(|_| anyhow::anyhow!("CGEvent backspace up failed"))?;
+        up.post(CGEventTapLocation::HID);
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+    Ok(())
+}
+#[cfg(not(target_os = "macos"))]
+pub fn delete_chars(_n: usize) -> Result<()> {
+    bail!("delete_chars only on macOS")
+}
+
 /// Clipboard-paste fallback for rich/Electron editors.
 ///
 /// 流程：
