@@ -27,11 +27,23 @@
 }
 
 .stage-mouse {
-  display: flex;
+  /* v0.3.9 · 收紧 bounding box —— 之前 display:flex 容器宽度依赖父 .stage 充满
+     320×320，导致桌宠周围一大片是 pointer-events:auto 截 click。改成
+     display:inline-flex + 自适应宽度 = 只有桌宠 SVG 本体那么大。 */
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   position: relative; /* 让 .pet-menu / .nudge-bubble 这些 absolute 子元素相对它定位 */
-  /* v0.1.29 · 桌宠区域必须能接 click（否则角落桌宠点了没反应）。
-     透明 .stage 的 pointer-events:none 保证 stage-mouse 之外的区域穿透到底层 app。 */
+  pointer-events: auto;
+  /* v0.3.9 · 关掉文字选区高亮 —— 之前用户拖动桌宠时整个区域变灰是 webkit
+     默认的 text-selection。桌宠不是文字，不应该被选中。 */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+/* 让 SVG 自己也别变选中态（双保险） */
+.stage-mouse svg {
+  user-select: none;
+  -webkit-user-select: none;
   pointer-events: auto;
 }

@@ -5,7 +5,7 @@
  * a hidden keyboard shortcut (?) to cycle states locally so the UI can be
  * inspected without firing the pipeline.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -224,23 +224,60 @@ export default function App() {
     setNudge(null);
   }, [showAck, t]);
 
-  // v0.3.6 · 拖动结束 → 读窗口位置 → 持久化
-  // Tauri's data-tauri-drag-region 自动处理 drag vs click。
-  // 这里只在 mouseup 时若窗口动了（位置 != mousedown 时的位置）就保存。
-  const handlePetDragEnd = useCallback(async () => {
+  // v0.3.9 · 手动 drag —— 之前 data-tauri-drag-region 在我们 transparent+focus:false
+  // 的 overlay 上不工作。改成显式调 `startDragging()` JS API。
+  //
+  // 区分 click vs drag：onMouseDown 时记录起点；如果 release 前移动 >= 5px →
+  // 我们调 startDragging（Tauri 接管，原生 window 跟着鼠标走），onClick 不触发
+  // （因为 startDragging 抢占事件流）。如果几乎没动，onClick 正常触发菜单。
+  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
+  const draggedRef = useRef(false);
+  const DRAG_THRESHOLD = 5;
+
+  const handlePetMouseDown = useCallback((e: React.MouseEvent) => {
+    if (view.kind !== "idle") return;
+    dragStartRef.current = { x: e.screenX, y: e.screenY };
+    draggedRef.current = false;
+  }, [view.kind]);
+
+  const handlePetMouseMove = useCallback(async (e: React.MouseEvent) => {
+    if (view.kind !== "idle" || !dragStartRef.current) return;
+    const dx = Math.abs(e.screenX - dragStartRef.current.x);
+    const dy = Math.abs(e.screenY - dragStartRef.current.y);
+    if (dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD) {
+      // 跨过阈值 → 进入拖动模式，把控制权交给 Tauri 原生 drag
+      // 之后 mouseup 不会再触发 onClick（被 startDragging 抢占）
+      if (!draggedRef.current) {
+        draggedRef.current = true;
+        try {
+          const { getCurrentWindow } = await import("@tauri-apps/api/window");
+          await getCurrentWindow().startDragging();
+        } catch (err) {
+          console.warn("startDragging:", err);
+        }
+      }
+    }
+  }, [view.kind]);
+
+  const handlePetMouseUp = useCallback(async () => {
+    if (view.kind !== "idle") return;
+    const wasDragged = draggedRef.current;
+    dragStartRef.current = null;
+    draggedRef.current = false;
+    if (!wasDragged) return; // 没拖动 → onClick 会负责开菜单
+    // 拖动结束 → 读窗口位置 → 持久化
     try {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
       const pos = await getCurrentWindow().outerPosition();
-      // outerPosition 是物理像素，需除以 scale → logical。多数情况下 1x 不影响。
       const scale = await getCurrentWindow().scaleFactor();
       const lx = pos.x / scale;
       const ly = pos.y / scale;
       await invoke("save_pet_custom_position", { x: lx, y: ly });
+      console.debug(`[mouseclaw] pet dragged to (${lx}, ${ly}) saved`);
     } catch (e) {
-      // browser-only mode / 拖动取消都安全
       console.debug("save_pet_custom_position skipped:", e);
     }
-  }, []);
+  }, [view.kind]);
 
   const handleMouseClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -269,13 +306,10 @@ export default function App() {
       <div
         className="stage-mouse"
         onClick={handleMouseClick}
+        onMouseDown={handlePetMouseDown}
+        onMouseMove={handlePetMouseMove}
+        onMouseUp={handlePetMouseUp}
         style={{ cursor: view.kind === "idle" ? "grab" : "pointer" }}
-        // v0.3.6 · idle 时整个桌宠区域支持拖动 (Tauri 原生 drag-region)
-        // 拖动 = 移动窗口；轻点（不移动）= onClick 触发菜单。
-        // Tauri 自己 distinguish click vs drag，无需手动算阈值。
-        {...(view.kind === "idle" ? { "data-tauri-drag-region": "" } : {})}
-        // 拖动结束 → 读取窗口位置 → 持久化（让重启后位置保留）
-        onMouseUp={view.kind === "idle" ? handlePetDragEnd : undefined}
       >
         <PixelMouse
           state={mouseStateFor(view)} skin={skin}
