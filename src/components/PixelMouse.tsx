@@ -23,7 +23,8 @@ export type MouseState =
 
 interface PixelMouseProps {
   state: MouseState;
-  size?: 32 | 48 | 64 | 96 | 128;
+  /** Width/height in px. Common: 22 (tiny preview), 32 / 48 / 64 / 96 / 128. */
+  size?: number;
   /** Skin id. 默认 classic（向后兼容老 config）。 */
   skin?: SkinId;
   /** Show the green chain icon above the head (session-continuation indicator). */
@@ -42,6 +43,49 @@ function Ears({ skin }: { skin: Skin }) {
         <rect x="4"  y="-2" width="1" height="1" fill={p.earIn} />
         <rect x="11" y="-1" width="1" height="3" fill={p.earOut} />
         <rect x="11" y="-2" width="1" height="1" fill={p.earIn} />
+      </>
+    );
+  }
+  if (skin.body === "cat") {
+    // 高三角猫耳 —— 更尖、更立
+    return (
+      <>
+        <rect x="2" y="0" width="1" height="3" fill={p.earOut} />
+        <rect x="3" y="1" width="1" height="2" fill={p.earOut} />
+        <rect x="4" y="2" width="1" height="1" fill={p.earOut} />
+        <rect x="3" y="2" width="1" height="1" fill={p.earIn} />
+        <rect x="13" y="0" width="1" height="3" fill={p.earOut} />
+        <rect x="12" y="1" width="1" height="2" fill={p.earOut} />
+        <rect x="11" y="2" width="1" height="1" fill={p.earOut} />
+        <rect x="12" y="2" width="1" height="1" fill={p.earIn} />
+      </>
+    );
+  }
+  if (skin.body === "fox") {
+    // 狐耳：更大的三角，立起来
+    return (
+      <>
+        <rect x="2" y="-1" width="1" height="4" fill={p.earOut} />
+        <rect x="3" y="0"  width="1" height="3" fill={p.earOut} />
+        <rect x="4" y="1"  width="1" height="2" fill={p.earOut} />
+        <rect x="3" y="1"  width="1" height="2" fill={p.earIn} />
+        <rect x="13" y="-1" width="1" height="4" fill={p.earOut} />
+        <rect x="12" y="0"  width="1" height="3" fill={p.earOut} />
+        <rect x="11" y="1"  width="1" height="2" fill={p.earOut} />
+        <rect x="12" y="1"  width="1" height="2" fill={p.earIn} />
+      </>
+    );
+  }
+  if (skin.body === "frog") {
+    // 蛙：头顶两颗大眼凸起代替耳朵
+    return (
+      <>
+        <rect x="3" y="0" width="3" height="3" fill={p.body} />
+        <rect x="10" y="0" width="3" height="3" fill={p.body} />
+        <rect x="4" y="1" width="1" height="1" fill={p.earIn} />
+        <rect x="11" y="1" width="1" height="1" fill={p.earIn} />
+        <rect x="4" y="0" width="1" height="1" fill={p.earOut} />
+        <rect x="11" y="0" width="1" height="1" fill={p.earOut} />
       </>
     );
   }
@@ -73,6 +117,56 @@ function Ears({ skin }: { skin: Skin }) {
 
 function Body({ skin }: { skin: Skin }) {
   const p = skin.palette;
+  if (skin.body === "cat") {
+    // 猫：身体微长，肚子用 belly 色
+    return (
+      <>
+        <rect x="3" y="3" width="10" height="1" fill={p.body} />
+        <rect x="2" y="4" width="12" height="3" fill={p.body} />
+        <rect x="3" y="7" width="10" height="1" fill={p.body} />
+        <rect x="5" y="8" width="6"  height="2" fill={p.belly} />
+        <rect x="3" y="8" width="2"  height="2" fill={p.body} />
+        <rect x="11" y="8" width="2" height="2" fill={p.body} />
+        <rect x="4" y="10" width="8" height="1" fill={p.body} />
+        {/* 胡须 —— 左右各 2 根 */}
+        <rect x="0" y="6" width="2" height="1" fill={p.body} opacity="0.7" />
+        <rect x="0" y="7" width="2" height="1" fill={p.body} opacity="0.5" />
+        <rect x="14" y="6" width="2" height="1" fill={p.body} opacity="0.7" />
+        <rect x="14" y="7" width="2" height="1" fill={p.body} opacity="0.5" />
+      </>
+    );
+  }
+  if (skin.body === "fox") {
+    // 狐：身体加宽，胸前白色 V 形
+    return (
+      <>
+        <rect x="3" y="3" width="10" height="1" fill={p.body} />
+        <rect x="2" y="4" width="12" height="3" fill={p.body} />
+        <rect x="3" y="7" width="10" height="1" fill={p.body} />
+        {/* 白胸毛 V */}
+        <rect x="6" y="7" width="4" height="1" fill={p.belly} />
+        <rect x="5" y="8" width="6" height="3" fill={p.belly} />
+        <rect x="3" y="8" width="2" height="2" fill={p.body} />
+        <rect x="11" y="8" width="2" height="2" fill={p.body} />
+        <rect x="4" y="10" width="8" height="1" fill={p.body} />
+      </>
+    );
+  }
+  if (skin.body === "frog") {
+    // 蛙：圆胖短身，无颈
+    return (
+      <>
+        <rect x="2" y="3" width="12" height="1" fill={p.body} />
+        <rect x="1" y="4" width="14" height="4" fill={p.body} />
+        <rect x="2" y="8" width="12" height="2" fill={p.body} />
+        {/* 米色大肚子 */}
+        <rect x="4" y="6" width="8"  height="4" fill={p.belly} />
+        {/* 嘴角的微笑 */}
+        <rect x="6" y="9" width="4" height="1" fill={p.body} />
+        <rect x="5" y="10" width="6" height="1" fill={p.body} />
+      </>
+    );
+  }
   if (skin.body === "slim") {
     return (
       <>
@@ -145,6 +239,33 @@ function Tail({ skin }: { skin: Skin }) {
         <rect x="15" y="8" width="1" height="1" fill={p.tail} />
       </>
     );
+  }
+  if (skin.body === "cat") {
+    // 长猫尾 —— 弯起来
+    return (
+      <>
+        <rect x="13" y="9"  width="1" height="1" fill={p.tail} />
+        <rect x="14" y="8"  width="1" height="1" fill={p.tail} />
+        <rect x="15" y="7"  width="1" height="2" fill={p.tail} />
+        <rect x="15" y="5"  width="1" height="2" fill={p.tail} />
+        <rect x="14" y="4"  width="1" height="1" fill={p.tail} />
+      </>
+    );
+  }
+  if (skin.body === "fox") {
+    // 蓬松大尾 —— 3 宽 + 白尾尖
+    return (
+      <>
+        <rect x="13" y="6"  width="3" height="4" fill={p.body} />
+        <rect x="14" y="5"  width="2" height="1" fill={p.body} />
+        <rect x="15" y="9"  width="1" height="2" fill={p.tail} />
+        <rect x="14" y="10" width="2" height="1" fill={p.tail} />
+      </>
+    );
+  }
+  if (skin.body === "frog") {
+    // 蛙没有尾
+    return null;
   }
   // 标准
   return (

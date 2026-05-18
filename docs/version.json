@@ -1,11 +1,11 @@
 {
   "$comment": "MouseClaw 版本元信息 · App 启动时拉取此 URL 检查新版本。任何 release 后更新这里。",
-  "latest": "0.1.25",
+  "latest": "0.1.26",
   "min_supported": "0.1.0",
-  "released_at": "2026-05-17",
+  "released_at": "2026-05-18",
   "size_mb": 60,
-  "dmg_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/latest/download/MouseClaw_0.1.25_aarch64.dmg",
+  "dmg_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/latest/download/MouseClaw_0.1.26_aarch64.dmg",
   "release_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/latest",
-  "notes_zh": "本轮亮点：Whisper base 模型打进安装包（首次启动 0 下载）· 公证已做（无 Gatekeeper 警告）· `~/.mouseclaw/provider.env` 统一管理 AI key（Vercel AI Gateway 实测 OK）。",
-  "notes_en": "This release: Whisper base model bundled (offline OOTB) · DMG notarized (no Gatekeeper warning) · `~/.mouseclaw/provider.env` unified provider keys (verified via Vercel AI Gateway)."
+  "notes_zh": "本轮亮点：开机自启动（系统设置 → 登录项 同步）· 全新桌宠选择器（看真实形象不再 emoji）· 新增 3 个物种：小灰猫 🐱 / 赤狐 🦊 / 树蛙 🐸",
+  "notes_en": "This release: Launch at login (synced with System Settings → Login Items) · New visual pet picker (real previews, not emoji) · 3 new species: Gray Cat 🐱 / Red Fox 🦊 / Tree Frog 🐸"
 }

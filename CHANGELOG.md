@@ -6,6 +6,35 @@ versioning follows [SemVer](https://semver.org/).
 
 ---
 
+## [0.1.26] · 2026-05-18
+
+### English
+
+#### Added
+- **Launch at login** via `tauri-plugin-autostart` (LaunchAgent on macOS). Onboarding step 5 default-checks it; tray toggle `🚀 Launch at login` flips both the LaunchAgent and the config mirror. Bidirectional sync at startup — if you disable it in System Settings → Login Items the app reconciles to match. Autostart-launched processes pass `--minimized`, so the app stays silent in the menubar (no Onboarding pop) on boot.
+- **Pet picker window** replaces the 6-item tray submenu. Tray now shows a single `🎨 Change pet… (current)` that opens a dedicated 760×600 window with the real pixel-art previews grouped by species, a large hover preview, single-click peek / double-click apply, and a Cancel-to-revert behavior.
+- **3 new species** drawn for v0.1.26 — total **9 pets**:
+  - 🐱 **Gray Cat** — pointy ears · long curving tail · faint whiskers · green eyes
+  - 🦊 **Red Fox** — large triangle ears · bushy tail with white tip · white V-chest
+  - 🐸 **Tree Frog** — bulging eyes on top of head · wide green body · pale belly · no tail
+
+### 中文
+
+#### 新增
+- **开机自启动**（用 `tauri-plugin-autostart`，macOS LaunchAgent）。Onboarding 第 5 步默认勾选；托盘菜单「🚀 开机自启动」一键开关，同时翻转 LaunchAgent 与 config。启动时双向同步 —— 用户在「系统设置 → 通用 → 登录项」里关掉，app 下次启动会读真实状态回写 config。自启动时传 `--minimized`，菜单栏静默驻留（不弹 Onboarding）。
+- **桌宠选择器窗口** 替代托盘 6 项子菜单。托盘只剩单条「🎨 更换桌宠…（当前皮肤）」，点开 760×600 独立窗口：按物种分组的真实像素艺术卡片 + 大预览 + 单击试穿 / 双击应用 / 取消还原。
+- **3 个新物种** ——总 **9 只**桌宠：
+  - 🐱 **小灰猫** —— 尖三角耳、长卷尾、淡胡须、绿眼睛
+  - 🦊 **赤狐** —— 大三角耳、蓬松大尾带白尾尖、白胸 V 形
+  - 🐸 **树蛙** —— 头顶突眼、宽绿身、浅黄肚、无尾
+
+#### 调整
+- 托盘菜单皮肤入口从 6-item submenu（只能看到 emoji）改成单条入口 + 真实形象 picker。
+- 加入新物种后 `SkinId` 从 6 项扩展到 9 项，体型变体新增 `cat` / `fox` / `frog`，调色板 / 耳/身/尾在 `PixelMouse.tsx` 各加独立分支。
+- v0.1.27 起 `~/.mouseclaw/skins/` 支持加载用户安装的桌宠 manifest（社区路径已留好）。
+
+---
+
 ## [0.1.25] · 2026-05-17
 
 ### English

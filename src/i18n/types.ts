@@ -65,6 +65,16 @@ export interface Strings {
   "anchor.follow": string;
   "anchor.tray_title": string;
   "anchor.follow_hint": string;
+
+  // Pet click menu (v0.1.27 P2)
+  "petmenu.summon": string;
+  "petmenu.history": string;
+  "petmenu.feed": string;
+  "petmenu.nap": string;
+  "petmenu.skin": string;
+  "petmenu.settings": string;
+  "petmenu.feed_ack": string;
+  "petmenu.nap_ack": string;
   "onboarding.cta.next_voice_ime": string;
   "vime.trigger.fn": string;
   "vime.trigger.option": string;

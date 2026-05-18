@@ -1,0 +1,210 @@
+.picker-root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font-family: -apple-system, "PingFang SC", system-ui, sans-serif;
+  color: #2b2622;
+}
+
+.picker-header {
+  padding: 20px 24px 12px;
+  border-bottom: 1px solid #ece6dd;
+  background: #fff;
+}
+.picker-header h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.picker-header p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #8a8178;
+}
+
+.picker-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  gap: 16px;
+  padding: 16px 20px;
+  overflow: hidden;
+}
+
+.picker-grid-wrap {
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.picker-group {
+  margin-bottom: 18px;
+}
+.picker-group-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #8a8178;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  padding-left: 4px;
+}
+
+.picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  gap: 10px;
+}
+
+.picker-card {
+  background: #fff;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  padding: 12px 8px 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  position: relative;
+  font: inherit;
+}
+.picker-card:hover {
+  transform: translateY(-2px);
+  border-color: #f3c9d8;
+  box-shadow: 0 8px 20px rgba(43,38,34,0.08);
+}
+.picker-card.selected {
+  border-color: #d63d6a;
+  background: #fff5f8;
+  box-shadow: 0 6px 16px rgba(214,61,106,0.18);
+}
+
+.picker-card-stage {
+  width: 64px; height: 64px;
+  display: grid;
+  place-items: center;
+}
+
+.picker-card-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #2b2622;
+  text-align: center;
+}
+
+.picker-card-tag {
+  position: absolute;
+  top: 6px; right: 6px;
+  background: #ffe27a;
+  color: #6a4a00;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 6px;
+  letter-spacing: 0.04em;
+}
+
+.picker-preview {
+  background: #fff;
+  border-radius: 14px;
+  padding: 18px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 6px 16px rgba(43,38,34,0.08);
+  position: sticky;
+  top: 0;
+  align-self: start;
+}
+.picker-preview-stage {
+  width: 128px; height: 128px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, #faf7f2 0%, #f0e8db 100%);
+  border-radius: 12px;
+  margin-bottom: 4px;
+}
+.picker-preview-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #2b2622;
+  margin-top: 4px;
+}
+.picker-preview-desc {
+  font-size: 12px;
+  color: #5a5048;
+  line-height: 1.4;
+  text-align: center;
+}
+.picker-preview-meta {
+  font-size: 11px;
+  color: #8a8178;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  margin-top: 6px;
+}
+.picker-preview-meta code, .picker-preview-meta span {
+  font-family: ui-monospace, Menlo, monospace;
+}
+
+.picker-actions {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  margin-top: 12px;
+}
+.picker-btn {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 120ms ease, transform 80ms ease;
+}
+.picker-btn:active {
+  transform: translateY(1px);
+}
+.picker-btn.primary {
+  background: #d63d6a;
+  color: #fff;
+}
+.picker-btn.primary:hover {
+  background: #b8285a;
+}
+.picker-btn.primary:disabled {
+  background: #ece6dd;
+  color: #8a8178;
+  cursor: default;
+}
+.picker-btn.secondary {
+  background: #f4eee3;
+  color: #5a5048;
+  border-color: #e0d6c2;
+}
+.picker-btn.secondary:hover {
+  background: #ece4d2;
+}
+
+.picker-footer {
+  font-size: 11px;
+  color: #8a8178;
+  text-align: center;
+  padding: 10px 16px 14px;
+  border-top: 1px solid #ece6dd;
+  background: #fff;
+}
+.picker-footer code {
+  background: #f4eee3;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 10px;
+}
