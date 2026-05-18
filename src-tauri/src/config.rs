@@ -22,9 +22,13 @@ pub enum WhisperModel {
 }
 
 impl Default for WhisperModel {
-    // 默认仍是 Base —— 59MB 首装最快。想要 90% 中文准度的用户去托盘
-    // 「🎙️ 语音模型」自己切到 Small (190MB)，后台下载即可。
-    fn default() -> Self { WhisperModel::Base }
+    // v0.1.29 · 默认从 Base 改成 Small。
+    // 之前默认 Base 是为了首装零网络（bundled 59MB），但中文准度差很多 ——
+    // 用户反馈"刚装上识别率好低"几乎都是这个原因。
+    // 现在策略：默认 Small（190MB · 中文好），transcribe.rs 有 fallback ——
+    // Small 未下载完时临时用 bundled Base，下载好自动切回 Small。
+    // 用户感知：首装可用（Base 兜底）+ 几分钟后自动升级到 Small（中文好）。
+    fn default() -> Self { WhisperModel::Small }
 }
 
 impl WhisperModel {
@@ -96,7 +100,10 @@ impl WhisperModel {
 ///   v12 → v13: 新增 clipboard_paused（剪贴板暂停开关），默认 false
 ///   v13 → v14: 新增 workspace_path（AI 调用时的 cwd），默认 None
 ///   v14 → v15: 新增 pet_anchor（桌宠悬停位置，5 选项），默认 bottom-right
-pub const CURRENT_CONFIG_VERSION: u32 = 15;
+///   v15 → v16: Whisper 默认从 Base 升到 Small（中文更准）。
+///              现有 config 上若仍是 Base，迁移时自动改 Small —— bundled Base
+///              做 fallback，体验不变但准度大跳。
+pub const CURRENT_CONFIG_VERSION: u32 = 16;
 
 /// 桌宠悬停位置 (v0.1.27) —— overlay 闲置时停哪儿打盹。
 /// 召唤快捷键触发时仍然跑到光标位置工作，完事 auto-hide 后回到 anchor。
@@ -267,6 +274,12 @@ impl Config {
                 "[mouseclaw] config schema v{} < v{} → 重新走 Onboarding 让你选新快捷键",
                 cfg.version, CURRENT_CONFIG_VERSION
             );
+            // v15 → v16 · 把 Whisper 默认升到 Small。Base 用户也自动升 ——
+            // 之前默认 Base 是因为零网络体验，现在有 fallback 兜底，安全升级。
+            if cfg.version < 16 && cfg.whisper_model == WhisperModel::Base {
+                println!("[mouseclaw] migrating Whisper Base → Small (better Chinese)");
+                cfg.whisper_model = WhisperModel::Small;
+            }
             cfg.onboarded = false;
             cfg.version = CURRENT_CONFIG_VERSION;
         }
@@ -340,8 +353,8 @@ mod tests {
         assert_eq!(c.version, CURRENT_CONFIG_VERSION);
         assert_eq!(c.backend, Backend::ClaudeCli);
         assert_eq!(c.skin, SkinId::Classic);
-        // 默认 Base —— 体积最小（59MB），首装最快。
-        assert_eq!(c.whisper_model, WhisperModel::Base);
+        // v0.1.29 · 默认 Small —— 中文准度大跳。bundled Base 做 fallback。
+        assert_eq!(c.whisper_model, WhisperModel::Small);
     }
 
     #[test]

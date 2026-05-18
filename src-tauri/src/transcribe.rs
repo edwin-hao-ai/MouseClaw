@@ -55,25 +55,51 @@ fn model_path_for(m: crate::config::WhisperModel) -> Result<PathBuf> {
     Ok(p)
 }
 
+/// v0.1.29 · 优雅降级链。
+/// 用户选了 Small/Medium/Turbo 但文件还没下载完时，临时用 bundled Base
+/// （存到 ~/.mouseclaw/models 里）。让 transcribe 不至于因模型缺失而完全失败。
+/// 返回 (实际用的模型, 路径)。
+fn resolve_loadable(target: crate::config::WhisperModel)
+    -> Result<(crate::config::WhisperModel, PathBuf)>
+{
+    if let Ok(p) = model_path_for(target) {
+        return Ok((target, p));
+    }
+    // Target 没下载。如果不是 Base → 再试 Base（同时让 kick_off_download 拷 bundle 进来）
+    if target != crate::config::WhisperModel::Base {
+        // 顺便触发 bundle seed → 把 base 拷到 ~/.mouseclaw 里
+        let _ = try_seed_from_bundle(crate::config::WhisperModel::Base);
+        if let Ok(p) = model_path_for(crate::config::WhisperModel::Base) {
+            eprintln!(
+                "[mouseclaw] ⚠️  Whisper {:?} 未就绪，临时用 Base 转写（下载完会自动切回）",
+                target
+            );
+            return Ok((crate::config::WhisperModel::Base, p));
+        }
+    }
+    // 真没了 —— 把原始错误甩出
+    Err(model_path_for(target).unwrap_err())
+}
+
 fn ensure_loaded() -> Result<()> {
     let target = active_model();
+    let (effective, path) = resolve_loadable(target)?;
     let mut guard = CONTEXT.lock().unwrap();
-    // 命中：模型匹配 → 复用
+    // 命中：实际加载的模型匹配 → 复用
     if let Some((cached_model, _)) = guard.as_ref() {
-        if *cached_model == target {
+        if *cached_model == effective {
             return Ok(());
         }
     }
     // 否则重建
-    let path = model_path_for(target)?;
     let ctx = WhisperContext::new_with_params(
         path.to_str().context("model path not UTF-8")?,
         WhisperContextParameters::default(),
     )
     .context("WhisperContext::new")?;
-    *guard = Some((target, ctx));
+    *guard = Some((effective, ctx));
     println!("[mouseclaw] Whisper ctx loaded ({:?}, {} MB on disk)",
-             target, target.size_mb());
+             effective, effective.size_mb());
     Ok(())
 }
 

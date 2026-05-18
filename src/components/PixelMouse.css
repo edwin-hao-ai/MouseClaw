@@ -3,7 +3,8 @@
 .mouse-wrap {
   position: relative;
   display: inline-block;
-  pointer-events: none;
+  /* v0.1.29 · 之前 pointer-events:none 让点桌宠完全无反应（PetMenu 触发依赖于它）。
+     容器 .stage 仍是透明穿透，但桌宠本身需要接 click。 */
 }
 
 .mouse-svg {
