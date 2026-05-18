@@ -4,7 +4,9 @@
   position: relative;
   background: var(--bubble-bg);
   color: var(--text-primary);
-  padding: 10px var(--space-3);
+  /* v0.3.7 · top padding 加到 14px —— 之前 10px 让内容紧贴圆角边，配合 fade-top
+     视觉上正好"开头有呼吸"，不再像"截断" */
+  padding: 14px var(--space-3) 10px;
   border-radius: var(--radius-xl);
   font-size: var(--text-body);
   font-weight: 500;
@@ -43,6 +45,53 @@
   border-radius: 3px;
 }
 .bubble-scroll::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.4); }
+
+/* v0.3.7 · scrollable bubble 的顶部 / 底部渐变 fade —— 当有内容被滚走时给视觉提示，
+   避免用户以为气泡内容截断了。fade 颜色用 currentColor 跟 variant 的渐变协调。 */
+.bubble-fade-top, .bubble-fade-bottom {
+  position: absolute;
+  left: 1px; right: 1px;
+  height: 18px;
+  pointer-events: none;
+  z-index: 2;
+}
+.bubble-fade-top {
+  top: 1px;
+  background: linear-gradient(to bottom, var(--bubble-bg) 0%, transparent 100%);
+  border-top-left-radius: var(--radius-xl);
+  border-top-right-radius: var(--radius-xl);
+}
+.bubble-fade-bottom {
+  bottom: 1px;
+  background: linear-gradient(to top, var(--bubble-bg) 0%, transparent 100%);
+}
+/* variant 的 fade 用 variant 的实际背景色（success/warn/danger） */
+.bubble-success .bubble-fade-top    { background: linear-gradient(to bottom, #d8f8e6 0%, rgba(216,248,230,0) 100%); }
+.bubble-success .bubble-fade-bottom { background: linear-gradient(to top,    #f3fbf6 0%, rgba(243,251,246,0) 100%); }
+.bubble-warn .bubble-fade-top       { background: linear-gradient(to bottom, #fff7e0 0%, rgba(255,247,224,0) 100%); }
+.bubble-warn .bubble-fade-bottom    { background: linear-gradient(to top,    #fffcef 0%, rgba(255,252,239,0) 100%); }
+.bubble-danger .bubble-fade-top     { background: linear-gradient(to bottom, #ffe1e0 0%, rgba(255,225,224,0) 100%); }
+.bubble-danger .bubble-fade-bottom  { background: linear-gradient(to top,    #fff4f4 0%, rgba(255,244,244,0) 100%); }
+
+/* v0.3.7 · 回到开头按钮 —— 仅当用户滚下去之后才出现（showFadeTop 触发）。
+   位置在 bubble 右上角，圆形小 chip 避免遮挡正文。 */
+.bubble-scroll-top {
+  position: absolute;
+  top: 6px; right: 8px;
+  z-index: 3;
+  width: 22px; height: 22px;
+  padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--accent-primary, #e8638c);
+  color: #fff;
+  border: 0; border-radius: 50%;
+  font: 700 11px/1 var(--font-mono, ui-monospace, Menlo, monospace);
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  transition: transform .12s ease, background .12s ease;
+}
+.bubble-scroll-top:hover { background: var(--accent-strong, #d63d6a); transform: translateY(-1px); }
+.bubble-scroll-top:active { transform: translateY(0); }
 
 @keyframes bubble-in {
   from { opacity: 0; transform: translateY(4px) scale(0.96); }

@@ -6,7 +6,7 @@
  * 否则 Claude 返回的 `**关键点**` 会被原样显示，体验很差。
  * 安全：marked 默认会逃逸 HTML，不会 XSS。
  */
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { marked } from "marked";
 import { useT } from "../i18n";
 import "./Bubble.css";
@@ -70,6 +70,10 @@ export function Bubble({
   // 用户读长回复的自然方向是从上到下，看不到开头才是真问题。
   const scrollRef = useRef<HTMLDivElement>(null);
   const userScrolledRef = useRef(false);
+  // v0.3.7 · 视觉提示：用户滚下去了 → 顶部加 fade + ▲ 回顶按钮；
+  // 这样用户看到"哦上面还有内容"就不会以为是 bubble 自己截断了。
+  const [showFadeTop, setShowFadeTop] = useState(false);
+  const [showFadeBottom, setShowFadeBottom] = useState(false);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -78,21 +82,35 @@ export function Bubble({
     if (!userScrolledRef.current) {
       el.scrollTop = 0;
     }
+    // 重算 fade 显示状态
+    setShowFadeTop(el.scrollTop > 4);
+    setShowFadeBottom(el.scrollTop + el.clientHeight < el.scrollHeight - 4);
   }, [text, streaming, scrollable]);
 
-  // 用户开始滚动后就不再强制定位
+  // 用户开始滚动后就不再强制定位 + 实时更新 fade 显示
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || !scrollable) return;
     const onScroll = () => {
       if (el.scrollTop > 4) userScrolledRef.current = true;
+      setShowFadeTop(el.scrollTop > 4);
+      setShowFadeBottom(el.scrollTop + el.clientHeight < el.scrollHeight - 4);
     };
     el.addEventListener("scroll", onScroll, { passive: true });
+    // 初次挂载时也算一遍（处理 first paint）
+    onScroll();
     return () => {
       el.removeEventListener("scroll", onScroll);
       userScrolledRef.current = false;
     };
   }, [scrollable]);
+
+  const scrollToTop = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    userScrolledRef.current = false;
+    el.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   return (
     <div className={`bubble bubble-${variant}`} role="status" aria-live="polite">
@@ -112,6 +130,18 @@ export function Bubble({
           )}
         </div>
       )}
+      {scrollable && showFadeTop && (
+        <div className="bubble-fade-top" aria-hidden />
+      )}
+      {scrollable && showFadeTop && (
+        <button
+          type="button"
+          className="bubble-scroll-top"
+          onClick={scrollToTop}
+          aria-label={t("bubble.scroll_to_top")}
+          title={t("bubble.scroll_to_top")}
+        >▲</button>
+      )}
       <div ref={scrollRef} className={`bubble-body ${scrollable ? "bubble-scroll" : ""}`}>
         {markdown && html != null ? (
           <div className="bubble-text bubble-md" dangerouslySetInnerHTML={{ __html: html }} />
@@ -130,6 +160,9 @@ export function Bubble({
         )}
         {streaming && <span className="stream-cursor" aria-hidden>▮</span>}
       </div>
+      {scrollable && showFadeBottom && (
+        <div className="bubble-fade-bottom" aria-hidden />
+      )}
       {loading && <span className="bubble-shimmer" aria-hidden />}
       {expandable && (
         <button

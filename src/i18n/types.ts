@@ -33,6 +33,7 @@ export interface Strings {
 
   // ── 桌宠 / 主气泡 ──
   "bubble.expand_to_panel": string;        // "💬 继续追问"
+  "bubble.scroll_to_top": string;          // "▲ 回到开头"
   "bubble.listening": string;              // "听着呢…"
   "bubble.thinking": string;               // "正在思考"
   "bubble.session_chip": string;           // "🔗 续 Session #{id} · 第 {turn} 轮"

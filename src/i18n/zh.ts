@@ -17,6 +17,7 @@ export const zh: Strings = {
 
   // 桌宠
   "bubble.expand_to_panel": "💬 继续追问",
+  "bubble.scroll_to_top": "▲ 回到开头",
   "bubble.listening": "听着呢…",
   "bubble.thinking": "正在思考",
   "bubble.session_chip": "🔗 续 Session #{id} · 第 {turn} 轮",

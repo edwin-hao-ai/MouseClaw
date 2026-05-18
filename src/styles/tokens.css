@@ -12,7 +12,9 @@
   /* ─── Bubble / Panel ─── */
   --bubble-bg: rgba(255, 255, 255, 0.97);
   --panel-bg: rgba(252, 252, 254, 0.98);
-  --bubble-border: rgba(0, 0, 0, 0.06);
+  /* v0.3.7 · 之前 alpha 0.06 让顶部边在 success/warn 变体的渐变浓色处完全消失，
+     视觉上"顶部缺一条边"。0.10 在 #fff 和渐变绿区都看得清。 */
+  --bubble-border: rgba(0, 0, 0, 0.10);
   --bubble-success-bg: linear-gradient(135deg, #d8f8e6, #ffffff);
   --bubble-warn-bg: linear-gradient(135deg, #fff7e0, #ffffff);
   --bubble-danger-bg: linear-gradient(135deg, #ffe1e0, #ffffff);

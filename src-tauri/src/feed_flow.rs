@@ -271,15 +271,27 @@ pub fn on_drag_leave(app: &AppHandle, state: &Arc<AppState>) {
 /// 文件 hover 在桌宠窗口上 —— 进 waiting 态 + 跑步过去咬住光标。
 ///
 /// v0.4 · 这是用户原型里强调的"跑过来"动画。实现：
-///   1. emit FeedWaiting（CSS sprite 张嘴动画起）
-///   2. 400ms 插值移窗口位置 → 鼠标位置（ease-out cubic）
-///   3. 之后启用 cursor_follow，30fps 跟着鼠标走（直到 drop / leave）
+///   1. **只 `window.show()`**（不 reposition、不 enable follow）—— 上一版踩坑：
+///      原来调 `show_mouse(app)`，内部会 `cursor_follow::enable()` 抢前 100ms 让窗口
+///      直接传送到光标，看起来跟"跑步"完全无关。
+///   2. emit FeedWaiting（CSS sprite 张嘴动画起）
+///   3. 400ms ease-out cubic 插值窗口位置 → 鼠标位置
+///   4. 动画结束才启用 cursor_follow，30fps 跟着鼠标走（直到 drop / leave）
 pub fn on_drag_enter(app: &AppHandle, state: &Arc<AppState>) {
     // 重复 enter（macOS 会反复触发）：仅在第一次启动动画
     if state.feed_drag_active.swap(true, Ordering::SeqCst) {
         return;
     }
-    show_mouse(app);
+    // 关键：抢在 cursor_follow 之前把它关掉，让动画独占 set_position
+    crate::cursor_follow::disable(state);
+    // 仅显示窗口（不动位置，让动画从当前位置 lerp 到光标）
+    let app_show = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(w) = app_show.get_webview_window("mouse") {
+            let _ = w.show();
+            let _ = w.set_always_on_top(true);
+        }
+    });
     emit_view(app, &ViewKind::FeedWaiting);
 
     let app_clone = app.clone();

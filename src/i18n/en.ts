@@ -17,6 +17,7 @@ export const en: Strings = {
 
   // Bubble
   "bubble.expand_to_panel": "💬 Continue chat",
+  "bubble.scroll_to_top": "▲ Back to top",
   "bubble.listening": "I'm listening…",
   "bubble.thinking": "Thinking",
   "bubble.session_chip": "🔗 Session #{id} · turn {turn}",
