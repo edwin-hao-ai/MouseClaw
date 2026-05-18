@@ -53,7 +53,9 @@ export const zh: Strings = {
   "anchor.hidden_hint": "完全不显示桌宠 —— 只在按快捷键召唤或主动提醒时出现",
 
   // 点击桌宠菜单 (v0.1.27 P2)
-  "petmenu.summon": "召唤 · 说话",
+  "petmenu.summon": "开始说话",
+  "petmenu.summon_hint": "或者按住 ⌘⇧空格说话，松开发送",
+  "petmenu.recording_hint": "再点桌宠 / 按 Esc 停止 → 发给 AI",
   "petmenu.history": "历史对话",
   "petmenu.feed": "喂奶酪 🧀",
   "petmenu.nap": "休息一下 (15 min)",

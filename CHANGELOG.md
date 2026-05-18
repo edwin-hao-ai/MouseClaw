@@ -13,6 +13,15 @@ versioning follows [SemVer](https://semver.org/).
   div，触发 `handleMouseClick` 的 toggle，刚 `onClose()` 的菜单又被立刻 reopen。
   在 PetMenu 容器（和 NudgeBubble 容器）上加 `onClick={e => e.stopPropagation()}`
   截住冒泡。点喂奶酪 / 召唤 / 历史 / 任何项目都正确关闭菜单了
+- **🎨 换形象 → 取消把整个 app 关掉** — `getCurrentWindow().close()` 在
+  `decorations:true` 的 picker 窗口上会让 Tauri 复位 activation policy → macOS
+  把 accessory app 一并 quit。改成 `.hide()`，下次打开自动 reuse 这个隐藏窗口
+- **🎤 PetMenu「开始说话」点击没反应** — 原来调的是 `toggle_recording`（=松开
+  快捷键，对刚启动录音是反向操作）。新增 `start_recording` 命令（等价"按下"），
+  listening 状态下点桌宠 = 自动 stop+send。Mouse-only 用户现在能完整跑完一次
+  push-to-talk：点 PetMenu → 说话 → 再点桌宠 / Esc → 发送
+- **菜单文案变清晰** — "召唤·说话" → "开始说话"，并加 hint：
+  "或者按住 ⌘⇧空格说话，松开发送"
 
 ---
 

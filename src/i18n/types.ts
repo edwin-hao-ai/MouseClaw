@@ -70,6 +70,8 @@ export interface Strings {
 
   // Pet click menu (v0.1.27 P2)
   "petmenu.summon": string;
+  "petmenu.summon_hint": string;
+  "petmenu.recording_hint": string;
   "petmenu.history": string;
   "petmenu.feed": string;
   "petmenu.nap": string;

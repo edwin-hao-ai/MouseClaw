@@ -70,11 +70,10 @@ export function PetMenu({ open, onClose, onFeed, onNap }: PetMenuProps) {
   if (!open) return null;
 
   const summon = () => {
-    // Re-trigger pipeline by invoking dismiss → user can press shortcut.
-    // Real "summon from menu" would need a new command; for P2 we just close
-    // and let the user press the shortcut. TODO P3: add summon_now command.
+    // v0.1.30 · 走新的 start_recording —— 等价"按下快捷键"，进 listening。
+    // 之前调 toggle_recording 是反的（那个=松开，直接发送空录音）。
     onClose();
-    invoke("toggle_recording").catch(() => {});
+    invoke("start_recording").catch(() => {});
   };
   const openHub = () => { onClose(); invoke("open_hub_window").catch(() => {}); };
   const openPicker = () => { onClose(); invoke("open_picker_window").catch(() => {}); };
@@ -110,7 +109,7 @@ export function PetMenu({ open, onClose, onFeed, onNap }: PetMenuProps) {
       <button className="pet-menu-item" role="menuitem" type="button" onClick={summon}>
         <span className="pet-menu-ico">🎤</span>
         <span className="pet-menu-label">{t("petmenu.summon")}</span>
-        <span className="pet-menu-kbd">⌘⇧Space</span>
+        <span className="pet-menu-kbd" title={t("petmenu.summon_hint")}>⌘⇧Space</span>
       </button>
       <button className="pet-menu-item" role="menuitem" type="button" onClick={openHub}>
         <span className="pet-menu-ico">📜</span>
