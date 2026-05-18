@@ -223,10 +223,17 @@ export default function App() {
   }, [showAck, t]);
 
   const handleMouseClick = useCallback((e: React.MouseEvent) => {
-    // Only enable the menu when fully idle. Other states (listening / replying /
-    // panel) keep their existing semantics so the click doesn't disrupt flow.
-    if (view.kind !== "idle") return;
     e.stopPropagation();
+    // v0.1.30 · listening 时点桌宠 = 停止 + 发送（mouse-only push-to-talk 闭环）
+    // 这样从 PetMenu「开始说话」启动后，用户能用鼠标完成整个流程
+    if (view.kind === "listening" || view.kind === "voice-ime-listening") {
+      invoke("toggle_recording").catch((err) =>
+        console.warn("toggle_recording:", err));
+      return;
+    }
+    // idle 状态：toggle 弹出菜单。
+    // 其它状态（thinking / reply / panel）不响应点击，避免干扰当前流程。
+    if (view.kind !== "idle") return;
     setPetMenuOpen(prev => !prev);
   }, [view.kind]);
 

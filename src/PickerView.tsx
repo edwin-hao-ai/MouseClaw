@@ -64,7 +64,9 @@ export default function PickerView() {
     try {
       await invoke("save_skin", { skin: id });
       setOriginalSkin(id);
-      await getCurrentWindow().close();
+      // v0.1.30 · hide 不要 close —— close 会让 Tauri 复位 activation policy
+      // 进而把 accessory app 退出（macOS 把最后一个可见 window 关闭等价于退出）
+      await getCurrentWindow().hide();
     } catch (e) {
       console.error("apply skin failed", e);
     }

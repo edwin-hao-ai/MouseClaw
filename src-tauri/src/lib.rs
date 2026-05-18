@@ -227,6 +227,7 @@ pub fn run() {
             commands::save_shortcut,
             commands::cancel_pipeline,
             commands::toggle_recording,
+            commands::start_recording,
             commands::pin_window,
             commands::dismiss,
             commands::read_history,

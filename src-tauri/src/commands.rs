@@ -10,7 +10,7 @@ use tauri_plugin_global_shortcut::Shortcut;
 use crate::backend::Backend;
 use crate::events::EV_SKIN_CHANGED;
 use crate::overlay::{bump_gen, hide_overlay};
-use crate::pipeline::{on_shortcut_release, run_pipeline};
+use crate::pipeline::{on_shortcut_press, on_shortcut_release, run_pipeline};
 use crate::skins::SkinId;
 use crate::{audio, config, permissions};
 use crate::AppState;
@@ -614,6 +614,24 @@ pub async fn toggle_recording(
 ) -> Result<(), String> {
     let state = state.inner().clone();
     tauri::async_runtime::spawn(async move { on_shortcut_release(app, state).await });
+    Ok(())
+}
+
+/// v0.1.30 · PetMenu「🎤 召唤·说话」点击入口 —— 等价于"按下快捷键"。
+/// 配合 toggle_recording（=松开），让 mouse-only 用户也能完成 push-to-talk:
+///   1. 点 PetMenu 召唤 → start_recording → overlay 进 listening 状态
+///   2. 用户对着麦克风说话
+///   3. 点桌宠 / 点 Stop 按钮 / 按 Esc → toggle_recording → 转写+发送
+/// 不打扰原 push-to-talk（按住快捷键）流程。
+#[tauri::command]
+pub async fn start_recording(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    let state = state.inner().clone();
+    // 触发 show_mouse + 进入 listening。和 lib.rs 全局快捷键 PRESS 分支等价。
+    crate::overlay::show_mouse(&app);
+    tauri::async_runtime::spawn(async move { on_shortcut_press(app, state).await });
     Ok(())
 }
 

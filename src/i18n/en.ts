@@ -53,7 +53,9 @@ export const en: Strings = {
   "anchor.hidden_hint": "Hide the pet completely — only appears on shortcut summon or nudge",
 
   // Pet click menu (v0.1.27 P2)
-  "petmenu.summon": "Summon · talk",
+  "petmenu.summon": "Start talking",
+  "petmenu.summon_hint": "Or hold ⌘⇧Space to talk, release to send",
+  "petmenu.recording_hint": "Click pet / Esc to stop & send",
   "petmenu.history": "History",
   "petmenu.feed": "Feed cheese 🧀",
   "petmenu.nap": "Take a nap (15 min)",
