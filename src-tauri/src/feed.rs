@@ -392,6 +392,8 @@ mod tests {
 
     #[test]
     fn preamble_emits_path_for_huge_text() {
+        // 超过 INLINE_TEXT_CHAR_LIMIT 的文本：truncate_for_inline 把它砍到 limit 但末尾加
+        // 提示字，最终 char_count 略大于 limit → preamble 走"太长，请 Read"分支。
         let huge: String = "a".repeat(INLINE_TEXT_CHAR_LIMIT + 100);
         let mut bundle = FeedBundle::default();
         bundle.files.push(FedFile {
@@ -403,8 +405,8 @@ mod tests {
             reject_reason: None,
         });
         let p = bundle.prompt_preamble().unwrap();
-        // truncated content still inlined (truncated marker present)
-        assert!(p.contains("截断"));
+        assert!(p.contains("/tmp/big.txt"));
+        assert!(p.contains("太长"));
     }
 
     #[test]

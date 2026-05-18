@@ -37,3 +37,31 @@ for file in "${FILES[@]}"; do
 done
 
 echo "🦞 All 4 sherpa-zh-en model files ready in $DIR"
+
+# v0.3.6 · CT-Transformer 标点模型（int8 量化版 72MB）—— 给 sherpa 出来的纯
+# 文本补 。，？！。本地推理 ~10ms 免费。从 k2-fsa GitHub release 拉 tarball，
+# 解 model.int8.onnx 出来即可（其它文件 README / config 不用）。
+PUNCT_DIR="$(cd "$(dirname "$0")/.." && pwd)/src-tauri/resources/sherpa-punct"
+PUNCT_FILE="$PUNCT_DIR/model.int8.onnx"
+PUNCT_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/punctuation-models/sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8.tar.bz2"
+
+mkdir -p "$PUNCT_DIR"
+if [ -f "$PUNCT_FILE" ] && [ -s "$PUNCT_FILE" ]; then
+  echo "✅ Cached punctuation model ($(stat -f%z "$PUNCT_FILE" 2>/dev/null || stat -c%s "$PUNCT_FILE") bytes)"
+else
+  TMP="$(mktemp -d)"
+  echo "⬇️  Downloading punctuation tarball (~30MB compressed)…"
+  curl -fL --progress-bar -o "$TMP/punct.tar.bz2" "$PUNCT_URL"
+  echo "📦 Extracting model.int8.onnx…"
+  (cd "$TMP" && tar -xjf punct.tar.bz2)
+  # tarball 解压出一个同名目录，从里头挑 model.int8.onnx
+  FOUND="$(find "$TMP" -name "model.int8.onnx" -type f | head -1)"
+  if [ -z "$FOUND" ]; then
+    echo "❌ model.int8.onnx not found in tarball"
+    exit 1
+  fi
+  mv "$FOUND" "$PUNCT_FILE"
+  rm -rf "$TMP"
+  echo "    → $(stat -f%z "$PUNCT_FILE" 2>/dev/null || stat -c%s "$PUNCT_FILE") bytes"
+fi
+echo "🦞 punctuation model ready in $PUNCT_DIR"

@@ -19,7 +19,9 @@ export type MouseState =
   | "sleep" | "listen" | "think" | "write" | "jump" | "block"
   | "type"   // v0.1.14 · 语音 IME 中：盯光标，前爪举笔状
   | "hub"    // v0.1.14 · Hub 打开：坐下，弯眼 ︶
-  | "paste"; // v0.1.14 · 粘贴动作：爪子拎剪贴板，闪一下
+  | "paste"  // v0.1.14 · 粘贴动作：爪子拎剪贴板，闪一下
+  | "feed-wait"     // v0.4 · 文件 hover 在桌宠上：张嘴等接收
+  | "feed-digest";  // v0.4 · 已吞下文件：闭眼眯笑 + 肚子发光（CSS）
 
 interface PixelMouseProps {
   state: MouseState;
@@ -305,6 +307,24 @@ function Eyes({ state, skin }: { state: MouseState; skin: Skin }) {
       </>
     );
   }
+  // v0.4 · feed-digest：闭眼眯笑（吃饱满足）
+  if (state === "feed-digest") {
+    return (
+      <>
+        <rect x="5"  y="6" width="2" height="1" fill={e} />
+        <rect x="9"  y="6" width="2" height="1" fill={e} />
+      </>
+    );
+  }
+  // v0.4 · feed-wait：圆瞪眼盯着文件
+  if (state === "feed-wait") {
+    return (
+      <>
+        <rect x="5"  y="5" width="2" height="2" fill={e} />
+        <rect x="9"  y="5" width="2" height="2" fill={e} />
+      </>
+    );
+  }
   // v0.1.14 · hub 状态：弯眼 ︶（开心闭眼）
   if (state === "hub") {
     return (
@@ -365,6 +385,26 @@ function Extras({ state, skin }: { state: MouseState; skin: Skin }) {
         <rect x="1" y="8"  width="1" height="2" fill={p.body} />
         <rect x="0" y="7"  width="1" height="2" fill={p.paw} />
         <rect x="-1" y="6" width="1" height="1" fill={p.nose} />
+      </>
+    );
+  }
+  // v0.4 · feed-wait：张大嘴等接收文件（粉色嘴 + 一点黑色喉咙）
+  if (state === "feed-wait") {
+    return (
+      <>
+        <rect x="7" y="8" width="2" height="2" fill={p.eye} />
+        <rect x="7" y="9" width="2" height="1" fill={p.nose} />
+        {/* 头顶冒一颗"❓" */}
+        <rect className="mc-dot mc-dot-1" x="14" y="-2" width="1" height="1" fill="var(--accent-primary)" />
+      </>
+    );
+  }
+  // v0.4 · feed-digest：肚子小亮点（CSS belly-glow 用类做脉冲）
+  if (state === "feed-digest") {
+    return (
+      <>
+        <rect x="6" y="9" width="4" height="1" fill={p.nose} opacity="0.5" />
+        <rect x="7" y="8" width="2" height="2" fill={p.nose} opacity="0.7" />
       </>
     );
   }

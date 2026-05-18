@@ -55,9 +55,16 @@ pub async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppStat
         store.touch(false, frontmost.as_deref());
         store.context_preamble()
     };
-    let prompt_with_context = match &context_preamble {
-        Some(pre) => format!("{pre}{transcript}"),
-        None => transcript.clone(),
+
+    // v0.4 · 看 state.fed_docs：有就把"喂"给桌宠的文件 preamble 前置到 transcript
+    // 取走（take）→ 一次性消费，跑完就清空。
+    let feed_preamble = state.fed_docs.lock().await.take().and_then(|b| b.prompt_preamble());
+
+    let prompt_with_context = match (&context_preamble, &feed_preamble) {
+        (Some(ctx), Some(feed)) => format!("{ctx}{feed}{transcript}"),
+        (Some(ctx), None) => format!("{ctx}{transcript}"),
+        (None, Some(feed)) => format!("{feed}{transcript}"),
+        (None, None) => transcript.clone(),
     };
 
     emit_view(&app, &ViewKind::Thinking { transcript: transcript.clone() });

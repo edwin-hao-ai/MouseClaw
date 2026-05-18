@@ -89,6 +89,33 @@
   filter: var(--shadow-mouse) saturate(0.7);
 }
 
+/* v0.4 · feed-wait — 张嘴等接收文件：身体微微前倾 + 上下小幅期待抖动 */
+.mouse-feed-wait .mouse-svg {
+  animation: mc-feed-wait 600ms ease-in-out infinite;
+  transform-origin: center bottom;
+}
+@keyframes mc-feed-wait {
+  0%, 100% { transform: translateY(0)    scale(1); }
+  50%      { transform: translateY(-2px) scale(1.04); }
+}
+
+/* v0.4 · feed-digest — 吞下后肚子发光 + 大喘气式呼吸 + 听用户问题 */
+.mouse-feed-digest .mouse-svg {
+  animation: mc-feed-digest 1100ms ease-in-out infinite;
+  transform-origin: center bottom;
+  filter: var(--shadow-mouse) drop-shadow(0 0 4px var(--pink-soft, #fce4ec));
+}
+@keyframes mc-feed-digest {
+  0%, 100% { transform: scaleY(1)    scaleX(1); }
+  35%      { transform: scaleY(1.06) scaleX(0.97); }
+  70%      { transform: scaleY(0.97) scaleX(1.03); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mouse-feed-wait .mouse-svg,
+  .mouse-feed-digest .mouse-svg { animation: none; }
+}
+
 /* Continuing session chain indicator — 3-pixel green block above head */
 .mouse-chain {
   position: absolute;

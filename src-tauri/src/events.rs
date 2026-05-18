@@ -17,6 +17,18 @@ pub enum ViewKind {
     /// v0.1.14 · 语音 IME 中（长按触发键说话）—— 跟 Listening 区分，桌宠用 type 态
     #[serde(rename = "voice-ime-listening")]
     VoiceImeListening,
+    /// v0.4 · 用户拖文件 hover 在桌宠上但还没 drop —— 张嘴等接收
+    #[serde(rename = "feed-waiting")]
+    FeedWaiting,
+    /// v0.4 · 已吞下文件 —— 录音听用户问问题
+    #[serde(rename = "feed-listening")]
+    FeedListening {
+        /// 已吃下的文件名（用于气泡上展示）
+        files: Vec<String>,
+        /// 当前 sherpa partial（边说边出字）
+        #[serde(default)]
+        partial: String,
+    },
     Thinking { transcript: String },
     Reply {
         transcript: String,

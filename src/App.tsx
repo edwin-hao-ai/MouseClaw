@@ -35,6 +35,8 @@ function mouseStateFor(view: ViewKind): MouseState {
     case "onboarding":       return "listen";
     case "listening":        return "listen";
     case "voice-ime-listening": return "type"; // 长按触发键说话 → 笔状前爪 sprite
+    case "feed-waiting":     return "feed-wait";    // v0.4 · 文件 hover 在桌宠上：张嘴
+    case "feed-listening":   return "feed-digest";  // v0.4 · 已吞文件：消化 + 听问题
     case "thinking":         return "think";
     case "reply":            return view.streaming ? "think"
                                   : view.mode === "B" ? "write" : "jump";
@@ -277,6 +279,19 @@ function BubbleFor({ view, continuing, onExpand, onNewSession }: BubbleForProps)
     case "voice-ime-listening":
       // v0.1.14 · 语音输入法中（长按触发键），桌宠 sprite 用 "type" 态
       return <RecordingBubble />;
+    case "feed-waiting":
+      // v0.4 · 文件 hover 在桌宠上 —— 张嘴气泡
+      return <Bubble text="🍽️ 喂我？拖到我嘴里" variant="warn" />;
+    case "feed-listening": {
+      // v0.4 · 已吞下文件 —— 显示文件名 + 实时 partial（边说边出字）
+      const head = view.files.length === 1
+        ? `🍽 已吃下：${view.files[0]}`
+        : `🍽 已吃下 ${view.files.length} 份：${view.files.join("、")}`;
+      const body = view.partial && view.partial.length > 0
+        ? `\n🎙️ ${view.partial}`
+        : "\n🎙️ 听着呢，对这些文件想问什么？";
+      return <Bubble text={head + body} variant="default" streaming />;
+    }
     case "thinking":
       // 慢 —— Claude 调用要 10-30s，给个动态 loading 让用户知道在干活
       return <Bubble text={view.transcript} loading />;

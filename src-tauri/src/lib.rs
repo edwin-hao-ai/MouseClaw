@@ -26,6 +26,8 @@ pub mod cursor_trail;
 pub mod commands;
 pub mod config;
 pub mod events;
+pub mod feed;
+pub mod feed_flow;
 pub mod frontmost;
 pub mod mode_b;
 pub mod overlay;
@@ -97,6 +99,11 @@ pub struct AppState {
     /// v0.1.27 P3 · Nudge 引擎状态（last-fired 时间戳 + nap-until）。
     /// presence::spawn 返回的 PresenceBuffer 也存到这里，commands 能读。
     pub nudge_state: Arc<StdRwLock<crate::nudge::NudgeState>>,
+    /// v0.4 · 用户刚拖给桌宠的文件（drop → ingest → 放这里 → run_pipeline 取走 + 清空）。
+    /// 一次 feed 周期独占；新一次 drop 会替换。
+    pub fed_docs: Mutex<Option<feed::FeedBundle>>,
+    /// v0.4 · 用来防抖 drag-enter（macOS 在拖动期间会反复 enter/leave）。
+    pub feed_drag_active: AtomicBool,
 }
 
 impl AppState {
@@ -115,6 +122,8 @@ impl AppState {
             gen: AtomicU64::new(0),
             follow_cursor: AtomicBool::new(false),
             nudge_state: Arc::new(StdRwLock::new(crate::nudge::NudgeState::new())),
+            fed_docs: Mutex::new(None),
+            feed_drag_active: AtomicBool::new(false),
         })
     }
 }
@@ -192,6 +201,36 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(app_state.clone())
+        // v0.4 · 拖文档喂桌宠：在桌宠窗口监听 drag-drop 事件
+        .on_window_event({
+            let state = app_state.clone();
+            move |window, event| {
+                if window.label() != "mouse" {
+                    return;
+                }
+                if let tauri::WindowEvent::DragDrop(drag) = event {
+                    let app = window.app_handle().clone();
+                    match drag {
+                        tauri::DragDropEvent::Enter { paths, .. } => {
+                            if paths.iter().any(|p| p.is_file()) {
+                                feed_flow::on_drag_enter(&app, &state);
+                            }
+                        }
+                        tauri::DragDropEvent::Leave => {
+                            feed_flow::on_drag_leave(&app, &state);
+                        }
+                        tauri::DragDropEvent::Drop { paths, .. } => {
+                            let files: Vec<std::path::PathBuf> =
+                                paths.iter().filter(|p| p.is_file()).cloned().collect();
+                            if !files.is_empty() {
+                                feed_flow::on_files_dropped(app, state.clone(), files);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        })
         .plugin(tauri_plugin_opener::init())
         // v0.1.26 · 开机自启动。--minimized 标志在 main.rs 检测，启动时不弹任何窗口
         .plugin(tauri_plugin_autostart::init(

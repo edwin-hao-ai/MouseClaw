@@ -8,6 +8,8 @@ export type ViewKind =
   | { kind: "onboarding" }
   | { kind: "listening"; partial?: string }     // after shortcut; awaiting user text/voice (v0.2: streaming partial)
   | { kind: "voice-ime-listening" }  // v0.1.14: hold-trigger voice IME 中
+  | { kind: "feed-waiting" }         // v0.4: 文件 hover 在桌宠上、还没 drop
+  | { kind: "feed-listening"; files: string[]; partial?: string }  // v0.4: 已吞下文件、听用户问问题
   | { kind: "thinking"; transcript: string }
   | { kind: "reply"; transcript: string; reply: string; mode: "A" | "B"; insertText?: string; streaming?: boolean }
   | { kind: "panel"; sessionId: number; turns: Turn[] }
