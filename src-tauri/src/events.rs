@@ -90,14 +90,23 @@ pub enum NudgeKind {
     Stuck,
     /// 深夜：≥ 23:30 仍在活跃 → 劝睡
     LateNight,
+    /// v0.1.32 · 喝水：连续高强度敲键 ≥ 20min → 喝口水歇一下
+    Water,
+    /// v0.1.32 · 早安：每天首次解锁屏幕 → 老鼠伸懒腰打招呼
+    GoodMorning,
+    /// v0.1.32 · 午餐：12:00-13:30 久坐 → 提醒午饭啦
+    Lunch,
 }
 
 impl NudgeKind {
     pub fn as_str(&self) -> &'static str {
         match self {
-            NudgeKind::Stretch   => "stretch",
-            NudgeKind::Stuck     => "stuck",
-            NudgeKind::LateNight => "late-night",
+            NudgeKind::Stretch     => "stretch",
+            NudgeKind::Stuck       => "stuck",
+            NudgeKind::LateNight   => "late-night",
+            NudgeKind::Water       => "water",
+            NudgeKind::GoodMorning => "good-morning",
+            NudgeKind::Lunch       => "lunch",
         }
     }
 }

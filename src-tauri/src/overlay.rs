@@ -60,6 +60,30 @@ pub fn show_mouse(app: &AppHandle) {
     }
 }
 
+/// v0.1.32 · 给 Nudge / 主动提醒用的 "show"。
+///
+/// 跟 `show_mouse` 的区别：
+///   - **不**把窗口搬到鼠标位置（show_mouse 会，导致 bubble 出现位置乱跳 + 被屏幕边切半）
+///   - **不**启用 cursor_follow（nudge 不该跟着鼠标走）
+///   - 把 overlay 放到用户的 anchor 位置（4 角之一 / Hidden 时也放 BR 兜底）
+pub fn show_mouse_at_anchor(app: &AppHandle) {
+    let anchor = crate::config::Config::load().pet_anchor;
+    // Hidden / Follow 也强行放右下兜底 —— 让 nudge bubble 有可见位置可挂
+    let effective = if anchor.pin_visible_when_idle() {
+        anchor
+    } else {
+        crate::config::PetAnchor::BottomRight
+    };
+    crate::anchor::apply_idle_anchor(app, effective);
+    let app2 = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(w) = app2.get_webview_window("mouse") {
+            let _ = w.show();
+            let _ = w.set_always_on_top(true);
+        }
+    });
+}
+
 /// Get cursor position in top-left-origin screen coordinates.
 /// ⚠️ 只能在主线程调用（碰 NSScreen）。
 #[cfg(target_os = "macos")]

@@ -7,7 +7,10 @@
 .nudge-bubble {
   position: absolute;
   bottom: 78px;
-  right: 4px;
+  /* v0.1.32 · 居中于 pet 上方，左右对称 —— 之前 right:4 让 bubble 向左延伸超出
+     320×320 窗口左边界被切。改用 transform 居中后 240px 宽 bubble 完整可见。 */
+  left: 50%;
+  transform: translateX(-50%);
   width: 240px;
   background: var(--bubble-bg, linear-gradient(135deg, #ffffff, #fbfbfd));
   color: #1a1a2e;
@@ -22,20 +25,22 @@
 }
 
 @keyframes nudge-in {
-  0%   { opacity: 0; transform: translateY(8px) scale(0.92); }
-  100% { opacity: 1; transform: translateY(0)   scale(1); }
+  /* keep translateX(-50%) horizontal centering throughout the animation */
+  0%   { opacity: 0; transform: translateX(-50%) translateY(8px) scale(0.92); }
+  100% { opacity: 1; transform: translateX(-50%) translateY(0)   scale(1); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .nudge-bubble { animation: none; }
 }
 
-/* tail pointing down at the pet */
+/* tail pointing down at the pet — centered like the bubble */
 .nudge-bubble::after {
   content: "";
   position: absolute;
   bottom: -6px;
-  right: 28px;
+  left: 50%;
+  margin-left: -6px;     /* center 12px-wide tail */
   width: 12px;
   height: 12px;
   background: var(--bubble-bg, #fff);
@@ -97,7 +102,34 @@
 }
 .nudge-mute:hover { color: #555; background: #f4f4f7; }
 
+/* v0.1.32 · ✕ close button — top right corner, immediate dismiss */
+.nudge-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  appearance: none;
+  border: 0;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: #bbb;
+  font: 16px/1 -apple-system, system-ui, sans-serif;
+  font-weight: 400;
+  cursor: pointer;
+  border-radius: 50%;
+  padding: 0;
+  transition: background 120ms ease, color 120ms ease;
+}
+.nudge-close:hover  { background: #f0f0f3; color: #555; }
+.nudge-close:active { transform: scale(0.92); }
+
 /* per-kind accent on the left edge so users can quickly identify the source */
-.nudge-bubble.nudge-stretch    { border-left: 3px solid var(--success, #5cd6a0); }
-.nudge-bubble.nudge-stuck      { border-left: 3px solid var(--accent-primary, #ff6b9d); }
-.nudge-bubble.nudge-late-night { border-left: 3px solid var(--info, #6ec1ff); }
+.nudge-bubble.nudge-stretch      { border-left: 3px solid var(--success, #5cd6a0); }
+.nudge-bubble.nudge-stuck        { border-left: 3px solid var(--accent-primary, #ff6b9d); }
+.nudge-bubble.nudge-late-night   { border-left: 3px solid var(--info, #6ec1ff); }
+/* v0.1.32 · new kinds */
+.nudge-bubble.nudge-water        { border-left: 3px solid #6ec1ff; }       /* water blue */
+.nudge-bubble.nudge-good-morning { border-left: 3px solid #ffd166; }       /* sunrise yellow */
+.nudge-bubble.nudge-lunch        { border-left: 3px solid #ffa873; }       /* warm orange */
