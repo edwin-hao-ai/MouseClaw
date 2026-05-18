@@ -402,37 +402,12 @@ pub async fn on_shortcut_release(app: AppHandle, state: Arc<AppState>) {
             hide_overlay(&app_clone);
             return;
         }
-        // v0.1.10 · 双层 tidy：
-        //   Layer 1 light_clean (50ms, 永远开) —— regex 去口头禅 + 收敛标点
-        //   Layer 2 LLM tidy (3-8s, opt-in)   —— config.tidy_up_enabled 才走
-        // 默认只跑 Layer 1，保流畅；想要精修的用户开 Layer 2。
+        // v0.3.4 · 只跑 light_clean（regex, 5ms）—— LLM polish 删除
         tauri::async_runtime::spawn(async move {
             let cfg = crate::config::Config::load();
-
-            // Layer 1: 即时 light clean，无感
             let light = crate::tidy_up::light_clean(&transcript, &cfg.language);
             println!("[mouseclaw] transcript (light): {light:?}");
-
-            // Layer 2: opt-in LLM tidy
-            let final_transcript = if cfg.tidy_up_enabled {
-                let _ = app_clone.emit(EV_VIEW_CHANGED, ViewKind::Thinking {
-                    transcript: format!("（{}…）",
-                        if cfg.language == "en" { "polishing voice" } else { "精修语音" }),
-                });
-                match crate::tidy_up::tidy(&light, cfg.backend, &cfg.language).await {
-                    Ok(cleaned) => {
-                        println!("[mouseclaw] transcript (LLM tidied): {cleaned:?}");
-                        cleaned
-                    }
-                    Err(e) => {
-                        eprintln!("[mouseclaw] LLM tidy 失败，用 light 版兜底: {e}");
-                        light
-                    }
-                }
-            } else {
-                light
-            };
-            run_pipeline(final_transcript, app_clone, state_clone).await;
+            run_pipeline(light, app_clone, state_clone).await;
         });
     });
 }

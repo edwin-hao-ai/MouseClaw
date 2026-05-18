@@ -260,8 +260,6 @@ pub fn run() {
             commands::open_panel_window,
             commands::take_panel_context,
             commands::open_hub_window,
-            commands::save_tidy_up,
-            commands::get_tidy_up,
             commands::save_voice_ime,
             commands::get_voice_ime,
             commands::save_voice_ime_trigger,

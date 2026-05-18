@@ -599,36 +599,12 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
         }
         println!("[mouseclaw] 🎙️ light cleaned → {cleaned:?}");
 
-        // v0.3.2 · LLM polish 阶段 —— 加标点 + 修自我纠错 + 去口头禅
-        // Typeless / 豆包 同等的最终质量都靠这一层。Haiku 4.5 单次 ~$0.0003、~1.5s
-        // 失败兜底 light_clean 版本，主流程不受影响
+        // v0.3.4 · LLM polish 删除 —— 语音打字要快不要 LLM。
+        // 直接走 light_clean 出来的 cleaned，跟已 typed 字做 LCP delta 收尾。
         let app2 = app.clone();
         let state2 = state.clone();
-        let language = cfg.language.clone();
-        let backend = cfg.backend;
-        let tidy_on = cfg.tidy_up_enabled;
         tauri::async_runtime::spawn(async move {
-            let final_text = if tidy_on {
-                crate::overlay::emit_view(&app2, &crate::events::ViewKind::Thinking {
-                    transcript: if language == "en" {
-                        "(polishing punctuation + structure…)".into()
-                    } else {
-                        "(精修标点 + 优化排版…)".into()
-                    },
-                });
-                match crate::tidy_up::tidy(&cleaned, backend, &language).await {
-                    Ok(p) => {
-                        println!("[mouseclaw] 🎙️ tidy LLM → {p:?}");
-                        p
-                    }
-                    Err(e) => {
-                        eprintln!("[mouseclaw] 🎙️ tidy 失败 fallback light: {e}");
-                        cleaned.clone()
-                    }
-                }
-            } else {
-                cleaned.clone()
-            };
+            let final_text = cleaned.clone();
 
             // LCP delta vs 流式 poller 已 type 的字 —— 仅删/补差异部分
             let typed = state2.ime_typed.lock().unwrap().clone();

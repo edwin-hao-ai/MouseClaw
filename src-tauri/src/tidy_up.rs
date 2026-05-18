@@ -1,58 +1,20 @@
-//! Tidy-up · 语音转写后整理（v0.1.10 双层）
+//! Tidy-up · 语音转写后整理（v0.3.4 简化版）
 //!
-//! 用户问得对：「加 LLM 会不会很慢？」
-//! 答：会 —— Claude CLI 冷启动 + thinking ~3-8s。所以分两层：
+//! v0.3.4 起 **删了 LLM tidy 全套**。理由（用户语 2026-05-18）：
+//!   - 语音打字 = 节省时间，加 1-3s LLM 等待 + 花用户钱 = 直接违背初衷
+//!   - sherpa Zipformer 出的字本身可用，缺标点也好过等 2 秒
+//!   - 要"标点+排版"的用户，键盘改更快
 //!
-//! ## Layer 1 · light_clean (默认 always-on · 即时 50ms)
-//! 纯 regex / string ops：
-//!   - 去填充词（嗯/啊/呃/那个 / um / uh / like / you know）
-//!   - 收敛多重标点
-//!   - trim 空白
-//! 没有外部调用、不联网、不可能让流程变慢。
+//! 现在只剩 light_clean —— 纯 regex/string，即时 ~5ms 完成。
+//! 去口头禅 + 收敛多重标点 + trim。无外部调用、无联网、无可能让流程变慢。
 //!
-//! ## Layer 2 · llm_tidy (opt-in · 慢 3-8s)
-//! 配置 `tidy_up_enabled = true` 才走，跑一次完整 Claude/Codex CLI 清洗。
-//! 适合：语音 IME 场景（用户看到的就是这段字，多等 5s 换干净文本值得）。
-//! 不适合：AI 召唤场景（Claude 主流程已经在跑，再加 5s 用户会暴躁）。
+//! 如果某天我们想加 polish 功能，应该用**本地 sherpa CT-Transformer 标点模型**（72MB，
+//! 离线，instant），不要回到 LLM 路径。
 //!
-//! 流程：raw → light_clean → (可选) llm_tidy → 给后续用
-//! 灵感：Typeless / Wispr Flow / FreeFlow 套路。
-
-use anyhow::Result;
-use std::time::Duration;
-
-/// LLM 的清洗指令 —— 比一般 prompt 更狠地强调「100% 保留原意」
-const TIDY_PROMPT_ZH: &str = r#"你是一个语音转写**整理器**。下面是用户口语转写的原始文本（可能有口头禅/重复/错字/没标点）。
-
-任务：
-1. 去掉填充词（嗯/啊/那个/呃/就是…）
-2. 加合适的标点（中文用，。！？）
-3. 修明显的同音错字 / 自我纠正（"我想去…不，我想留下" → "我想留下"）
-4. **不要**改写、不要加内容、不要润色风格 —— 保留用户原本的措辞和语气
-
-**只输出整理后的纯文本**，不要解释、不要前后缀、不要 markdown。文本如下：
-
-"#;
-
-const TIDY_PROMPT_EN: &str = r#"You are a voice transcription **cleaner**. Below is raw speech-to-text output (may contain filler words, repeats, typos, missing punctuation).
-
-Task:
-1. Remove filler words (um, uh, like, you know, well…)
-2. Add appropriate punctuation
-3. Fix self-corrections ("I want to buy... no, I want to book" → "I want to book")
-4. **Do NOT** rewrite, add content, or change style — preserve the user's original wording and tone
-
-**Output only the cleaned text**, no explanations, no prefixes, no markdown. Text:
-
-"#;
-
-/// 太短的文本不值得过 LLM —— 8 chars 是经验值（一两个词）
-const MIN_LEN_TO_TIDY: usize = 8;
-/// LLM 调用超时 —— tidy 必须快，超 5s 就放弃用原文
-const TIDY_TIMEOUT_MS: u64 = 5_000;
+//! 灵感：Typeless / Wispr Flow / FreeFlow 套路里的 "instant clean" 那层。
 
 // ============================================================================
-// Layer 1 · light_clean —— 纯 regex / string，无 LLM，~50ms
+// light_clean —— 纯 regex / string，无 LLM，~5ms
 // ============================================================================
 
 /// 中文口头禅 —— 独立 token，前后没有上下文意义时才删
@@ -159,133 +121,14 @@ fn collapse_repeats(s: &str) -> String {
     out
 }
 
-/// 用当前后端跑一次 tidy。失败 / 超时 → Err，调用方应该用原文兜底。
-///
-/// 注意：这里**不**通过 backend.rs 走 streaming —— 直接最简单的 spawn + stdout 收集，
-/// 因为我们要的是一段纯文本，不需要流式动画。也省了一次截图的成本。
-pub async fn tidy(raw: &str, backend: crate::backend::Backend, ui_lang: &str) -> Result<String> {
-    let trimmed = raw.trim();
-    if trimmed.chars().count() < MIN_LEN_TO_TIDY {
-        // 太短，直接返回原文
-        return Ok(trimmed.to_string());
-    }
-
-    let prompt = format!(
-        "{}{}",
-        if ui_lang == "en" { TIDY_PROMPT_EN } else { TIDY_PROMPT_ZH },
-        trimmed
-    );
-
-    let result = tokio::time::timeout(
-        Duration::from_millis(TIDY_TIMEOUT_MS),
-        run_quick_llm(backend, &prompt),
-    ).await;
-
-    match result {
-        Ok(Ok(cleaned)) => Ok(post_strip(&cleaned)),
-        Ok(Err(e)) => Err(anyhow::anyhow!("tidy LLM failed: {e}")),
-        Err(_) => Err(anyhow::anyhow!("tidy timed out after {}ms", TIDY_TIMEOUT_MS)),
-    }
-}
-
-/// 跑一次最轻量的 LLM 调用 —— 不传图、不带历史、纯文本进出
-async fn run_quick_llm(backend: crate::backend::Backend, prompt: &str) -> Result<String> {
-    use std::process::Stdio;
-    use tokio::io::AsyncReadExt;
-
-    let bin = match backend {
-        crate::backend::Backend::ClaudeCli => "claude",
-        crate::backend::Backend::CodexCli => "codex",
-        crate::backend::Backend::OpenclawCli => "openclaw",
-        crate::backend::Backend::HermesAgent => "hermes",
-    };
-    let bin_path = crate::claude_cli::find_binary(bin)?;
-
-    // Claude: `claude -p "<prompt>"` 单次调用，无 streaming
-    // Codex: `codex exec --skip-git-repo-check "<prompt>"`
-    // OpenClaw: `openclaw agent --local -m "<prompt>"`
-    // Hermes: `hermes -z "<prompt>"` 干净的单次模式
-    let args: Vec<String> = match backend {
-        crate::backend::Backend::ClaudeCli => {
-            // v0.3.2 · 强制走 Haiku 4.5 —— tidy 只做"去口头禅 + 加标点 + 修自我纠错"，
-            // Sonnet 太重。Haiku 比 Sonnet 快 ~3x、cost ~1/3，对这种轻清洗刚好。
-            vec!["-p".into(), prompt.into(),
-                 "--model".into(), "claude-haiku-4-5".into(),
-                 "--permission-mode".into(), "auto".into(),
-                 "--output-format".into(), "text".into()]
-        }
-        crate::backend::Backend::CodexCli => {
-            vec!["exec".into(), "--skip-git-repo-check".into(), prompt.into()]
-        }
-        crate::backend::Backend::OpenclawCli => {
-            vec!["agent".into(), "--local".into(), "-m".into(), prompt.into()]
-        }
-        crate::backend::Backend::HermesAgent => {
-            vec!["-z".into(), prompt.into()]
-        }
-    };
-
-    let mut child = tokio::process::Command::new(&bin_path)
-        .env("PATH", crate::claude_cli::expanded_path())
-        .args(&args)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
-
-    let mut stdout = child.stdout.take().ok_or_else(|| anyhow::anyhow!("stdout piped"))?;
-    let mut buf = String::new();
-    stdout.read_to_string(&mut buf).await?;
-    let status = child.wait().await?;
-    if !status.success() {
-        let mut err = String::new();
-        if let Some(mut s) = child.stderr.take() {
-            let _ = s.read_to_string(&mut err).await;
-        }
-        anyhow::bail!("{bin} exit {status}: {}", err.trim());
-    }
-    Ok(buf)
-}
-
-/// LLM 偶尔会包一层 markdown / "整理后:" 之类的前缀 —— 去掉
-fn post_strip(text: &str) -> String {
-    let mut s = text.trim().to_string();
-    // 去常见的开头模板
-    for prefix in ["整理后：", "整理后:", "整理结果：", "整理结果:",
-                   "Cleaned:", "Cleaned text:", "Result:"] {
-        if let Some(rest) = s.strip_prefix(prefix) {
-            s = rest.trim().to_string();
-        }
-    }
-    // 去 markdown 代码围栏
-    if s.starts_with("```") {
-        if let Some(end) = s.rfind("```") {
-            if end > 3 {
-                let inner = &s[3..end];
-                let inner = inner.trim_start_matches(|c: char| c.is_alphanumeric());
-                s = inner.trim().to_string();
-            }
-        }
-    }
-    s
-}
+// v0.3.4 · LLM tidy / run_quick_llm / post_strip 全删除 —— 语音打字要快不要 LLM。
+// 如果将来想加 polish，应该用本地 sherpa CT-Transformer 标点模型，不要回 LLM 路径。
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn post_strip_removes_common_prefixes() {
-        assert_eq!(post_strip("整理后: 今天天气真好"), "今天天气真好");
-        assert_eq!(post_strip("Cleaned: I want to go home"), "I want to go home");
-        assert_eq!(post_strip("just clean text"), "just clean text");
-    }
-
-    #[test]
-    fn post_strip_unwraps_fences() {
-        assert_eq!(post_strip("```\n你好世界\n```"), "你好世界");
-    }
-
-    // ── Layer 1 · light_clean 测试 ──
+    // ── light_clean 测试 ──
 
     #[test]
     fn light_clean_removes_zh_fillers() {

@@ -114,12 +114,9 @@ pub struct Config {
     /// 加新语言：枚举改成 string + 前端 LANGUAGES 表加项即可，Rust 这边不卡。
     #[serde(default = "default_language")]
     pub language: String,
-    /// 是否启用语音转写后的 LLM 清洗（v0.1.10 · Typeless 套路）。
-    /// 开启时：Whisper 出文本 → 快速 Claude/Codex 调用清掉口头禅 / 加标点 / 修自我修正
-    /// 关掉时：Whisper 原始输出直接用
-    /// 短文本（< 8 字）和后端不可用时自动跳过，不影响响应。
-    #[serde(default = "default_tidy_up")]
-    pub tidy_up_enabled: bool,
+    // tidy_up_enabled removed in v0.3.4 — LLM polish deleted (slow + costly,
+    // violates voice-typing's speed-first value). Old configs silently ignore
+    // the field via serde's default unknown-field behavior.
     /// 长按 fn → 语音输入到光标（v0.1.11 voice IME）
     /// 默认开 —— 用户长按 fn 才触发，短按 fn 仍走 macOS 原生行为
     #[serde(default = "default_voice_ime")]
@@ -164,10 +161,7 @@ fn default_language() -> String { "zh".into() }
 // LLM tidy 默认**关** —— Claude CLI 调用每次 +3-8s，对 AI 召唤流程是过度优化。
 // 只有写到光标的语音 IME 场景值得开（精修文本，用户看到的就是它）。
 // 用户托盘菜单可一键开。
-// v0.3.2 · 默认 ON —— Typeless/豆包 等竞品都默认带标点+优化+重排，
-// 用户反馈"统一处理时没标点没优化"就是因为这个默认关了。
-// 走 Haiku 4.5，单次 ~$0.0003，等待 1-2s 换专业 polish 完全值
-fn default_tidy_up() -> bool { true }
+// default_tidy_up removed in v0.3.4 alongside LLM polish
 fn default_voice_ime() -> bool { true }
 fn default_voice_ime_trigger() -> String { "fn".into() }
 fn default_autostart() -> bool { true }
@@ -179,7 +173,6 @@ impl Default for Config {
             backend: Backend::default(),
             skin: SkinId::default(),
             language: default_language(),
-            tidy_up_enabled: default_tidy_up(),
             voice_ime_enabled: default_voice_ime(),
             voice_ime_trigger: default_voice_ime_trigger(),
             clipboard_paused: false,

@@ -70,7 +70,6 @@ pub fn save_shortcut(
         backend,
         skin,
         language: prev.language,
-        tidy_up_enabled: prev.tidy_up_enabled,
         voice_ime_enabled: prev.voice_ime_enabled,
         voice_ime_trigger: prev.voice_ime_trigger,
         clipboard_paused: prev.clipboard_paused,
@@ -251,20 +250,7 @@ pub fn get_language() -> String {
     config::Config::load().language
 }
 
-/// 切换语音整理（Typeless 套路） · 托盘菜单 / 状态窗调用
-#[tauri::command]
-pub fn save_tidy_up(enabled: bool) -> Result<(), String> {
-    let mut cfg = config::Config::load();
-    cfg.tidy_up_enabled = enabled;
-    cfg.save().map_err(|e| format!("保存失败：{e}"))?;
-    println!("[mouseclaw] tidy_up_enabled → {enabled}");
-    Ok(())
-}
-
-#[tauri::command]
-pub fn get_tidy_up() -> bool {
-    config::Config::load().tidy_up_enabled
-}
+// v0.3.4 · save_tidy_up / get_tidy_up deleted alongside LLM polish.
 
 /// 切换 voice IME（fn 长按写到光标）
 #[tauri::command]

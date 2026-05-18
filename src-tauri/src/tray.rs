@@ -516,41 +516,7 @@ fn toggle_voice_ime(app: &AppHandle) {
     }
 }
 
-/// 切换 tidy-up（语音清洗）开关 —— 托盘 CheckMenuItem 调它
-fn toggle_tidy_up(app: &AppHandle) {
-    use tauri::Emitter;
-    let mut cfg = crate::config::Config::load();
-    cfg.tidy_up_enabled = !cfg.tidy_up_enabled;
-    let now_on = cfg.tidy_up_enabled;
-    if let Err(e) = cfg.save() {
-        eprintln!("[mouseclaw] toggle_tidy_up save: {e}");
-        return;
-    }
-    println!("[mouseclaw] ✨ tidy_up → {now_on}");
-    let lang = cfg.language;
-    let msg = if now_on {
-        if lang == "en" {
-            "✨ LLM polish: ON. Voice will be cleaned by AI before sending (adds 3–8s latency, off by default for speed). Regex cleanup still always-on."
-        } else {
-            "✨ LLM 精修：开。说完会先过一次 AI 整理（多 3–8 秒延迟，默认关是为了流畅）。基础 regex 清理一直都在跑。"
-        }
-    } else {
-        if lang == "en" {
-            "✋ LLM polish: OFF (default · faster). Regex light cleanup still runs (50ms) — filler words still removed."
-        } else {
-            "✋ LLM 精修：关（默认 · 更快）。Regex 轻量清理仍在跑（50ms），口头禅照样会被去掉。"
-        }
-    };
-    for (_, w) in app.webview_windows() {
-        let _ = w.emit(crate::events::EV_VIEW_CHANGED, serde_json::json!({
-            "kind": "reply",
-            "transcript": "tidy-up toggle",
-            "reply": msg,
-            "mode": "A",
-            "streaming": false,
-        }));
-    }
-}
+// v0.3.4 · toggle_tidy_up deleted alongside LLM polish.
 
 /// 打开「📊 系统状态」窗口 —— 一眼看到 claude / agent-browser / Chrome CDP / 权限的就绪状态。
 /// 每行都有"去解决"按钮（装 / 启用 / 开权限）。
