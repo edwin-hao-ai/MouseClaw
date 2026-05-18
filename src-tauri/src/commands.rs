@@ -186,6 +186,43 @@ pub fn set_nap_until(
     Ok(())
 }
 
+/// v0.1.32 · QA Debug —— 手动触发指定类型的 nudge，不查 presence buffer、
+/// 不进 cooldown，直接 emit。让你不用等 90min 鼠标静止也能看到所有 nudge 的视觉效果。
+/// 用完 v0.1.33 会把这条命令 + 托盘菜单一起干掉。
+#[tauri::command]
+pub fn debug_fire_nudge(app: AppHandle, kind: String) -> Result<(), String> {
+    use crate::events::{NudgeKind, NudgePayload, EV_NUDGE};
+    let lang_en = crate::config::Config::load().language == "en";
+    let (parsed, message, cta_label, cta_action) = match kind.as_str() {
+        "stretch" => (
+            NudgeKind::Stretch,
+            if lang_en {
+                "🧘 Stretch break? You've been sitting for 90 minutes.".to_string()
+            } else { "🧘 站起来动一动？已经坐了 90 分钟啦".to_string() },
+            None, None,
+        ),
+        "stuck" => (
+            NudgeKind::Stuck,
+            if lang_en { "🤔 Stuck? Want to ask me?".to_string() }
+            else       { "🤔 卡住了？要不要召唤一下我？".to_string() },
+            Some(if lang_en { "Summon".to_string() } else { "召唤".to_string() }),
+            Some("summon".to_string()),
+        ),
+        "late-night" => (
+            NudgeKind::LateNight,
+            if lang_en { "🌙 It's getting late… time to sleep?".to_string() }
+            else       { "🌙 已经很晚了…该睡了吧？".to_string() },
+            None, None,
+        ),
+        other => return Err(format!("unknown nudge kind: {other}")),
+    };
+    let payload = NudgePayload { kind: parsed, message, cta_label, cta_action };
+    crate::overlay::show_mouse(&app);
+    app.emit(EV_NUDGE, &payload).map_err(|e| format!("emit: {e}"))?;
+    println!("[mouseclaw] 🐛 debug nudge fired: {:?}", parsed);
+    Ok(())
+}
+
 /// 前端 dismiss nudge bubble 时调 —— 当前实现把这种 nudge 的 cooldown 标到现在，
 /// 阻止它在 30min 内再次触发。给"今天闭嘴"留出空间（后续可扩展到全天）。
 #[tauri::command]
