@@ -42,8 +42,8 @@ models/
 entities/
 mddock.md
 *.dmg
-marketing/
-# (mp4/gif intentionally committed for README)
+/marketing/
+# (mp4/gif intentionally committed for README; docs/marketing/ is tracked too)
 
 # Awareness daemon's local state (gitignored, machine-local)
 .awareness/
