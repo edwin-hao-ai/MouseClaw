@@ -241,16 +241,140 @@ async fn record_until_silent(app: AppHandle, state: Arc<AppState>, files: Vec<St
     crate::pipeline::run_pipeline(transcript, app, state).await;
 }
 
-/// 用户在拖动期间把光标离开桌宠窗口 —— 重置等待态。
+/// 用户在拖动期间把光标离开桌宠窗口 —— 重置等待态，停跑步动画。
+/// 防抖：macOS 在拖动期间会反复 enter/leave，加 200ms debounce 避免动画闪烁。
 pub fn on_drag_leave(app: &AppHandle, state: &Arc<AppState>) {
-    if state.feed_drag_active.swap(false, Ordering::SeqCst) {
-        emit_view(app, &ViewKind::Idle);
+    // Schedule leave with a 200ms debounce —— 如果同一拖动 session 200ms 内 re-enter，cancel
+    let state_clone = state.clone();
+    let app_clone = app.clone();
+    tauri::async_runtime::spawn(async move {
+        // 记录"我尝试离开的时刻"
+        let leave_time = std::time::Instant::now();
+        *state_clone.feed_last_leave.lock().unwrap() = Some(leave_time);
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        // 200ms 后：如果还是这次 leave_time（没有 re-enter 重置），才真的退场
+        let last = *state_clone.feed_last_leave.lock().unwrap();
+        if last == Some(leave_time) && state_clone.feed_drag_active.load(Ordering::SeqCst) {
+            println!("[mouseclaw] 🍽️ drag leave confirmed (200ms debounce)");
+            state_clone.feed_drag_active.store(false, Ordering::SeqCst);
+            crate::cursor_follow::disable(&state_clone);
+            // 滑回 anchor（不是 hide —— 让用户知道桌宠还在）
+            let cfg = crate::config::Config::load();
+            if cfg.pet_anchor.pin_visible_when_idle() {
+                crate::anchor::apply_idle_anchor(&app_clone, cfg.pet_anchor);
+            }
+            emit_view(&app_clone, &ViewKind::Idle);
+        }
+    });
+}
+
+/// 文件 hover 在桌宠窗口上 —— 进 waiting 态 + 跑步过去咬住光标。
+///
+/// v0.4 · 这是用户原型里强调的"跑过来"动画。实现：
+///   1. emit FeedWaiting（CSS sprite 张嘴动画起）
+///   2. 400ms 插值移窗口位置 → 鼠标位置（ease-out cubic）
+///   3. 之后启用 cursor_follow，30fps 跟着鼠标走（直到 drop / leave）
+pub fn on_drag_enter(app: &AppHandle, state: &Arc<AppState>) {
+    // 重复 enter（macOS 会反复触发）：仅在第一次启动动画
+    if state.feed_drag_active.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    show_mouse(app);
+    emit_view(app, &ViewKind::FeedWaiting);
+
+    let app_clone = app.clone();
+    let state_clone = state.clone();
+    tauri::async_runtime::spawn(async move {
+        run_to_cursor_then_follow(app_clone, state_clone).await;
+    });
+}
+
+/// 第一阶段：400ms 插值 dash 到光标；第二阶段：cursor_follow 跟随。
+async fn run_to_cursor_then_follow(app: AppHandle, state: Arc<AppState>) {
+    use tauri::{LogicalPosition, Manager};
+
+    let frames = 12u32;
+    let frame_ms = 32u64; // 12 × 32 ≈ 384ms 总跑步时长
+
+    let Some(window) = app.get_webview_window("mouse") else { return };
+    let (ww, wh) = match window.outer_size().ok() {
+        Some(s) => (s.width as f64, s.height as f64),
+        None => (320.0, 320.0),
+    };
+    let scale = window.scale_factor().unwrap_or(1.0);
+
+    // 起点：当前窗口逻辑坐标（顶左）
+    let start_logical = match window.outer_position().ok() {
+        Some(p) => (p.x as f64 / scale, p.y as f64 / scale),
+        None => (0.0, 0.0),
+    };
+
+    // 主线程读初始光标位置，决定终点
+    let app_t = app.clone();
+    let target_logical = tokio::task::spawn_blocking(move || {
+        let (tx, rx) = std::sync::mpsc::sync_channel(1);
+        let app_inner = app_t.clone();
+        let _ = app_t.run_on_main_thread(move || {
+            let pos = app_inner
+                .get_webview_window("mouse")
+                .and_then(|w| crate::overlay::cursor_screen_pos_unchecked(&w));
+            let _ = tx.send(pos);
+        });
+        rx.recv_timeout(std::time::Duration::from_millis(80)).ok().flatten()
+    })
+    .await
+    .ok()
+    .flatten();
+
+    if let Some((cx, cy)) = target_logical {
+        let scale = scale.max(0.5);
+        let tx = cx - (ww / scale) / 2.0;
+        let ty = cy - (wh / scale) + 32.0; // 同 show_mouse 的偏移（窗口下沿距光标 32px）
+        for i in 1..=frames {
+            if !state.feed_drag_active.load(Ordering::SeqCst) {
+                return; // 用户中途 leave / drop
+            }
+            let t = i as f64 / frames as f64;
+            // ease-out cubic：起步快、靠近时减速，像真的"刹车"
+            let eased = 1.0 - (1.0 - t).powi(3);
+            let nx = start_logical.0 + (tx - start_logical.0) * eased;
+            let ny = start_logical.1 + (ty - start_logical.1) * eased;
+            let app_step = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                if let Some(w) = app_step.get_webview_window("mouse") {
+                    let _ = w.set_position(LogicalPosition::new(nx, ny));
+                }
+            });
+            tokio::time::sleep(Duration::from_millis(frame_ms)).await;
+        }
+    }
+
+    // 第二阶段：把控制权交给 cursor_follow（30fps lag-follow）
+    // overlay.rs::emit_view 已经为 FeedWaiting 不开 follow，所以这里手动开。
+    if state.feed_drag_active.load(Ordering::SeqCst) {
+        crate::cursor_follow::enable(&state);
     }
 }
 
-/// 文件 hover 在桌宠窗口上 —— 进 waiting 态。
-pub fn on_drag_enter(app: &AppHandle, state: &Arc<AppState>) {
-    state.feed_drag_active.store(true, Ordering::SeqCst);
-    show_mouse(app);
-    emit_view(app, &ViewKind::FeedWaiting);
+/// 用户按 Esc：取消正在进行的 feed flow（feed-waiting 期间 / feed-listening 期间都管）。
+/// 已经进入 run_pipeline 的 reply 不归这里管 —— 那部分由 cancel_pipeline 命令处理。
+pub async fn cancel(app: AppHandle, state: Arc<AppState>) {
+    let was_waiting = state.feed_drag_active.swap(false, Ordering::SeqCst);
+    let was_listening = state.streaming_active.swap(false, Ordering::SeqCst);
+    if !was_waiting && !was_listening {
+        return;
+    }
+    println!("[mouseclaw] 🍽️ feed cancel (waiting={was_waiting}, listening={was_listening})");
+    // 清掉 fed_docs（如果有）
+    state.fed_docs.lock().await.take();
+    // 停录音 + session（如果在录）
+    let _ = state.recorder.lock().unwrap().take();
+    let _ = state.stream_session.lock().unwrap().take();
+    crate::cursor_follow::disable(&state);
+    // 回 anchor
+    let cfg = crate::config::Config::load();
+    if cfg.pet_anchor.pin_visible_when_idle() {
+        crate::anchor::apply_idle_anchor(&app, cfg.pet_anchor);
+    }
+    emit_view(&app, &ViewKind::Idle);
 }

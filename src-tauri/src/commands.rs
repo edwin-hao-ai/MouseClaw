@@ -115,6 +115,19 @@ pub fn get_skin() -> String {
     config::Config::load().skin.as_str().to_string()
 }
 
+/// v0.3.6 · 一键打开 macOS 系统设置 → 隐私与安全性 → 辅助功能 面板。
+/// 给 voice IME 失败气泡的"🔓 去授权"按钮用 —— 用户授权完退出 app 重启即可。
+///
+/// 用 `x-apple.systempreferences:` URL scheme，Sonoma 14+ 和老版 macOS 都支持。
+#[tauri::command]
+pub fn open_accessibility_settings() -> Result<(), String> {
+    std::process::Command::new("open")
+        .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+        .spawn()
+        .map_err(|e| format!("open settings: {e}"))?;
+    Ok(())
+}
+
 /// v0.1.27 · 持久化桌宠悬停位置 + 立即把窗口送到新位置 + 刷新托盘 ✓ 标记。
 /// Onboarding 完成 / 托盘子菜单切换 / Pet Picker 设置面板 都调它。
 #[tauri::command]
@@ -536,9 +549,23 @@ pub fn pin_window(state: State<'_, Arc<AppState>>) -> Result<(), String> {
 }
 
 /// 用户按 Esc / 点窗口外 → 立即隐藏。
+/// v0.4 · 如果正在 feed 流程中（drag waiting / listening），也一并 cancel：
+///   - 清掉 fed_docs（用户后悔了，AI 不要看那些文件）
+///   - 停录音 / 销毁 sherpa session
+///   - 桌宠滑回 anchor
 #[tauri::command]
-pub fn dismiss(app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    bump_gen(&state.inner().clone());
+pub async fn dismiss(app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    let s = state.inner().clone();
+    bump_gen(&s);
+    let in_drag = s.feed_drag_active.load(std::sync::atomic::Ordering::SeqCst);
+    let in_listening_with_docs = s
+        .streaming_active
+        .load(std::sync::atomic::Ordering::SeqCst)
+        && s.fed_docs.lock().await.is_some();
+    if in_drag || in_listening_with_docs {
+        crate::feed_flow::cancel(app, s).await;
+        return Ok(());
+    }
     hide_overlay(&app);
     Ok(())
 }

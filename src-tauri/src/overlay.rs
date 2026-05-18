@@ -84,6 +84,16 @@ pub fn show_mouse_at_anchor(app: &AppHandle) {
     });
 }
 
+/// v0.4 · Pub wrapper for callers outside this module (feed_flow::run-to-cursor).
+/// Marshals to main thread; returns None if call site can't await main thread reply.
+/// Use only from main-thread closures or via `app.run_on_main_thread`.
+#[cfg(target_os = "macos")]
+pub fn cursor_screen_pos_unchecked(window: &WebviewWindow) -> Option<(f64, f64)> {
+    current_mouse_pos_top_left(window)
+}
+#[cfg(not(target_os = "macos"))]
+pub fn cursor_screen_pos_unchecked(_w: &WebviewWindow) -> Option<(f64, f64)> { None }
+
 /// Get cursor position in top-left-origin screen coordinates.
 /// ⚠️ 只能在主线程调用（碰 NSScreen）。
 #[cfg(target_os = "macos")]

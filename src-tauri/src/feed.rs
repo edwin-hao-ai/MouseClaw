@@ -31,6 +31,7 @@ pub enum FeedKind {
     Text,
     Pdf,
     Docx,
+    Xlsx,
     Reject,
 }
 
@@ -41,6 +42,7 @@ impl FeedKind {
             FeedKind::Text => "文本",
             FeedKind::Pdf => "PDF",
             FeedKind::Docx => "Word",
+            FeedKind::Xlsx => "Excel",
             FeedKind::Reject => "拒收",
         }
     }
@@ -111,7 +113,7 @@ impl FeedBundle {
                         f.path.display()
                     ));
                 }
-                FeedKind::Text | FeedKind::Pdf | FeedKind::Docx => {
+                FeedKind::Text | FeedKind::Pdf | FeedKind::Docx | FeedKind::Xlsx => {
                     if let Some(text) = &f.text {
                         if text.chars().count() <= INLINE_TEXT_CHAR_LIMIT {
                             out.push_str(&format!(
@@ -183,6 +185,7 @@ pub fn classify(path: &Path) -> FeedKind {
         }
         "pdf" => FeedKind::Pdf,
         "docx" | "doc" | "rtf" | "odt" => FeedKind::Docx,
+        "xlsx" | "xls" => FeedKind::Xlsx,
         _ => FeedKind::Reject,
     }
 }
@@ -287,6 +290,17 @@ async fn ingest_one(path: PathBuf) -> FedFile {
                 reject_reason: None,
             }
         }
+        FeedKind::Xlsx => {
+            let text = extract_xlsx_text(&path).await.ok().map(truncate_for_inline);
+            FedFile {
+                name,
+                size_bytes: size,
+                path,
+                kind,
+                text,
+                reject_reason: None,
+            }
+        }
         FeedKind::Reject => FedFile {
             name,
             size_bytes: size,
@@ -332,6 +346,173 @@ async fn extract_pdf_text(path: &Path) -> Result<String> {
     Ok(s)
 }
 
+/// XLSX 抽文本：用 macOS 自带的 `unzip` 拆出 sharedStrings.xml + 各 sheet。
+/// 输出格式：先列出 sharedStrings（字符串池），再按行列出每个 sheet 的单元格值。
+/// 不解析合并单元格、不渲染表格 —— AI 自己从字符串理解结构。
+async fn extract_xlsx_text(path: &Path) -> Result<String> {
+    // 1. sharedStrings.xml: 所有字符串单元格的值池
+    let shared = Command::new("unzip")
+        .args(["-p"])
+        .arg(path)
+        .arg("xl/sharedStrings.xml")
+        .output()
+        .await
+        .context("spawn unzip sharedStrings")?;
+    let shared_str = String::from_utf8_lossy(&shared.stdout).into_owned();
+    let strings = extract_xml_t_values(&shared_str);
+
+    // 2. 列出 sheet 文件名
+    let listing = Command::new("unzip")
+        .args(["-Z1"])
+        .arg(path)
+        .output()
+        .await
+        .context("spawn unzip -Z1")?;
+    let sheets: Vec<String> = String::from_utf8_lossy(&listing.stdout)
+        .lines()
+        .filter(|l| l.starts_with("xl/worksheets/sheet") && l.ends_with(".xml"))
+        .map(|s| s.to_string())
+        .collect();
+
+    if sheets.is_empty() {
+        // 没拆出 sheet —— 兜底：sharedStrings 已有的话也算
+        if strings.is_empty() {
+            return Err(anyhow!("xlsx 里没找到 sheet 或 sharedStrings"));
+        }
+        return Ok(format!("[XLSX 字符串池]\n{}", strings.join("\n")));
+    }
+
+    let mut out = String::new();
+    for (i, sheet) in sheets.iter().enumerate() {
+        let sheet_out = Command::new("unzip")
+            .args(["-p"])
+            .arg(path)
+            .arg(sheet)
+            .output()
+            .await
+            .context("spawn unzip sheet")?;
+        let sheet_xml = String::from_utf8_lossy(&sheet_out.stdout).into_owned();
+        out.push_str(&format!("\n[Sheet {}]\n", i + 1));
+        out.push_str(&xlsx_sheet_to_csv(&sheet_xml, &strings));
+    }
+    if out.trim().is_empty() {
+        return Err(anyhow!("xlsx 文本为空"));
+    }
+    Ok(out)
+}
+
+/// 抽 XML 里所有 `<t>...</t>` 内的文本（XLSX sharedStrings + DOCX word/document.xml 都用这套）。
+fn extract_xml_t_values(xml: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    let bytes = xml.as_bytes();
+    while i < bytes.len() {
+        // 找 <t> 或 <t xml:space="preserve">
+        if let Some(start) = find_subseq(bytes, b"<t", i) {
+            // 找 > 结束这个开标签
+            if let Some(gt) = find_byte(bytes, b'>', start) {
+                let content_start = gt + 1;
+                if let Some(end) = find_subseq(bytes, b"</t>", content_start) {
+                    let raw = &xml[content_start..end];
+                    out.push(xml_unescape(raw));
+                    i = end + 4;
+                    continue;
+                }
+            }
+        }
+        break;
+    }
+    out
+}
+
+/// 找下一个 `<c ` 或 `<c>` 起点（XLSX cell 标签可以有或没有属性）。
+fn next_cell_start(haystack: &[u8], from: usize) -> Option<usize> {
+    let mut cursor = from;
+    while let Some(p) = find_subseq(haystack, b"<c", cursor) {
+        if p + 2 < haystack.len() {
+            let next = haystack[p + 2];
+            if next == b' ' || next == b'>' {
+                return Some(p);
+            }
+        }
+        cursor = p + 2;
+    }
+    None
+}
+
+fn find_subseq(haystack: &[u8], needle: &[u8], from: usize) -> Option<usize> {
+    if from >= haystack.len() {
+        return None;
+    }
+    haystack[from..].windows(needle.len()).position(|w| w == needle).map(|p| p + from)
+}
+fn find_byte(haystack: &[u8], b: u8, from: usize) -> Option<usize> {
+    if from >= haystack.len() {
+        return None;
+    }
+    haystack[from..].iter().position(|&x| x == b).map(|p| p + from)
+}
+fn xml_unescape(s: &str) -> String {
+    s.replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+}
+
+/// 把 sheet XML 转成简易 CSV —— 每行一个 `<row>`，每个 `<c>` 用 \t 分隔。
+/// 引用 sharedStrings 池（t="s" 时 `<v>index</v>`）；其他类型直接取 `<v>` 值。
+fn xlsx_sheet_to_csv(xml: &str, strings: &[String]) -> String {
+    let mut out = String::new();
+    let bytes = xml.as_bytes();
+    let mut i = 0;
+    while let Some(row_start) = find_subseq(bytes, b"<row", i) {
+        let Some(row_end) = find_subseq(bytes, b"</row>", row_start) else { break };
+        let row_xml = &xml[row_start..row_end];
+        let mut cells: Vec<String> = Vec::new();
+        let row_bytes = row_xml.as_bytes();
+        let mut j = 0;
+        while let Some(c_start) = next_cell_start(row_bytes, j) {
+            let Some(c_end) = find_subseq(row_bytes, b"</c>", c_start)
+                .or_else(|| find_subseq(row_bytes, b"/>", c_start)) else { break };
+            let cell_xml = &row_xml[c_start..c_end];
+            let is_shared = cell_xml.contains("t=\"s\"");
+            let val = if let Some(v_start) = cell_xml.find("<v>") {
+                let v_off = v_start + 3;
+                if let Some(v_end_rel) = cell_xml[v_off..].find("</v>") {
+                    Some(cell_xml[v_off..v_off + v_end_rel].to_string())
+                } else {
+                    None
+                }
+            } else if let Some(t_start) = cell_xml.find("<t>") {
+                let t_off = t_start + 3;
+                if let Some(t_end_rel) = cell_xml[t_off..].find("</t>") {
+                    Some(xml_unescape(&cell_xml[t_off..t_off + t_end_rel]))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            let cell_text = match val {
+                Some(v) if is_shared => v
+                    .parse::<usize>()
+                    .ok()
+                    .and_then(|idx| strings.get(idx).cloned())
+                    .unwrap_or(v),
+                Some(v) => v,
+                None => String::new(),
+            };
+            cells.push(cell_text);
+            j = c_end + 4;
+        }
+        out.push_str(&cells.join("\t"));
+        out.push('\n');
+        i = row_end + 6;
+    }
+    out
+}
+
 /// DOCX / RTF / ODT 抽文本：用 Apple 自带的 `textutil -convert txt -stdout`。
 async fn extract_docx_text(path: &Path) -> Result<String> {
     let out = Command::new("textutil")
@@ -368,9 +549,29 @@ mod tests {
         assert_eq!(classify(&PathBuf::from("a.json")), FeedKind::Text);
         assert_eq!(classify(&PathBuf::from("a.pdf")), FeedKind::Pdf);
         assert_eq!(classify(&PathBuf::from("a.docx")), FeedKind::Docx);
+        assert_eq!(classify(&PathBuf::from("a.xlsx")), FeedKind::Xlsx);
         assert_eq!(classify(&PathBuf::from("installer.app")), FeedKind::Reject);
         assert_eq!(classify(&PathBuf::from("a.zip")), FeedKind::Reject);
         assert_eq!(classify(&PathBuf::from("no_ext")), FeedKind::Reject);
+    }
+
+    #[test]
+    fn xlsx_xml_t_extract() {
+        let xml = "<sst><si><t>name</t></si><si><t>price</t></si><si><t xml:space=\"preserve\">apple &amp; pear</t></si></sst>";
+        let v = extract_xml_t_values(xml);
+        assert_eq!(v, vec!["name".to_string(), "price".into(), "apple & pear".into()]);
+    }
+
+    #[test]
+    fn xlsx_sheet_resolves_shared_strings() {
+        let strings = vec!["hello".to_string(), "world".into()];
+        let sheet = "<sheetData>\
+            <row><c t=\"s\"><v>0</v></c><c t=\"s\"><v>1</v></c></row>\
+            <row><c><v>42</v></c><c><v>3.14</v></c></row>\
+        </sheetData>";
+        let csv = xlsx_sheet_to_csv(sheet, &strings);
+        assert!(csv.contains("hello\tworld"));
+        assert!(csv.contains("42\t3.14"));
     }
 
     #[test]

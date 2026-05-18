@@ -17,6 +17,7 @@ pub mod backend;
 pub mod browser_bridge;
 pub mod nudge;
 pub mod presence;
+pub mod punctuation;
 pub mod transcribe_stream;
 pub mod claude_cli;
 pub mod clipboard;
@@ -104,6 +105,9 @@ pub struct AppState {
     pub fed_docs: Mutex<Option<feed::FeedBundle>>,
     /// v0.4 · 用来防抖 drag-enter（macOS 在拖动期间会反复 enter/leave）。
     pub feed_drag_active: AtomicBool,
+    /// v0.4 · drag-leave 防抖：记最后一次"打算 leave"的时刻，
+    /// 200ms 内 re-enter 就 cancel 这次 leave（避免动画闪烁）。
+    pub feed_last_leave: StdMutex<Option<std::time::Instant>>,
 }
 
 impl AppState {
@@ -124,6 +128,7 @@ impl AppState {
             nudge_state: Arc::new(StdRwLock::new(crate::nudge::NudgeState::new())),
             fed_docs: Mutex::new(None),
             feed_drag_active: AtomicBool::new(false),
+            feed_last_leave: StdMutex::new(None),
         })
     }
 }
@@ -311,6 +316,7 @@ pub fn run() {
             commands::get_autostart,
             commands::save_pet_anchor,
             commands::get_pet_anchor,
+            commands::open_accessibility_settings,
             commands::set_nap_until,
             commands::dismiss_nudge,
             commands::check_backend_installed,
@@ -403,6 +409,8 @@ pub fn run() {
             // Background Whisper model download if missing
             // v0.3 · sherpa streaming ASR：先从 bundle seed，没就后台下载
             transcribe_stream::kick_off_download_if_missing();
+            // v0.3.6 · 标点模型 —— 跟 ASR 一样从 bundle seed 到用户目录
+            let _ = punctuation::try_seed_from_bundle();
 
             // v0.1.27 · 已 onboarded 的用户：启动时把桌宠送到 anchor 位置打盹。
             // Follow 模式跳过 —— 由 cursor_follow 接管。
