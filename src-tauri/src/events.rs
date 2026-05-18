@@ -15,8 +15,13 @@ pub enum ViewKind {
         partial: String,
     },
     /// v0.1.14 · 语音 IME 中（长按触发键说话）—— 跟 Listening 区分，桌宠用 type 态
+    /// v0.3.8 · 加 partial：桌宠气泡实时显示 sherpa 流式文本（写入光标延后到 fn 松开
+    /// 后一次完成，避开 macOS fn 键的焦点抢盗问题）
     #[serde(rename = "voice-ime-listening")]
-    VoiceImeListening,
+    VoiceImeListening {
+        #[serde(default)]
+        partial: String,
+    },
     /// v0.4 · 用户拖文件 hover 在桌宠上但还没 drop —— 张嘴等接收
     #[serde(rename = "feed-waiting")]
     FeedWaiting,

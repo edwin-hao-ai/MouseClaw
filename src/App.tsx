@@ -305,8 +305,9 @@ function BubbleFor({ view, continuing, onExpand, onNewSession }: BubbleForProps)
       // v0.2 · sherpa streaming —— partial transcript flows in as user speaks
       return <RecordingBubble partial={view.partial} />;
     case "voice-ime-listening":
-      // v0.1.14 · 语音输入法中（长按触发键），桌宠 sprite 用 "type" 态
-      return <RecordingBubble />;
+      // v0.3.8 · Plan B —— 桌宠气泡实时显示 sherpa 流式 partial（视觉流式）。
+      // 真正的"打字到光标"延后到 fn 松开后一次完成（避开 fn 抢焦点）。
+      return <RecordingBubble partial={view.partial} />;
     case "feed-waiting":
       // v0.4 · 文件 hover 在桌宠上 —— 张嘴气泡
       return <Bubble text="🍽️ 喂我？拖到我嘴里" variant="warn" />;

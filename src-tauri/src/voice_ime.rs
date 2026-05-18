@@ -447,7 +447,7 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
     }
     state.streaming_active.store(true, Ordering::SeqCst);
     crate::overlay::show_mouse(&app);
-    crate::overlay::emit_view(&app, &crate::events::ViewKind::VoiceImeListening);
+    crate::overlay::emit_view(&app, &crate::events::ViewKind::VoiceImeListening { partial: String::new() });
 
     // v0.3.1 · 流式 type-as-you-speak —— 150ms 一次轮询，partial 增量直接 paste 到光标
     // 走 sherpa partial 与上一次已 type 的文本求 longest common prefix，
@@ -457,11 +457,16 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
         let mut g = state.ime_typed.lock().unwrap();
         g.clear();
     }
+    // v0.3.8 · Plan B —— streaming poller 只更新桌宠气泡 partial，**不**写入光标。
+    // 真正的 paste 延后到 fn 松开后（stop_and_paste_for_ime），那时候 macOS fn
+    // 系统行为已经结束，焦点回到原 app，CGEvent 字才进得了输入框。
+    // 这跟 Whisper 时代的 timing 一致 —— 用户看到流式视觉但写入是 batch 的。
     let state_stream = state.clone();
+    let app_stream = app.clone();
     tauri::async_runtime::spawn(async move {
         let mut ticker = tokio::time::interval(Duration::from_millis(150));
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        let mut typed: Vec<char> = Vec::new();
+        let mut last_partial = String::new();
         loop {
             ticker.tick().await;
             if !state_stream.streaming_active.load(Ordering::SeqCst) {
@@ -484,42 +489,15 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
                     continue;
                 }
             };
-            let new_chars: Vec<char> = partial.chars().collect();
-            if new_chars == typed { continue; }
-            let mut prefix = 0;
-            while prefix < typed.len()
-                && prefix < new_chars.len()
-                && typed[prefix] == new_chars[prefix]
-            {
-                prefix += 1;
-            }
-            let to_delete = typed.len() - prefix;
-            let to_type: String = new_chars[prefix..].iter().collect();
-            // v0.3.6 · 每次 type 前都把"按 fn 时的前台 app"拉回前台
-            // fn 键 macOS 语义会偷焦点（Spotlight / Dock / 输入法切换），
-            // 不重新激活的话 CGEvent 会飞到错的 app
-            #[cfg(target_os = "macos")]
-            if let Some(pid) = *state_stream.prev_frontmost_pid.lock().unwrap() {
-                crate::frontmost::activate_pid(pid);
-            }
-            if to_delete > 0 {
-                if let Err(e) = crate::mode_b::delete_chars(to_delete) {
-                    eprintln!("[mouseclaw] 🎙️ delete_chars failed: {e} — Accessibility 权限？");
-                }
-            }
-            if !to_type.is_empty() {
-                if let Err(e) = crate::mode_b::type_unicode_sync(&to_type) {
-                    eprintln!("[mouseclaw] 🎙️ type_unicode_sync failed: {e} — Accessibility 权限？");
-                }
-            }
-            typed = new_chars;
-            // 同步进 shared state 让 stop_and_paste 知道当前 typed 是什么
-            if let Ok(mut g) = state_stream.ime_typed.lock() {
-                *g = partial.clone();
-            }
-            println!("[mouseclaw] 🎙️ partial typed: {:?}", partial);
+            if partial == last_partial { continue; }
+            last_partial = partial.clone();
+            // 桌宠头顶气泡实时显示新 partial —— 用户看到"边说边出"的视觉反馈
+            crate::overlay::emit_view(
+                &app_stream,
+                &crate::events::ViewKind::VoiceImeListening { partial: partial.clone() },
+            );
         }
-        println!("[mouseclaw] 🎙️ IME streaming poller exited");
+        println!("[mouseclaw] 🎙️ IME streaming poller exited (final paste in stop_and_paste)");
     });
 
     // v0.1.13 安全 #3：记录当前前台 app 的 bundle id —— 录音中切走就取消
@@ -639,47 +617,31 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
             println!("[mouseclaw] 🎯 punctuated → {punctuated:?}");
         }
 
-        // v0.3.4 · LLM polish 删除 —— 语音打字要快不要 LLM。
-        // 直接走 punctuated 文本跟已 typed 字做 LCP delta 收尾。
+        // v0.3.8 · Plan B —— streaming poller 不 type，只在 fn 松开后一次性写。
+        // 跟 Whisper batch timing 一致：fn 松开 → 等焦点回到原 app → activate + paste。
+        // 不再有 LCP delta（streaming 没 type 任何东西，typed 永远是空）。
         let app2 = app.clone();
         let state2 = state.clone();
         tauri::async_runtime::spawn(async move {
             let final_text = punctuated.clone();
+            println!("[mouseclaw] 🎙️ ready to paste final → {:?}", final_text);
 
-            // LCP delta vs 流式 poller 已 type 的字 —— 仅删/补差异部分
-            let typed = state2.ime_typed.lock().unwrap().clone();
-            let typed_chars: Vec<char> = typed.chars().collect();
-            let final_chars: Vec<char> = final_text.chars().collect();
-            let mut prefix = 0;
-            while prefix < typed_chars.len()
-                && prefix < final_chars.len()
-                && typed_chars[prefix] == final_chars[prefix]
-            {
-                prefix += 1;
-            }
-            let to_delete = typed_chars.len() - prefix;
-            let to_type: String = final_chars[prefix..].iter().collect();
-            println!("[mouseclaw] 🎙️ reconcile: del {to_delete} char, type +{:?}", to_type);
+            // 关键 timing：fn 松开后 macOS fn 系统行为结束，但焦点回到原 app
+            // 需要一点时间。这里先睡 150ms 让 macOS 自己稳定，再 activate_pid
+            // 强制把原 app 拉回前台，再等 60ms 让 activation 真生效，最后 paste。
+            tokio::time::sleep(Duration::from_millis(150)).await;
 
-            // v0.3.6 · 同 streaming poller —— final paste 前也拉回原前台 app
-            // ⚠️ 把 lock 的 scope 限定在 block 里，**不要**跨 await 持锁
-            // （std::Mutex guard 是 !Send，跨 await 会让整个 future 不 Send）
             #[cfg(target_os = "macos")]
             {
                 let pid_opt = *state2.prev_frontmost_pid.lock().unwrap();
                 if let Some(pid) = pid_opt {
                     crate::frontmost::activate_pid(pid);
-                    // 给系统一点时间完成 activation（实测 30-60ms 就够）
                     tokio::time::sleep(Duration::from_millis(60)).await;
+                    println!("[mouseclaw] 🎙️ re-activated pre-fn frontmost pid={pid}");
                 }
             }
 
-            if to_delete > 0 {
-                let _ = tokio::task::spawn_blocking(move || {
-                    let _ = crate::mode_b::delete_chars(to_delete);
-                }).await;
-            }
-            match crate::mode_b::write_at_cursor(&to_type).await {
+            match crate::mode_b::write_at_cursor(&final_text).await {
                 Ok(()) => {
                     crate::overlay::emit_view(&app2, &crate::events::ViewKind::Reply {
                         transcript: "voice IME".into(),

@@ -145,7 +145,13 @@ pub fn emit_view(app: &AppHandle, view: &ViewKind) {
                 format!("listening({}…)", partial.chars().take(20).collect::<String>())
             }
         }
-        ViewKind::VoiceImeListening => "voice-ime-listening".to_string(),
+        ViewKind::VoiceImeListening { partial } => {
+            if partial.is_empty() {
+                "voice-ime-listening".to_string()
+            } else {
+                format!("voice-ime-listening({}…)", partial.chars().take(20).collect::<String>())
+            }
+        }
         ViewKind::FeedWaiting => "feed-waiting".to_string(),
         ViewKind::FeedListening { files, partial } => {
             format!("feed-listening({} files, {}…)",
@@ -169,7 +175,7 @@ pub fn emit_view(app: &AppHandle, view: &ViewKind) {
         let should_follow = matches!(
             view,
             ViewKind::Listening { .. }
-                | ViewKind::VoiceImeListening
+                | ViewKind::VoiceImeListening { .. }
                 | ViewKind::FeedListening { .. }
         );
         if should_follow {
