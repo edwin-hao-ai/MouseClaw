@@ -50,7 +50,9 @@ export const EV_COUNTDOWN    = "countdown-tick";
 export const EV_NUDGE        = "nudge";
 
 /** Proactive reminder kind (v0.1.27 P3) — matches Rust `NudgeKind`. */
-export type NudgeKind = "stretch" | "stuck" | "late-night";
+export type NudgeKind =
+  | "stretch" | "stuck" | "late-night"
+  | "water" | "good-morning" | "lunch";  // v0.1.32
 
 export interface NudgePayload {
   kind: NudgeKind;

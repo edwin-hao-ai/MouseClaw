@@ -1,11 +1,11 @@
 {
   "$comment": "MouseClaw 版本元信息 · App 启动时拉取此 URL 检查新版本。任何 release 后更新这里。",
-  "latest": "0.1.32",
+  "latest": "0.1.33",
   "min_supported": "0.1.0",
   "released_at": "2026-05-18",
   "size_mb": 60,
-  "dmg_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/latest/download/MouseClaw_0.1.32_aarch64.dmg",
+  "dmg_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/latest/download/MouseClaw_0.1.33_aarch64.dmg",
   "release_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/latest",
-  "notes_zh": "QA 临时版：托盘新增「🐛 Debug · 测试 ▸」子菜单可手动触发 3 个 nudge（久坐 / 卡壳 / 深夜），跳过 cooldown + 暖机，让你 1 秒看到所有提醒视觉。验证通过后会移除。",
-  "notes_en": "QA build: tray now has a 🐛 Debug submenu with three items to fire each nudge (stretch / stuck / late-night) immediately, bypassing cooldown and warmup. Will be removed after verification."
+  "notes_zh": "🔔 主动提醒 6 件套上线：💧 喝水 / 🧘 久坐 / 🤔 卡壳侦测 / ☀️ 早安 / 🍕 午餐 / 🌙 深夜劝睡，零 LLM 调用 0 token 成本，完全本地隐私。Bubble 居中显示 + 右上 ✕ 按钮 + ESC 快速关闭",
+  "notes_en": "🔔 Six proactive nudges shipped: 💧 water / 🧘 stretch / 🤔 stuck-detection / ☀️ morning / 🍕 lunch / 🌙 late-night. Zero LLM calls, fully local + privacy-preserving. Bubble now centered above pet with × button + ESC to dismiss"
 }

@@ -30,6 +30,15 @@ export function NudgeBubble({ payload, onDismiss }: NudgeBubbleProps) {
     return () => window.clearTimeout(id);
   }, [payload, onDismiss]);
 
+  // v0.1.32 · 按 ESC 立即关闭
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onDismiss();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onDismiss]);
+
   const handleCta = () => {
     if (payload.ctaAction === "summon") {
       // Same as PetMenu's summon: toggle recording (acts as if shortcut pressed)
@@ -54,6 +63,14 @@ export function NudgeBubble({ payload, onDismiss }: NudgeBubbleProps) {
       // 的 handleMouseClick → 把 PetMenu 打开（不想要的副作用）
       onClick={(e) => e.stopPropagation()}
     >
+      {/* v0.1.32 · ✕ 关闭按钮，右上角 —— 用户立刻想关就一键关 */}
+      <button
+        type="button"
+        className="nudge-close"
+        onClick={onDismiss}
+        aria-label="Dismiss"
+        title="ESC"
+      >×</button>
       <div className="nudge-msg">{payload.message}</div>
       <div className="nudge-actions">
         {payload.ctaLabel && (

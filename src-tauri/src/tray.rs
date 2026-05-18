@@ -214,24 +214,6 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     // v0.1.27 · 📍 桌宠位置 ▸ 子菜单（4 角 + 跟随光标）
     let anchor_submenu = crate::anchor::build_tray_submenu(app, en)?;
 
-    // v0.1.32 · 🐛 Debug ▸ 触发提醒（QA 用，v0.1.33 用户验过后会移除）
-    let dbg_stretch  = MenuItem::with_id(app, "debug-nudge-stretch",
-        if en { "🧘 Fire stretch nudge" } else { "🧘 触发 久坐提醒" }, true, None::<&str>)?;
-    let dbg_stuck    = MenuItem::with_id(app, "debug-nudge-stuck",
-        if en { "🤔 Fire stuck nudge"   } else { "🤔 触发 卡壳侦测" }, true, None::<&str>)?;
-    let dbg_late     = MenuItem::with_id(app, "debug-nudge-late-night",
-        if en { "🌙 Fire late-night nudge" } else { "🌙 触发 深夜劝睡" }, true, None::<&str>)?;
-    let debug_submenu = Submenu::with_id_and_items(
-        app, "debug-submenu",
-        if en { "🐛 Debug" } else { "🐛 Debug · 测试" },
-        true,
-        &[
-            &dbg_stretch as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
-            &dbg_stuck   as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
-            &dbg_late    as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
-        ],
-    )?;
-
     let mut items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = vec![
         &summon, &clipboard_item, &history,
         &skin_picker_item, &anchor_submenu, &model_submenu, &lang_submenu,
@@ -245,7 +227,6 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         &browser_item as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
         &autostart_item as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
         &status as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
-        &debug_submenu as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
         &sep2,
         &about,
         &quit,
@@ -337,13 +318,6 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
     if let Some(anchor) = id.strip_prefix("anchor:") {
         if let Err(e) = crate::commands::save_pet_anchor(anchor.into(), app.clone()) {
             eprintln!("[mouseclaw] save_pet_anchor: {e}");
-        }
-        return;
-    }
-    // v0.1.32 · QA Debug nudge 触发：id 形如 "debug-nudge-stretch"
-    if let Some(kind) = id.strip_prefix("debug-nudge-") {
-        if let Err(e) = crate::commands::debug_fire_nudge(app.clone(), kind.into()) {
-            eprintln!("[mouseclaw] debug_fire_nudge: {e}");
         }
         return;
     }

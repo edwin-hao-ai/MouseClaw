@@ -47,6 +47,11 @@ pub struct NudgeState {
     last_fired: HashMap<NudgeKind, i64>,
     /// 用户休息到何时（unix 秒）—— PetMenu 💤 / nudge 的"今天闭嘴" 设
     nap_until_ts: i64,
+    /// v0.1.32 · 上次发"早安"的本地 epoch-day（now_ts / 86400）。
+    /// 用来保证 GoodMorning 每天只发一次。
+    pub last_morning_day: i64,
+    /// v0.1.32 · 上次发"午餐"的本地 epoch-day。Lunch 每天只发一次。
+    pub last_lunch_day: i64,
 }
 
 impl NudgeState {
@@ -69,6 +74,12 @@ impl NudgeState {
 
     pub fn mark_fired(&mut self, kind: NudgeKind, now: i64) {
         self.last_fired.insert(kind, now);
+        // v0.1.32 · 早安 / 午餐 每天只发一次 —— 用 epoch-day 防重复
+        match kind {
+            NudgeKind::GoodMorning => self.last_morning_day = now / 86400,
+            NudgeKind::Lunch       => self.last_lunch_day   = now / 86400,
+            _ => {}
+        }
     }
 }
 
@@ -87,6 +98,10 @@ pub fn pick_nudge(
     }
 
     let Some(latest) = buf.latest() else { return None; };
+    // v0.1.32 · 共享给 Lunch / GoodMorning / Water 用的预计算
+    let today_epoch_day = now_ts / 86400; // 本地时区简化处理
+    let user_present = latest.secs_since_keyboard < 5.0 * 60.0
+                       || latest.secs_since_mouse_move < 5.0 * 60.0;
 
     // 2. Stretch (久坐)
     //    鼠标 >= 90min 没动 → "站起来动一动"
@@ -141,6 +156,60 @@ pub fn pick_nudge(
         });
     }
 
+    // 5. v0.1.32 · Water (喝水) —— 健康类。
+    //    触发条件：用户在电脑前（5min 内有任何键鼠输入）+ cooldown OK。
+    //    早期版本只在连续敲键时触发，但喝水跟敲不敲键盘无关 —— 看视频 / 读文档 /
+    //    设计 / 浏览的人也得喝水。改成只看"present 信号"。
+    //    cooldown 用默认 30min，每半小时提醒一次 sip。
+    if state.cooldown_ok(NudgeKind::Water, now_ts) && user_present {
+        return Some(NudgePayload {
+            kind: NudgeKind::Water,
+            message: if lang_en {
+                "💧 Time for a sip of water?".into()
+            } else {
+                "💧 喝口水吧？".into()
+            },
+            cta_label: None,
+            cta_action: None,
+        });
+    }
+
+    // 6. v0.1.32 · Lunch (午餐) —— 跟鼠标动不动无关，到点该吃就该吃。
+    //    触发：本地时间 12:00-13:00 + 用户当下在线（5min 有键鼠输入）
+    //    + 今天还没发过。每天只发一次（同 Morning 模式）。
+    if latest.hour == 12
+        && state.last_lunch_day != today_epoch_day
+        && user_present
+    {
+        return Some(NudgePayload {
+            kind: NudgeKind::Lunch,
+            message: if lang_en {
+                "🍕 Lunch break? It's past noon.".into()
+            } else {
+                "🍕 吃午饭啦？已经过 12 点了".into()
+            },
+            cta_label: None,
+            cta_action: None,
+        });
+    }
+
+    // 7. v0.1.32 · GoodMorning (早安) —— 每天第一次解锁屏幕（启动 app）
+    //    判断：last_morning_date != today → 触发
+    if state.last_morning_day != today_epoch_day
+        && (latest.hour >= 6 && latest.hour <= 11)
+    {
+        return Some(NudgePayload {
+            kind: NudgeKind::GoodMorning,
+            message: if lang_en {
+                "☀️ Morning! Ready to take on today?".into()
+            } else {
+                "☀️ 早安！今天准备搞什么大事？".into()
+            },
+            cta_label: None,
+            cta_action: None,
+        });
+    }
+
     None
 }
 
@@ -175,8 +244,10 @@ pub fn spawn(
                 if let Ok(mut st) = state.write() {
                     st.mark_fired(payload.kind, now);
                 }
-                // 老鼠先出来 —— 不然用户根本看不到 nudge bubble
-                crate::overlay::show_mouse(&app);
+                // 老鼠先出来 —— 不然用户根本看不到 nudge bubble。
+                // v0.1.32 · 用 _at_anchor 版本：避免 nudge 把 overlay 搬到鼠标位置
+                // 然后启用 cursor_follow，那样气泡会跟着鼠标走 + 被屏幕边切半。
+                crate::overlay::show_mouse_at_anchor(&app);
                 if let Err(e) = app.emit(EV_NUDGE, &payload) {
                     eprintln!("[mouseclaw] nudge emit failed: {e}");
                 } else {
