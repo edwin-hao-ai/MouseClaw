@@ -48,13 +48,15 @@ interface BubbleProps {
   markdown?: boolean;
   /** session chip 旁边显示一个「✨新对话」按钮 (v0.1.9 UX 改进) */
   onNewSession?: () => void;
+  /** v0.3.6 · 气泡底部行动按钮（如"🔓 去授权"打开系统设置）—— 用于 blocked 状态给用户具体下一步 */
+  action?: { label: string; onClick: () => void };
 }
 
 export function Bubble({
   text, variant = "default", streaming = false,
   expandable = false, onExpand,
   sessionChip, voiceBars, loading = false, scrollable = false, markdown = false,
-  onNewSession,
+  onNewSession, action,
 }: BubbleProps) {
   const t = useT();
   // markdown 解析结果 —— 流式期间每个 chunk 都重 parse 是 OK 的（marked 很快）
@@ -138,6 +140,15 @@ export function Bubble({
         >
           {t("bubble.expand_to_panel")}
           <kbd>↓</kbd>
+        </button>
+      )}
+      {action && (
+        <button
+          type="button"
+          className="bubble-action"
+          onClick={action.onClick}
+        >
+          {action.label}
         </button>
       )}
     </div>

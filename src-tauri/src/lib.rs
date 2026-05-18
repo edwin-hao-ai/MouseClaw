@@ -317,6 +317,7 @@ pub fn run() {
             commands::save_pet_anchor,
             commands::get_pet_anchor,
             commands::open_accessibility_settings,
+            commands::save_pet_custom_position,
             commands::set_nap_until,
             commands::dismiss_nudge,
             commands::check_backend_installed,

@@ -224,6 +224,24 @@ export default function App() {
     setNudge(null);
   }, [showAck, t]);
 
+  // v0.3.6 · 拖动结束 → 读窗口位置 → 持久化
+  // Tauri's data-tauri-drag-region 自动处理 drag vs click。
+  // 这里只在 mouseup 时若窗口动了（位置 != mousedown 时的位置）就保存。
+  const handlePetDragEnd = useCallback(async () => {
+    try {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      const pos = await getCurrentWindow().outerPosition();
+      // outerPosition 是物理像素，需除以 scale → logical。多数情况下 1x 不影响。
+      const scale = await getCurrentWindow().scaleFactor();
+      const lx = pos.x / scale;
+      const ly = pos.y / scale;
+      await invoke("save_pet_custom_position", { x: lx, y: ly });
+    } catch (e) {
+      // browser-only mode / 拖动取消都安全
+      console.debug("save_pet_custom_position skipped:", e);
+    }
+  }, []);
+
   const handleMouseClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     // v0.1.30 · listening 时点桌宠 = 停止 + 发送（mouse-only push-to-talk 闭环）
@@ -248,7 +266,17 @@ export default function App() {
           <Bubble text={transientAck} variant="success" />
         </div>
       )}
-      <div className="stage-mouse" onClick={handleMouseClick} style={{ cursor: "pointer" }}>
+      <div
+        className="stage-mouse"
+        onClick={handleMouseClick}
+        style={{ cursor: view.kind === "idle" ? "grab" : "pointer" }}
+        // v0.3.6 · idle 时整个桌宠区域支持拖动 (Tauri 原生 drag-region)
+        // 拖动 = 移动窗口；轻点（不移动）= onClick 触发菜单。
+        // Tauri 自己 distinguish click vs drag，无需手动算阈值。
+        {...(view.kind === "idle" ? { "data-tauri-drag-region": "" } : {})}
+        // 拖动结束 → 读取窗口位置 → 持久化（让重启后位置保留）
+        onMouseUp={view.kind === "idle" ? handlePetDragEnd : undefined}
+      >
         <PixelMouse
           state={mouseStateFor(view)} skin={skin}
           size={view.kind === "idle" ? 64 : 96}
@@ -324,8 +352,28 @@ function BubbleFor({ view, continuing, onExpand, onNewSession }: BubbleForProps)
       );
     case "mode-b-inserting":
       return <Bubble text={`正在写入「${view.insertText}」`} variant="warn" />;
-    case "blocked":
+    case "blocked": {
+      // v0.3.6 · [OPEN_AX_SETTINGS] 前缀 = voice IME 检测到 Accessibility 缺失
+      // 渲染"🔓 去授权"按钮 + 引导文案，点击直接打开系统设置面板
+      const AX_PREFIX = "[OPEN_AX_SETTINGS]";
+      if (view.reason.startsWith(AX_PREFIX)) {
+        const msg = view.reason.slice(AX_PREFIX.length);
+        return (
+          <Bubble
+            text={`⛔ ${msg}`}
+            variant="danger"
+            action={{
+              label: "🔓 去授权",
+              onClick: () => {
+                invoke("open_accessibility_settings").catch((e) =>
+                  console.warn("open_accessibility_settings:", e));
+              },
+            }}
+          />
+        );
+      }
       return <Bubble text={`⛔ ${view.reason}`} variant="danger" />;
+    }
     default:
       return null;
   }

@@ -410,11 +410,16 @@ pub async fn on_shortcut_release(app: AppHandle, state: Arc<AppState>) {
             return;
         }
         // v0.3.4 · 只跑 light_clean（regex, 5ms）—— LLM polish 删除
+        // v0.3.6 · light_clean 后再过本地标点模型（sherpa CT-Transformer，~10ms）
         tauri::async_runtime::spawn(async move {
             let cfg = crate::config::Config::load();
             let light = crate::tidy_up::light_clean(&transcript, &cfg.language);
             println!("[mouseclaw] transcript (light): {light:?}");
-            run_pipeline(light, app_clone, state_clone).await;
+            let punctuated = crate::punctuation::add_punctuation(&light);
+            if punctuated != light {
+                println!("[mouseclaw] transcript (punctuated): {punctuated:?}");
+            }
+            run_pipeline(punctuated, app_clone, state_clone).await;
         });
     });
 }

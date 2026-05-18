@@ -275,3 +275,26 @@
   font-size: var(--text-micro);
   color: #666;
 }
+
+/* v0.3.6 · 行动按钮 —— blocked 气泡用，给用户具体下一步（如"🔓 去授权"）。
+   位置在气泡底部独立一行，配色跟气泡 variant 一致（继承 --danger / --warn 系列）。 */
+.bubble-action {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px 12px;
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent-primary);
+  border: 0;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: center;
+  transition: transform 100ms ease, background 120ms ease;
+}
+.bubble-action:hover  { background: var(--accent-soft); }
+.bubble-action:active { transform: scale(0.97); }
+.bubble-danger .bubble-action { background: var(--danger, #ff5f57); }
+.bubble-danger .bubble-action:hover { background: #ff7a73; }

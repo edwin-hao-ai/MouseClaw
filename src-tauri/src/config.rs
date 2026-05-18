@@ -117,6 +117,11 @@ pub struct Config {
     // tidy_up_enabled removed in v0.3.4 — LLM polish deleted (slow + costly,
     // violates voice-typing's speed-first value). Old configs silently ignore
     // the field via serde's default unknown-field behavior.
+    /// v0.3.6 · 用户拖动桌宠到屏幕某处后保存的窗口坐标 (logical pt, top-left origin)。
+    /// Some 时优先于 pet_anchor —— 让"拖到这"压过 anchor。
+    /// 用户在托盘 anchor 子菜单点任一选项 → 自动清空回到 None。
+    #[serde(default)]
+    pub pet_custom_position: Option<(f64, f64)>,
     /// 长按 fn → 语音输入到光标（v0.1.11 voice IME）
     /// 默认开 —— 用户长按 fn 才触发，短按 fn 仍走 macOS 原生行为
     #[serde(default = "default_voice_ime")]
@@ -179,6 +184,7 @@ impl Default for Config {
             workspace_path: None,
             autostart: default_autostart(),
             pet_anchor: PetAnchor::default(),
+            pet_custom_position: None,
             onboarded: false,
             version: CURRENT_CONFIG_VERSION,
         }

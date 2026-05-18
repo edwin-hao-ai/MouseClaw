@@ -6,6 +6,39 @@ versioning follows [SemVer](https://semver.org/).
 
 ---
 
+## [0.3.6] · 2026-05-18
+
+UX 大整顿。按 CLAUDE.md 新的「头号硬规则：动手前先深度思考 UX」一条一条审过。
+
+### Fixed
+- **🔒 语音字进不去输入框 (用户反馈 #1)** —— Voice IME 触发时显式检查
+  `AXIsProcessTrusted`，缺权限就**立刻** emit Blocked 气泡 + 加按钮"🔓 去授权"，
+  点了直达 `x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility`。
+  之前是 CGEventPost 静默 drop，用户完全不知道为啥没字，体验等于一直"坏掉"。
+
+### Added
+- **🎯 中英文标点补全** —— sherpa-onnx CT-Transformer int8 模型 (72 MB)
+  bundled in DMG，首启动 seed 到 `~/.mouseclaw/models/sherpa-punct/`，
+  本地推理 ~10ms 给 light_clean 后的文本补 `。，？！`。voice IME + 主 pipeline
+  都过这一层。失败兜底返回原文，永远不阻塞主流程。
+- **🖱️ 拖动桌宠到任意位置** —— idle 时 `.stage-mouse` 加 Tauri `data-tauri-drag-region`，
+  整片区域可拖动整个 overlay 窗口。拖完 mouseup 把窗口左上角坐标存到
+  `config.pet_custom_position`，下次启动 `apply_idle_anchor` 优先用这个坐标。
+  托盘 anchor 子菜单点任意角落 = 清空 custom 回到 corner。click vs drag 由
+  Tauri 原生区分（鼠标几乎没动 = 触发 onClick 弹菜单）。
+
+### Technical
+- 新模块 `punctuation.rs` + 新命令 `open_accessibility_settings` + `save_pet_custom_position`
+- `PetAnchor::Custom` 没引入额外 enum 变体（用 Option 字段 `pet_custom_position` 更简洁）
+- `Bubble` 组件新增 `action?: {label, onClick}` prop，blocked 气泡用来挂"去授权"按钮
+- DMG 增 ~72MB → 总体积 ~250MB（model 占大头）
+
+### CLAUDE.md
+- 在文件最顶端加了 **「头号硬规则：动手前先深度思考 UX（10 问 checklist）」**
+- 写入 v0.3 全程踩坑教训：「无脑动手等于一晚上 5-6 个 release 但核心问题没解」
+
+---
+
 ## [0.1.31] · 2026-05-18
 
 ### Fixed

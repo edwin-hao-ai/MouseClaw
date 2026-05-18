@@ -58,7 +58,22 @@ const ANCHOR_PADDING: f64 = 24.0;
 /// 把 overlay 窗口送回当前 anchor 指定的位置。
 /// `Follow` → no-op（位置由 cursor_follow 接管），返回 false。
 /// 其它 4 个角 → 计算位置并 `set_position`，返回 true。
+///
+/// v0.3.6 · 如果 config 里有 `pet_custom_position` (用户拖动过)，**优先用它**，
+/// anchor 参数被忽略。让"拖到这"压过角落默认。用户点托盘 anchor 项时会
+/// 清空 custom，回到角落。
 pub fn apply_idle_anchor(app: &AppHandle, anchor: PetAnchor) -> bool {
+    // v0.3.6 · 优先用用户拖动后保存的自定义位置
+    if let Some((cx, cy)) = crate::config::Config::load().pet_custom_position {
+        let app2 = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            let Some(window) = app2.get_webview_window("mouse") else { return };
+            let _ = window.set_position(LogicalPosition::new(cx, cy));
+            let _ = window.show();
+            let _ = window.set_always_on_top(true);
+        });
+        return true;
+    }
     if !anchor.pin_visible_when_idle() {
         return false;
     }

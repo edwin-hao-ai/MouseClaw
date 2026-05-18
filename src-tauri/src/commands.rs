@@ -76,6 +76,7 @@ pub fn save_shortcut(
         workspace_path: prev.workspace_path,
         autostart: prev.autostart,
         pet_anchor: prev.pet_anchor,
+        pet_custom_position: prev.pet_custom_position,
         onboarded: true,
         version: config::CURRENT_CONFIG_VERSION,
     };
@@ -115,6 +116,18 @@ pub fn get_skin() -> String {
     config::Config::load().skin.as_str().to_string()
 }
 
+/// v0.3.6 · 用户拖动桌宠到任意位置后调用 —— 保存窗口左上角坐标。
+/// 下次启动 / apply_idle_anchor 会优先用这个坐标，跨重启持久。
+/// 用户在托盘 anchor 子菜单点任一角落 → 自动清空回到 corner anchor。
+#[tauri::command]
+pub fn save_pet_custom_position(x: f64, y: f64) -> Result<(), String> {
+    let mut cfg = config::Config::load();
+    cfg.pet_custom_position = Some((x, y));
+    cfg.save().map_err(|e| format!("保存自定义位置失败：{e}"))?;
+    println!("[mouseclaw] pet dragged to custom position ({x}, {y})");
+    Ok(())
+}
+
 /// v0.3.6 · 一键打开 macOS 系统设置 → 隐私与安全性 → 辅助功能 面板。
 /// 给 voice IME 失败气泡的"🔓 去授权"按钮用 —— 用户授权完退出 app 重启即可。
 ///
@@ -135,6 +148,8 @@ pub fn save_pet_anchor(anchor: String, app: AppHandle) -> Result<(), String> {
     let parsed = config::PetAnchor::from_str(&anchor);
     let mut cfg = config::Config::load();
     cfg.pet_anchor = parsed;
+    // v0.3.6 · 用户主动选角落 → 清掉拖动留下的 custom position，回归 corner anchor
+    cfg.pet_custom_position = None;
     cfg.save().map_err(|e| format!("保存桌宠位置失败：{e}"))?;
 
     // 已 onboarded 的话立即应用 —— 让用户即时看到老鼠跑到新位置

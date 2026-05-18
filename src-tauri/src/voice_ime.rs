@@ -405,6 +405,21 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
         MONITOR.triggered.store(false, Ordering::Relaxed);
         return;
     }
+    // v0.3.6 · Accessibility 检查 —— 没权限的话 CGEvent.post 会静默失败，
+    // 字根本进不去输入框。提前 fail loud：弹气泡告诉用户去授权（带按钮）。
+    if !crate::permissions::check_accessibility() {
+        eprintln!("[mouseclaw] 🎙️ Accessibility 权限缺失，voice IME 字打不进输入框");
+        crate::overlay::show_mouse(&app);
+        // [OPEN_AX_SETTINGS] 前缀 = 前端 Bubble 识别后渲染"🔓 去授权"按钮
+        crate::overlay::emit_view(&app, &crate::events::ViewKind::Blocked {
+            reason: "[OPEN_AX_SETTINGS]🔒 macOS 辅助功能权限未授权 —— \
+                     语音转写出来的字没法送进输入框。\
+                     点下面按钮去系统设置授权（然后退出 app 重启）".into(),
+        });
+        crate::overlay::schedule_auto_hide(&app, &state, 15_000);
+        MONITOR.triggered.store(false, Ordering::Relaxed);
+        return;
+    }
     let recorder = match crate::audio::Recorder::start() {
         Ok(r) => r,
         Err(e) => {
@@ -599,12 +614,19 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
         }
         println!("[mouseclaw] 🎙️ light cleaned → {cleaned:?}");
 
+        // v0.3.6 · 本地标点 —— sherpa CT-Transformer，~10ms 加 。，？
+        // 失败兜底返回原文，永远不阻断主流程
+        let punctuated = crate::punctuation::add_punctuation(&cleaned);
+        if punctuated != cleaned {
+            println!("[mouseclaw] 🎯 punctuated → {punctuated:?}");
+        }
+
         // v0.3.4 · LLM polish 删除 —— 语音打字要快不要 LLM。
-        // 直接走 light_clean 出来的 cleaned，跟已 typed 字做 LCP delta 收尾。
+        // 直接走 punctuated 文本跟已 typed 字做 LCP delta 收尾。
         let app2 = app.clone();
         let state2 = state.clone();
         tauri::async_runtime::spawn(async move {
-            let final_text = cleaned.clone();
+            let final_text = punctuated.clone();
 
             // LCP delta vs 流式 poller 已 type 的字 —— 仅删/补差异部分
             let typed = state2.ime_typed.lock().unwrap().clone();
