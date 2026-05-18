@@ -47,8 +47,10 @@ export const zh: Strings = {
   "anchor.bottom-left": "↙︎ 左下",
   "anchor.bottom-right": "↘︎ 右下",
   "anchor.follow": "✨ 跟随光标",
+  "anchor.hidden": "👻 隐藏",
   "anchor.tray_title": "📍 桌宠位置",
   "anchor.follow_hint": "高级 · 实时跟随鼠标，会更费 CPU",
+  "anchor.hidden_hint": "完全不显示桌宠 —— 只在按快捷键召唤或主动提醒时出现",
 
   // 点击桌宠菜单 (v0.1.27 P2)
   "petmenu.summon": "召唤 · 说话",
@@ -63,6 +65,11 @@ export const zh: Strings = {
   // 主动提醒气泡 (v0.1.27 P3)
   "nudge.later": "稍后",
   "nudge.mute_today": "😶 30 分钟内别再提",
+
+  // 后端 CLI 检测 (v0.1.28)
+  "backend.installed": "✓ 已装",
+  "backend.missing": "未装",
+  "backend.install_open": "去安装",
   "onboarding.cta.next_voice_ime": "下一步：选语音键 →",
   "vime.trigger.fn": "fn 键（地球图标）",
   "vime.trigger.option": "⌥ option（任意一边）",

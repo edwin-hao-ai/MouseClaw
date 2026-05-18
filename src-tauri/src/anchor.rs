@@ -27,6 +27,8 @@ pub fn anchor_label(a: PetAnchor, en: bool) -> &'static str {
         (PetAnchor::BottomRight, false) => "↘︎ 右下",
         (PetAnchor::Follow,      true)  => "✨ Follow cursor",
         (PetAnchor::Follow,      false) => "✨ 跟随光标",
+        (PetAnchor::Hidden,      true)  => "👻 Hidden (summon only)",
+        (PetAnchor::Hidden,      false) => "👻 隐藏（仅召唤时出现）",
     }
 }
 
@@ -109,8 +111,8 @@ pub fn corner_position(
             screen_x + screen_w - win_w - pad,
             screen_y + screen_h - win_h - pad,
         ),
-        // Follow 不会进来 —— pin_visible_when_idle 已挡。兜底回 BR。
-        PetAnchor::Follow => (
+        // Follow / Hidden 不会进来 —— pin_visible_when_idle 已挡。兜底回 BR。
+        PetAnchor::Follow | PetAnchor::Hidden => (
             screen_x + screen_w - win_w - pad,
             screen_y + screen_h - win_h - pad,
         ),

@@ -47,8 +47,10 @@ export const en: Strings = {
   "anchor.bottom-left": "↙︎ Bottom Left",
   "anchor.bottom-right": "↘︎ Bottom Right",
   "anchor.follow": "✨ Follow cursor",
+  "anchor.hidden": "👻 Hidden",
   "anchor.tray_title": "📍 Pet location",
   "anchor.follow_hint": "Advanced · tracks the cursor live, uses more CPU",
+  "anchor.hidden_hint": "Hide the pet completely — only appears on shortcut summon or nudge",
 
   // Pet click menu (v0.1.27 P2)
   "petmenu.summon": "Summon · talk",
@@ -63,6 +65,11 @@ export const en: Strings = {
   // Nudge bubble (v0.1.27 P3)
   "nudge.later": "Later",
   "nudge.mute_today": "😶 Quiet this for 30 min",
+
+  // Backend CLI install detection (v0.1.28)
+  "backend.installed": "✓ Installed",
+  "backend.missing": "Not installed",
+  "backend.install_open": "Install",
   "onboarding.cta.next_voice_ime": "Next: Voice key →",
   "vime.trigger.fn": "fn key (the globe icon)",
   "vime.trigger.option": "⌥ option (either side)",

@@ -63,8 +63,10 @@ export interface Strings {
   "anchor.bottom-left": string;
   "anchor.bottom-right": string;
   "anchor.follow": string;
+  "anchor.hidden": string;
   "anchor.tray_title": string;
   "anchor.follow_hint": string;
+  "anchor.hidden_hint": string;
 
   // Pet click menu (v0.1.27 P2)
   "petmenu.summon": string;
@@ -79,6 +81,11 @@ export interface Strings {
   // Nudge bubble (v0.1.27 P3)
   "nudge.later": string;
   "nudge.mute_today": string;
+
+  // Backend CLI install detection (v0.1.28)
+  "backend.installed": string;
+  "backend.missing": string;
+  "backend.install_open": string;
   "onboarding.cta.next_voice_ime": string;
   "vime.trigger.fn": string;
   "vime.trigger.option": string;

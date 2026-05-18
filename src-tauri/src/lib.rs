@@ -265,6 +265,7 @@ pub fn run() {
             commands::get_pet_anchor,
             commands::set_nap_until,
             commands::dismiss_nudge,
+            commands::check_backend_installed,
             commands::open_picker_window,
         ])
         .setup(move |app| {

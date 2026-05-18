@@ -6,6 +6,27 @@ versioning follows [SemVer](https://semver.org/).
 
 ---
 
+## [0.1.28] · 2026-05-18
+
+### Fixed
+- **🖱️ 桌宠在角落点击没反应** — 根因：overlay 窗口 `focus: false` 但没设
+  `acceptFirstMouse: true`，macOS 把第一次点击吃掉去做焦点抢夺，永远 fire
+  不到 click handler。一行 fix（tauri.conf.json）
+
+### Added
+- **👻 桌宠位置新增"隐藏"选项** — 第 6 个 anchor option。完全不显示桌宠，
+  只在按召唤快捷键 / nudge 提醒触发时才出现。给"只要工具不要伴侣"的用户
+- **🔍 AI 后端 CLI 安装检测** — Onboarding 第 2 步进来自动并发检测 4 个后端
+  （`claude` / `codex` / `openclaw` / `hermes`）是否装在 PATH 里。已装显示 ✓ 绿色
+  pill，未装显示黄色 pill + 一行可复制的 `npm i -g …` 命令 + 官网链接
+
+### Technical
+- 新 command：`check_backend_installed(backend) -> BackendInstallStatus`
+- `Backend::install_url()` + `install_cmd()` 集中维护安装指引
+- `PetAnchor::Hidden` 加入 `pin_visible_when_idle() = false` 分支
+
+---
+
 ## [0.1.27] · 2026-05-18
 
 ### Added

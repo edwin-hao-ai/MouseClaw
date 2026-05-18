@@ -65,6 +65,27 @@ impl Backend {
             _ => Backend::ClaudeCli,
         }
     }
+
+    /// 安装指引 URL —— Onboarding 检测到没装时给用户的"去装"链接。
+    /// 选 npm registry / 官方仓库，是用户最容易跟着抄的那一行。
+    pub fn install_url(&self) -> &'static str {
+        match self {
+            Backend::ClaudeCli   => "https://www.anthropic.com/claude-code",
+            Backend::CodexCli    => "https://www.npmjs.com/package/@openai/codex",
+            Backend::OpenclawCli => "https://www.npmjs.com/package/openclaw",
+            Backend::HermesAgent => "https://github.com/NousResearch/hermes-agent",
+        }
+    }
+
+    /// 一行能跑的安装命令 —— 直接复制到 Terminal 用。
+    pub fn install_cmd(&self) -> &'static str {
+        match self {
+            Backend::ClaudeCli   => "npm i -g @anthropic-ai/claude-code",
+            Backend::CodexCli    => "npm i -g @openai/codex",
+            Backend::OpenclawCli => "npm i -g openclaw",
+            Backend::HermesAgent => "curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash",
+        }
+    }
 }
 
 /// 统一流式调用入口 —— 按 backend 分发到对应 CLI。

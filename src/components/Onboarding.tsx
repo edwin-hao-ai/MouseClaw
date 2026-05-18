@@ -107,6 +107,10 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   const [voiceImeTrigger, setVoiceImeTrigger] = useState<VoiceImeTrigger>("fn");
   // v0.1.27 · 默认 bottom-right —— 最不挡视线
   const [petAnchor, setPetAnchor] = useState<PetAnchor>("bottom-right");
+  // v0.1.28 · 后端 CLI 安装状态（id → {installed, installCmd, installUrl}）
+  const [backendStatus, setBackendStatus] = useState<
+    Record<string, { installed: boolean; installCmd: string; installUrl: string } | "loading">
+  >({});
   // v0.1.26 · 开机自启动 —— 进 step 5 时拉一次系统真实状态，用户切换调 set_autostart
   const [autostart, setAutostart] = useState<boolean>(true);
   useEffect(() => {
@@ -140,6 +144,27 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     const timer = setInterval(refreshPerms, 1500);
     return () => clearInterval(timer);
   }, [step, refreshPerms]);
+
+  // v0.1.28 · 进 step 2 时并发检测 4 个 backend CLI 是否装在 PATH
+  useEffect(() => {
+    if (step !== 2) return;
+    const ids: BackendChoice[] = ["claude-cli", "codex-cli", "openclaw-cli", "hermes-agent"];
+    // mark all as loading first so UI doesn't flicker
+    setBackendStatus(Object.fromEntries(ids.map(id => [id, "loading" as const])));
+    ids.forEach((id) => {
+      invoke<{ installed: boolean; installCmd: string; installUrl: string }>(
+        "check_backend_installed", { backend: id }
+      ).then((res) => {
+        setBackendStatus(prev => ({ ...prev, [id]: res }));
+      }).catch(() => {
+        // browser-only mode 或 invoke 失败 —— 当成 "已装" 不挡用户
+        setBackendStatus(prev => ({
+          ...prev,
+          [id]: { installed: true, installCmd: "", installUrl: "" },
+        }));
+      });
+    });
+  }, [step]);
 
   // 一个权限算"搞定" = 真的查到已授权 OR (是屏幕录制 且 已点过请求)
   const isDone = (key: keyof PermissionStatus): boolean => {
@@ -210,20 +235,54 @@ export function Onboarding({ onComplete }: OnboardingProps) {
           {t("onboarding.backend.uncertain_hint")}
         </p>
         <div className="ob-options" role="radiogroup" aria-label={t("onboarding.backend.title")}>
-          {BACKENDS_META.map(b => (
-            <button
-              key={b.id}
-              type="button"
-              role="radio"
-              aria-checked={backend === b.id}
-              className={`ob-option ${backend === b.id ? "selected" : ""}`}
-              onClick={() => setBackend(b.id)}
-            >
-              <span className="ob-label">{b.label}</span>
-              <span className="ob-perm-desc">{backendDesc(b.id, t)}</span>
-              {b.tag && <span className="ob-tag">{t(b.tag as "common.recommended")}</span>}
-            </button>
-          ))}
+          {BACKENDS_META.map(b => {
+            const st = backendStatus[b.id];
+            const isLoading = st === "loading";
+            const stObj = (st && st !== "loading") ? st : null;
+            const installed = stObj?.installed === true;
+            const missing = stObj?.installed === false;
+            return (
+              <button
+                key={b.id}
+                type="button"
+                role="radio"
+                aria-checked={backend === b.id}
+                className={`ob-option ${backend === b.id ? "selected" : ""}`}
+                onClick={() => setBackend(b.id)}
+              >
+                <span className="ob-label">
+                  {b.label}
+                  {isLoading && (
+                    <span className="ob-install-pill ob-install-loading">…</span>
+                  )}
+                  {installed && (
+                    <span className="ob-install-pill ob-install-ok">{t("backend.installed")}</span>
+                  )}
+                  {missing && (
+                    <span className="ob-install-pill ob-install-missing">{t("backend.missing")}</span>
+                  )}
+                </span>
+                <span className="ob-perm-desc">{backendDesc(b.id, t)}</span>
+                {missing && stObj && (
+                  <div
+                    className="ob-install-hint"
+                    onClick={(e) => e.stopPropagation()} // 别冒泡到 button 触发 select
+                  >
+                    <code className="ob-install-cmd">{stObj.installCmd}</code>
+                    <a
+                      href={stObj.installUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="ob-install-link"
+                    >
+                      {t("backend.install_open")} ↗
+                    </a>
+                  </div>
+                )}
+                {b.tag && <span className="ob-tag">{t(b.tag as "common.recommended")}</span>}
+              </button>
+            );
+          })}
         </div>
         <button
           type="button"
@@ -326,8 +385,9 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   // ── Step 5: 桌宠悬停位置 (NEW v0.1.27) ────────────────────────────────────
   if (step === 5) {
     const corners: { id: PetAnchor; labelKey: "anchor.top-left" | "anchor.top-right"
-                       | "anchor.bottom-left" | "anchor.bottom-right" | "anchor.follow";
-                     visual: "tl" | "tr" | "bl" | "br" | "follow";
+                       | "anchor.bottom-left" | "anchor.bottom-right" | "anchor.follow"
+                       | "anchor.hidden";
+                     visual: "tl" | "tr" | "bl" | "br" | "follow" | "hidden";
                      tag?: string }[] = [
       { id: "top-left",     labelKey: "anchor.top-left",     visual: "tl" },
       { id: "top-right",    labelKey: "anchor.top-right",    visual: "tr" },
@@ -335,6 +395,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       { id: "bottom-right", labelKey: "anchor.bottom-right", visual: "br",
         tag: t("common.recommended") },
       { id: "follow",       labelKey: "anchor.follow",       visual: "follow" },
+      { id: "hidden",       labelKey: "anchor.hidden",       visual: "hidden" },
     ];
     return (
       <div className="ob-root">
@@ -347,7 +408,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
           className="ob-options"
           role="radiogroup"
           aria-label={t("onboarding.anchor.title")}
-          style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}
+          style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8 }}
         >
           {corners.map(c => (
             <button
@@ -369,6 +430,9 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         </div>
         {petAnchor === "follow" && (
           <p className="ob-skip-hint">{t("anchor.follow_hint")}</p>
+        )}
+        {petAnchor === "hidden" && (
+          <p className="ob-skip-hint">{t("anchor.hidden_hint")}</p>
         )}
         <button
           type="button"
@@ -508,7 +572,9 @@ export function Onboarding({ onComplete }: OnboardingProps) {
  * 老鼠按 pos 落在对应角落或居中（follow）。视觉与 prototype 对齐：
  * docs/prototypes/pet-anchor-menu-nudges-20260518.html §1
  */
-function AnchorPreview({ pos, skin }: { pos: "tl" | "tr" | "bl" | "br" | "follow"; skin: SkinId }) {
+function AnchorPreview(
+  { pos, skin }: { pos: "tl" | "tr" | "bl" | "br" | "follow" | "hidden"; skin: SkinId },
+) {
   const petStyle: CSSProperties = (() => {
     switch (pos) {
       case "tl":     return { top: 10, left: 8 };
@@ -516,6 +582,7 @@ function AnchorPreview({ pos, skin }: { pos: "tl" | "tr" | "bl" | "br" | "follow
       case "bl":     return { bottom: 14, left: 8 };
       case "br":     return { bottom: 14, right: 8 };
       case "follow": return { top: "50%", left: "50%", transform: "translate(-50%, -50%)" };
+      case "hidden": return { display: "none" };
     }
   })();
   return (
@@ -544,6 +611,16 @@ function AnchorPreview({ pos, skin }: { pos: "tl" | "tr" | "bl" | "br" | "follow
       <div style={{ position: "absolute", ...petStyle }}>
         <PixelMouse state="sleep" size={32} skin={skin} />
       </div>
+      {pos === "hidden" && (
+        <span style={{
+          position: "absolute",
+          inset: 0,
+          display: "grid",
+          placeItems: "center",
+          fontSize: 22,
+          opacity: 0.6,
+        }}>👻</span>
+      )}
       {pos === "follow" && (
         <span
           style={{
