@@ -76,6 +76,7 @@ pub fn save_shortcut(
         voice_ime_trigger: prev.voice_ime_trigger,
         clipboard_paused: prev.clipboard_paused,
         workspace_path: prev.workspace_path,
+        autostart: prev.autostart,
         onboarded: true,
         version: config::CURRENT_CONFIG_VERSION,
     };
@@ -553,4 +554,28 @@ pub struct HistoryTurn {
     pub timestamp: chrono::DateTime<chrono::Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub screenshot: Option<String>,
+}
+
+/// v0.1.26 · 让 Onboarding step 5 / 「关于」面板能切开机自启动
+#[tauri::command]
+pub fn set_autostart(enable: bool, app: AppHandle) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let autolaunch = app.autolaunch();
+    if enable {
+        autolaunch.enable().map_err(|e| format!("enable autostart: {e}"))?;
+    } else {
+        autolaunch.disable().map_err(|e| format!("disable autostart: {e}"))?;
+    }
+    let now = autolaunch.is_enabled().unwrap_or(enable);
+    let mut cfg = config::Config::load();
+    cfg.autostart = now;
+    cfg.save().map_err(|e| format!("save config: {e}"))?;
+    Ok(now)
+}
+
+/// 启动时前端读当前自启动状态，反映勾选框
+#[tauri::command]
+pub fn get_autostart(app: AppHandle) -> bool {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch().is_enabled().unwrap_or_else(|_| config::Config::load().autostart)
 }

@@ -103,6 +103,11 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   const [backend, setBackend] = useState<BackendChoice>("claude-cli");
   const [skin, setSkin] = useState<SkinId>(DEFAULT_SKIN);
   const [voiceImeTrigger, setVoiceImeTrigger] = useState<VoiceImeTrigger>("fn");
+  // v0.1.26 · 开机自启动 —— 进 step 5 时拉一次系统真实状态，用户切换调 set_autostart
+  const [autostart, setAutostart] = useState<boolean>(true);
+  useEffect(() => {
+    invoke<boolean>("get_autostart").then(setAutostart).catch(() => setAutostart(true));
+  }, []);
   const [perms, setPerms] = useState<PermissionStatus>({
     accessibility: false,
     screen_recording: false,
@@ -358,6 +363,33 @@ export function Onboarding({ onComplete }: OnboardingProps) {
             </div>
           );
         })}
+      </div>
+
+      {/* v0.1.26 · 开机自启动开关 —— 放在权限列表之后，cheatsheet 之前。
+          checkbox 直接切系统状态 + config 同步。 */}
+      <div className="ob-perm-row" style={{ marginTop: 12 }}>
+        <span className="ob-perm-icon">🚀</span>
+        <div className="ob-perm-text">
+          <span className="ob-perm-title">{t("onboarding.autostart.title")}</span>
+          <span className="ob-perm-desc">{t("onboarding.autostart.sub")}</span>
+        </div>
+        <label style={{ display: "inline-flex", alignItems: "center", cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={autostart}
+            onChange={async (e) => {
+              const want = e.target.checked;
+              setAutostart(want);
+              try {
+                const actual = await invoke<boolean>("set_autostart", { enable: want });
+                if (actual !== want) setAutostart(actual);
+              } catch {
+                setAutostart(!want);
+              }
+            }}
+            style={{ width: 22, height: 22, cursor: "pointer" }}
+          />
+        </label>
       </div>
 
       {/* 主按钮永远可点 —— 即使检测有偏差也不卡死用户。

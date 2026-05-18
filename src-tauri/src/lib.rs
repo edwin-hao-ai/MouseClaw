@@ -174,6 +174,11 @@ pub fn run() {
     tauri::Builder::default()
         .manage(app_state.clone())
         .plugin(tauri_plugin_opener::init())
+        // v0.1.26 · 开机自启动。--minimized 标志在 main.rs 检测，启动时不弹任何窗口
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--minimized"]),
+        ))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
@@ -247,6 +252,8 @@ pub fn run() {
             commands::get_clipboard_paused,
             commands::save_workspace_path,
             commands::get_workspace_path,
+            commands::set_autostart,
+            commands::get_autostart,
         ])
         .setup(move |app| {
             set_accessory_activation_policy();
@@ -276,6 +283,37 @@ pub fn run() {
                 eprintln!("[mouseclaw] tray setup failed: {e:#}");
             } else {
                 println!("[mouseclaw] tray icon registered");
+            }
+
+            // v0.1.26 · 双向同步 autostart 状态。tauri-plugin-autostart 的 plist
+            // 是真实信源；config 里只是冗余镜像，方便 UI 决定 checkbox 状态。
+            //   - 用户在系统设置→登录项 里手动关掉 → 这里检测到回写 config
+            //   - config 说该开 / 该关但系统不一致 → 以 config 为准 enable()/disable()
+            //   - 首启动（config 默认 true）→ 自动 enable() 一次，写入 LaunchAgent
+            #[allow(unused_imports)]
+            use tauri_plugin_autostart::ManagerExt;
+            let autolaunch = app.autolaunch();
+            let system_enabled = autolaunch.is_enabled().unwrap_or(false);
+            let cfg_says = config::Config::load().autostart;
+            if cfg_says != system_enabled {
+                if cfg_says {
+                    if let Err(e) = autolaunch.enable() {
+                        eprintln!("[mouseclaw] autostart enable failed: {e}");
+                    } else {
+                        println!("[mouseclaw] ✅ autostart enabled (LaunchAgent installed)");
+                    }
+                } else {
+                    let _ = autolaunch.disable();
+                    println!("[mouseclaw] autostart disabled per config");
+                }
+                // 反向回写：以系统实际为准
+                let actual = autolaunch.is_enabled().unwrap_or(false);
+                if actual != cfg_says {
+                    let mut c = config::Config::load();
+                    c.autostart = actual;
+                    let _ = c.save();
+                    println!("[mouseclaw] autostart config ← system actual ({actual})");
+                }
             }
 
             // Diagnostic: PATH + claude location
@@ -339,8 +377,16 @@ pub fn run() {
                     }
                 }
             } else {
-                println!("[mouseclaw] first launch → opening Onboarding window");
-                tray::open_onboarding_window(&app.handle());
+                // v0.1.26 · --minimized 由 autostart plugin 在登录启动时传入。
+                // 这种情况下用户没有主动启动，应保持完全静默：不弹 Onboarding，
+                // 不显示任何窗口，只在菜单栏挂着等快捷键召唤。
+                let minimized = std::env::args().any(|a| a == "--minimized");
+                if minimized {
+                    println!("[mouseclaw] launched via autostart (--minimized) · staying silent");
+                } else {
+                    println!("[mouseclaw] first launch → opening Onboarding window");
+                    tray::open_onboarding_window(&app.handle());
+                }
             }
             Ok(())
         })
