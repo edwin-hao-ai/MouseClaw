@@ -420,6 +420,17 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
         MONITOR.triggered.store(false, Ordering::Relaxed);
         return;
     }
+    // v0.3.6 · ⚠️ 关键：在录音开始前 snapshot 当前前台 app pid。
+    // macOS 的 fn 键自带系统语义（拼音切换 / Spotlight / Dock 等），按住瞬间会
+    // 把当前输入框失焦 → 后面 CGEvent 字会被丢到错的 app。
+    // 解：把 pid 存到 state，paste 之前先 NSRunningApplication.activate 把它拉回前台。
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(pid) = crate::frontmost::current_frontmost_pid() {
+            *state.prev_frontmost_pid.lock().unwrap() = Some(pid);
+            println!("[mouseclaw] 🎙️ snapshot pre-fn frontmost pid={pid}");
+        }
+    }
     let recorder = match crate::audio::Recorder::start() {
         Ok(r) => r,
         Err(e) => {
@@ -484,6 +495,13 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
             }
             let to_delete = typed.len() - prefix;
             let to_type: String = new_chars[prefix..].iter().collect();
+            // v0.3.6 · 每次 type 前都把"按 fn 时的前台 app"拉回前台
+            // fn 键 macOS 语义会偷焦点（Spotlight / Dock / 输入法切换），
+            // 不重新激活的话 CGEvent 会飞到错的 app
+            #[cfg(target_os = "macos")]
+            if let Some(pid) = *state_stream.prev_frontmost_pid.lock().unwrap() {
+                crate::frontmost::activate_pid(pid);
+            }
             if to_delete > 0 {
                 if let Err(e) = crate::mode_b::delete_chars(to_delete) {
                     eprintln!("[mouseclaw] 🎙️ delete_chars failed: {e} — Accessibility 权限？");
@@ -642,6 +660,19 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
             let to_delete = typed_chars.len() - prefix;
             let to_type: String = final_chars[prefix..].iter().collect();
             println!("[mouseclaw] 🎙️ reconcile: del {to_delete} char, type +{:?}", to_type);
+
+            // v0.3.6 · 同 streaming poller —— final paste 前也拉回原前台 app
+            // ⚠️ 把 lock 的 scope 限定在 block 里，**不要**跨 await 持锁
+            // （std::Mutex guard 是 !Send，跨 await 会让整个 future 不 Send）
+            #[cfg(target_os = "macos")]
+            {
+                let pid_opt = *state2.prev_frontmost_pid.lock().unwrap();
+                if let Some(pid) = pid_opt {
+                    crate::frontmost::activate_pid(pid);
+                    // 给系统一点时间完成 activation（实测 30-60ms 就够）
+                    tokio::time::sleep(Duration::from_millis(60)).await;
+                }
+            }
 
             if to_delete > 0 {
                 let _ = tokio::task::spawn_blocking(move || {
