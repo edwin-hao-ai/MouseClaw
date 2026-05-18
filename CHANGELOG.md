@@ -6,6 +6,20 @@ versioning follows [SemVer](https://semver.org/).
 
 ---
 
+## [0.1.31] · 2026-05-18
+
+### Fixed
+- **🎨 换桌宠点取消（再次）/ 点窗口 ✕ 仍然把 app 关掉** — v0.1.30 只改了 `apply()`
+  路径，`cancel()` 路径仍是 `getCurrentWindow().close()`，所以点取消按钮还是
+  触发同样的 quit-app bug。同时原生标题栏的红 ✕ 走的是 Tauri 默认 close-requested
+  行为，也会 destroy 窗口。完整修复：
+  - `cancel()` 也改成 `.hide()`
+  - 加 `onCloseRequested(e => { e.preventDefault(); ...; w.hide() })` 拦截原生 ✕
+- 反思：v0.1.30 的 Edit `replace_all: true` 应该一次改两处都覆盖到，但实际只
+  覆盖了第一处。**以后改完后必须 grep 验证 hide / close 的最终分布。**
+
+---
+
 ## [0.1.30] · 2026-05-18
 
 ### Fixed

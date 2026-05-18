@@ -49,6 +49,20 @@ export default function PickerView() {
     }).catch(() => {});
   }, []);
 
+  // v0.1.31 · 拦截原生 ✕ 按钮 —— 不让它真 close（会让 accessory app 退出）
+  // preventDefault 后走我们的 cancel 逻辑：还原 + hide。
+  useEffect(() => {
+    const w = getCurrentWindow();
+    const unlistenPromise = w.onCloseRequested(async (event) => {
+      event.preventDefault();
+      if (selected !== originalSkin) {
+        await invoke("save_skin", { skin: originalSkin }).catch(() => {});
+      }
+      await w.hide();
+    });
+    return () => { unlistenPromise.then(fn => fn()).catch(() => {}); };
+  }, [selected, originalSkin]);
+
   const groups = useMemo(() => groupBySpecies(SKINS), []);
   const previewSkin = (hovered ?? selected) as SkinId;
   const previewMeta = SKINS.find(s => s.id === previewSkin) ?? SKINS[0];
@@ -77,7 +91,9 @@ export default function PickerView() {
     if (selected !== originalSkin) {
       await invoke("save_skin", { skin: originalSkin }).catch(() => {});
     }
-    await getCurrentWindow().close();
+    // v0.1.31 · 同 apply 路径：用 hide 不要 close。
+    // v0.1.30 只修了 apply 路径漏了 cancel —— 用户反馈点取消还是退出整个 app。
+    await getCurrentWindow().hide();
   };
 
   return (
