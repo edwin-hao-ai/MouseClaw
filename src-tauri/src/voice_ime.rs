@@ -436,7 +436,7 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
                 MONITOR.triggered.store(false, Ordering::Relaxed);
                 // 丢弃录音数据
                 if let Some(rec) = state2.recorder.lock().unwrap().take() {
-                    let _ = rec.stop_and_take();
+                    let _ = rec.stop_drain_remaining_16k();
                 }
                 crate::overlay::emit_view(&app2, &crate::events::ViewKind::Blocked {
                     reason: if crate::config::Config::load().language == "en" {

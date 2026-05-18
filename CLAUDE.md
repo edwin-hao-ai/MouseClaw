@@ -231,6 +231,25 @@ MouseClaw 是**纯后台进程**，平时完全"不存在"：
 
 ## 发布流程 cheat sheet（v0.1.24+ 这一系列踩过的全部坑）
 
+### 🚨 硬规则（v0.3.0 学到的教训）：用户验证之前**不许 gh release / 不许 push tag**
+
+**问题场景**：每次改完代码 → build → 自动 notarize → 自动 push tag → 自动 gh release → 用户装上发现有 bug → 已经发布的版本回收成本极高（GH releases 可以删但 cdn / version.json 拉过的客户端已经看到了），而且 release notes 堆一堆"已修复"显得很乱。
+
+**正确流程**：
+
+```
+代码改完 → build DMG (不 push tag, 不 notarize, 不 gh release)
+         → open DMG 给用户本地测
+         → 用户确认 OK 后
+            才允许：notarize + push tag + gh release + update version.json + push main
+```
+
+**Claude 默认行为**：写代码 / build / open DMG 一气呵成，**但停在 open 这一步**，
+等用户明确说"OK 可以发了" / "release 吧" 之类的指令再走 notarize + push + release。
+
+**用户能容忍的快速循环**：build → open → 测 → 不行就改代码 → rebuild → reopen。
+**用户不能容忍的浪费循环**：build → 自动 release → 装上发现 bug → 又一个新 release 修。
+
 ### 1. 完整发新版本 step-by-step
 
 ```bash

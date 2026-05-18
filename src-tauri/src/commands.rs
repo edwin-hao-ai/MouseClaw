@@ -574,7 +574,7 @@ pub fn request_permission(name: String) {
         std::thread::spawn(|| match audio::Recorder::start() {
             Ok(rec) => {
                 std::thread::sleep(Duration::from_millis(400));
-                let _ = rec.stop_and_take();
+                let _ = rec.stop_drain_remaining_16k();
                 println!("[mouseclaw] microphone prompt triggered via cpal input stream");
             }
             Err(e) => eprintln!("[mouseclaw] mic prompt trigger via cpal failed: {e:#}"),

@@ -111,25 +111,12 @@ impl Recorder {
             // Block until the controlling thread asks us to stop
             let _ = stop_rx.recv();
 
-            // Drop the stream to halt capture, then return the samples
+            // Drop the stream to halt capture.
+            // v0.3 · 不在这儿 drain samples_buf —— 上层 Recorder::stop_drain_remaining_16k
+            // 会在 join 后自己读完整 buffer。Channel path 保留是兼容旧 API（已无调用方），
+            // 发个空信号让等待方不会卡死。
             drop(stream);
-
-            let raw = match samples_buf.lock() {
-                Ok(mut g) => std::mem::take(&mut *g),
-                Err(_) => Vec::new(),
-            };
-            if raw.is_empty() {
-                let _ = samples_tx.send(Err("recording was empty".into()));
-                return;
-            }
-            let max_samples = MAX_SECONDS * source_rate as usize;
-            let raw = if raw.len() > max_samples {
-                raw[..max_samples].to_vec()
-            } else {
-                raw
-            };
-            let resampled = resample_to_16k(&raw, source_rate);
-            let _ = samples_tx.send(Ok(resampled));
+            let _ = samples_tx.send(Ok(Vec::new()));
         });
 
         let source_rate = init_rx
@@ -177,22 +164,7 @@ impl Recorder {
         Ok(resample_to_16k(&pcm, self.source_rate))
     }
 
-    /// Stop recording and return 16 kHz mono f32 samples.
-    pub fn stop_and_take(mut self) -> Result<Vec<f32>> {
-        // Tell the audio thread to stop
-        if self.stop_tx.send(()).is_err() {
-            bail!("audio thread already gone");
-        }
-        let result = self
-            .samples_rx
-            .recv()
-            .context("samples channel closed")?
-            .map_err(|e| anyhow!(e))?;
-        if let Some(h) = self.handle.take() {
-            let _ = h.join();
-        }
-        Ok(result)
-    }
+    // stop_and_take removed in v0.3 — callers migrated to stop_drain_remaining_16k.
 }
 
 fn append_mono<S, F: Fn(&S) -> f32>(
