@@ -165,6 +165,17 @@ pub async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppStat
         },
     );
 
+    // v0.4.0 · 桌宠开口说话 —— 用 macOS `say` 朗读 AI 最终回复。
+    // 默认 OFF（声音打扰，用户主动从托盘开）。Mode B 跳过（writing 视觉本身就够，
+    // 再叠语音反而吵）。
+    #[cfg(target_os = "macos")]
+    if mode != ReplyMode::B {
+        let cfg_tts = crate::config::Config::load();
+        if cfg_tts.tts_enabled {
+            crate::tts::speak(&reply, &cfg_tts.language);
+        }
+    }
+
     // 6. Mode B: 3-second countdown then write at cursor
     if let (ReplyMode::B, Some(text)) = (mode, final_insert) {
         for remaining in (1..=3).rev() {
@@ -298,7 +309,13 @@ pub async fn on_shortcut_press(app: AppHandle, state: Arc<AppState>) {
                 println!("[mouseclaw] 🎤 partial ({} samples fed): {:?}",
                     total_samples_fed, partial);
                 last_partial = partial.clone();
-                emit_view(&app_stream, &ViewKind::Listening { partial });
+                // v0.4.0 · 流式 partial 加标点（短片段跳过，避免单字符 punct 误判）
+                let display = if partial.chars().count() >= 4 {
+                    crate::punctuation::add_punctuation(&partial)
+                } else {
+                    partial.clone()
+                };
+                emit_view(&app_stream, &ViewKind::Listening { partial: display });
             }
         }
         println!("[mouseclaw] 🎤 streaming poller exited (total {} samples fed)", total_samples_fed);

@@ -35,8 +35,8 @@ impl PermissionStatus {
 // macOS 实现
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// 强制链接 AVFoundation framework —— 这样 `class!(AVCaptureDevice)` 在运行时
-/// 能解析到。空 extern block + #[link] 只是告诉 linker 加 `-framework AVFoundation`。
+// 强制链接 AVFoundation framework —— 这样 `class!(AVCaptureDevice)` 在运行时
+// 能解析到。空 extern block + #[link] 只是告诉 linker 加 `-framework AVFoundation`。
 #[cfg(target_os = "macos")]
 #[link(name = "AVFoundation", kind = "framework")]
 extern "C" {}

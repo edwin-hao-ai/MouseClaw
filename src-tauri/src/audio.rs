@@ -11,7 +11,7 @@
 //! Resampling: naive nearest-neighbor (good for speech, no extra deps).
 
 use std::sync::{mpsc, Arc, Mutex};
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, Context, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 pub const WHISPER_SR: u32 = 16_000;

@@ -131,7 +131,6 @@ fn sample_now() -> PresenceSample {
 #[cfg(target_os = "macos")]
 fn frontmost_bundle_id() -> Option<String> {
     use cocoa::base::{id, nil};
-    use cocoa::foundation::NSString;
     use objc::{class, msg_send, sel, sel_impl};
     unsafe {
         let ws: id = msg_send![class!(NSWorkspace), sharedWorkspace];

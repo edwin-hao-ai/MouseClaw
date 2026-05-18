@@ -77,6 +77,7 @@ pub fn save_shortcut(
         autostart: prev.autostart,
         pet_anchor: prev.pet_anchor,
         pet_custom_position: prev.pet_custom_position,
+        tts_enabled: prev.tts_enabled,
         onboarded: true,
         version: config::CURRENT_CONFIG_VERSION,
     };

@@ -66,7 +66,7 @@ pub enum ViewKind {
     Blocked { reason: String },
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 pub enum ReplyMode {
     A,
     B,

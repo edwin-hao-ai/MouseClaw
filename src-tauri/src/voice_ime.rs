@@ -176,6 +176,7 @@ pub fn spawn(app: AppHandle, state: Arc<AppState>) {
 
 #[repr(transparent)]
 #[derive(Copy, Clone)]
+#[allow(dead_code)] // 保留给后续扩展（事件回调里手动构造 event ref）
 struct CGEventRef(*mut std::ffi::c_void);
 unsafe impl Send for CGEventRef {}
 
@@ -491,10 +492,18 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
             };
             if partial == last_partial { continue; }
             last_partial = partial.clone();
+            // v0.4.0 · 流式 partial 也加标点 —— 沿用 add_punctuation（~10ms, soft-fail）
+            // 让用户看到的"边说边出"文本带 。，？，而不是最后一刻才变 punctuated。
+            // 短片段（< 4 字符）模型加标点效果差，跳过让 raw 出。
+            let display = if partial.chars().count() >= 4 {
+                crate::punctuation::add_punctuation(&partial)
+            } else {
+                partial.clone()
+            };
             // 桌宠头顶气泡实时显示新 partial —— 用户看到"边说边出"的视觉反馈
             crate::overlay::emit_view(
                 &app_stream,
-                &crate::events::ViewKind::VoiceImeListening { partial: partial.clone() },
+                &crate::events::ViewKind::VoiceImeListening { partial: display },
             );
         }
         println!("[mouseclaw] 🎙️ IME streaming poller exited (final paste in stop_and_paste)");

@@ -94,8 +94,13 @@ pub fn cursor_screen_pos_unchecked(window: &WebviewWindow) -> Option<(f64, f64)>
 #[cfg(not(target_os = "macos"))]
 pub fn cursor_screen_pos_unchecked(_w: &WebviewWindow) -> Option<(f64, f64)> { None }
 
-/// Get cursor position in top-left-origin screen coordinates.
+/// Get cursor position in top-left-origin screen coordinates (global).
 /// ⚠️ 只能在主线程调用（碰 NSScreen）。
+///
+/// v0.3.8 · 多显示器修复：原来用 `NSScreen.mainScreen`（key window 所在屏，不一定是
+/// 带菜单栏的主屏），副屏激活时拿错 height → y 翻转偏 100-200px。
+/// 现在固定用 `NSScreen.screens[0]`（永远是主屏 / 带菜单栏 / 全局坐标原点所在屏），
+/// 跟 macOS 全局坐标系一致。
 #[cfg(target_os = "macos")]
 fn current_mouse_pos_top_left(window: &WebviewWindow) -> Option<(f64, f64)> {
     use cocoa::base::id;
@@ -110,18 +115,28 @@ fn current_mouse_pos_top_left(window: &WebviewWindow) -> Option<(f64, f64)> {
     }
 }
 
-/// ⚠️ 只能在主线程调用（NSScreen.mainScreen 不是线程安全的）。
+/// 主屏（screens[0]）高度 —— macOS 全局坐标系的 y 翻转基准。
+/// ⚠️ 只能在主线程调用（NSScreen.screens 不是线程安全的）。
 #[cfg(target_os = "macos")]
 fn primary_screen_height_pts() -> Option<f64> {
     use cocoa::base::id;
-    use cocoa::foundation::{NSRect, NSSize};
+    use cocoa::foundation::{NSArray, NSRect, NSSize};
     use objc::{class, msg_send, sel, sel_impl};
     unsafe {
-        let screen: id = msg_send![class!(NSScreen), mainScreen];
-        if screen as usize == 0 {
+        // NSScreen.screens 返回所有屏数组；[0] = 主屏（菜单栏所在）
+        let screens: id = msg_send![class!(NSScreen), screens];
+        if screens as usize == 0 {
             return None;
         }
-        let frame: NSRect = msg_send![screen, frame];
+        let count: usize = msg_send![screens, count];
+        if count == 0 {
+            return None;
+        }
+        let primary: id = NSArray::objectAtIndex(screens, 0);
+        if primary as usize == 0 {
+            return None;
+        }
+        let frame: NSRect = msg_send![primary, frame];
         let size: NSSize = frame.size;
         Some(size.height)
     }

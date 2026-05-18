@@ -224,72 +224,97 @@ export default function App() {
     setNudge(null);
   }, [showAck, t]);
 
-  // v0.3.9 · 手动 drag —— 之前 data-tauri-drag-region 在我们 transparent+focus:false
-  // 的 overlay 上不工作。改成显式调 `startDragging()` JS API。
+  // v0.4.0 · 全 JS 手写 drag —— 之前 startDragging() 在 focus:false transparent
+  // overlay 上不可靠，data-tauri-drag-region 同样不工作。这次自己算：
+  //   pointerdown → setPointerCapture（事件追到 release 不丢，哪怕鼠标飞出窗口）
+  //   pointermove → 跨过 5px 阈值 → 进 dragging 态 → setPosition 跟着鼠标走
+  //   pointerup   → save 位置 + dragging=false（onClick 由阈值判断决定是否触发）
   //
-  // 区分 click vs drag：onMouseDown 时记录起点；如果 release 前移动 >= 5px →
-  // 我们调 startDragging（Tauri 接管，原生 window 跟着鼠标走），onClick 不触发
-  // （因为 startDragging 抢占事件流）。如果几乎没动，onClick 正常触发菜单。
-  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
+  // 关键：onClick 永远会 fire（这是 DOM 标准），所以用 draggedRef 在 onClick 里判断
+  // 「有没有真拖动过」，true 就 stopPropagation 让 click 静默。
+  const dragStartRef = useRef<{
+    pointerX: number; pointerY: number;
+    winX: number; winY: number;
+    scale: number;
+  } | null>(null);
+  const draggingRef = useRef(false);
   const draggedRef = useRef(false);
   const DRAG_THRESHOLD = 5;
 
-  const handlePetMouseDown = useCallback((e: React.MouseEvent) => {
-    if (view.kind !== "idle") return;
-    dragStartRef.current = { x: e.screenX, y: e.screenY };
-    draggedRef.current = false;
-  }, [view.kind]);
-
-  const handlePetMouseMove = useCallback(async (e: React.MouseEvent) => {
-    if (view.kind !== "idle" || !dragStartRef.current) return;
-    const dx = Math.abs(e.screenX - dragStartRef.current.x);
-    const dy = Math.abs(e.screenY - dragStartRef.current.y);
-    if (dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD) {
-      // 跨过阈值 → 进入拖动模式，把控制权交给 Tauri 原生 drag
-      // 之后 mouseup 不会再触发 onClick（被 startDragging 抢占）
-      if (!draggedRef.current) {
-        draggedRef.current = true;
-        try {
-          const { getCurrentWindow } = await import("@tauri-apps/api/window");
-          await getCurrentWindow().startDragging();
-        } catch (err) {
-          console.warn("startDragging:", err);
-        }
-      }
-    }
-  }, [view.kind]);
-
-  const handlePetMouseUp = useCallback(async () => {
-    if (view.kind !== "idle") return;
-    const wasDragged = draggedRef.current;
-    dragStartRef.current = null;
-    draggedRef.current = false;
-    if (!wasDragged) return; // 没拖动 → onClick 会负责开菜单
-    // 拖动结束 → 读窗口位置 → 持久化
+  const handlePetPointerDown = useCallback(async (e: React.PointerEvent) => {
+    if (view.kind !== "idle" || e.button !== 0) return;
     try {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
       const pos = await getCurrentWindow().outerPosition();
       const scale = await getCurrentWindow().scaleFactor();
-      const lx = pos.x / scale;
-      const ly = pos.y / scale;
-      await invoke("save_pet_custom_position", { x: lx, y: ly });
-      console.debug(`[mouseclaw] pet dragged to (${lx}, ${ly}) saved`);
-    } catch (e) {
-      console.debug("save_pet_custom_position skipped:", e);
+      dragStartRef.current = {
+        pointerX: e.screenX,
+        pointerY: e.screenY,
+        winX: pos.x / scale,
+        winY: pos.y / scale,
+        scale,
+      };
+      draggingRef.current = false;
+      draggedRef.current = false;
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+    } catch (err) {
+      console.debug("pointerdown init skipped:", err);
+    }
+  }, [view.kind]);
+
+  const handlePetPointerMove = useCallback(async (e: React.PointerEvent) => {
+    if (view.kind !== "idle" || !dragStartRef.current) return;
+    const start = dragStartRef.current;
+    const dx = e.screenX - start.pointerX;
+    const dy = e.screenY - start.pointerY;
+    if (!draggingRef.current) {
+      // 还没进入 drag 态 —— 检查是否跨过阈值
+      if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
+      draggingRef.current = true;
+      draggedRef.current = true;
+    }
+    // dragging 态：移动窗口跟着鼠标走
+    try {
+      const { getCurrentWindow, LogicalPosition } = await import("@tauri-apps/api/window");
+      const newX = start.winX + dx;
+      const newY = start.winY + dy;
+      await getCurrentWindow().setPosition(new LogicalPosition(newX, newY));
+    } catch (err) {
+      console.debug("setPosition:", err);
+    }
+  }, [view.kind]);
+
+  const handlePetPointerUp = useCallback(async (e: React.PointerEvent) => {
+    if (view.kind !== "idle" || !dragStartRef.current) return;
+    (e.target as Element).releasePointerCapture?.(e.pointerId);
+    const wasDragged = draggingRef.current;
+    dragStartRef.current = null;
+    draggingRef.current = false;
+    if (!wasDragged) return; // 轻点 → onClick 负责开菜单
+    // 拖完了 → 持久化新位置
+    try {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      const pos = await getCurrentWindow().outerPosition();
+      const scale = await getCurrentWindow().scaleFactor();
+      await invoke("save_pet_custom_position", { x: pos.x / scale, y: pos.y / scale });
+      console.debug(`[mouseclaw] pet dragged to (${pos.x / scale}, ${pos.y / scale}) saved`);
+    } catch (err) {
+      console.debug("save_pet_custom_position skipped:", err);
     }
   }, [view.kind]);
 
   const handleMouseClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    // v0.1.30 · listening 时点桌宠 = 停止 + 发送（mouse-only push-to-talk 闭环）
-    // 这样从 PetMenu「开始说话」启动后，用户能用鼠标完成整个流程
+    // v0.4.0 · 如果刚做完拖动，吃掉 click —— 不要顺便又开菜单
+    if (draggedRef.current) {
+      draggedRef.current = false;
+      return;
+    }
     if (view.kind === "listening" || view.kind === "voice-ime-listening") {
       invoke("toggle_recording").catch((err) =>
         console.warn("toggle_recording:", err));
       return;
     }
-    // idle 状态：toggle 弹出菜单。
-    // 其它状态（thinking / reply / panel）不响应点击，避免干扰当前流程。
     if (view.kind !== "idle") return;
     setPetMenuOpen(prev => !prev);
   }, [view.kind]);
@@ -306,9 +331,10 @@ export default function App() {
       <div
         className="stage-mouse"
         onClick={handleMouseClick}
-        onMouseDown={handlePetMouseDown}
-        onMouseMove={handlePetMouseMove}
-        onMouseUp={handlePetMouseUp}
+        onPointerDown={handlePetPointerDown}
+        onPointerMove={handlePetPointerMove}
+        onPointerUp={handlePetPointerUp}
+        onPointerCancel={handlePetPointerUp}
         style={{ cursor: view.kind === "idle" ? "grab" : "pointer" }}
       >
         <PixelMouse

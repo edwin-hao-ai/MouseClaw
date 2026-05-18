@@ -6,6 +6,64 @@ versioning follows [SemVer](https://semver.org/).
 
 ---
 
+## [0.3.10] · 2026-05-19
+
+### Added
+- **🪞 多屏 y 翻转修复** —— 原来用 `NSScreen.mainScreen`（key window 所在屏），副屏激活时
+  拿错 height 导致 y 翻转偏 100-200px，跑步动画落点不对。现在固定 `NSScreen.screens[0]`
+  （永远是主屏 / 菜单栏 / 全局坐标原点所在屏）跟 macOS 全局坐标系一致。
+
+### Note
+- 从浏览器拖图片/PDF：Chrome/Safari 会把拖动的图片写临时文件，Tauri DragDropEvent 收到
+  这个文件路径 → 我们当成本地图片处理。**不需要专门写 URL drag 逻辑**，开箱就支持。
+  纯 URL 文本拖动（不带图片）目前不触发 —— 那是 Tauri 2 OS-level intercept 的限制，
+  要解需要重写 webview drag-drop 层，v0.5 看用户反馈再说。
+
+### Fixed
+- **顶部"缺一条边"气泡 bug** —— `--bubble-border` 从 `rgba(0,0,0,0.06)` 升 `0.10`，
+  success/warn 变体的 135deg 渐变浓色处现在也看得见上边。
+- **长回答看不见开头** —— 现在 scrollable bubble：
+  - 顶部 / 底部各加 fade gradient（跟 variant 渐变对齐），提示"上面/下面还有"
+  - 右上角圆形 ▲ 回顶按钮，仅当用户滚下去时浮现
+  - 字号顶部 padding 10→14px，正文不再紧贴圆角
+- **拖文档桌宠不"跑"过来** —— v0.3.7 的 `on_drag_enter` 调 `show_mouse(app)`，
+  内部又 `cursor_follow::enable()` 抢前 100ms 把窗口直接传送到光标，384ms ease-out
+  插值动画看不见。改为直接 `window.show()` + 显式 `cursor_follow::disable()`
+  让动画独占 set_position，结束才把控制权交回 follow loop。
+
+### Technical
+- 编译警告清理：删 `bail` / `Emitter` / `NSString` / `s_skin` 等 unused imports + variables
+
+---
+
+## [0.3.7] · 2026-05-19
+
+### Added
+- **🦞 拖文档喂桌宠（核心新功能）** —— 拖任意文档 / 图片到桌宠脸上，桌宠
+  从角落**跑过去**张嘴接（12 帧 ease-out cubic ≈ 384ms 窗口位置插值），drop 后
+  600ms 吞咽动画 → 进入消化态 + 自动开 mic → 你**说问题** → 2.5s 静默自动 finalize →
+  AI 看着文件回答你。
+  - **支持格式**：png/jpg/heic/webp（图片）· txt/md/json/csv/log/yaml + 所有源码（文本）·
+    pdf（`mdls -raw -name kMDItemTextContent`，Spotlight 已索引秒提）· docx/rtf/odt
+    （`textutil -convert txt -stdout`）· xlsx（`unzip` + 手解 sharedStrings/sheet XML）
+  - **拒收**：.app/.exe/视频/音频/zip · 单文件 >20 MB · 一次 >5 个文件
+  - **多文件**：preamble 列出每个文件 + 文本类内联到 prompt（30k 字以内）；超长给路径
+    让 Claude `Read` 工具自己看
+  - **录音判定**：8s grace 等用户开口（drop 完走到键盘的时间），出第一字后 2.5s 静默
+    finalize，兜底 30s 不说就放弃
+  - **Esc 取消**：drag 中或录音中按 Esc → 清掉 fed_docs + 停录音 + 桌宠滑回 anchor
+- **anchor=Hidden 提示** —— Hidden 选项 hint 加 "⚠️ 拖文档喂桌宠会失效（需要桌宠可见）"
+
+### Engineering
+- 新模块 `src-tauri/src/feed.rs`（625 行）+ `feed_flow.rs`（380 行）—— 都在 800 行硬规则内
+- 全程零新依赖（unzip / mdls / textutil 都是 macOS 自带）
+- `cargo test feed::tests` 7 个测试
+
+### CLAUDE.md
+- **新加头号硬规则：动手前先深度思考 UX**，10 问 checklist 写代码前必须脑里跑一遍
+
+---
+
 ## [0.3.6] · 2026-05-18
 
 UX 大整顿。按 CLAUDE.md 新的「头号硬规则：动手前先深度思考 UX」一条一条审过。

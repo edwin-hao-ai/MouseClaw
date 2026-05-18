@@ -18,6 +18,8 @@ pub mod browser_bridge;
 pub mod nudge;
 pub mod presence;
 pub mod punctuation;
+#[cfg(target_os = "macos")]
+pub mod tts;
 pub mod transcribe_stream;
 pub mod claude_cli;
 pub mod clipboard;

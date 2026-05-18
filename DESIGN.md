@@ -314,6 +314,11 @@ The pixel positions in `src/components/Mouse.tsx` are the **legal authoritative 
 | `write` | `─ ─` (focused/squint) | Standing | Yellow pencil in left paw | Slight forward lean |
 | `jump` | `> <` (closed crescent) | Mid-air | Sparkle optional | One-shot 0.9s with overshoot |
 | `block` | `● ●` | Standing back | Red `!` icon over head | None (static warning) |
+| `feed-wait` *(v0.4)* | `● ●` (2px round) | Standing tall, mouth wide open (2×2 dark) | Pink `?` over right ear | Eager bob `mc-feed-wait` (600ms, scale 1.04) |
+| `feed-digest` *(v0.4)* | `─ ─` (closed, content) | Standing | Pink belly glow (CSS drop-shadow) | Breathe `mc-feed-digest` (1100ms, asym scale) |
+| `type` *(v0.1.14)* | `● ●` (2px) | Standing, leans toward cursor | Yellow pencil paw extended left | Static lean |
+| `hub` *(v0.1.14)* | `︶ ︶` (curved closed) | Sitting | None | Static gentle |
+| `paste` *(v0.1.14)* | `● ●` | Standing | White clipboard sprite in right paw | Brief flash |
 
 #### Session Chain Indicator
 
@@ -352,9 +357,9 @@ Color: `var(--success)` (#5cd6a0). Static. Disappears on new session.
 | Property | Value |
 |---|---|
 | Background | `var(--bubble-bg)` |
-| Border | `1px solid var(--bubble-border)` |
+| Border | `1px solid var(--bubble-border)` (alpha 0.10 — v0.3.8 bumped from 0.06, was invisible on gradient variants) |
 | Border-radius | `var(--radius-xl)` (12px) |
-| Padding | `10px 14px` |
+| Padding | `14px 14px 10px` (v0.3.8 — top 14 so text doesn't crowd corner radius) |
 | Max-width | 280px (single bubble) / 320px (with rich content) |
 | Text | `var(--text-body)` |
 | Shadow | `var(--shadow-bubble)` |
@@ -366,6 +371,18 @@ Color: `var(--success)` (#5cd6a0). Static. Disappears on new session.
 - Short answer (< 4 lines): show 3s, then mouse runs to corner, bubble fades 150ms
 - Long answer with `▼ 展开` ignored: same 3s timeout
 - Streaming: never auto-dismiss while tokens arriving
+
+#### Scroll affordances (v0.3.8, scrollable=true only)
+
+When the reply is long enough to scroll inside the bubble:
+
+| Element | Trigger | Position | Spec |
+|---|---|---|---|
+| `.bubble-fade-top` | `scrollTop > 4` | `top: 1px` inset | 18px tall gradient from variant bg → transparent, masks first row of clipped text |
+| `.bubble-fade-bottom` | content below visible | `bottom: 1px` inset | mirror of fade-top, signals more below |
+| `.bubble-scroll-top` (▲) | same as fade-top | `top: 6px right: 8px` | 22×22 round, `var(--accent-primary)` bg, white `▲`, `box-shadow: 0 2px 6px rgba(0,0,0,.15)` |
+
+Fade gradients pull color from the variant's actual gradient endpoint (e.g. `#d8f8e6` for success-top, `#f3fbf6` for success-bottom). One pair per variant — see `Bubble.css`.
 
 ### 4.2 Panel (expanded long-form)
 

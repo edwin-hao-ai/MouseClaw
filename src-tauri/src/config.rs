@@ -122,6 +122,10 @@ pub struct Config {
     /// 用户在托盘 anchor 子菜单点任一选项 → 自动清空回到 None。
     #[serde(default)]
     pub pet_custom_position: Option<(f64, f64)>,
+    /// v0.4.0 · 桌宠开口说话 —— AI 回复完成时用 macOS `say` 朗读
+    /// 默认关 = 安静。开启从托盘「🔊 桌宠开口说话」即可。
+    #[serde(default)]
+    pub tts_enabled: bool,
     /// 长按 fn → 语音输入到光标（v0.1.11 voice IME）
     /// 默认开 —— 用户长按 fn 才触发，短按 fn 仍走 macOS 原生行为
     #[serde(default = "default_voice_ime")]
@@ -185,6 +189,7 @@ impl Default for Config {
             autostart: default_autostart(),
             pet_anchor: PetAnchor::default(),
             pet_custom_position: None,
+            tts_enabled: false,
             onboarded: false,
             version: CURRENT_CONFIG_VERSION,
         }

@@ -83,7 +83,7 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         format!("📁 工作区：{workspace_short}")
     };
 
-    let (s_summon, s_history, s_clipboard, s_skin, s_model, s_browser_on, s_browser_off,
+    let (s_summon, s_history, s_clipboard, _s_skin, s_model, s_browser_on, s_browser_off,
          s_status, s_about, s_quit, s_lang_menu, s_tidy, s_vime, s_pause, s_autostart) = if en {
         ("🦞 Summon", "📜 History…", "📋 Clipboard… ⌘⇧V",
          "🎨 Change pet", "🎙️ Voice model",
@@ -157,6 +157,11 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let current_autostart = crate::config::Config::load().autostart;
     let autostart_item = CheckMenuItem::with_id(app, "toggle-autostart", s_autostart,
         true, current_autostart, None::<&str>)?;
+    // v0.4.0 · 桌宠开口说话 —— AI 回复完后用 macOS `say` 朗读
+    let current_tts = crate::config::Config::load().tts_enabled;
+    let s_tts = if en { "🔊 Pet speaks AI replies" } else { "🔊 桌宠朗读 AI 回复" };
+    let tts_item = CheckMenuItem::with_id(app, "toggle-tts", s_tts,
+        true, current_tts, None::<&str>)?;
 
     // Voice IME trigger 子菜单 —— Fn/Option/Control/RightShift/RightCmd/RightOption
     let current_trigger = crate::voice_ime::ImeTrigger::from_str(
@@ -200,6 +205,7 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     // v0.1.27 · 📍 桌宠位置 ▸ 子菜单（4 角 + 跟随光标）
     let anchor_submenu = crate::anchor::build_tray_submenu(app, en)?;
 
+    // List items (declaring early so the vec! below can reference them)
     let mut items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = vec![
         &summon, &clipboard_item, &history,
         &skin_picker_item, &anchor_submenu, &lang_submenu,
@@ -212,6 +218,7 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     items.extend([
         &browser_item as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
         &autostart_item as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
+        &tts_item as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
         &status as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
         &sep2,
         &about,
@@ -248,7 +255,6 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
         .menu(&menu)
         .on_menu_event(handle_menu_event)
         .on_tray_icon_event(|tray, event| {
-            use tauri::Emitter;
             let app = tray.app_handle();
             match event {
                 // v0.1.13 · 双击托盘 → 打开 Hub（v0.1.16 改独立窗口）
@@ -322,6 +328,7 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
         "toggle-voice-ime"=> { toggle_voice_ime(app); rebuild_tray_menu(app); }
         "toggle-clipboard-pause" => { toggle_clipboard_pause(app); rebuild_tray_menu(app); }
         "toggle-autostart" => { toggle_autostart(app); rebuild_tray_menu(app); }
+        "toggle-tts" => { toggle_tts(app); rebuild_tray_menu(app); }
         "set-workspace"   => { set_workspace_via_picker(app); rebuild_tray_menu(app); }
         "clear-workspace" => {
             let _ = crate::commands::save_workspace_path(None);
@@ -390,6 +397,23 @@ fn set_workspace_via_picker(app: &AppHandle) {
         }
         Err(e) => eprintln!("[mouseclaw] 📁 save_workspace_path: {e}"),
     }
+}
+
+/// v0.4.0 · 切换 TTS（桌宠开口说话）
+fn toggle_tts(app: &AppHandle) {
+    let mut cfg = crate::config::Config::load();
+    cfg.tts_enabled = !cfg.tts_enabled;
+    let now_on = cfg.tts_enabled;
+    if let Err(e) = cfg.save() {
+        eprintln!("[mouseclaw] toggle_tts save: {e}");
+        return;
+    }
+    #[cfg(target_os = "macos")]
+    if !now_on {
+        crate::tts::stop();
+    }
+    let _ = app;
+    println!("[mouseclaw] 🔊 tts_enabled → {now_on}");
 }
 
 /// 切换剪贴板暂停（隐私 ⑧）
