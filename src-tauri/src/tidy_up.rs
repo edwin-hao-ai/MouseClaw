@@ -207,7 +207,10 @@ async fn run_quick_llm(backend: crate::backend::Backend, prompt: &str) -> Result
     // Hermes: `hermes -z "<prompt>"` 干净的单次模式
     let args: Vec<String> = match backend {
         crate::backend::Backend::ClaudeCli => {
+            // v0.3.2 · 强制走 Haiku 4.5 —— tidy 只做"去口头禅 + 加标点 + 修自我纠错"，
+            // Sonnet 太重。Haiku 比 Sonnet 快 ~3x、cost ~1/3，对这种轻清洗刚好。
             vec!["-p".into(), prompt.into(),
+                 "--model".into(), "claude-haiku-4-5".into(),
                  "--permission-mode".into(), "auto".into(),
                  "--output-format".into(), "text".into()]
         }

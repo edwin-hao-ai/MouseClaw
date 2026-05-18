@@ -164,7 +164,10 @@ fn default_language() -> String { "zh".into() }
 // LLM tidy 默认**关** —— Claude CLI 调用每次 +3-8s，对 AI 召唤流程是过度优化。
 // 只有写到光标的语音 IME 场景值得开（精修文本，用户看到的就是它）。
 // 用户托盘菜单可一键开。
-fn default_tidy_up() -> bool { false }
+// v0.3.2 · 默认 ON —— Typeless/豆包 等竞品都默认带标点+优化+重排，
+// 用户反馈"统一处理时没标点没优化"就是因为这个默认关了。
+// 走 Haiku 4.5，单次 ~$0.0003，等待 1-2s 换专业 polish 完全值
+fn default_tidy_up() -> bool { true }
 fn default_voice_ime() -> bool { true }
 fn default_voice_ime_trigger() -> String { "fn".into() }
 fn default_autostart() -> bool { true }

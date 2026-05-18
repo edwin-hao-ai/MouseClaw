@@ -593,28 +593,54 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
             crate::overlay::hide_overlay(&app);
             return;
         }
-        println!("[mouseclaw] 🎙️ final → {cleaned:?}");
+        println!("[mouseclaw] 🎙️ light cleaned → {cleaned:?}");
 
-        // v0.3.1 · 最终 reconciliation —— LCP delta，避免删除全部+重写的视觉闪烁
-        // typed = poller 最后实际 paste 的字符；cleaned = light_clean 后的最终干净版
-        // 走 longest common prefix → 删 diverging suffix → 补 new suffix
-        // 通常 LCP 很长（cleaned ≈ typed 减去 sherpa 自我纠错那点点），所以删的字很少
-        let typed = state.ime_typed.lock().unwrap().clone();
-        let typed_chars: Vec<char> = typed.chars().collect();
-        let cleaned_chars: Vec<char> = cleaned.chars().collect();
-        let mut prefix = 0;
-        while prefix < typed_chars.len()
-            && prefix < cleaned_chars.len()
-            && typed_chars[prefix] == cleaned_chars[prefix]
-        {
-            prefix += 1;
-        }
-        let to_delete = typed_chars.len() - prefix;
-        let to_type: String = cleaned_chars[prefix..].iter().collect();
-        println!("[mouseclaw] 🎙️ reconcile: del {to_delete} char, type +{:?}", to_type);
-
+        // v0.3.2 · LLM polish 阶段 —— 加标点 + 修自我纠错 + 去口头禅
+        // Typeless / 豆包 同等的最终质量都靠这一层。Haiku 4.5 单次 ~$0.0003、~1.5s
+        // 失败兜底 light_clean 版本，主流程不受影响
         let app2 = app.clone();
+        let state2 = state.clone();
+        let language = cfg.language.clone();
+        let backend = cfg.backend;
+        let tidy_on = cfg.tidy_up_enabled;
         tauri::async_runtime::spawn(async move {
+            let final_text = if tidy_on {
+                crate::overlay::emit_view(&app2, &crate::events::ViewKind::Thinking {
+                    transcript: if language == "en" {
+                        "(polishing punctuation + structure…)".into()
+                    } else {
+                        "(精修标点 + 优化排版…)".into()
+                    },
+                });
+                match crate::tidy_up::tidy(&cleaned, backend, &language).await {
+                    Ok(p) => {
+                        println!("[mouseclaw] 🎙️ tidy LLM → {p:?}");
+                        p
+                    }
+                    Err(e) => {
+                        eprintln!("[mouseclaw] 🎙️ tidy 失败 fallback light: {e}");
+                        cleaned.clone()
+                    }
+                }
+            } else {
+                cleaned.clone()
+            };
+
+            // LCP delta vs 流式 poller 已 type 的字 —— 仅删/补差异部分
+            let typed = state2.ime_typed.lock().unwrap().clone();
+            let typed_chars: Vec<char> = typed.chars().collect();
+            let final_chars: Vec<char> = final_text.chars().collect();
+            let mut prefix = 0;
+            while prefix < typed_chars.len()
+                && prefix < final_chars.len()
+                && typed_chars[prefix] == final_chars[prefix]
+            {
+                prefix += 1;
+            }
+            let to_delete = typed_chars.len() - prefix;
+            let to_type: String = final_chars[prefix..].iter().collect();
+            println!("[mouseclaw] 🎙️ reconcile: del {to_delete} char, type +{:?}", to_type);
+
             if to_delete > 0 {
                 let _ = tokio::task::spawn_blocking(move || {
                     let _ = crate::mode_b::delete_chars(to_delete);
@@ -624,7 +650,7 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
                 Ok(()) => {
                     crate::overlay::emit_view(&app2, &crate::events::ViewKind::Reply {
                         transcript: "voice IME".into(),
-                        reply: format!("✍️ {cleaned}"),
+                        reply: format!("✍️ {final_text}"),
                         mode: crate::events::ReplyMode::A,
                         insert_text: None,
                         streaming: false,
