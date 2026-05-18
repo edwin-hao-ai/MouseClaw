@@ -6,6 +6,16 @@ versioning follows [SemVer](https://semver.org/).
 
 ---
 
+## [0.1.30] · 2026-05-18
+
+### Fixed
+- **🖱️ PetMenu 点项目后不收起** — click 事件在菜单项里冒泡到父 `.stage-mouse`
+  div，触发 `handleMouseClick` 的 toggle，刚 `onClose()` 的菜单又被立刻 reopen。
+  在 PetMenu 容器（和 NudgeBubble 容器）上加 `onClick={e => e.stopPropagation()}`
+  截住冒泡。点喂奶酪 / 召唤 / 历史 / 任何项目都正确关闭菜单了
+
+---
+
 ## [0.1.29] · 2026-05-18
 
 ### Fixed
