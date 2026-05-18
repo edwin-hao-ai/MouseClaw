@@ -1,11 +1,11 @@
 {
   "$comment": "MouseClaw 版本元信息 · App 启动时拉取此 URL 检查新版本。任何 release 后更新这里。",
-  "latest": "0.3.0",
+  "latest": "0.3.8",
   "min_supported": "0.1.0",
-  "released_at": "2026-05-18",
-  "size_mb": 250,
-  "dmg_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/latest/download/MouseClaw_0.3.0_aarch64.dmg",
+  "released_at": "2026-05-19",
+  "size_mb": 238,
+  "dmg_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/latest/download/MouseClaw_0.3.8_aarch64.dmg",
   "release_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/latest",
-  "notes_zh": "🎤 sherpa-onnx 语音模型直接打包进 DMG —— 装完即用，零下载等待。同时彻底删除 Whisper（whisper-rs / bundled Base / WhisperModel config / 托盘模型选择全部清干净）。DMG 体积 ~250MB（多 180MB 模型），换来「点开就能说」的体验",
-  "notes_en": "🎤 sherpa-onnx model bundled directly in the DMG — install and use, zero wait. Whisper fully removed (whisper-rs dep, bundled Base, WhisperModel config, tray model picker all gone). DMG grows to ~250MB (+180MB model), trade for instant-ready voice input"
+  "notes_zh": "✍️ 语音输入终于真进输入框！修复 macOS fn 键焦点抢盗（之前字静默丢失）。Plan B 架构：fn 按住时桌宠气泡实时显示流式 partial（视觉流式），松开后 ~250ms 一次性写入光标（避开 fn 行为）。+ 中英文标点自动补全 + 一键打开 Accessibility 设置 + 桌宠位置拖动",
+  "notes_en": "✍️ Voice typing actually reaches the input field now. Fixed macOS fn key focus theft. Plan B: bubble streams partials while fn is held (visual), then one-shot paste ~250ms after fn release (avoids fn's system semantics). Plus local Chinese+English punctuation, one-click Accessibility settings opener, and drag-to-move the pet."
 }
