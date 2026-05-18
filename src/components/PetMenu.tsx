@@ -98,7 +98,15 @@ export function PetMenu({ open, onClose, onFeed, onNap }: PetMenuProps) {
   const feedCount = Number(localStorage.getItem(FEED_COUNT_KEY) ?? 0);
 
   return (
-    <div className="pet-menu" ref={menuRef} role="menu" aria-label="Pet menu">
+    <div
+      className="pet-menu"
+      ref={menuRef}
+      role="menu"
+      aria-label="Pet menu"
+      // v0.1.30 · 截住 click 冒泡 —— 否则会传到 .stage-mouse 的 handleMouseClick
+      // 再 toggle 一次菜单（刚 close 又 open）。点项目后正确收起的关键 fix。
+      onClick={(e) => e.stopPropagation()}
+    >
       <button className="pet-menu-item" role="menuitem" type="button" onClick={summon}>
         <span className="pet-menu-ico">🎤</span>
         <span className="pet-menu-label">{t("petmenu.summon")}</span>

@@ -46,7 +46,14 @@ export function NudgeBubble({ payload, onDismiss }: NudgeBubbleProps) {
   };
 
   return (
-    <div className={`nudge-bubble nudge-${payload.kind}`} role="alert" aria-live="polite">
+    <div
+      className={`nudge-bubble nudge-${payload.kind}`}
+      role="alert"
+      aria-live="polite"
+      // v0.1.30 · 同 PetMenu 修复：截住 click 冒泡，否则会触发父 .stage-mouse
+      // 的 handleMouseClick → 把 PetMenu 打开（不想要的副作用）
+      onClick={(e) => e.stopPropagation()}
+    >
       <div className="nudge-msg">{payload.message}</div>
       <div className="nudge-actions">
         {payload.ctaLabel && (
