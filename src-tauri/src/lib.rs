@@ -17,6 +17,7 @@ pub mod backend;
 pub mod browser_bridge;
 pub mod nudge;
 pub mod presence;
+pub mod transcribe_stream;
 pub mod claude_cli;
 pub mod clipboard;
 pub mod clipboard_crypto;
