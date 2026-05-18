@@ -132,7 +132,7 @@ export default function App() {
       const k = e.key;
       if (k === "1") setView({ kind: "idle" });
       else if (k === "2") setView({ kind: "onboarding" });
-      else if (k === "3") setView({ kind: "listening" });
+      else if (k === "3") setView({ kind: "listening", partial: "" });
       else if (k === "4") setView({ kind: "thinking", transcript: "总结这个网页" });
       else if (k === "5") setView({ kind: "reply", transcript: "总结这个网页", reply: PREVIEW_LONG, mode: "A" });
       else if (k === "6") setView({ kind: "reply", transcript: "看一眼屏幕", reply: "✅ 已发送邮件", mode: "A" });
@@ -272,8 +272,8 @@ function BubbleFor({ view, continuing, onExpand, onNewSession }: BubbleForProps)
     case "idle":
       return null;
     case "listening":
-      // Whisper recording active. User presses shortcut again (or clicks ◼) to stop.
-      return <RecordingBubble />;
+      // v0.2 · sherpa streaming —— partial transcript flows in as user speaks
+      return <RecordingBubble partial={view.partial} />;
     case "voice-ime-listening":
       // v0.1.14 · 语音输入法中（长按触发键），桌宠 sprite 用 "type" 态
       return <RecordingBubble />;

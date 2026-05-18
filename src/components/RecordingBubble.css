@@ -64,3 +64,29 @@
   color: var(--danger);
 }
 .rec-stop:active { transform: translateY(1px); }
+
+/* v0.2 · streaming partial transcript — soft gray, flows in real time
+   as sherpa-onnx emits new characters. Pet text reads like a thought
+   bubble that fills out before final commit. */
+.recording-bubble.has-partial {
+  /* expand bubble width to fit partial text */
+  max-width: 380px;
+}
+.rec-partial {
+  flex: 1 1 auto;
+  font-size: var(--text-body);
+  font-weight: 500;
+  color: var(--text-primary);
+  opacity: 0.78;            /* still-streaming → softer than final reply */
+  line-height: 1.4;
+  word-break: break-word;
+  /* subtle "alive" pulse so user knows text is updating */
+  animation: rec-partial-pulse 1.6s ease-in-out infinite;
+}
+@keyframes rec-partial-pulse {
+  0%, 100% { opacity: 0.78; }
+  50%      { opacity: 1.0;  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rec-partial { animation: none; opacity: 0.9; }
+}
