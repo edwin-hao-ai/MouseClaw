@@ -1,15 +1,16 @@
 /**
- * Five-step Onboarding (v0.1.12):
+ * Six-step Onboarding (v0.1.27):
  *   Step 1 — pick a global shortcut (AI summon)
  *   Step 2 — pick an AI backend
  *   Step 3 — pick a desktop pet skin
- *   Step 4 — pick voice IME trigger key (NEW)
- *   Step 5 — grant required permissions
+ *   Step 4 — pick voice IME trigger key
+ *   Step 5 — pick pet anchor / where the pet lives (NEW v0.1.27)
+ *   Step 6 — grant required permissions
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { PixelMouse } from "./PixelMouse";
-import type { BackendChoice, SkinId } from "../types";
+import type { BackendChoice, SkinId, PetAnchor } from "../types";
 import { SKINS, DEFAULT_SKIN } from "../skins";
 import { useT } from "../i18n";
 import "./Onboarding.css";
@@ -38,6 +39,7 @@ interface OnboardingProps {
     backend: BackendChoice,
     skin: SkinId,
     voiceImeTrigger: VoiceImeTrigger,
+    petAnchor: PetAnchor,
   ) => void;
 }
 
@@ -98,11 +100,13 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   const t = useT();
   const OPTIONS = buildOptions(t);
   const PERMISSIONS = buildPermissions(t);
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
   const [selected, setSelected] = useState<ShortcutChoice>("hold-option");
   const [backend, setBackend] = useState<BackendChoice>("claude-cli");
   const [skin, setSkin] = useState<SkinId>(DEFAULT_SKIN);
   const [voiceImeTrigger, setVoiceImeTrigger] = useState<VoiceImeTrigger>("fn");
+  // v0.1.27 · 默认 bottom-right —— 最不挡视线
+  const [petAnchor, setPetAnchor] = useState<PetAnchor>("bottom-right");
   // v0.1.26 · 开机自启动 —— 进 step 5 时拉一次系统真实状态，用户切换调 set_autostart
   const [autostart, setAutostart] = useState<boolean>(true);
   useEffect(() => {
@@ -130,7 +134,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   }, []);
 
   useEffect(() => {
-    if (step !== 5) return;
+    if (step !== 6) return;
     refreshPerms();
     // 每 1.5 秒刷新一次，让用户授权后立即看到变化
     const timer = setInterval(refreshPerms, 1500);
@@ -313,13 +317,71 @@ export function Onboarding({ onComplete }: OnboardingProps) {
           className="ob-cta"
           onClick={() => setStep(5)}
         >
+          {t("onboarding.cta.next_anchor")}
+        </button>
+      </div>
+    );
+  }
+
+  // ── Step 5: 桌宠悬停位置 (NEW v0.1.27) ────────────────────────────────────
+  if (step === 5) {
+    const corners: { id: PetAnchor; labelKey: "anchor.top-left" | "anchor.top-right"
+                       | "anchor.bottom-left" | "anchor.bottom-right" | "anchor.follow";
+                     visual: "tl" | "tr" | "bl" | "br" | "follow";
+                     tag?: string }[] = [
+      { id: "top-left",     labelKey: "anchor.top-left",     visual: "tl" },
+      { id: "top-right",    labelKey: "anchor.top-right",    visual: "tr" },
+      { id: "bottom-left",  labelKey: "anchor.bottom-left",  visual: "bl" },
+      { id: "bottom-right", labelKey: "anchor.bottom-right", visual: "br",
+        tag: t("common.recommended") },
+      { id: "follow",       labelKey: "anchor.follow",       visual: "follow" },
+    ];
+    return (
+      <div className="ob-root">
+        <div className="ob-mouse-stage">
+          <PixelMouse state="listen" size={96} skin={skin} />
+        </div>
+        <h1 className="ob-title">{t("onboarding.anchor.title")}</h1>
+        <p className="ob-subtitle">{t("onboarding.anchor.subtitle")}</p>
+        <div
+          className="ob-options"
+          role="radiogroup"
+          aria-label={t("onboarding.anchor.title")}
+          style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}
+        >
+          {corners.map(c => (
+            <button
+              key={c.id}
+              type="button"
+              role="radio"
+              aria-checked={petAnchor === c.id}
+              className={`ob-option ${petAnchor === c.id ? "selected" : ""}`}
+              onClick={() => setPetAnchor(c.id)}
+              style={{ flexDirection: "column", alignItems: "center", padding: 10, minHeight: 130 }}
+            >
+              <AnchorPreview pos={c.visual} skin={skin} />
+              <span className="ob-label" style={{ textAlign: "center", marginTop: 6, fontSize: 12 }}>
+                {t(c.labelKey)}
+              </span>
+              {c.tag && <span className="ob-tag">{c.tag}</span>}
+            </button>
+          ))}
+        </div>
+        {petAnchor === "follow" && (
+          <p className="ob-skip-hint">{t("anchor.follow_hint")}</p>
+        )}
+        <button
+          type="button"
+          className="ob-cta"
+          onClick={() => setStep(6)}
+        >
           {t("onboarding.cta.next_perms")}
         </button>
       </div>
     );
   }
 
-  // ── Step 5: 权限申请 ──────────────────────────────────────────────────────
+  // ── Step 6: 权限申请 ──────────────────────────────────────────────────────
   return (
     <div className="ob-root">
       <div className="ob-mouse-stage">
@@ -397,7 +459,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       <button
         type="button"
         className={`ob-cta ${!allDone ? "ob-cta-secondary" : ""}`}
-        onClick={() => onComplete(selected, backend, skin, voiceImeTrigger)}
+        onClick={() => onComplete(selected, backend, skin, voiceImeTrigger, petAnchor)}
       >
         {allDone ? t("onboarding.cta.finish") : t("onboarding.cta.skip")}
       </button>
@@ -437,6 +499,64 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         </table>
         <p className="ob-cheatsheet-foot">{t("onboarding.cheatsheet.tray_hint")}</p>
       </div>
+    </div>
+  );
+}
+
+/**
+ * 桌宠 anchor 预览 —— 一个 mini desktop（mock menubar + dock），
+ * 老鼠按 pos 落在对应角落或居中（follow）。视觉与 prototype 对齐：
+ * docs/prototypes/pet-anchor-menu-nudges-20260518.html §1
+ */
+function AnchorPreview({ pos, skin }: { pos: "tl" | "tr" | "bl" | "br" | "follow"; skin: SkinId }) {
+  const petStyle: CSSProperties = (() => {
+    switch (pos) {
+      case "tl":     return { top: 10, left: 8 };
+      case "tr":     return { top: 10, right: 8 };
+      case "bl":     return { bottom: 14, left: 8 };
+      case "br":     return { bottom: 14, right: 8 };
+      case "follow": return { top: "50%", left: "50%", transform: "translate(-50%, -50%)" };
+    }
+  })();
+  return (
+    <div
+      aria-hidden
+      style={{
+        position: "relative",
+        width: "100%",
+        height: 76,
+        background: "linear-gradient(180deg, #2c2e44 0%, #1e2034 100%)",
+        borderRadius: 8,
+        overflow: "hidden",
+      }}
+    >
+      {/* mock menubar */}
+      <div style={{
+        position: "absolute", top: 0, left: 0, right: 0, height: 6,
+        background: "rgba(0,0,0,0.4)",
+      }} />
+      {/* mock dock */}
+      <div style={{
+        position: "absolute", bottom: 3, left: "50%", transform: "translateX(-50%)",
+        width: 40, height: 6, background: "rgba(255,255,255,0.08)", borderRadius: 3,
+      }} />
+      {/* pet (or follow indicator) */}
+      <div style={{ position: "absolute", ...petStyle }}>
+        <PixelMouse state="sleep" size={32} skin={skin} />
+      </div>
+      {pos === "follow" && (
+        <span
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: "calc(50% - 18px)",
+            transform: "translateY(-50%)",
+            width: 7, height: 7, borderRadius: "50%",
+            background: "#fff",
+            boxShadow: "0 0 6px rgba(255,255,255,0.6)",
+          }}
+        />
+      )}
     </div>
   );
 }

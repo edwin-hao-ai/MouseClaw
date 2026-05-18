@@ -6,12 +6,13 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 import { Onboarding, type VoiceImeTrigger } from "./components/Onboarding";
-import type { ShortcutChoice, BackendChoice, SkinId } from "./types";
+import type { ShortcutChoice, BackendChoice, SkinId, PetAnchor } from "./types";
 
 export default function OnboardingView() {
   const handleComplete = async (
     choice: ShortcutChoice, backend: BackendChoice, skin: SkinId,
     voiceImeTrigger: VoiceImeTrigger,
+    petAnchor: PetAnchor,
   ) => {
     try {
       // 1. 持久化主快捷键 + AI 后端 + 皮肤
@@ -23,7 +24,9 @@ export default function OnboardingView() {
         await invoke("save_voice_ime", { enabled: true });
         await invoke("save_voice_ime_trigger", { trigger: voiceImeTrigger });
       }
-      // 2. 重启 App —— 屏幕录制权限授权后必须重启本进程才生效（macOS 设计）。
+      // 3. v0.1.27 · 持久化桌宠悬停位置
+      await invoke("save_pet_anchor", { anchor: petAnchor });
+      // 4. 重启 App —— 屏幕录制权限授权后必须重启本进程才生效（macOS 设计）。
       //    重启后 onboarded=true → 直接注册快捷键 + ready，屏幕录制也活了。
       await invoke("restart_app");
     } catch (e) {

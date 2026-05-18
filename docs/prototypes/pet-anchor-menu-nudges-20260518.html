@@ -1,0 +1,1022 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>MouseClaw 🦞 — 桌宠悬停 · 点击菜单 · 环境感知提醒 · 2026-05-18</title>
+<style>
+/* ────────────────────────────────────────────────────────────────────
+   Tokens — 来自 DESIGN.md §2 / §9 cheatsheet
+   ────────────────────────────────────────────────────────────────── */
+:root {
+  --surface-deep: #0a0e1a;
+  --surface-mid:  #131826;
+  --surface-soft: #1a2034;
+  --line:         #23283a;
+  --text-on-dark: #f5f5f7;
+  --text-dim:     #a1a1a8;
+  --text-meta:    #6b6e78;
+  --accent-primary: #ff6b9d;
+  --accent-soft:    #ff9bb8;
+  --accent-glow:    rgba(255,107,157,0.15);
+  --success: #5cd6a0;
+  --warn:    #ffd166;
+  --danger:  #ff5f57;
+  --info:    #6ec1ff;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --bubble-bg: linear-gradient(135deg, #ffffff, #fbfbfd);
+  --bubble-shadow: 0 18px 36px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.04);
+  --t-fast: 160ms cubic-bezier(.2,.7,.3,1);
+  --t-base: 280ms cubic-bezier(.2,.7,.3,1);
+
+  /* mouse palette — locked 8 colors */
+  --m-shadow:  #2a2540;
+  --m-outline: #5a3a4a;
+  --m-fur-d:   #b88a8a;
+  --m-fur:     #e8c4b8;
+  --m-fur-l:   #f5dccc;
+  --m-belly:   #ffeae0;
+  --m-eye:     #1a1a2e;
+  --m-blush:   #ff9bb8;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: radial-gradient(1400px 900px at 30% 10%, #1a2034 0%, var(--surface-deep) 60%);
+  color: var(--text-on-dark);
+  font: 14px/1.55 -apple-system, "PingFang SC", system-ui, sans-serif;
+  padding: 32px 22px 100px;
+  min-height: 100vh;
+}
+.wrap { max-width: 1240px; margin: 0 auto; }
+h1 { font-size: 28px; margin: 0 0 6px; letter-spacing: -0.01em; }
+.sub { color: var(--text-dim); margin: 0 0 28px; max-width: 760px; }
+h2 {
+  font-size: 18px; margin: 44px 0 8px;
+  padding-bottom: 8px; border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; gap: 10px;
+}
+h2 .tag {
+  font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  background: var(--accent-glow); color: var(--accent-soft);
+  border: 1px solid rgba(255,107,157,0.3); font-weight: 600;
+}
+h3 { font-size: 14px; margin: 18px 0 8px; color: var(--text-dim); font-weight: 500; }
+.note { color: var(--text-meta); font-size: 12px; margin: 4px 0 18px; }
+
+svg.mouse { image-rendering: pixelated; shape-rendering: crispEdges; display: block; }
+
+/* ════════════════════════════════════════════════════════════════════
+   SECTION 1 — Pin-to-corner picker (5 mini desktops)
+   ════════════════════════════════════════════════════════════════════ */
+.corner-grid {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px;
+}
+.corner-card {
+  background: var(--surface-mid);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 12px;
+  cursor: pointer;
+  transition: all var(--t-base);
+  position: relative;
+}
+.corner-card:hover { transform: translateY(-2px); border-color: var(--accent-soft); }
+.corner-card.selected {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.corner-card.selected::after {
+  content: "✓"; position: absolute; top: 10px; right: 10px;
+  background: var(--accent-primary); color: #fff;
+  width: 20px; height: 20px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 12px; font-weight: 700;
+}
+.mini-desktop {
+  position: relative;
+  height: 120px;
+  background: linear-gradient(180deg, #2c2e44 0%, #1e2034 100%);
+  border-radius: var(--radius-md);
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+/* fake menubar */
+.mini-desktop::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 8px;
+  background: rgba(0,0,0,0.4);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+/* fake dock */
+.mini-desktop::after {
+  content: ""; position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
+  width: 60px; height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px;
+}
+.mini-mouse { position: absolute; }
+.mini-mouse.tl { top: 12px; left: 10px; }
+.mini-mouse.tr { top: 12px; right: 10px; }
+.mini-mouse.bl { bottom: 18px; left: 10px; }
+.mini-mouse.br { bottom: 18px; right: 10px; }
+.mini-mouse.follow { top: 50%; left: 50%; transform: translate(-50%, -50%); }
+.mini-mouse.follow::before {
+  content: ""; position: absolute; top: 50%; left: -14px;
+  width: 10px; height: 10px;
+  background: rgba(255,255,255,0.7); border-radius: 50%;
+  box-shadow: 0 0 8px rgba(255,255,255,0.5);
+}
+.corner-name { font-weight: 600; font-size: 13px; }
+.corner-meta { color: var(--text-meta); font-size: 11px; margin-top: 2px; }
+
+/* zzz over sleeping mouse */
+.zzz {
+  position: absolute; top: -8px; right: -10px;
+  font-size: 9px; color: var(--info);
+  animation: zzz-float 2.5s ease-in-out infinite;
+}
+@keyframes zzz-float {
+  0%, 100% { transform: translateY(0); opacity: 0.4; }
+  50%      { transform: translateY(-6px); opacity: 1; }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   SECTION 2 — Click menu (mock desktop)
+   ════════════════════════════════════════════════════════════════════ */
+.stage {
+  position: relative;
+  height: 420px;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, #d4c8b8 0%, #b8a890 100%);
+}
+/* mock VS Code window inside */
+.mock-app {
+  position: absolute;
+  top: 30px; left: 30px; right: 30px; bottom: 30px;
+  background: #1e1e1e;
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+  overflow: hidden;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  color: #d4d4d4;
+}
+.mock-titlebar {
+  height: 22px;
+  background: #2d2d30;
+  display: flex; align-items: center; gap: 6px; padding: 0 10px;
+}
+.mock-titlebar .dot { width: 8px; height: 8px; border-radius: 50%; }
+.mock-titlebar .dot.r { background: #ff5f57; }
+.mock-titlebar .dot.y { background: #ffbd2e; }
+.mock-titlebar .dot.g { background: #28c840; }
+.mock-titlebar .title { margin-left: auto; margin-right: auto; color: #888; font-size: 10px; }
+.mock-code {
+  padding: 12px 16px;
+  white-space: pre;
+  line-height: 1.7;
+}
+.kw { color: #569cd6; }
+.fn { color: #dcdcaa; }
+.str { color: #ce9178; }
+.cm { color: #6a9955; }
+.var { color: #9cdcfe; }
+
+/* the live pet sitting in the stage */
+.stage-pet {
+  position: absolute;
+  bottom: 14px; right: 14px;
+  cursor: pointer;
+  transition: transform var(--t-base);
+}
+.stage-pet:hover { transform: scale(1.08); }
+.stage-pet:active { transform: scale(0.95); }
+.tap-hint {
+  position: absolute;
+  bottom: 76px; right: 18px;
+  font-size: 11px; color: #fff;
+  background: rgba(0,0,0,0.5);
+  padding: 4px 10px; border-radius: 999px;
+  pointer-events: none;
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.5; transform: translateY(0); }
+  50%      { opacity: 1; transform: translateY(-4px); }
+}
+
+/* the menu popup */
+.pet-menu {
+  position: absolute;
+  bottom: 84px; right: 14px;
+  width: 220px;
+  background: var(--bubble-bg);
+  color: #1a1a2e;
+  border-radius: var(--radius-md);
+  box-shadow: var(--bubble-shadow);
+  padding: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px) scale(0.96);
+  transition: all 180ms cubic-bezier(.2,.7,.3,1);
+  z-index: 10;
+}
+.pet-menu.open {
+  opacity: 1; pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+/* tail */
+.pet-menu::after {
+  content: ""; position: absolute;
+  bottom: -6px; right: 28px;
+  width: 12px; height: 12px;
+  background: var(--bubble-bg);
+  transform: rotate(45deg);
+  box-shadow: 2px 2px 4px rgba(0,0,0,0.06);
+}
+.menu-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--t-fast);
+}
+.menu-item:hover {
+  background: var(--accent-glow);
+  color: var(--accent-primary);
+}
+.menu-item .ico {
+  width: 18px; height: 18px;
+  display: grid; place-items: center;
+  font-size: 14px;
+}
+.menu-item .kbd {
+  margin-left: auto; font-size: 10px; color: #888;
+  background: #f0f0f3; padding: 1px 5px; border-radius: 4px;
+  font-family: ui-monospace, monospace;
+}
+.menu-divider {
+  height: 1px; background: #e8e8ed; margin: 4px 6px;
+}
+.menu-badge {
+  margin-left: auto;
+  background: var(--accent-primary); color: #fff;
+  font-size: 9px; padding: 1px 6px; border-radius: 999px;
+  font-weight: 700;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   SECTION 3 — Nudge gallery (environment-aware reminders)
+   ════════════════════════════════════════════════════════════════════ */
+.nudge-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+}
+.nudge-card {
+  background: var(--surface-mid);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  position: relative;
+}
+.nudge-stage {
+  position: relative;
+  height: 180px;
+  background: linear-gradient(180deg, #c8b8a0 0%, #a89880 100%);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+/* fake desktop context — code lines */
+.nudge-stage.ide::before {
+  content: "function debounce(fn, ms) {\A  let id;\A  return (...a) => {\A    clearTimeout(id);\A    id = setTimeout(...);\A  };\A}";
+  position: absolute; inset: 8px 8px 40px 8px;
+  white-space: pre;
+  font: 9px/1.4 ui-monospace, "SF Mono", monospace;
+  color: rgba(0,0,0,0.35);
+  background: rgba(30,30,30,0.85);
+  color: #888;
+  padding: 8px;
+  border-radius: 4px;
+}
+.nudge-stage.night {
+  background: linear-gradient(180deg, #1a1b3a 0%, #0a0a1e 100%);
+}
+.nudge-stage.morning {
+  background: linear-gradient(180deg, #ffd9a8 0%, #ffb38a 100%);
+}
+.nudge-stage.lunch {
+  background: linear-gradient(180deg, #fce4a8 0%, #f0c878 100%);
+}
+.nudge-stage.focus {
+  background: linear-gradient(180deg, #2a3a5a 0%, #1a2a4a 100%);
+}
+.nudge-stage.water {
+  background: linear-gradient(180deg, #a8d8f0 0%, #80b8d8 100%);
+}
+
+.nudge-pet {
+  position: absolute;
+  bottom: 14px; right: 14px;
+}
+.nudge-pet.center {
+  bottom: auto; right: auto;
+  top: 50%; left: 50%; transform: translate(-50%, -50%);
+}
+
+/* bubble used in nudge stages */
+.nudge-bubble {
+  position: absolute;
+  background: var(--bubble-bg);
+  color: #1a1a2e;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 8px 12px;
+  border-radius: 12px;
+  box-shadow: var(--bubble-shadow);
+  max-width: 160px;
+  line-height: 1.4;
+  animation: bubble-in 360ms cubic-bezier(.34,1.56,.64,1) both;
+}
+.nudge-bubble.tl { top: 14px; left: 14px; }
+.nudge-bubble.tr { top: 14px; right: 14px; }
+.nudge-bubble.bl { bottom: 14px; left: 14px; }
+.nudge-bubble.center { top: 14px; left: 50%; transform: translateX(-50%); }
+@keyframes bubble-in {
+  0%   { opacity: 0; transform: translateY(6px) scale(0.9); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.nudge-bubble .actions {
+  display: flex; gap: 6px; margin-top: 6px;
+}
+.nudge-bubble .btn {
+  font-size: 10px; padding: 2px 8px; border-radius: 6px;
+  background: var(--accent-primary); color: #fff;
+  font-weight: 600; cursor: pointer;
+}
+.nudge-bubble .btn.ghost {
+  background: transparent; color: #6b6e78;
+  border: 1px solid #d8d8de;
+}
+.nudge-bubble .mute {
+  font-size: 9px; color: #999; margin-top: 4px; cursor: pointer;
+}
+
+.nudge-title {
+  font-weight: 600; font-size: 14px;
+  display: flex; align-items: center; gap: 8px;
+}
+.nudge-title .pill {
+  font-size: 10px; padding: 1px 7px; border-radius: 999px;
+  background: var(--surface-soft); color: var(--text-dim);
+  font-weight: 500;
+}
+.nudge-title .pill.green { background: rgba(92,214,160,0.15); color: var(--success); }
+.nudge-title .pill.blue  { background: rgba(110,193,255,0.15); color: var(--info); }
+.nudge-title .pill.pink  { background: var(--accent-glow); color: var(--accent-soft); }
+.nudge-desc {
+  color: var(--text-dim); font-size: 12px; margin-top: 6px;
+  line-height: 1.5;
+}
+.nudge-trigger {
+  margin-top: 8px; font-size: 11px; color: var(--text-meta);
+  font-family: ui-monospace, monospace;
+  padding: 6px 8px; background: var(--surface-deep);
+  border-radius: 6px; border-left: 2px solid var(--accent-soft);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Mouse animations
+   ════════════════════════════════════════════════════════════════════ */
+.idle    { animation: breath 3.2s ease-in-out infinite; transform-origin: 50% 100%; }
+.sleep   { animation: breath 4.5s ease-in-out infinite; transform-origin: 50% 100%; }
+.stretch { animation: stretch 2.8s ease-in-out infinite; transform-origin: 50% 100%; }
+.wave    { animation: wave 1.6s ease-in-out infinite; transform-origin: 50% 100%; }
+.dance   { animation: dance 0.9s ease-in-out infinite; transform-origin: 50% 100%; }
+.tilt    { animation: tilt 2.2s ease-in-out infinite; transform-origin: 50% 100%; }
+.focus-glow { animation: focus-glow 2.6s ease-in-out infinite; }
+
+@keyframes breath {
+  0%, 100% { transform: scaleY(1) scaleX(1); }
+  50%      { transform: scaleY(1.04) scaleX(0.98); }
+}
+@keyframes stretch {
+  0%, 100% { transform: scaleY(1) translateY(0); }
+  40%      { transform: scaleY(1.15) translateY(-4px); }
+  60%      { transform: scaleY(0.92) translateY(2px); }
+}
+@keyframes wave {
+  0%, 100% { transform: rotate(-3deg); }
+  50%      { transform: rotate(5deg); }
+}
+@keyframes dance {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50%      { transform: translateY(-6px) rotate(4deg); }
+}
+@keyframes tilt {
+  0%, 100% { transform: rotate(-6deg); }
+  50%      { transform: rotate(6deg); }
+}
+@keyframes focus-glow {
+  0%, 100% { filter: drop-shadow(0 0 0px var(--accent-soft)); }
+  50%      { filter: drop-shadow(0 0 8px var(--accent-soft)); }
+}
+
+/* sleep cap blanket overlay for night nudge */
+.blanket {
+  position: absolute;
+  bottom: 6px; right: 8px;
+  width: 60px; height: 30px;
+  background: linear-gradient(180deg, #ff9bb8, #d96b8a);
+  border-radius: 30px 30px 4px 4px;
+  border: 2px solid var(--m-outline);
+  z-index: 5;
+}
+
+/* sun for morning */
+.sun {
+  position: absolute;
+  top: 16px; right: 24px;
+  width: 28px; height: 28px;
+  background: #ffd166;
+  border-radius: 50%;
+  box-shadow: 0 0 30px rgba(255,209,102,0.6);
+  animation: pulse-sun 3s ease-in-out infinite;
+}
+@keyframes pulse-sun {
+  0%, 100% { box-shadow: 0 0 20px rgba(255,209,102,0.5); }
+  50%      { box-shadow: 0 0 40px rgba(255,209,102,0.8); }
+}
+/* moon for night */
+.moon {
+  position: absolute;
+  top: 16px; right: 24px;
+  width: 22px; height: 22px;
+  background: #f0f0d8;
+  border-radius: 50%;
+  box-shadow: inset -6px -2px 0 0 #d8d8c0;
+}
+.star {
+  position: absolute;
+  width: 2px; height: 2px;
+  background: #fff;
+  border-radius: 50%;
+}
+.star:nth-child(1) { top: 30px; left: 20%; animation: twinkle 2s infinite; }
+.star:nth-child(2) { top: 50px; left: 40%; animation: twinkle 2.5s infinite 0.5s; }
+.star:nth-child(3) { top: 25px; left: 60%; animation: twinkle 1.8s infinite 1s; }
+@keyframes twinkle {
+  0%, 100% { opacity: 0.3; }
+  50%      { opacity: 1; }
+}
+
+/* water droplet for water nudge */
+.droplet {
+  position: absolute;
+  width: 12px; height: 16px;
+  background: var(--info);
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  transform: rotate(-180deg);
+  opacity: 0.7;
+  animation: drop 2s ease-in infinite;
+}
+@keyframes drop {
+  0%   { transform: rotate(-180deg) translateY(-20px); opacity: 0; }
+  50%  { opacity: 0.8; }
+  100% { transform: rotate(-180deg) translateY(40px); opacity: 0; }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Onboarding step preview
+   ════════════════════════════════════════════════════════════════════ */
+.ob-card {
+  background: var(--surface-mid);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  max-width: 540px;
+}
+.ob-step { font-size: 11px; color: var(--accent-soft); font-weight: 600; }
+.ob-q { font-size: 18px; margin: 4px 0 14px; font-weight: 600; }
+
+/* ════════════════════════════════════════════════════════════════════
+   Tray menu preview
+   ════════════════════════════════════════════════════════════════════ */
+.tray-mock {
+  display: inline-block;
+  background: rgba(35,38,52,0.95);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 4px;
+  font-size: 13px;
+  min-width: 240px;
+}
+.tray-item {
+  padding: 6px 12px; border-radius: 6px;
+  display: flex; align-items: center; gap: 10px;
+  color: #f5f5f7;
+}
+.tray-item:hover { background: rgba(255,255,255,0.08); }
+.tray-item .check { width: 14px; color: var(--success); }
+.tray-item.sub::before { content: "▸"; color: var(--text-dim); margin-left: auto; }
+.tray-sep { height: 1px; background: rgba(255,255,255,0.08); margin: 4px 0; }
+
+/* privacy callout */
+.privacy {
+  margin-top: 18px;
+  padding: 14px 18px;
+  background: rgba(110,193,255,0.08);
+  border: 1px solid rgba(110,193,255,0.2);
+  border-radius: var(--radius-md);
+  font-size: 13px; line-height: 1.6;
+}
+.privacy strong { color: var(--info); }
+
+@media (max-width: 900px) {
+  .corner-grid { grid-template-columns: repeat(2, 1fr); }
+  .nudge-grid  { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>🦞 桌宠悬停 · 点击菜单 · 环境感知提醒</h1>
+<p class="sub">
+  v0.1.27 设计草稿 · 把桌宠从"状态指示器"升级成"会陪伴 + 会观察 + 会提醒"的伙伴。
+  这页 prototype 展示三件事：(1) 它住在屏幕哪个角落，(2) 点它会弹出什么菜单，
+  (3) 在你工作时它会怎么主动跳出来。所有动画都是真实 CSS 动效 — 不是截图。
+</p>
+
+<!-- ================================================================
+     SECTION 1 — Pin to corner
+     ================================================================ -->
+<h2>① 桌宠住在哪 <span class="tag">Onboarding · Tray · 设置 三处入口</span></h2>
+<p class="note">点卡片选默认位置 · 老鼠在那个角落打盹，召唤时跑到光标位置工作，完事跑回家</p>
+
+<div class="corner-grid" id="cornerGrid">
+  <div class="corner-card" data-corner="tl">
+    <div class="mini-desktop">
+      <div class="mini-mouse tl">
+        <span class="zzz">z</span>
+        <!-- mini pixel mouse -->
+        <svg class="mouse sleep" width="20" height="20" viewBox="0 0 16 16">
+          <rect x="3" y="6" width="10" height="7" fill="var(--m-fur)"/>
+          <rect x="2" y="7" width="1" height="5" fill="var(--m-outline)"/>
+          <rect x="13" y="7" width="1" height="5" fill="var(--m-outline)"/>
+          <rect x="3" y="5" width="2" height="2" fill="var(--m-fur-d)"/>
+          <rect x="11" y="5" width="2" height="2" fill="var(--m-fur-d)"/>
+          <rect x="5" y="9" width="1" height="1" fill="var(--m-eye)"/>
+          <rect x="10" y="9" width="1" height="1" fill="var(--m-eye)"/>
+        </svg>
+      </div>
+    </div>
+    <div class="corner-name">左上 · Top Left</div>
+    <div class="corner-meta">menubar 旁边，离 dock 远</div>
+  </div>
+
+  <div class="corner-card" data-corner="tr">
+    <div class="mini-desktop">
+      <div class="mini-mouse tr">
+        <span class="zzz">z</span>
+        <svg class="mouse sleep" width="20" height="20" viewBox="0 0 16 16">
+          <rect x="3" y="6" width="10" height="7" fill="var(--m-fur)"/>
+          <rect x="2" y="7" width="1" height="5" fill="var(--m-outline)"/>
+          <rect x="13" y="7" width="1" height="5" fill="var(--m-outline)"/>
+          <rect x="3" y="5" width="2" height="2" fill="var(--m-fur-d)"/>
+          <rect x="11" y="5" width="2" height="2" fill="var(--m-fur-d)"/>
+          <rect x="5" y="9" width="1" height="1" fill="var(--m-eye)"/>
+          <rect x="10" y="9" width="1" height="1" fill="var(--m-eye)"/>
+        </svg>
+      </div>
+    </div>
+    <div class="corner-name">右上 · Top Right</div>
+    <div class="corner-meta">通知中心隔壁</div>
+  </div>
+
+  <div class="corner-card" data-corner="bl">
+    <div class="mini-desktop">
+      <div class="mini-mouse bl">
+        <span class="zzz">z</span>
+        <svg class="mouse sleep" width="20" height="20" viewBox="0 0 16 16">
+          <rect x="3" y="6" width="10" height="7" fill="var(--m-fur)"/>
+          <rect x="2" y="7" width="1" height="5" fill="var(--m-outline)"/>
+          <rect x="13" y="7" width="1" height="5" fill="var(--m-outline)"/>
+          <rect x="3" y="5" width="2" height="2" fill="var(--m-fur-d)"/>
+          <rect x="11" y="5" width="2" height="2" fill="var(--m-fur-d)"/>
+          <rect x="5" y="9" width="1" height="1" fill="var(--m-eye)"/>
+          <rect x="10" y="9" width="1" height="1" fill="var(--m-eye)"/>
+        </svg>
+      </div>
+    </div>
+    <div class="corner-name">左下 · Bottom Left</div>
+    <div class="corner-meta">dock 边缘</div>
+  </div>
+
+  <div class="corner-card selected" data-corner="br">
+    <div class="mini-desktop">
+      <div class="mini-mouse br">
+        <span class="zzz">z</span>
+        <svg class="mouse sleep" width="20" height="20" viewBox="0 0 16 16">
+          <rect x="3" y="6" width="10" height="7" fill="var(--m-fur)"/>
+          <rect x="2" y="7" width="1" height="5" fill="var(--m-outline)"/>
+          <rect x="13" y="7" width="1" height="5" fill="var(--m-outline)"/>
+          <rect x="3" y="5" width="2" height="2" fill="var(--m-fur-d)"/>
+          <rect x="11" y="5" width="2" height="2" fill="var(--m-fur-d)"/>
+          <rect x="5" y="9" width="1" height="1" fill="var(--m-eye)"/>
+          <rect x="10" y="9" width="1" height="1" fill="var(--m-eye)"/>
+        </svg>
+      </div>
+    </div>
+    <div class="corner-name">右下 · Bottom Right ⭐</div>
+    <div class="corner-meta">推荐默认 · 最不挡视线</div>
+  </div>
+
+  <div class="corner-card" data-corner="follow">
+    <div class="mini-desktop">
+      <div class="mini-mouse follow">
+        <svg class="mouse idle" width="20" height="20" viewBox="0 0 16 16">
+          <rect x="3" y="6" width="10" height="7" fill="var(--m-fur)"/>
+          <rect x="2" y="7" width="1" height="5" fill="var(--m-outline)"/>
+          <rect x="13" y="7" width="1" height="5" fill="var(--m-outline)"/>
+          <rect x="3" y="5" width="2" height="2" fill="var(--m-fur-d)"/>
+          <rect x="11" y="5" width="2" height="2" fill="var(--m-fur-d)"/>
+          <rect x="5" y="9" width="1" height="1" fill="var(--m-eye)"/>
+          <rect x="10" y="9" width="1" height="1" fill="var(--m-eye)"/>
+        </svg>
+      </div>
+    </div>
+    <div class="corner-name">跟随光标 · Follow</div>
+    <div class="corner-meta">V2 选项，可能费 CPU</div>
+  </div>
+</div>
+
+<h3>Onboarding 第 3 步</h3>
+<div class="ob-card">
+  <div class="ob-step">STEP 3 / 4</div>
+  <div class="ob-q">小老鼠平时住在哪个角落？</div>
+  <p style="color: var(--text-dim); margin: 0 0 14px; font-size: 13px;">
+    它会在那里打盹 zzz，等你按召唤快捷键时跑出来工作，完事再跑回去。
+  </p>
+  <div style="color: var(--text-meta); font-size: 12px;">↑ 用上面 5 个卡片选 ↑</div>
+</div>
+
+<h3>托盘菜单入口</h3>
+<div class="tray-mock">
+  <div class="tray-item">🎤 召唤老鼠 <span style="margin-left:auto; font-size:11px; color:#888;">⌘ ⌥ M</span></div>
+  <div class="tray-item">📜 查看历史记录</div>
+  <div class="tray-sep"></div>
+  <div class="tray-item sub">📍 桌宠位置</div>
+  <div class="tray-item sub">🔔 提醒设置</div>
+  <div class="tray-item sub">🎨 换形象</div>
+  <div class="tray-sep"></div>
+  <div class="tray-item">⚙️ 设置...</div>
+  <div class="tray-item">关于 MouseClaw</div>
+  <div class="tray-item">退出</div>
+</div>
+
+<!-- ================================================================
+     SECTION 2 — Click menu
+     ================================================================ -->
+<h2>② 点击老鼠 → 弹出菜单 <span class="tag">游戏 NPC 对话感</span></h2>
+<p class="note">点下面那只老鼠试试 · 像素气泡 + 纵向列表 + hover 发光描边</p>
+
+<div class="stage">
+  <div class="mock-app">
+    <div class="mock-titlebar">
+      <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+      <span class="title">DESIGN.md — MouseClaw</span>
+    </div>
+    <div class="mock-code"><span class="cm">// 桌宠住在屏幕右下角，打盹中</span>
+<span class="kw">const</span> <span class="var">pet</span> = <span class="kw">new</span> <span class="fn">Mouse</span>({
+  anchor: <span class="str">"bottom-right"</span>,
+  state:  <span class="str">"sleeping"</span>,
+  nudges: [<span class="str">"water"</span>, <span class="str">"stretch"</span>, <span class="str">"stuck"</span>]
+});
+
+<span class="kw">function</span> <span class="fn">onClick</span>() {
+  <span class="var">pet</span>.<span class="fn">openMenu</span>();  <span class="cm">// ← 试试点右下角那只</span>
+}</div>
+  </div>
+
+  <div class="tap-hint" id="tapHint">👇 点这只老鼠</div>
+
+  <div class="stage-pet" id="stagePet" onclick="toggleMenu()">
+    <svg class="mouse idle" width="56" height="56" viewBox="0 0 16 16">
+      <!-- shadow -->
+      <ellipse cx="8" cy="14" rx="5" ry="0.8" fill="var(--m-shadow)" opacity="0.4"/>
+      <!-- body -->
+      <rect x="3" y="6" width="10" height="7" fill="var(--m-fur)"/>
+      <rect x="3" y="5" width="2" height="2" fill="var(--m-fur-d)"/>
+      <rect x="11" y="5" width="2" height="2" fill="var(--m-fur-d)"/>
+      <rect x="2" y="7" width="1" height="5" fill="var(--m-outline)"/>
+      <rect x="13" y="7" width="1" height="5" fill="var(--m-outline)"/>
+      <!-- belly -->
+      <rect x="5" y="11" width="6" height="2" fill="var(--m-belly)"/>
+      <!-- eyes -->
+      <rect x="5" y="8" width="1" height="2" fill="var(--m-eye)"/>
+      <rect x="10" y="8" width="1" height="2" fill="var(--m-eye)"/>
+      <!-- eye sparkle -->
+      <rect x="5" y="8" width="1" height="1" fill="#fff"/>
+      <rect x="10" y="8" width="1" height="1" fill="#fff"/>
+      <!-- blush -->
+      <rect x="4" y="10" width="1" height="1" fill="var(--m-blush)"/>
+      <rect x="11" y="10" width="1" height="1" fill="var(--m-blush)"/>
+      <!-- nose -->
+      <rect x="7" y="10" width="2" height="1" fill="var(--m-blush)"/>
+    </svg>
+  </div>
+
+  <div class="pet-menu" id="petMenu">
+    <div class="menu-item"><span class="ico">🎤</span> 召唤（说话） <span class="kbd">⌘⌥M</span></div>
+    <div class="menu-item"><span class="ico">📜</span> 历史对话</div>
+    <div class="menu-divider"></div>
+    <div class="menu-item"><span class="ico">🍖</span> 喂奶酪 <span class="menu-badge">+1</span></div>
+    <div class="menu-item"><span class="ico">💤</span> 休息一下 (15min)</div>
+    <div class="menu-item"><span class="ico">🎁</span> 今天捡到了…</div>
+    <div class="menu-divider"></div>
+    <div class="menu-item"><span class="ico">🎨</span> 换形象</div>
+    <div class="menu-item"><span class="ico">⚙️</span> 设置</div>
+  </div>
+</div>
+
+<h3>菜单设计说明</h3>
+<ul style="color: var(--text-dim); font-size: 13px; line-height: 1.8;">
+  <li><strong style="color: var(--accent-soft);">🎤 召唤</strong> — 鼠标用户的快捷键平替</li>
+  <li><strong style="color: var(--accent-soft);">📜 历史对话</strong> — 打开 Panel，浏览过往 sessions</li>
+  <li><strong style="color: var(--accent-soft);">🍖 喂奶酪</strong> — 纯情感互动，老鼠吃一口 + 开心动画，养成连接</li>
+  <li><strong style="color: var(--accent-soft);">💤 休息一下</strong> — 5 / 15 / 60 min 免打扰，老鼠真的睡着</li>
+  <li><strong style="color: var(--accent-soft);">🎁 今天捡到了…</strong> — 每日一句 fun fact / 诗 / tip（这是 AI 桌宠的杀手锏）</li>
+  <li><strong style="color: var(--accent-soft);">🎨 换形象</strong> — 入口收敛到这里（替代昨天的快捷键）</li>
+  <li><strong style="color: var(--accent-soft);">⚙️ 设置</strong> — Pin 位置 / 后端 / 自启动 / 提醒开关</li>
+</ul>
+
+<!-- ================================================================
+     SECTION 3 — Environment-aware nudges
+     ================================================================ -->
+<h2>③ 环境感知提醒 <span class="tag">本地信号 · 零 LLM 调用 · 0 token 成本</span></h2>
+<p class="note">老鼠"看你做什么"全靠本地系统信号 — 不读你打的内容，只数频率和元数据。下面 6 张卡片是 MVP 候选场景。</p>
+
+<div class="nudge-grid">
+
+  <!-- 1. Water -->
+  <div class="nudge-card">
+    <div class="nudge-stage water">
+      <span class="droplet" style="left: 30%; top: 0;"></span>
+      <span class="droplet" style="left: 50%; top: 0; animation-delay: 0.6s;"></span>
+      <span class="droplet" style="left: 70%; top: 0; animation-delay: 1.2s;"></span>
+      <div class="nudge-bubble center">
+        💧 喝口水吧？专注 20min 了
+        <div class="actions">
+          <span class="btn">喝了</span>
+          <span class="btn ghost">5min 后</span>
+        </div>
+        <div class="mute">😶 今天闭嘴</div>
+      </div>
+      <div class="nudge-pet">
+        <svg class="mouse idle" width="40" height="40" viewBox="0 0 16 16">
+          <rect x="3" y="6" width="10" height="7" fill="var(--m-fur)"/>
+          <rect x="3" y="5" width="2" height="2" fill="var(--m-fur-d)"/>
+          <rect x="11" y="5" width="2" height="2" fill="var(--m-fur-d)"/>
+          <rect x="5" y="8" width="1" height="2" fill="var(--m-eye)"/>
+          <rect x="10" y="8" width="1" height="2" fill="var(--m-eye)"/>
+          <!-- water cup -->
+          <rect x="6" y="11" width="4" height="2" fill="#6ec1ff"/>
+          <rect x="6" y="10" width="4" height="1" fill="#fff"/>
+        </svg>
+      </div>
+    </div>
+    <div class="nudge-title">💧 喝水提醒 <span class="pill green">健康</span></div>
+    <div class="nudge-desc">默认 45min，只在用户连续敲键 ≥20min 后触发（说明真在专注，不是摸鱼）</div>
+    <div class="nudge-trigger">trigger: keystroke_rate &gt; 30/min for 20min</div>
+  </div>
+
+  <!-- 2. Stretch -->
+  <div class="nudge-card">
+    <div class="nudge-stage">
+      <div class="nudge-bubble tl">
+        🧘 站起来动一动？已经坐 90 分钟啦
+      </div>
+      <div class="nudge-pet center">
+        <svg class="mouse stretch" width="48" height="48" viewBox="0 0 16 16">
+          <rect x="3" y="6" width="10" height="7" fill="var(--m-fur)"/>
+          <rect x="3" y="5" width="2" height="2" fill="var(--m-fur-d)"/>
+          <rect x="11" y="5" width="2" height="2" fill="var(--m-fur-d)"/>
+          <rect x="5" y="8" width="1" height="1" fill="var(--m-eye)"/>
+          <rect x="10" y="8" width="1" height="1" fill="var(--m-eye)"/>
+          <!-- arms up stretching -->
+          <rect x="1" y="3" width="2" height="3" fill="var(--m-fur)"/>
+          <rect x="13" y="3" width="2" height="3" fill="var(--m-fur)"/>
+        </svg>
+      </div>
+    </div>
+    <div class="nudge-title">🧘 久坐提醒 <span class="pill green">健康</span></div>
+    <div class="nudge-desc">90min 鼠标位置无大幅变化 → 老鼠表演拉伸动画，暗示你也动动</div>
+    <div class="nudge-trigger">trigger: mouse_motion &lt; 50px / 90min</div>
+  </div>
+
+  <!-- 3. Stuck detection (KILLER FEATURE) -->
+  <div class="nudge-card">
+    <div class="nudge-stage ide">
+      <div class="nudge-bubble bl" style="left: auto; right: 14px; bottom: 14px;">
+        🤔 卡住了？要不要召唤一下我？
+        <div class="actions">
+          <span class="btn">召唤 ⌘⌥M</span>
+          <span class="btn ghost">不用</span>
+        </div>
+      </div>
+      <div class="nudge-pet">
+        <svg class="mouse tilt" width="40" height="40" viewBox="0 0 16 16">
+          <rect x="3" y="6" width="10" height="7" fill="var(--m-fur)"/>
+          <rect x="3" y="5" width="2" height="2" fill="var(--m-fur-d)"/>
+          <rect x="11" y="5" width="2" height="2" fill="var(--m-fur-d)"/>
+          <rect x="5" y="8" width="1" height="2" fill="var(--m-eye)"/>
+          <rect x="10" y="8" width="1" height="2" fill="var(--m-eye)"/>
+          <!-- question mark -->
+          <rect x="14" y="2" width="1" height="3" fill="var(--warn)"/>
+          <rect x="15" y="5" width="1" height="1" fill="var(--warn)"/>
+        </svg>
+      </div>
+    </div>
+    <div class="nudge-title">🤔 卡壳侦测 <span class="pill pink">⭐ 杀手锏</span></div>
+    <div class="nudge-desc">IDE 前台但 5min 没敲键 + 鼠标乱晃 → 老鼠歪头主动给 LLM 入口</div>
+    <div class="nudge-trigger">trigger: ide_focused && keystroke=0 && cursor_jitter &gt; 200px / 5min</div>
+  </div>
+
+  <!-- 4. Focus shield -->
+  <div class="nudge-card">
+    <div class="nudge-stage focus">
+      <div class="nudge-bubble tr" style="background: rgba(110,193,255,0.15); color: var(--info); border: 1px solid rgba(110,193,255,0.3); box-shadow: none;">
+        ⚡ 心流保护中<br>
+        <span style="color: var(--text-dim); font-size: 10px;">所有提醒已排队</span>
+      </div>
+      <div class="nudge-pet">
+        <svg class="mouse focus-glow" width="40" height="40" viewBox="0 0 16 16">
+          <rect x="3" y="6" width="10" height="7" fill="var(--m-fur)"/>
+          <rect x="3" y="5" width="2" height="2" fill="var(--m-fur-d)"/>
+          <rect x="11" y="5" width="2" height="2" fill="var(--m-fur-d)"/>
+          <rect x="5" y="8" width="1" height="2" fill="var(--m-eye)"/>
+          <rect x="10" y="8" width="1" height="2" fill="var(--m-eye)"/>
+          <!-- headphones -->
+          <rect x="2" y="4" width="1" height="3" fill="var(--m-outline)"/>
+          <rect x="13" y="4" width="1" height="3" fill="var(--m-outline)"/>
+          <rect x="3" y="3" width="10" height="1" fill="var(--m-outline)"/>
+        </svg>
+      </div>
+    </div>
+    <div class="nudge-title">⚡ 心流保护 <span class="pill blue">工作</span></div>
+    <div class="nudge-desc">连续敲键 ≥30min + IDE 前台 → 自动进入勿扰，所有提醒排队，避免打扰深度工作</div>
+    <div class="nudge-trigger">trigger: keystroke_rate &gt; 40/min for 30min</div>
+  </div>
+
+  <!-- 5. Morning -->
+  <div class="nudge-card">
+    <div class="nudge-stage morning">
+      <div class="sun"></div>
+      <div class="nudge-bubble tl" style="top: 60px;">
+        ☀️ 早安！今天准备搞什么大事？
+      </div>
+      <div class="nudge-pet">
+        <svg class="mouse wave" width="40" height="40" viewBox="0 0 16 16">
+          <rect x="3" y="6" width="10" height="7" fill="var(--m-fur)"/>
+          <rect x="3" y="5" width="2" height="2" fill="var(--m-fur-d)"/>
+          <rect x="11" y="5" width="2" height="2" fill="var(--m-fur-d)"/>
+          <rect x="5" y="8" width="1" height="2" fill="var(--m-eye)"/>
+          <rect x="10" y="8" width="1" height="2" fill="var(--m-eye)"/>
+          <rect x="4" y="10" width="1" height="1" fill="var(--m-blush)"/>
+          <rect x="11" y="10" width="1" height="1" fill="var(--m-blush)"/>
+          <!-- waving hand -->
+          <rect x="13" y="4" width="2" height="2" fill="var(--m-fur)"/>
+        </svg>
+      </div>
+    </div>
+    <div class="nudge-title">🌅 早安 <span class="pill pink">情感</span></div>
+    <div class="nudge-desc">每天首次解锁屏幕 → 老鼠伸懒腰打招呼。让人感觉它"活着"</div>
+    <div class="nudge-trigger">trigger: first_unlock_today</div>
+  </div>
+
+  <!-- 6. Night -->
+  <div class="nudge-card">
+    <div class="nudge-stage night">
+      <div class="moon"></div>
+      <span class="star"></span>
+      <span class="star"></span>
+      <span class="star"></span>
+      <div class="nudge-bubble tl" style="background: rgba(255,255,255,0.95);">
+        🌙 已经 0:42 了…该睡了吧？
+      </div>
+      <div class="nudge-pet" style="bottom: 6px; right: 14px;">
+        <svg class="mouse sleep" width="40" height="40" viewBox="0 0 16 16">
+          <rect x="3" y="6" width="10" height="7" fill="var(--m-fur)"/>
+          <rect x="3" y="5" width="2" height="2" fill="var(--m-fur-d)"/>
+          <rect x="11" y="5" width="2" height="2" fill="var(--m-fur-d)"/>
+          <!-- closed eyes -->
+          <rect x="5" y="9" width="1" height="1" fill="var(--m-eye)"/>
+          <rect x="10" y="9" width="1" height="1" fill="var(--m-eye)"/>
+        </svg>
+        <div class="blanket" style="position: absolute; bottom: -2px; right: -4px; width: 44px; height: 18px;"></div>
+      </div>
+    </div>
+    <div class="nudge-title">🌙 深夜劝睡 <span class="pill pink">情感</span></div>
+    <div class="nudge-desc">23:30 起老鼠开始打哈欠，0:30 后直接躺平盖被子，提醒该睡了</div>
+    <div class="nudge-trigger">trigger: hour &gt;= 23.5 && still_active</div>
+  </div>
+
+</div>
+
+<h3>更多候选场景（V1.1 / V2）</h3>
+<div style="color: var(--text-dim); font-size: 13px; line-height: 1.9;">
+  <div>🎯 <strong style="color: var(--text-on-dark);">App Pomodoro</strong> · 打开 IDE 自动启动 25min 番茄钟</div>
+  <div>👀 <strong style="color: var(--text-on-dark);">20-20-20 护眼</strong> · 每 20min 老鼠望向远方提醒你也望望</div>
+  <div>🍕 <strong style="color: var(--text-on-dark);">午餐提醒</strong> · 12-13:30 久坐 → 举叉子问"午饭啦？"</div>
+  <div>🎵 <strong style="color: var(--text-on-dark);">音乐律动</strong> · 检测 Music/Spotify 播放 → 老鼠跟着晃尾巴</div>
+  <div>🎂 <strong style="color: var(--text-on-dark);">纪念日</strong> · 装机满 30/100/365 天 → 特殊动画 + 解锁限定皮肤</div>
+  <div>☔ <strong style="color: var(--text-on-dark);">天气彩蛋</strong> · 下雨天撑伞，太热擦汗（每天联网 1 次）</div>
+  <div>🔄 <strong style="color: var(--text-on-dark);">切换疲劳</strong> · 10min 切 app ≥15 次 → "你在找什么呀？" + 一键召唤</div>
+  <div>🏆 <strong style="color: var(--text-on-dark);">徽章成就</strong> · 早起 5 天 / 召唤 50 次等 → 塞到 🎁 项里，不打扰但可炫耀</div>
+</div>
+
+<div class="privacy">
+  <strong>🔒 隐私红线（这点必须在 Onboarding 和 README 显著位置说明）</strong><br>
+  全部信号在<strong>本地采集</strong>、<strong>不联网</strong>、<strong>不录内容</strong>。<br>
+  • 只数键盘"打了多少下"，不读"打了什么"<br>
+  • 只看前台 app 名字 + 窗口标题，不抓窗口内容<br>
+  • 30 分钟环形 buffer，过期自动覆盖，不落盘<br>
+  • 日历 / 麦克风占用是<strong>可选授权</strong>，默认关
+</div>
+
+<h3>提醒的"教养"三铁律</h3>
+<ol style="color: var(--text-dim); font-size: 13px; line-height: 1.9;">
+  <li><strong style="color: var(--danger);">永不打断深度工作</strong> — IDE 高强度敲键时提醒全部排队，等用户停下 ≥2min 才插</li>
+  <li><strong style="color: var(--danger);">永不重叠 / 永不堆积</strong> — 多个到期 → 只演一个（健康 &gt; 工作 &gt; 彩蛋）</li>
+  <li><strong style="color: var(--danger);">永远可以"今天闭嘴"</strong> — 每个气泡右下角都有 mute 入口，连续 3 天关同一类 → 默认关掉</li>
+</ol>
+
+<!-- ================================================================
+     SECTION 4 — MVP slice
+     ================================================================ -->
+<h2>④ 建议 MVP 切片</h2>
+<p class="note">不要一次做完 — 先做这 3 个覆盖三种价值（健康 / 工作 / 情感）的最小集，看用户反应再开二期</p>
+
+<div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;">
+  <div class="nudge-card" style="border-color: var(--accent-primary); box-shadow: 0 0 0 1px var(--accent-glow);">
+    <div style="font-size: 24px;">🧘</div>
+    <div style="font-weight: 600; margin: 6px 0;">久坐提醒</div>
+    <div style="color: var(--text-dim); font-size: 12px;">最普世无争议<br>所有用户都需要</div>
+  </div>
+  <div class="nudge-card" style="border-color: var(--accent-primary); box-shadow: 0 0 0 1px var(--accent-glow);">
+    <div style="font-size: 24px;">🤔</div>
+    <div style="font-weight: 600; margin: 6px 0;">卡壳侦测</div>
+    <div style="color: var(--text-dim); font-size: 12px;">最 MouseClaw<br>桌宠主动喂 LLM 入口</div>
+  </div>
+  <div class="nudge-card" style="border-color: var(--accent-primary); box-shadow: 0 0 0 1px var(--accent-glow);">
+    <div style="font-size: 24px;">🌅</div>
+    <div style="font-weight: 600; margin: 6px 0;">早安 + 深夜</div>
+    <div style="color: var(--text-dim); font-size: 12px;">情感铺垫<br>让它"活着"</div>
+  </div>
+</div>
+
+<h3>架构草图</h3>
+<pre style="background: var(--surface-deep); padding: 14px 18px; border-radius: 10px; font-size: 12px; line-height: 1.7; color: var(--text-dim); border-left: 3px solid var(--accent-soft);">
+src-tauri/src/
+├── presence.rs    // 每 5s 采样前台 app / 鼠标 / 键击频率 → 环形 buffer (30min)
+├── nudge.rs       // 规则引擎：订阅 buffer，匹配规则 → 触发 tray::nudge(kind)
+├── anchor.rs      // pin-to-corner 位置管理 → set_position 到屏角
+└── tray.rs        // ＋nudge(kind) → 老鼠从角落跑到屏幕中央演动画
+</pre>
+
+</div>
+
+<script>
+// corner picker
+document.querySelectorAll('.corner-card').forEach(card => {
+  card.addEventListener('click', () => {
+    document.querySelectorAll('.corner-card').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+  });
+});
+
+// pet menu toggle
+function toggleMenu() {
+  const menu = document.getElementById('petMenu');
+  const hint = document.getElementById('tapHint');
+  menu.classList.toggle('open');
+  hint.style.opacity = menu.classList.contains('open') ? '0' : '0.8';
+}
+
+// click outside to close
+document.querySelector('.stage').addEventListener('click', (e) => {
+  const menu = document.getElementById('petMenu');
+  const pet  = document.getElementById('stagePet');
+  if (!menu.contains(e.target) && !pet.contains(e.target)) {
+    menu.classList.remove('open');
+    document.getElementById('tapHint').style.opacity = '0.8';
+  }
+});
+</script>
+</body>
+</html>

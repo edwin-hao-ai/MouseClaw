@@ -11,6 +11,7 @@
 //!
 //! 完整架构见 `/Users/edwinhao/MouseClaw/CLAUDE.md`。
 
+pub mod anchor;
 pub mod audio;
 pub mod backend;
 pub mod browser_bridge;
@@ -254,6 +255,9 @@ pub fn run() {
             commands::get_workspace_path,
             commands::set_autostart,
             commands::get_autostart,
+            commands::save_pet_anchor,
+            commands::get_pet_anchor,
+            commands::open_picker_window,
         ])
         .setup(move |app| {
             set_accessory_activation_policy();
@@ -331,6 +335,16 @@ pub fn run() {
 
             // Background Whisper model download if missing
             transcribe::kick_off_download_if_missing();
+
+            // v0.1.27 · 已 onboarded 的用户：启动时把桌宠送到 anchor 位置打盹。
+            // Follow 模式跳过 —— 由 cursor_follow 接管。
+            if cfg.onboarded && cfg.pet_anchor.pin_visible_when_idle() {
+                anchor::apply_idle_anchor(&app.handle(), cfg.pet_anchor);
+                println!(
+                    "[mouseclaw] 🦞 pet pinned to {} (idle anchor)",
+                    cfg.pet_anchor.as_str()
+                );
+            }
 
             if cfg.onboarded {
                 let perm = permissions::check_all();

@@ -95,7 +95,56 @@ impl WhisperModel {
 ///   v11 → v12: 新增 voice_ime_trigger（可选 fn/option/control/right-*），默认 fn
 ///   v12 → v13: 新增 clipboard_paused（剪贴板暂停开关），默认 false
 ///   v13 → v14: 新增 workspace_path（AI 调用时的 cwd），默认 None
-pub const CURRENT_CONFIG_VERSION: u32 = 14;
+///   v14 → v15: 新增 pet_anchor（桌宠悬停位置，5 选项），默认 bottom-right
+pub const CURRENT_CONFIG_VERSION: u32 = 15;
+
+/// 桌宠悬停位置 (v0.1.27) —— overlay 闲置时停哪儿打盹。
+/// 召唤快捷键触发时仍然跑到光标位置工作，完事 auto-hide 后回到 anchor。
+/// `Follow` = 跟随光标（不归位），费 CPU 更明显，留作高级选项。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PetAnchor {
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+    Follow,
+}
+
+impl Default for PetAnchor {
+    fn default() -> Self { PetAnchor::BottomRight }
+}
+
+impl PetAnchor {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PetAnchor::TopLeft     => "top-left",
+            PetAnchor::TopRight    => "top-right",
+            PetAnchor::BottomLeft  => "bottom-left",
+            PetAnchor::BottomRight => "bottom-right",
+            PetAnchor::Follow      => "follow",
+        }
+    }
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "top-left"     => PetAnchor::TopLeft,
+            "top-right"    => PetAnchor::TopRight,
+            "bottom-left"  => PetAnchor::BottomLeft,
+            "follow"       => PetAnchor::Follow,
+            _              => PetAnchor::BottomRight, // 默认兜底
+        }
+    }
+    pub fn all() -> &'static [PetAnchor] {
+        &[PetAnchor::TopLeft, PetAnchor::TopRight,
+          PetAnchor::BottomLeft, PetAnchor::BottomRight, PetAnchor::Follow]
+    }
+    pub fn tray_menu_id(&self) -> String { format!("anchor:{}", self.as_str()) }
+    /// 闲置时是否要让 overlay 持续可见地停在那个角落。
+    /// Follow = false（由 cursor_follow 接管）；4 个角 = true（桌宠"住"在角落）
+    pub fn pin_visible_when_idle(&self) -> bool {
+        !matches!(self, PetAnchor::Follow)
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -144,6 +193,10 @@ pub struct Config {
     /// 默认 true —— 菜单栏常驻应用的用户期待
     #[serde(default = "default_autostart")]
     pub autostart: bool,
+    /// 桌宠悬停位置 (v0.1.27) —— overlay 闲置时停在屏幕哪个角落。
+    /// 默认 bottom-right —— 不挡视线、最远离 menubar 和 dock。
+    #[serde(default)]
+    pub pet_anchor: PetAnchor,
     /// Set to true the first time the user completes Onboarding. Until then,
     /// the app doesn't register a global shortcut — clicking the tray or
     /// launching the app re-opens the Onboarding window instead.
@@ -180,6 +233,7 @@ impl Default for Config {
             clipboard_paused: false,
             workspace_path: None,
             autostart: default_autostart(),
+            pet_anchor: PetAnchor::default(),
             onboarded: false,
             version: CURRENT_CONFIG_VERSION,
         }
@@ -297,6 +351,18 @@ mod tests {
     fn whisper_unknown_falls_back_to_base() {
         assert_eq!(WhisperModel::from_str(""), WhisperModel::Base);
         assert_eq!(WhisperModel::from_str("nope"), WhisperModel::Base);
+    }
+
+    #[test]
+    fn pet_anchor_round_trips_and_defaults_bottom_right() {
+        assert_eq!(PetAnchor::default(), PetAnchor::BottomRight);
+        for a in PetAnchor::all() {
+            assert_eq!(PetAnchor::from_str(a.as_str()), *a, "{:?} round-trip", a);
+        }
+        assert_eq!(PetAnchor::from_str("garbage"), PetAnchor::BottomRight);
+        // visibility hint: 4 corners pin; follow doesn't
+        assert!(PetAnchor::BottomRight.pin_visible_when_idle());
+        assert!(!PetAnchor::Follow.pin_visible_when_idle());
     }
 
     #[test]

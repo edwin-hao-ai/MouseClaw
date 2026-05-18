@@ -28,6 +28,10 @@ export type ShortcutChoice =
 /** AI backend choice — matches Rust `Backend::from_choice`. */
 export type BackendChoice = "claude-cli" | "codex-cli" | "openclaw-cli" | "hermes-agent";
 
+/** 桌宠悬停位置 (v0.1.27) — must match Rust `PetAnchor::from_str`. */
+export type PetAnchor =
+  | "top-left" | "top-right" | "bottom-left" | "bottom-right" | "follow";
+
 /** Re-export SkinId here for convenience (single source of truth lives in src/skins.ts). */
 export type { SkinId } from "./skins";
 

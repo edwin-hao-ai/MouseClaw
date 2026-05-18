@@ -112,23 +112,16 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 
     // 「🎨 换个桌宠 ▸」子菜单 —— 6 款 SkinId，当前选中的打勾
     let current_skin = crate::config::Config::load().skin;
-    let mut skin_items: Vec<CheckMenuItem<tauri::Wry>> = Vec::new();
-    for s in SkinId::all() {
-        let item = CheckMenuItem::with_id(
-            app,
-            s.tray_menu_id(),
-            s.display_name(),
-            true,
-            *s == current_skin,
-            None::<&str>,
-        )?;
-        skin_items.push(item);
-    }
-    let skin_refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> =
-        skin_items.iter().map(|i| i as &dyn tauri::menu::IsMenuItem<tauri::Wry>).collect();
-    let skin_submenu = Submenu::with_id_and_items(
-        app, "skin-submenu", s_skin, true, &skin_refs,
-    )?;
+    // v0.1.26 · 桌宠选择从 submenu 改为单条「🎨 更换桌宠…」打开 picker 窗口
+    // 旧的 skin_items submenu 留着代码但不渲染 —— 9+ 款时 menu 又长又看不到形象。
+    // current_skin 仍在 picker 里高亮当前选中。
+    let _ = current_skin; // 暂留变量避免 unused 警告
+    let skin_picker_label = if en {
+        format!("🎨 Change pet… ({})", SkinId::from_str(&crate::config::Config::load().skin.as_str()).display_name())
+    } else {
+        format!("🎨 更换桌宠… ({})", crate::config::Config::load().skin.display_name())
+    };
+    let skin_picker_item = MenuItem::with_id(app, "open-picker", &skin_picker_label, true, None::<&str>)?;
 
     // 浏览器自动化标签 —— 根据当前 CDP 状态显示「启用 / 已启用 ✓」
     let cdp_alive = crate::browser_bridge::cdp_is_alive();
@@ -218,9 +211,12 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let sep2    = PredefinedMenuItem::separator(app)?;
     let quit    = MenuItem::with_id(app, "quit",    s_quit,  true, Some("CmdOrCtrl+Q"))?;
 
+    // v0.1.27 · 📍 桌宠位置 ▸ 子菜单（4 角 + 跟随光标）
+    let anchor_submenu = crate::anchor::build_tray_submenu(app, en)?;
+
     let mut items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = vec![
         &summon, &clipboard_item, &history,
-        &skin_submenu, &model_submenu, &lang_submenu,
+        &skin_picker_item, &anchor_submenu, &model_submenu, &lang_submenu,
         &sep1, &vime_item, &trigger_submenu, &tidy_item, &pause_item,
         &workspace_item,
     ];
@@ -318,6 +314,13 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
         rebuild_tray_menu(app);
         return;
     }
+    // v0.1.27 · 桌宠位置子菜单：id 形如 "anchor:bottom-right"
+    if let Some(anchor) = id.strip_prefix("anchor:") {
+        if let Err(e) = crate::commands::save_pet_anchor(anchor.into(), app.clone()) {
+            eprintln!("[mouseclaw] save_pet_anchor: {e}");
+        }
+        return;
+    }
     match id {
         "summon"          => summon_via_tray(app),
         "open-clipboard"  => {
@@ -328,6 +331,11 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
         "history"         => open_history_window(app),
         "about"           => open_about_dialog(app),
         "enable-browser"  => enable_browser_automation(app),
+        "open-picker"     => {
+            if let Err(e) = crate::commands::open_picker_window(app.clone()) {
+                eprintln!("[mouseclaw] open-picker: {e}");
+            }
+        }
         "status"          => open_status_window(app),
         "toggle-tidy"     => { toggle_tidy_up(app); rebuild_tray_menu(app); }
         "toggle-voice-ime"=> { toggle_voice_ime(app); rebuild_tray_menu(app); }
