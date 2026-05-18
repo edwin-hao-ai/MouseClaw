@@ -13,9 +13,11 @@ import "./styles/tokens.css";
 import { PixelMouse, type MouseState } from "./components/PixelMouse";
 import { Bubble } from "./components/Bubble";
 import { Panel } from "./components/Panel";
+import { PetMenu } from "./components/PetMenu";
 import { RecordingBubble } from "./components/RecordingBubble";
 import { EV_VIEW_CHANGED, EV_SKIN_CHANGED, type ViewKind, type SkinId } from "./types";
 import { DEFAULT_SKIN } from "./skins";
+import { useT } from "./i18n";
 
 const PREVIEW_LONG = "这篇 Nature 文章讨论 2026 年 AI 加速材料发现的三个突破：室温超导候选材料、新型电池电解液、碳捕获催化剂。核心机制是自动化实验室加大模型生成假设的迭代闭环。";
 
@@ -40,11 +42,16 @@ function mouseStateFor(view: ViewKind): MouseState {
 }
 
 export default function App() {
+  const t = useT();
   const [view, setView] = useState<ViewKind>({ kind: "idle" });
   // session continuation chip — true when current view is part of an ongoing session
   const [continuing, setContinuing] = useState(false);
   // 当前桌宠皮肤 —— 启动读 config，运行期托盘换皮可热切换（不重启）
   const [skin, setSkin] = useState<SkinId>(DEFAULT_SKIN);
+  // v0.1.27 P2 · 点击桌宠 → 弹出菜单（只在 idle 状态触发）
+  const [petMenuOpen, setPetMenuOpen] = useState(false);
+  // 临时 ack 气泡（喂奶酪 / 休息了 等本地动作的反馈）
+  const [transientAck, setTransientAck] = useState<string | null>(null);
 
   // 启动时从 Rust 读当前皮肤（避免闪一下默认 classic 再切换）
   useEffect(() => {
@@ -180,19 +187,49 @@ export default function App() {
     );
   }
 
+  const showAck = useCallback((msg: string, ms: number = 2400) => {
+    setTransientAck(msg);
+    window.setTimeout(() => setTransientAck(null), ms);
+  }, []);
+
+  const handleFeed = useCallback(() => {
+    showAck(t("petmenu.feed_ack"));
+    // TODO P3: emit FedPet event so presence/nudge can reward streaks & swap animation
+  }, [showAck, t]);
+
+  const handleNap = useCallback((_minutes: number) => {
+    showAck(t("petmenu.nap_ack"), 3200);
+    // TODO P3: persist DnD-until timestamp; tray/nudge engine reads it to suppress reminders
+  }, [showAck, t]);
+
+  const handleMouseClick = useCallback((e: React.MouseEvent) => {
+    // Only enable the menu when fully idle. Other states (listening / replying /
+    // panel) keep their existing semantics so the click doesn't disrupt flow.
+    if (view.kind !== "idle") return;
+    e.stopPropagation();
+    setPetMenuOpen(prev => !prev);
+  }, [view.kind]);
+
   return (
     <div className="stage stage-mouse-bubble">
       <BubbleFor view={view} continuing={continuing} onExpand={handleExpand} onNewSession={handleNewSession} />
-      <div className="stage-mouse" onClick={() => {
-        // 点桌宠开 Hub —— v0.1.16 改成开独立窗口（不再 inline）
-        if (view.kind === "idle" || view.kind === "reply" || view.kind === "blocked") {
-          invoke("open_hub_window").catch(e => console.warn("open_hub_window:", e));
-        }
-      }} style={{ cursor: "pointer" }}>
+      {/* Local ack bubble — visible above the pet without going through Rust */}
+      {transientAck && (
+        <div className="stage-bubble">
+          <Bubble text={transientAck} variant="success" />
+        </div>
+      )}
+      <div className="stage-mouse" onClick={handleMouseClick} style={{ cursor: "pointer" }}>
         <PixelMouse
           state={mouseStateFor(view)} skin={skin}
           size={view.kind === "idle" ? 64 : 96}
           continuing={continuing}
+        />
+        <PetMenu
+          open={petMenuOpen}
+          onClose={() => setPetMenuOpen(false)}
+          onFeed={handleFeed}
+          onNap={handleNap}
         />
       </div>
     </div>

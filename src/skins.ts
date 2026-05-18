@@ -12,9 +12,19 @@ export type SkinId =
   | "field"
   | "ninja"
   | "cyber"
-  | "golden";
+  | "golden"
+  // v0.1.26 · 非啮齿目
+  | "cat-gray"
+  | "fox-red"
+  | "frog-tree";
 
-export type BodyVariant = "standard" | "slim" | "chubby" | "ninja" | "robot" | "round";
+export type BodyVariant =
+  | "standard" | "slim" | "chubby" | "ninja" | "robot" | "round"
+  // v0.1.26
+  | "cat"  | "fox"  | "frog";
+
+/** v0.1.26 · 物种（决定耳/身/尾的"骨架"，picker 里也用来分组） */
+export type Species = "mouse" | "cat" | "fox" | "frog";
 
 export interface SkinPalette {
   body: string;
@@ -34,6 +44,8 @@ export interface Skin {
   tag?: string;     // 角标（"默认" / "限定" 等）
   body: BodyVariant;
   palette: SkinPalette;
+  /** v0.1.26 · 物种 —— picker 分组用 */
+  species?: Species;
 }
 
 export const SKINS: readonly Skin[] = [
@@ -87,6 +99,37 @@ export const SKINS: readonly Skin[] = [
     body: "round",
     palette: { body:"#e8c87a", belly:"#fff4d6", earIn:"#d68a40", earOut:"#c8a050",
                eye:"#3a2818", nose:"#a06028", tail:"#c8a050", paw:"#fff4d6" },
+  },
+  // v0.1.26 · 非啮齿目家族 ────────────────────────────────────────────
+  {
+    id: "cat-gray",
+    name: "小灰猫",
+    desc: "尖耳 + 长卷尾 + 胡须 · 性格高冷",
+    tag: "新",
+    body: "cat",
+    species: "cat",
+    palette: { body:"#a8a8a8", belly:"#f4f4f4", earIn:"#ff9bb8", earOut:"#7a7a7a",
+               eye:"#3fa66a", nose:"#d63d6a", tail:"#7a7a7a", paw:"#a8a8a8" },
+  },
+  {
+    id: "fox-red",
+    name: "赤狐",
+    desc: "橙红毛 + 白胸 + 蓬松大尾 · 雪地里跳",
+    tag: "新",
+    body: "fox",
+    species: "fox",
+    palette: { body:"#d96e2c", belly:"#fff4ec", earIn:"#1a1a1a", earOut:"#a04a18",
+               eye:"#1a1a1a", nose:"#1a1a1a", tail:"#fff4ec", paw:"#1a1a1a" },
+  },
+  {
+    id: "frog-tree",
+    name: "树蛙",
+    desc: "圆头 + 突眼 + 白肚 · 蹲在叶子上",
+    tag: "新",
+    body: "frog",
+    species: "frog",
+    palette: { body:"#7ab84a", belly:"#f4e890", earIn:"#ffffff", earOut:"#5a8a30",
+               eye:"#d63d6a", nose:"#5a8a30", tail:"#5a8a30", paw:"#f4e890" },
   },
 ] as const;
 

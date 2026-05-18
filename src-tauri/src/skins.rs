@@ -15,6 +15,10 @@ pub enum SkinId {
     Ninja,
     Cyber,
     Golden,
+    // v0.1.26 · 非啮齿目（猫 / 狐 / 蛙）—— picker 里独立分组
+    CatGray,
+    FoxRed,
+    FrogTree,
 }
 
 impl Default for SkinId {
@@ -33,10 +37,13 @@ impl SkinId {
             SkinId::Ninja => "🥷 忍者鼠",
             SkinId::Cyber => "🤖 机械鼠",
             SkinId::Golden => "✨ 金鼠",
+            SkinId::CatGray => "🐱 小灰猫",
+            SkinId::FoxRed => "🦊 赤狐",
+            SkinId::FrogTree => "🐸 树蛙",
         }
     }
 
-    /// 全部 6 款，按托盘菜单 / Onboarding 列表顺序。
+    /// 全部 9 款，按 picker 显示顺序（先鼠后其他物种）。
     pub fn all() -> &'static [SkinId] {
         &[
             SkinId::Classic,
@@ -45,6 +52,9 @@ impl SkinId {
             SkinId::Ninja,
             SkinId::Cyber,
             SkinId::Golden,
+            SkinId::CatGray,
+            SkinId::FoxRed,
+            SkinId::FrogTree,
         ]
     }
 
@@ -57,6 +67,9 @@ impl SkinId {
             SkinId::Ninja => "ninja",
             SkinId::Cyber => "cyber",
             SkinId::Golden => "golden",
+            SkinId::CatGray => "cat-gray",
+            SkinId::FoxRed => "fox-red",
+            SkinId::FrogTree => "frog-tree",
         }
     }
 
@@ -68,6 +81,9 @@ impl SkinId {
             "ninja" => SkinId::Ninja,
             "cyber" => SkinId::Cyber,
             "golden" => SkinId::Golden,
+            "cat-gray" => SkinId::CatGray,
+            "fox-red" => SkinId::FoxRed,
+            "frog-tree" => SkinId::FrogTree,
             _ => SkinId::Classic,
         }
     }
