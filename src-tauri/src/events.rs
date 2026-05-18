@@ -8,7 +8,12 @@ use serde::Serialize;
 pub enum ViewKind {
     Idle,
     Onboarding,
-    Listening,
+    Listening {
+        /// v0.2 · 边说边出字 —— sherpa streaming 实时 partial。
+        /// 空串时前端隐藏 partial 显示（首字延迟内）。
+        #[serde(default)]
+        partial: String,
+    },
     /// v0.1.14 · 语音 IME 中（长按触发键说话）—— 跟 Listening 区分，桌宠用 type 态
     #[serde(rename = "voice-ime-listening")]
     VoiceImeListening,

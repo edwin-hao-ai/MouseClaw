@@ -6,7 +6,7 @@
 export type ViewKind =
   | { kind: "idle" }
   | { kind: "onboarding" }
-  | { kind: "listening" }     // after shortcut; awaiting user text/voice
+  | { kind: "listening"; partial?: string }     // after shortcut; awaiting user text/voice (v0.2: streaming partial)
   | { kind: "voice-ime-listening" }  // v0.1.14: hold-trigger voice IME 中
   | { kind: "thinking"; transcript: string }
   | { kind: "reply"; transcript: string; reply: string; mode: "A" | "B"; insertText?: string; streaming?: boolean }

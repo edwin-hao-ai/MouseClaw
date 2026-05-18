@@ -215,18 +215,14 @@ pub async fn on_shortcut_press(app: AppHandle, state: Arc<AppState>) {
         return;
     }
 
-    if !transcribe::is_available() {
-        let active = crate::config::Config::load().whisper_model;
-        let msg = match transcribe::current_state() {
-            Some(transcribe::ModelState::Downloading) => format!(
-                "正在下载 Whisper {} 模型（~{}MB），下载完成后再试一次",
-                active.display_name(), active.size_mb()
-            ),
-            Some(transcribe::ModelState::Failed(e)) => format!(
-                "Whisper 模型下载失败：{e}（手动跑：curl -L -o ~/.mouseclaw/models/{} {}）",
-                active.filename(), active.url()
-            ),
-            _ => format!("Whisper 模型未找到（~/.mouseclaw/models/{}）", active.filename()),
+    // v0.2 · check sherpa streaming model
+    if !crate::transcribe_stream::is_ready() {
+        let msg = match crate::transcribe_stream::current_state() {
+            Some(crate::transcribe_stream::ModelState::Downloading) =>
+                "正在下载语音模型（~180MB），首次启动需稍等几分钟，完成后再试".to_string(),
+            Some(crate::transcribe_stream::ModelState::Failed(e)) =>
+                format!("语音模型下载失败：{e}\n手动重试：删除 ~/.mouseclaw/models/sherpa-zh-en 后重启 App"),
+            _ => "语音模型未就绪，请稍候".to_string(),
         };
         emit_view(&app, &ViewKind::Blocked { reason: msg });
         schedule_auto_hide(&app, &state, 6000);
@@ -249,6 +245,55 @@ pub async fn on_shortcut_press(app: AppHandle, state: Arc<AppState>) {
     };
     *state.recorder.lock().unwrap() = Some(recorder);
 
+    // v0.2 · 同步创建 streaming session（lazy load 模型 ~500ms 第一次，之后 ~0）
+    match crate::transcribe_stream::StreamSession::new() {
+        Ok(s) => *state.stream_session.lock().unwrap() = Some(s),
+        Err(e) => {
+            eprintln!("[mouseclaw] StreamSession::new failed: {e:#}");
+            // 没 streaming 也别完全 block —— 让录音继续，partial 不出来而已
+        }
+    }
+    state.streaming_active.store(true, std::sync::atomic::Ordering::SeqCst);
+
+    // v0.2 · 200ms 轮询任务 —— 把 recorder buffer 喂进 sherpa stream，emit 实时 partial
+    let state_stream = state.clone();
+    let app_stream = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut ticker = tokio::time::interval(std::time::Duration::from_millis(200));
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut last_partial = String::new();
+        loop {
+            ticker.tick().await;
+            if !state_stream.streaming_active.load(std::sync::atomic::Ordering::SeqCst) {
+                break;
+            }
+            // 拿样本
+            let samples = {
+                let g = state_stream.recorder.lock().unwrap();
+                match g.as_ref() {
+                    Some(r) => r.drain_resampled_16k(),
+                    None => break,
+                }
+            };
+            if samples.is_empty() { continue; }
+            // 喂 + 拿当前 partial
+            let partial = {
+                let mut g = state_stream.stream_session.lock().unwrap();
+                if let Some(s) = g.as_mut() {
+                    s.accept(&samples);
+                    s.partial()
+                } else {
+                    continue;
+                }
+            };
+            // 只在变化时 emit，省 IPC
+            if partial != last_partial {
+                last_partial = partial.clone();
+                emit_view(&app_stream, &ViewKind::Listening { partial });
+            }
+        }
+    });
+
     // v0.1.20 · 启动鼠标轨迹采样 + 实时 overlay（v0.1.21）
     #[cfg(target_os = "macos")]
     crate::cursor_trail::start(app.clone());
@@ -263,7 +308,7 @@ pub async fn on_shortcut_press(app: AppHandle, state: Arc<AppState>) {
             }
             Err(e) => eprintln!("[mouseclaw] screenshot: {e:#}"),
         }
-        emit_view(&app_clone, &ViewKind::Listening);
+        emit_view(&app_clone, &ViewKind::Listening { partial: String::new() });
     });
 }
 
@@ -301,15 +346,19 @@ pub async fn on_shortcut_release(app: AppHandle, state: Arc<AppState>) {
         *state.last_trail.lock().await = Some(trail);
     }
 
+    // v0.2 · 停 streaming polling 任务 → 让 200ms loop 看到 false 退出
+    state.streaming_active.store(false, std::sync::atomic::Ordering::SeqCst);
+
     emit_view(&app, &ViewKind::Thinking { transcript: "(转写中…)".into() });
 
     let app_clone = app.clone();
     let state_clone = state.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let samples = match recorder.stop_and_take() {
+        // v0.2 · 拿走剩余样本（不再走 channel）+ 喂 sherpa final + finalize
+        let remaining = match recorder.stop_drain_remaining_16k() {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("[mouseclaw] stop_and_take: {e:#}");
+                eprintln!("[mouseclaw] stop_drain_remaining_16k: {e:#}");
                 let _ = app_clone.emit(
                     EV_VIEW_CHANGED,
                     ViewKind::Blocked { reason: format!("录音失败：{e}") },
@@ -319,21 +368,31 @@ pub async fn on_shortcut_release(app: AppHandle, state: Arc<AppState>) {
             }
         };
         println!(
-            "[mouseclaw] captured {} samples @ 16kHz ({:.1}s)",
-            samples.len(),
-            samples.len() as f32 / 16_000.0
+            "[mouseclaw] tail {} samples @ 16kHz ({:.2}s)",
+            remaining.len(),
+            remaining.len() as f32 / 16_000.0
         );
-        let transcript = match transcribe::transcribe(&samples) {
-            Ok(t) => t,
-            Err(e) => {
-                eprintln!("[mouseclaw] transcribe: {e:#}");
-                let _ = app_clone.emit(
-                    EV_VIEW_CHANGED,
-                    ViewKind::Blocked { reason: format!("Whisper 失败：{e}") },
-                );
-                schedule_auto_hide(&app_clone, &state_clone, 4000);
-                return;
+        let session = {
+            let mut g = state_clone.stream_session.lock().unwrap();
+            g.take()
+        };
+        let transcript = if let Some(mut sess) = session {
+            if !remaining.is_empty() { sess.accept(&remaining); }
+            match sess.finalize() {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("[mouseclaw] sherpa finalize: {e:#}");
+                    let _ = app_clone.emit(
+                        EV_VIEW_CHANGED,
+                        ViewKind::Blocked { reason: format!("转写失败：{e}") },
+                    );
+                    schedule_auto_hide(&app_clone, &state_clone, 4000);
+                    return;
+                }
             }
+        } else {
+            eprintln!("[mouseclaw] stream session missing on release — empty transcript");
+            String::new()
         };
         println!("[mouseclaw] transcript (raw): {transcript:?}");
         if transcript.is_empty() {

@@ -71,6 +71,11 @@ pub struct AppState {
     /// v0.1.20 · 上一次 AI 召唤的鼠标轨迹（已烘到 screenshot 上 + 送 prompt）
     pub last_trail: Mutex<Option<Vec<cursor_trail::TrailPoint>>>,
     pub recorder: StdMutex<Option<audio::Recorder>>,
+    /// v0.2 · 当前流式转录 session —— on_press 创建，on_release 取出 finalize。
+    /// Sync mutex 因为 sherpa OnlineStream 是 Send+Sync 但不是 async-friendly。
+    pub stream_session: StdMutex<Option<transcribe_stream::StreamSession>>,
+    /// v0.2 · streaming polling task 通过这个 flag 知道何时退出
+    pub streaming_active: AtomicBool,
     /// One-shot panel context —— open_panel_window 写入，前端 take_panel_context 取走 + 清空
     pub pending_panel_context: StdMutex<Option<PendingPanelContext>>,
     /// v0.1.18 · 打开 Hub 前记下当时的前台 app pid
@@ -98,6 +103,8 @@ impl AppState {
             last_screenshot: Mutex::new(None),
             last_trail: Mutex::new(None),
             recorder: StdMutex::new(None),
+            stream_session: StdMutex::new(None),
+            streaming_active: AtomicBool::new(false),
             pending_panel_context: StdMutex::new(None),
             prev_frontmost_pid: StdMutex::new(None),
             backend: Mutex::new(backend),
@@ -355,6 +362,9 @@ pub fn run() {
             }
 
             // Background Whisper model download if missing
+            // v0.2 · 启动 sherpa streaming ASR model 后台下载（首次启动）
+            transcribe_stream::kick_off_download_if_missing();
+            // legacy Whisper download — keep for v0.2 transition fallback; deleted v0.3
             transcribe::kick_off_download_if_missing();
 
             // v0.1.27 · 已 onboarded 的用户：启动时把桌宠送到 anchor 位置打盹。

@@ -128,7 +128,13 @@ pub fn emit_view(app: &AppHandle, view: &ViewKind) {
     let kind = match view {
         ViewKind::Idle => "idle".to_string(),
         ViewKind::Onboarding => "onboarding".to_string(),
-        ViewKind::Listening => "listening".to_string(),
+        ViewKind::Listening { partial } => {
+            if partial.is_empty() {
+                "listening".to_string()
+            } else {
+                format!("listening({}…)", partial.chars().take(20).collect::<String>())
+            }
+        }
         ViewKind::VoiceImeListening => "voice-ime-listening".to_string(),
         ViewKind::Thinking { transcript } => {
             format!("thinking({})", transcript.chars().take(20).collect::<String>())
@@ -144,7 +150,7 @@ pub fn emit_view(app: &AppHandle, view: &ViewKind) {
     // v0.1.8 cursor-follow gating —— 只在 listening 跟随鼠标，其它有气泡的状态全部冻结
     // 这样用户在读 Claude 回答时窗口不会被光标拽飞
     if let Some(state) = app.try_state::<Arc<AppState>>() {
-        let should_follow = matches!(view, ViewKind::Listening | ViewKind::VoiceImeListening);
+        let should_follow = matches!(view, ViewKind::Listening { .. } | ViewKind::VoiceImeListening);
         if should_follow {
             crate::cursor_follow::enable(state.inner());
         } else {

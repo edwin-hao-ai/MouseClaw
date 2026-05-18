@@ -24,6 +24,9 @@ pub struct Recorder {
     /// Joined to ensure the audio thread cleans up before we drop.
     handle: Option<std::thread::JoinHandle<()>>,
     pub source_rate: u32,
+    /// v0.2 · Shared with audio thread —— streaming consumer can drain it
+    /// mid-recording for partial transcription. None until init succeeds.
+    samples_buf: Arc<Mutex<Vec<f32>>>,
 }
 
 impl Recorder {
@@ -31,6 +34,10 @@ impl Recorder {
         let (stop_tx, stop_rx) = mpsc::sync_channel::<()>(1);
         let (samples_tx, samples_rx) = mpsc::channel();
         let (init_tx, init_rx) = mpsc::sync_channel::<Result<u32, String>>(1);
+        // v0.2 · share samples buffer between audio thread + streaming consumer
+        let samples_buf_shared: Arc<Mutex<Vec<f32>>> =
+            Arc::new(Mutex::new(Vec::with_capacity(48_000 * 5)));
+        let samples_buf_for_thread = samples_buf_shared.clone();
 
         let handle = std::thread::spawn(move || {
             // ── Set up cpal on this thread ──────────────────────────────
@@ -51,10 +58,8 @@ impl Recorder {
             };
             let source_rate = cfg.sample_rate().0;
             let channels = cfg.channels() as usize;
-            let samples_buf = Arc::new(Mutex::new(Vec::<f32>::with_capacity(
-                (source_rate as usize) * 5,
-            )));
-
+            // v0.2 · samples_buf moved to outer scope, accessed via the shared Arc
+            let samples_buf = samples_buf_for_thread;
             let buf_writer = samples_buf.clone();
             let err_fn = |e| eprintln!("[mouseclaw] audio stream err: {e}");
 
@@ -137,7 +142,39 @@ impl Recorder {
             samples_rx,
             handle: Some(handle),
             source_rate,
+            samples_buf: samples_buf_shared,
         })
+    }
+
+    /// v0.2 · 流式消费：拉走当前累积样本，重采样到 16kHz mono，返回。
+    /// 录音继续。给 transcribe_stream 200ms 一次的轮询用。
+    /// **注意**：这会清空 buffer —— 之后 `stop_and_take` 拿不到这部分了。
+    /// 用 streaming 模式时**只**用这个 + `stop_silent_remaining`，不要混用 stop_and_take。
+    pub fn drain_resampled_16k(&self) -> Vec<f32> {
+        let pcm = match self.samples_buf.lock() {
+            Ok(mut g) => std::mem::take(&mut *g),
+            Err(_) => return Vec::new(),
+        };
+        if pcm.is_empty() { return pcm; }
+        resample_to_16k(&pcm, self.source_rate)
+    }
+
+    /// v0.2 · streaming 模式下停止录音并 drain 最后一批样本（已 resample）。
+    /// 不走 samples_rx channel（avoid hang if no samples buffered there）。
+    pub fn stop_drain_remaining_16k(mut self) -> Result<Vec<f32>> {
+        let _ = self.stop_tx.send(());
+        if let Some(h) = self.handle.take() {
+            let _ = h.join();
+        }
+        // After join the audio thread has finished writing; safe to drain.
+        let pcm = match self.samples_buf.lock() {
+            Ok(g) => g.clone(),
+            Err(_) => Vec::new(),
+        };
+        // Drop unread samples_rx (audio thread may have queued a final batch
+        // that we don't need — we already drained the shared buffer).
+        let _ = self.samples_rx.try_recv();
+        Ok(resample_to_16k(&pcm, self.source_rate))
     }
 
     /// Stop recording and return 16 kHz mono f32 samples.
