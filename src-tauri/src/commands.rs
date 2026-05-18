@@ -143,6 +143,40 @@ pub fn get_pet_anchor() -> String {
     config::Config::load().pet_anchor.as_str().to_string()
 }
 
+/// v0.1.27 P3 · 让用户开启「休息一下」—— 在 minutes 分钟内所有 nudge 都不会发。
+/// PetMenu 💤 项调它；nudge.rs 规则引擎读 `NudgeState::in_nap` 决定是否跳过。
+#[tauri::command]
+pub fn set_nap_until(
+    minutes: u32,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    let until = chrono::Local::now().timestamp() + (minutes as i64) * 60;
+    let mut ns = state.nudge_state.write().map_err(|e| format!("nap lock: {e}"))?;
+    ns.set_nap_until(until);
+    println!("[mouseclaw] 💤 nap until {until} (in {minutes}min)");
+    Ok(())
+}
+
+/// 前端 dismiss nudge bubble 时调 —— 当前实现把这种 nudge 的 cooldown 标到现在，
+/// 阻止它在 30min 内再次触发。给"今天闭嘴"留出空间（后续可扩展到全天）。
+#[tauri::command]
+pub fn dismiss_nudge(
+    kind: String,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    use crate::events::NudgeKind;
+    let parsed = match kind.as_str() {
+        "stretch"    => NudgeKind::Stretch,
+        "stuck"      => NudgeKind::Stuck,
+        "late-night" => NudgeKind::LateNight,
+        other => return Err(format!("unknown nudge kind: {other}")),
+    };
+    let now = chrono::Local::now().timestamp();
+    let mut ns = state.nudge_state.write().map_err(|e| format!("nudge lock: {e}"))?;
+    ns.mark_fired(parsed, now);
+    Ok(())
+}
+
 /// P0a · 一键启用浏览器自动化：注册 MCP + 启动带 CDP 的 Chrome。
 /// 用户在托盘或 onboarding 里点这个。
 #[tauri::command]

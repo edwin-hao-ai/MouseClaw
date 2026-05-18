@@ -59,6 +59,10 @@ export const zh: Strings = {
   "petmenu.settings": "设置",
   "petmenu.feed_ack": "🍖 嘎嘣嘎嘣…谢谢！",
   "petmenu.nap_ack": "💤 zzz… 15 分钟内不打扰",
+
+  // 主动提醒气泡 (v0.1.27 P3)
+  "nudge.later": "稍后",
+  "nudge.mute_today": "😶 30 分钟内别再提",
   "onboarding.cta.next_voice_ime": "下一步：选语音键 →",
   "vime.trigger.fn": "fn 键（地球图标）",
   "vime.trigger.option": "⌥ option（任意一边）",

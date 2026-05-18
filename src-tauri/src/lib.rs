@@ -15,6 +15,8 @@ pub mod anchor;
 pub mod audio;
 pub mod backend;
 pub mod browser_bridge;
+pub mod nudge;
+pub mod presence;
 pub mod claude_cli;
 pub mod clipboard;
 pub mod clipboard_crypto;
@@ -40,7 +42,7 @@ pub mod tray;
 
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU64};
-use std::sync::{Arc, Mutex as StdMutex};
+use std::sync::{Arc, Mutex as StdMutex, RwLock as StdRwLock};
 use tauri::Manager;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tokio::sync::Mutex;
@@ -83,6 +85,9 @@ pub struct AppState {
     /// 桌宠跟随鼠标开关 —— cursor_follow 后台任务 30fps 读它。
     /// emit_view 进 listening/idle 时 = true；进 thinking/reply/panel 时 = false。
     pub follow_cursor: AtomicBool,
+    /// v0.1.27 P3 · Nudge 引擎状态（last-fired 时间戳 + nap-until）。
+    /// presence::spawn 返回的 PresenceBuffer 也存到这里，commands 能读。
+    pub nudge_state: Arc<StdRwLock<crate::nudge::NudgeState>>,
 }
 
 impl AppState {
@@ -97,6 +102,7 @@ impl AppState {
             backend: Mutex::new(backend),
             gen: AtomicU64::new(0),
             follow_cursor: AtomicBool::new(false),
+            nudge_state: Arc::new(StdRwLock::new(crate::nudge::NudgeState::new())),
         })
     }
 }
@@ -257,6 +263,8 @@ pub fn run() {
             commands::get_autostart,
             commands::save_pet_anchor,
             commands::get_pet_anchor,
+            commands::set_nap_until,
+            commands::dismiss_nudge,
             commands::open_picker_window,
         ])
         .setup(move |app| {
@@ -268,6 +276,16 @@ pub fn run() {
             // Tray always available (escape valve before/during onboarding)
             // v0.1.8 启动 cursor-follow 后台任务（30fps；由 AtomicBool 控制开 / 关）
             cursor_follow::spawn_follow_loop(app.handle().clone(), app_state.clone());
+
+            // v0.1.27 P3 · 启动环境感知 + 主动提醒
+            // presence 每 30s 采样到 30min ring buffer；nudge 每 60s 评估规则
+            // 隐私红线：只数键击频率 / 鼠标移动时间戳 / 前台 bundle id —— 不读内容
+            let presence_buf = presence::spawn(app.handle().clone());
+            nudge::spawn(
+                app.handle().clone(),
+                presence_buf,
+                app_state.nudge_state.clone(),
+            );
 
             // v0.2 启动剪贴板历史捕获 —— 500ms 轮询 changeCount
             clipboard::spawn_capture_loop();

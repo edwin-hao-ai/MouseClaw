@@ -75,6 +75,10 @@ export interface Strings {
   "petmenu.settings": string;
   "petmenu.feed_ack": string;
   "petmenu.nap_ack": string;
+
+  // Nudge bubble (v0.1.27 P3)
+  "nudge.later": string;
+  "nudge.mute_today": string;
   "onboarding.cta.next_voice_ime": string;
   "vime.trigger.fn": string;
   "vime.trigger.option": string;

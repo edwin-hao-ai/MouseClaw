@@ -1,0 +1,103 @@
+/**
+ * NudgeBubble — glass card above the pet for proactive reminders.
+ * Source: docs/prototypes/pet-anchor-menu-nudges-20260518.html §3
+ * All values from DESIGN.md tokens (no hardcoded literals).
+ */
+
+.nudge-bubble {
+  position: absolute;
+  bottom: 78px;
+  right: 4px;
+  width: 240px;
+  background: var(--bubble-bg, linear-gradient(135deg, #ffffff, #fbfbfd));
+  color: #1a1a2e;
+  border-radius: var(--radius-md, 12px);
+  box-shadow: var(--bubble-shadow,
+    0 18px 36px rgba(0,0,0,0.35),
+    0 0 0 1px rgba(255,255,255,0.04));
+  padding: 12px 14px 10px;
+  z-index: 9;
+  animation: nudge-in 360ms cubic-bezier(.34, 1.56, .64, 1) both;
+  font: 13px/1.5 -apple-system, "PingFang SC", system-ui, sans-serif;
+}
+
+@keyframes nudge-in {
+  0%   { opacity: 0; transform: translateY(8px) scale(0.92); }
+  100% { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nudge-bubble { animation: none; }
+}
+
+/* tail pointing down at the pet */
+.nudge-bubble::after {
+  content: "";
+  position: absolute;
+  bottom: -6px;
+  right: 28px;
+  width: 12px;
+  height: 12px;
+  background: var(--bubble-bg, #fff);
+  transform: rotate(45deg);
+  box-shadow: 2px 2px 4px rgba(0,0,0,0.06);
+}
+
+.nudge-msg {
+  font-weight: 500;
+  margin-bottom: 8px;
+  line-height: 1.45;
+}
+
+.nudge-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.nudge-btn {
+  appearance: none;
+  border: 0;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: transform 100ms ease, background 120ms ease;
+}
+
+.nudge-btn:active { transform: scale(0.96); }
+
+.nudge-btn-primary {
+  background: var(--accent-primary, #ff6b9d);
+  color: #fff;
+}
+.nudge-btn-primary:hover { background: var(--accent-soft, #ff9bb8); }
+
+.nudge-btn-ghost {
+  background: transparent;
+  color: #6b6e78;
+  border: 1px solid #d8d8de;
+}
+.nudge-btn-ghost:hover { color: #1a1a2e; border-color: #b8b8c0; }
+
+.nudge-mute {
+  display: block;
+  margin: 6px 0 0 auto;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #999;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+.nudge-mute:hover { color: #555; background: #f4f4f7; }
+
+/* per-kind accent on the left edge so users can quickly identify the source */
+.nudge-bubble.nudge-stretch    { border-left: 3px solid var(--success, #5cd6a0); }
+.nudge-bubble.nudge-stuck      { border-left: 3px solid var(--accent-primary, #ff6b9d); }
+.nudge-bubble.nudge-late-night { border-left: 3px solid var(--info, #6ec1ff); }
