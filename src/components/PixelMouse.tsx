@@ -331,12 +331,13 @@ function Extras({ state, skin }: { state: MouseState; skin: Skin }) {
     return <rect x="7" y="9" width="2" height="1" fill={p.eye} />;
   }
   if (state === "think") {
+    // v0.1.34 · 三个像素点上下错峰跳 —— 经典 typing indicator 焦虑缓解
+    // 放在桌宠头顶右上角（远离眼睛，不挡脸）
     return (
       <>
-        <rect x="13" y="0" width="1" height="1" fill="var(--accent-primary)" />
-        <rect x="14" y="1" width="1" height="1" fill="var(--accent-primary)" />
-        <rect x="13" y="2" width="1" height="1" fill="var(--accent-primary)" />
-        <rect x="13" y="4" width="1" height="1" fill="var(--accent-primary)" />
+        <rect className="mc-dot mc-dot-1" x="11" y="-2" width="1" height="1" fill="var(--accent-primary)" />
+        <rect className="mc-dot mc-dot-2" x="13" y="-2" width="1" height="1" fill="var(--accent-primary)" />
+        <rect className="mc-dot mc-dot-3" x="15" y="-2" width="1" height="1" fill="var(--accent-primary)" />
       </>
     );
   }
