@@ -1,11 +1,11 @@
 {
   "$comment": "MouseClaw 版本元信息 · App 启动时拉取此 URL 检查新版本。任何 release 后更新这里。",
-  "latest": "0.2.0",
+  "latest": "0.3.0",
   "min_supported": "0.1.0",
   "released_at": "2026-05-18",
-  "size_mb": 65,
-  "dmg_url": "https://github.com/edwin-hao-ai/releases/latest/download/MouseClaw_0.2.0_aarch64.dmg",
+  "size_mb": 250,
+  "dmg_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/latest/download/MouseClaw_0.3.0_aarch64.dmg",
   "release_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/latest",
-  "notes_zh": "🎤 流式语音输入上线 —— sherpa-onnx + Zipformer 边说边出字（首字延迟 <0.5s），跟豆包 / Typeless 同代体验。首次启动后台下载语音模型 (~180 MB)。Whisper 暂时保留做 fallback，v0.3 删除",
-  "notes_en": "🎤 Streaming voice input shipped — sherpa-onnx + Zipformer bilingual zh-en transcribes as you speak (<0.5s first-char latency), Typeless-grade real-time UX. Model auto-downloads on first launch (~180 MB). Whisper kept as fallback for v0.2, removed in v0.3"
+  "notes_zh": "🎤 sherpa-onnx 语音模型直接打包进 DMG —— 装完即用，零下载等待。同时彻底删除 Whisper（whisper-rs / bundled Base / WhisperModel config / 托盘模型选择全部清干净）。DMG 体积 ~250MB（多 180MB 模型），换来「点开就能说」的体验",
+  "notes_en": "🎤 sherpa-onnx model bundled directly in the DMG — install and use, zero wait. Whisper fully removed (whisper-rs dep, bundled Base, WhisperModel config, tray model picker all gone). DMG grows to ~250MB (+180MB model), trade for instant-ready voice input"
 }

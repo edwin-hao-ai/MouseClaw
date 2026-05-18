@@ -12,7 +12,6 @@ use tauri::{
     AppHandle, Manager, WebviewUrl, WebviewWindowBuilder,
 };
 
-use crate::config::WhisperModel;
 use crate::skins::SkinId;
 
 /// 16×16 monochrome mouse silhouette for the macOS menubar (template image).
@@ -128,21 +127,9 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let browser_label = if cdp_alive { s_browser_on } else { s_browser_off };
     let browser_item = MenuItem::with_id(app, "enable-browser", browser_label, true, None::<&str>)?;
 
-    // 「🎙️ 语音模型 ▸」子菜单 —— 4 档 Whisper 模型，当前选中打勾
-    let current_model = crate::config::Config::load().whisper_model;
-    let mut model_items: Vec<CheckMenuItem<tauri::Wry>> = Vec::new();
-    for m in WhisperModel::all() {
-        let item = CheckMenuItem::with_id(
-            app, m.tray_menu_id(), m.display_name(),
-            true, *m == current_model, None::<&str>,
-        )?;
-        model_items.push(item);
-    }
-    let model_refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> =
-        model_items.iter().map(|i| i as &dyn tauri::menu::IsMenuItem<tauri::Wry>).collect();
-    let model_submenu = Submenu::with_id_and_items(
-        app, "whisper-submenu", s_model, true, &model_refs,
-    )?;
+    // v0.3 · Whisper model picker submenu deleted —— sherpa-zh-en is the sole
+    // bundled ASR. No user choice surface. s_model label no longer used.
+    let _ = s_model;
 
     // 「🌐 语言」子菜单 —— v0.1.9 i18n
     let lang_zh = CheckMenuItem::with_id(app, "lang:zh", "🇨🇳 中文",
@@ -216,7 +203,7 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 
     let mut items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = vec![
         &summon, &clipboard_item, &history,
-        &skin_picker_item, &anchor_submenu, &model_submenu, &lang_submenu,
+        &skin_picker_item, &anchor_submenu, &lang_submenu,
         &sep1, &vime_item, &trigger_submenu, &tidy_item, &pause_item,
         &workspace_item,
     ];
@@ -296,12 +283,7 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
         rebuild_tray_menu(app);
         return;
     }
-    // Whisper 模型子菜单：id 形如 "whisper:small" / "whisper:turbo"
-    if let Some(model_name) = id.strip_prefix("whisper:") {
-        change_whisper_model(app, model_name);
-        rebuild_tray_menu(app);
-        return;
-    }
+    // v0.3 · Whisper submenu deleted
     // 语言子菜单：id 形如 "lang:zh" / "lang:en"
     if let Some(lang) = id.strip_prefix("lang:") {
         change_language(app, lang);
@@ -669,39 +651,7 @@ fn change_language(app: &AppHandle, lang: &str) {
     }
 }
 
-/// 托盘点 Whisper 模型 → 持久化 + 触发后台下载（如缺）+ 通知用户。
-fn change_whisper_model(app: &AppHandle, name: &str) {
-    use tauri::Emitter;
-    let parsed = WhisperModel::from_str(name);
-    let mut cfg = crate::config::Config::load();
-    if cfg.whisper_model == parsed {
-        return;
-    }
-    cfg.whisper_model = parsed;
-    if let Err(e) = cfg.save() {
-        eprintln!("[mouseclaw] tray change_whisper_model save failed: {e}");
-        return;
-    }
-    crate::transcribe::set_active_model(parsed);
-    let msg = if crate::transcribe::is_available() {
-        format!("✅ 已切到 {} — 立即生效", parsed.display_name())
-    } else {
-        format!(
-            "📦 切到 {} — 后台下载 {}MB 中，下次提问就用新模型",
-            parsed.display_name(), parsed.size_mb()
-        )
-    };
-    println!("[mouseclaw] 🎙️ {msg}");
-    for (_, w) in app.webview_windows() {
-        let _ = w.emit(crate::events::EV_VIEW_CHANGED, serde_json::json!({
-            "kind": "reply",
-            "transcript": "切换语音模型",
-            "reply": msg,
-            "mode": "A",
-            "streaming": false,
-        }));
-    }
-}
+// v0.3 · change_whisper_model deleted — sherpa zh-en is sole bundled ASR.
 
 /// 复用 commands::save_skin 的实现，保证逻辑只有一处。
 fn change_skin(app: &AppHandle, skin_name: &str) {

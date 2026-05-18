@@ -38,7 +38,7 @@ pub mod skins;
 pub mod tidy_up;
 pub mod update_check;
 pub mod voice_ime;
-pub mod transcribe;
+// transcribe (Whisper) deleted in v0.3 — superseded by transcribe_stream (sherpa-onnx)
 pub mod tray;
 
 use std::str::FromStr;
@@ -246,8 +246,6 @@ pub fn run() {
             commands::get_skin,
             commands::enable_browser_automation,
             commands::capability_status,
-            commands::save_whisper_model,
-            commands::get_whisper_model,
             commands::save_language,
             commands::get_language,
             commands::list_clipboard,
@@ -362,10 +360,8 @@ pub fn run() {
             }
 
             // Background Whisper model download if missing
-            // v0.2 · 启动 sherpa streaming ASR model 后台下载（首次启动）
+            // v0.3 · sherpa streaming ASR：先从 bundle seed，没就后台下载
             transcribe_stream::kick_off_download_if_missing();
-            // legacy Whisper download — keep for v0.2 transition fallback; deleted v0.3
-            transcribe::kick_off_download_if_missing();
 
             // v0.1.27 · 已 onboarded 的用户：启动时把桌宠送到 anchor 位置打盹。
             // Follow 模式跳过 —— 由 cursor_follow 接管。

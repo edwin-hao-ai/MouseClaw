@@ -22,7 +22,7 @@
 
 use std::path::PathBuf;
 use std::sync::Mutex;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use once_cell::sync::Lazy;
 use sherpa_onnx::{OnlineRecognizer, OnlineRecognizerConfig, OnlineStream};
 
@@ -66,15 +66,24 @@ pub fn is_ready() -> bool {
     MODEL_FILES.iter().all(|f| dir.join(f).exists())
 }
 
-/// 启动时调一次：模型缺则后台 curl 下载。完成后置 ModelState::Ready 让
-/// pipeline 知道可以转写了。
+/// 启动时调一次：
+///   1. 已就绪 → 直接 Ready
+///   2. App bundle 里有打包模型 → 同步拷贝到 ~/.mouseclaw/models/sherpa-zh-en/
+///      ≈ 几百 ms 文件复制，instant Ready，**用户首启就能说话**
+///   3. 都没有（dev `cargo run` 或第一次升级）→ 后台 curl 下载（180MB · 几分钟）
 pub fn kick_off_download_if_missing() {
     if is_ready() {
         *DOWNLOAD_STATE.lock().unwrap() = Some(ModelState::Ready);
         return;
     }
+    // v0.3 · App bundle 兜底 —— DMG 里打包了完整模型，第一次启动直接拷贝
+    if try_seed_from_bundle().unwrap_or(false) {
+        *DOWNLOAD_STATE.lock().unwrap() = Some(ModelState::Ready);
+        println!("[mouseclaw] 🎤 sherpa zh-en 从 bundle seed 到 ~/.mouseclaw/models/sherpa-zh-en/");
+        return;
+    }
     *DOWNLOAD_STATE.lock().unwrap() = Some(ModelState::Downloading);
-    println!("[mouseclaw] 🎤 sherpa zh-en 模型缺失，后台下载 (~180MB total)");
+    println!("[mouseclaw] 🎤 sherpa zh-en 模型缺失（dev 模式？），后台下载 (~180MB total)");
 
     std::thread::spawn(|| {
         let dir = match models_dir() {
@@ -214,6 +223,43 @@ impl StreamSession {
             .unwrap_or_default();
         Ok(text)
     }
+}
+
+/// 找 bundle 里的 sherpa-zh-en 资源。Tauri 安装到
+/// `MouseClaw.app/Contents/Resources/models/sherpa-zh-en/<file>`。
+/// 当前 exe 在 `MouseClaw.app/Contents/MacOS/mouseclaw`，资源在
+/// `current_exe()/../../Resources/models/sherpa-zh-en/`。
+/// Dev `cargo run` 走 `CARGO_MANIFEST_DIR/resources/sherpa-zh-en/` fallback。
+fn bundle_resource_dir() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let bundled = exe.parent()?.parent()?.join("Resources").join("models").join(MODEL_DIR);
+    if MODEL_FILES.iter().all(|f| bundled.join(f).exists()) {
+        return Some(bundled);
+    }
+    // dev fallback —— 仓库里 src-tauri/resources/sherpa-zh-en/
+    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resources")
+        .join(MODEL_DIR);
+    if MODEL_FILES.iter().all(|f| dev.join(f).exists()) {
+        return Some(dev);
+    }
+    None
+}
+
+/// 第一次启动从 app bundle 拷模型到 ~/.mouseclaw/models/sherpa-zh-en/。
+/// 成功返回 true，资源不存在返回 false（dev 模式 / 未打包）。
+fn try_seed_from_bundle() -> Result<bool> {
+    let Some(src_dir) = bundle_resource_dir() else { return Ok(false); };
+    let dest_dir = models_dir()?;
+    std::fs::create_dir_all(&dest_dir)?;
+    for file in MODEL_FILES {
+        let src = src_dir.join(file);
+        let dest = dest_dir.join(file);
+        if dest.exists() { continue; }
+        std::fs::copy(&src, &dest)
+            .with_context(|| format!("seed copy {}", file))?;
+    }
+    Ok(true)
 }
 
 #[cfg(test)]

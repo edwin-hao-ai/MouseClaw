@@ -306,7 +306,8 @@ mod tests {
     #[test]
     fn stretch_cooldown_blocks_refire() {
         let now = 2000;
-        let buf = fresh_buf(vec![s(now, "com.apple.Safari", 0.0, 5500.0, 14)]);
+        // user_present = false（kb 和 mv 都 > 5min）—— 避免 Water rule 误触发
+        let buf = fresh_buf(vec![s(now, "com.apple.Safari", 400.0, 5500.0, 14)]);
         let mut st = NudgeState::new();
         st.mark_fired(NudgeKind::Stretch, now - 100); // 100s 前刚发过
         assert!(pick_nudge(&buf, &st, now, false).is_none());
@@ -332,12 +333,13 @@ mod tests {
     #[test]
     fn stuck_does_not_fire_when_not_in_ide() {
         let now = 10_000;
+        // user_present = false (kb 400s, mv 400s) —— 避免 Water rule 误触发
         let samples: Vec<_> = (0..10).map(|i| {
-            s(now - (10 - i as i64) * 30, "com.apple.Safari", 6.0 * 60.0, 10.0, 14)
+            s(now - (10 - i as i64) * 30, "com.apple.Safari", 400.0, 400.0, 14)
         }).collect();
         let buf = fresh_buf(samples);
         let st = NudgeState::new();
-        // 没在 IDE → 不该触发 stuck；mouse 没久静止 → 也不该触发 stretch
+        // 没在 IDE → 不该触发 stuck；mouse 没久静止（5500s 阈值）→ 也不该触发 stretch
         // hour=14 → 也不该触发 late-night → None
         assert!(pick_nudge(&buf, &st, now, false).is_none());
     }

@@ -63,13 +63,12 @@ pub fn save_shortcut(
 
     let backend = Backend::from_choice(&backend);
     let skin = SkinId::from_str(skin.as_deref().unwrap_or(""));
-    // 保留用户之前选的 whisper 模型 + 语言（重走 onboarding 不要被重置成 default）
+    // 保留用户之前选的语言等设置（重走 onboarding 不要被重置成 default）
     let prev = config::Config::load();
     let cfg = config::Config {
         shortcut: new_str.clone(),
         backend,
         skin,
-        whisper_model: prev.whisper_model,
         language: prev.language,
         tidy_up_enabled: prev.tidy_up_enabled,
         voice_ime_enabled: prev.voice_ime_enabled,
@@ -224,24 +223,8 @@ pub struct CapabilityStatus {
     pub chrome_cdp: bool,
 }
 
-/// 切换 Whisper 模型 —— 托盘 / status window 调它。
-/// 1. 持久化进 config.json
-/// 2. transcribe::set_active_model 重新加载 + 缺失则后台下载
-#[tauri::command]
-pub fn save_whisper_model(model: String) -> Result<(), String> {
-    let parsed = config::WhisperModel::from_str(&model);
-    let mut cfg = config::Config::load();
-    cfg.whisper_model = parsed;
-    cfg.save().map_err(|e| format!("保存失败：{e}"))?;
-    crate::transcribe::set_active_model(parsed);
-    println!("[mouseclaw] whisper 模型 → {:?}", parsed);
-    Ok(())
-}
-
-#[tauri::command]
-pub fn get_whisper_model() -> String {
-    config::Config::load().whisper_model.as_str().to_string()
-}
+// v0.3 · save_whisper_model / get_whisper_model deleted alongside Whisper.
+// sherpa zh-en is the sole ASR; no user-facing model picker needed.
 
 /// 切换 UI 语言 —— 任意窗口 / 托盘调它。
 /// 1. 持久化进 config.json

@@ -10,7 +10,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::events::{ReplyMode, ViewKind, EV_VIEW_CHANGED};
 use crate::overlay::{bump_gen, emit_view, hide_overlay, schedule_auto_hide};
-use crate::{audio, backend, mode_b, screenshot, transcribe};
+use crate::{audio, backend, mode_b, screenshot};
 use crate::AppState;
 
 /// 完整 pipeline：截图 → session 记账 → AI 流式调用 → Mode A/B 输出。

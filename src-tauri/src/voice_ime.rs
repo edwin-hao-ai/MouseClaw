@@ -400,8 +400,8 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
         MONITOR.triggered.store(false, Ordering::Relaxed);
         return;
     }
-    if !crate::transcribe::is_available() {
-        eprintln!("[mouseclaw] 🎙️ Whisper not ready, skip voice IME");
+    if !crate::transcribe_stream::is_ready() {
+        eprintln!("[mouseclaw] 🎙️ sherpa not ready (model still downloading?), skip voice IME");
         MONITOR.triggered.store(false, Ordering::Relaxed);
         return;
     }
@@ -490,20 +490,24 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
     });
 
     tauri::async_runtime::spawn_blocking(move || {
-        let samples = match recorder.stop_and_take() {
+        // v0.3 · sherpa streaming（一次性 batch 模式）—— 没有 partial UI 需求
+        // 直接 stop 拿全样本 → 新建 StreamSession → accept all → finalize
+        let samples = match recorder.stop_drain_remaining_16k() {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("[mouseclaw] 🎙️ stop_and_take: {e}");
+                eprintln!("[mouseclaw] 🎙️ stop_drain_remaining_16k: {e}");
                 crate::overlay::hide_overlay(&app);
                 return;
             }
         };
-        let raw = match crate::transcribe::transcribe(&samples) {
+        let raw = match crate::transcribe_stream::StreamSession::new()
+            .and_then(|mut s| { s.accept(&samples); s.finalize() })
+        {
             Ok(t) => t,
             Err(e) => {
-                eprintln!("[mouseclaw] 🎙️ Whisper 失败: {e}");
+                eprintln!("[mouseclaw] 🎙️ sherpa 失败: {e}");
                 crate::overlay::emit_view(&app, &crate::events::ViewKind::Blocked {
-                    reason: format!("Whisper failed: {e}"),
+                    reason: format!("transcribe failed: {e}"),
                 });
                 return;
             }

@@ -12,76 +12,8 @@ use crate::skins::SkinId;
 
 /// 可选 Whisper 模型 —— 用户在托盘 / config 切。
 /// 体积 / 中文质量 / 速度的取舍详见 transcribe.rs 顶部注释。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum WhisperModel {
-    Base,
-    Small,
-    Medium,
-    Turbo,
-}
-
-impl Default for WhisperModel {
-    // v0.1.29 · 默认从 Base 改成 Small。
-    // 之前默认 Base 是为了首装零网络（bundled 59MB），但中文准度差很多 ——
-    // 用户反馈"刚装上识别率好低"几乎都是这个原因。
-    // 现在策略：默认 Small（190MB · 中文好），transcribe.rs 有 fallback ——
-    // Small 未下载完时临时用 bundled Base，下载好自动切回 Small。
-    // 用户感知：首装可用（Base 兜底）+ 几分钟后自动升级到 Small（中文好）。
-    fn default() -> Self { WhisperModel::Small }
-}
-
-impl WhisperModel {
-    pub fn filename(&self) -> &'static str {
-        match self {
-            WhisperModel::Base   => "ggml-base-q5_1.bin",
-            WhisperModel::Small  => "ggml-small-q5_1.bin",
-            WhisperModel::Medium => "ggml-medium-q5_0.bin",
-            WhisperModel::Turbo  => "ggml-large-v3-turbo-q5_0.bin",
-        }
-    }
-    pub fn url(&self) -> &'static str {
-        match self {
-            WhisperModel::Base   => "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base-q5_1.bin",
-            WhisperModel::Small  => "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin",
-            WhisperModel::Medium => "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium-q5_0.bin",
-            WhisperModel::Turbo  => "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin",
-        }
-    }
-    /// 下载体积（MB，approx）—— 给 UI / log 用
-    pub fn size_mb(&self) -> u32 {
-        match self {
-            WhisperModel::Base => 59, WhisperModel::Small => 190,
-            WhisperModel::Medium => 539, WhisperModel::Turbo => 547,
-        }
-    }
-    pub fn display_name(&self) -> &'static str {
-        match self {
-            WhisperModel::Base   => "⚡ Base (59MB · 最快 / 一般)",
-            WhisperModel::Small  => "✨ Small (190MB · 推荐 · 中文好)",
-            WhisperModel::Medium => "🎯 Medium (539MB · 接近 large)",
-            WhisperModel::Turbo  => "🚀 Turbo (547MB · 最准 · 占 RAM)",
-        }
-    }
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            WhisperModel::Base => "base", WhisperModel::Small => "small",
-            WhisperModel::Medium => "medium", WhisperModel::Turbo => "turbo",
-        }
-    }
-    pub fn from_str(s: &str) -> Self {
-        match s {
-            "small" => WhisperModel::Small,
-            "medium" => WhisperModel::Medium,
-            "turbo" => WhisperModel::Turbo,
-            _ => WhisperModel::Base, // 兜底 base —— 跟 Default 对齐
-        }
-    }
-    pub fn all() -> &'static [WhisperModel] {
-        &[WhisperModel::Base, WhisperModel::Small, WhisperModel::Medium, WhisperModel::Turbo]
-    }
-    pub fn tray_menu_id(&self) -> String { format!("whisper:{}", self.as_str()) }
-}
+// v0.3 · WhisperModel deleted alongside Whisper. sherpa-onnx zh-en is the
+// sole ASR backend. No user-facing model picker needed — model is bundled.
 
 /// Bump this whenever shortcut choices / config schema change in a way that
 /// invalidates user's saved choice. Old configs auto-trigger re-Onboarding.
@@ -103,7 +35,9 @@ impl WhisperModel {
 ///   v15 → v16: Whisper 默认从 Base 升到 Small（中文更准）。
 ///              现有 config 上若仍是 Base，迁移时自动改 Small —— bundled Base
 ///              做 fallback，体验不变但准度大跳。
-pub const CURRENT_CONFIG_VERSION: u32 = 16;
+///   v16 → v17: Whisper 整套删除（whisper_model 字段 + WhisperModel enum）。
+///              sherpa-onnx zh-en bundled in DMG，无 user-facing model picker。
+pub const CURRENT_CONFIG_VERSION: u32 = 17;
 
 /// 桌宠悬停位置 (v0.1.27) —— overlay 闲置时停哪儿打盹。
 /// 召唤快捷键触发时仍然跑到光标位置工作，完事 auto-hide 后回到 anchor。
@@ -174,9 +108,8 @@ pub struct Config {
     /// 用户选的桌宠皮肤（6 款老鼠风格）。
     #[serde(default)]
     pub skin: SkinId,
-    /// 用户选的 Whisper 转写模型（默认 Small —— 中文质量好且不超 RAM 上限）。
-    #[serde(default)]
-    pub whisper_model: WhisperModel,
+    // whisper_model removed in v0.3 — sherpa zh-en is now the sole bundled ASR.
+    // Old configs with this field deserialize fine (serde ignores unknown fields).
     /// UI 语言（i18n · zh / en）。默认 zh —— 与原默认中文体验对齐。
     /// 加新语言：枚举改成 string + 前端 LANGUAGES 表加项即可，Rust 这边不卡。
     #[serde(default = "default_language")]
@@ -242,7 +175,6 @@ impl Default for Config {
             shortcut: "Super+Shift+Space".into(),
             backend: Backend::default(),
             skin: SkinId::default(),
-            whisper_model: WhisperModel::default(),
             language: default_language(),
             tidy_up_enabled: default_tidy_up(),
             voice_ime_enabled: default_voice_ime(),
@@ -274,12 +206,8 @@ impl Config {
                 "[mouseclaw] config schema v{} < v{} → 重新走 Onboarding 让你选新快捷键",
                 cfg.version, CURRENT_CONFIG_VERSION
             );
-            // v15 → v16 · 把 Whisper 默认升到 Small。Base 用户也自动升 ——
-            // 之前默认 Base 是因为零网络体验，现在有 fallback 兜底，安全升级。
-            if cfg.version < 16 && cfg.whisper_model == WhisperModel::Base {
-                println!("[mouseclaw] migrating Whisper Base → Small (better Chinese)");
-                cfg.whisper_model = WhisperModel::Small;
-            }
+            // v16 → v17 · Whisper 整套删除，sherpa-zh-en bundled in DMG.
+            // 老 config 的 whisper_model 字段自然被忽略（serde skips unknown）。
             cfg.onboarded = false;
             cfg.version = CURRENT_CONFIG_VERSION;
         }
@@ -353,27 +281,7 @@ mod tests {
         assert_eq!(c.version, CURRENT_CONFIG_VERSION);
         assert_eq!(c.backend, Backend::ClaudeCli);
         assert_eq!(c.skin, SkinId::Classic);
-        // v0.1.29 · 默认 Small —— 中文准度大跳。bundled Base 做 fallback。
-        assert_eq!(c.whisper_model, WhisperModel::Small);
-    }
-
-    #[test]
-    fn whisper_models_round_trip_and_have_distinct_files() {
-        let all = WhisperModel::all();
-        assert_eq!(all.len(), 4);
-        let mut files = std::collections::HashSet::new();
-        for m in all {
-            assert_eq!(WhisperModel::from_str(m.as_str()), *m, "{:?} round-trip", m);
-            assert!(files.insert(m.filename()), "{:?} filename 重复", m);
-            assert!(m.url().contains("huggingface.co"), "{:?} url 必须指向 hf", m);
-            assert!(m.size_mb() > 0);
-        }
-    }
-
-    #[test]
-    fn whisper_unknown_falls_back_to_base() {
-        assert_eq!(WhisperModel::from_str(""), WhisperModel::Base);
-        assert_eq!(WhisperModel::from_str("nope"), WhisperModel::Base);
+        // v0.3 · WhisperModel deleted — sherpa-zh-en is sole ASR, bundled in DMG.
     }
 
     #[test]

@@ -1,6 +1,6 @@
 [package]
 name = "mouseclaw"
-version = "0.2.0"
+version = "0.3.0"
 description = "🦞 鼠标龙虾 — 像素小老鼠 AI 桌面助手"
 authors = ["edwin-hao-ai"]
 edition = "2021"
@@ -21,11 +21,10 @@ serde_json = "1"
 tokio = { version = "1", features = ["process", "io-util", "macros", "rt-multi-thread", "time", "fs", "sync"] }
 anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }
-# Voice input — sherpa-onnx streaming Zipformer (replacing Whisper in v0.2)
+# Voice input — sherpa-onnx streaming Zipformer (v0.3 · Whisper deleted)
 cpal = "0.15"
 hound = "3.5"
-whisper-rs = { version = "0.14", default-features = false }  # kept for v0.2 transition; deleted in v0.3
-# v0.2 · streaming on-device ASR + TTS + VAD via k2-fsa next-gen Kaldi
+# Streaming on-device ASR + TTS + VAD via k2-fsa next-gen Kaldi
 # Auto-downloads prebuilt static libs from GitHub releases at build time
 # https://docs.rs/sherpa-onnx
 sherpa-onnx = "1.13"
