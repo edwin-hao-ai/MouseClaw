@@ -77,6 +77,7 @@ pub fn save_shortcut(
         clipboard_paused: prev.clipboard_paused,
         workspace_path: prev.workspace_path,
         autostart: prev.autostart,
+        pet_anchor: prev.pet_anchor,
         onboarded: true,
         version: config::CURRENT_CONFIG_VERSION,
     };
@@ -104,7 +105,9 @@ pub fn save_skin(skin: String, app: AppHandle) -> Result<(), String> {
     for (_, w) in app.webview_windows() {
         let _ = w.emit(EV_SKIN_CHANGED, payload.clone());
     }
-    println!("[mouseclaw] skin saved → {:?} (已广播 skin-changed)", parsed);
+    // v0.1.26 · 让托盘里「🎨 更换桌宠… (xxx)」label 也跟着换
+    crate::tray::rebuild_tray_menu(&app);
+    println!("[mouseclaw] skin saved → {:?} (已广播 skin-changed + 刷新托盘)", parsed);
     Ok(())
 }
 
@@ -112,6 +115,32 @@ pub fn save_skin(skin: String, app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn get_skin() -> String {
     config::Config::load().skin.as_str().to_string()
+}
+
+/// v0.1.27 · 持久化桌宠悬停位置 + 立即把窗口送到新位置 + 刷新托盘 ✓ 标记。
+/// Onboarding 完成 / 托盘子菜单切换 / Pet Picker 设置面板 都调它。
+#[tauri::command]
+pub fn save_pet_anchor(anchor: String, app: AppHandle) -> Result<(), String> {
+    let parsed = config::PetAnchor::from_str(&anchor);
+    let mut cfg = config::Config::load();
+    cfg.pet_anchor = parsed;
+    cfg.save().map_err(|e| format!("保存桌宠位置失败：{e}"))?;
+
+    // 已 onboarded 的话立即应用 —— 让用户即时看到老鼠跑到新角落
+    if cfg.onboarded {
+        if parsed.pin_visible_when_idle() {
+            crate::anchor::apply_idle_anchor(&app, parsed);
+        }
+        // Follow 模式不动 —— cursor_follow 已经在跑或马上接管
+    }
+    crate::tray::rebuild_tray_menu(&app);
+    println!("[mouseclaw] pet_anchor saved → {:?}", parsed);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_pet_anchor() -> String {
+    config::Config::load().pet_anchor.as_str().to_string()
 }
 
 /// P0a · 一键启用浏览器自动化：注册 MCP + 启动带 CDP 的 Chrome。
@@ -414,6 +443,36 @@ pub fn open_hub_window_inner(app: &AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn open_hub_window(app: AppHandle) -> Result<(), String> {
     open_hub_window_inner(&app)
+}
+
+/// v0.1.26 · 打开桌宠 picker 窗口（替代托盘里的 6-item 子菜单）
+#[tauri::command]
+pub fn open_picker_window(app: AppHandle) -> Result<(), String> {
+    use tauri::WebviewWindowBuilder;
+    use tauri::WebviewUrl;
+
+    if let Some(w) = app.get_webview_window("picker") {
+        let _ = w.show();
+        let _ = w.set_focus();
+        return Ok(());
+    }
+
+    let result = WebviewWindowBuilder::new(
+        &app, "picker",
+        WebviewUrl::App("index.html?view=picker".into()),
+    )
+    .title("MouseClaw — 选择桌宠")
+    .inner_size(760.0, 600.0)
+    .min_inner_size(680.0, 540.0)
+    .resizable(true)
+    .decorations(true)
+    .focused(true)
+    .build();
+
+    match result {
+        Ok(w) => { let _ = w.set_focus(); Ok(()) }
+        Err(e) => Err(format!("打开 picker 窗口失败：{e:#}")),
+    }
 }
 
 #[tauri::command]

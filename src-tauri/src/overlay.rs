@@ -134,14 +134,27 @@ pub fn emit_view(app: &AppHandle, view: &ViewKind) {
 }
 
 /// Hide the overlay window, emit Idle. Idempotent.
-/// ⚠️ window.hide() marshal 到主线程 —— 同 show_mouse，避免 AppKit 跨线程崩溃。
+///
+/// v0.1.27 · 如果 config.pet_anchor 是 4 个角之一，**不真隐藏**，
+/// 而是把窗口送回那个角落打盹（pinned visible）。
+/// 只有 Follow 模式才彻底 hide —— Follow 没有"家"，闲置就该消失。
+///
+/// ⚠️ window.hide() / set_position marshal 到主线程 —— 同 show_mouse，
+/// 避免 AppKit 跨线程崩溃。
 pub fn hide_overlay(app: &AppHandle) {
-    let app2 = app.clone();
-    let _ = app.run_on_main_thread(move || {
-        if let Some(w) = app2.get_webview_window("mouse") {
-            let _ = w.hide();
-        }
-    });
+    let anchor = crate::config::Config::load().pet_anchor;
+    if anchor.pin_visible_when_idle() {
+        // 送回 anchor 打盹 —— overlay 保持可见但落到角落
+        crate::anchor::apply_idle_anchor(app, anchor);
+    } else {
+        // Follow 模式：彻底隐藏（旧行为）
+        let app2 = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            if let Some(w) = app2.get_webview_window("mouse") {
+                let _ = w.hide();
+            }
+        });
+    }
     emit_view(app, &ViewKind::Idle); // emit 是发事件，跨线程安全
 }
 

@@ -53,6 +53,18 @@ export interface Strings {
   "onboarding.voice_ime.disabled": string;
   "onboarding.autostart.title": string;
   "onboarding.autostart.sub": string;
+  // Pet anchor (v0.1.27)
+  "onboarding.step.anchor": string;
+  "onboarding.anchor.title": string;
+  "onboarding.anchor.subtitle": string;
+  "onboarding.cta.next_anchor": string;
+  "anchor.top-left": string;
+  "anchor.top-right": string;
+  "anchor.bottom-left": string;
+  "anchor.bottom-right": string;
+  "anchor.follow": string;
+  "anchor.tray_title": string;
+  "anchor.follow_hint": string;
   "onboarding.cta.next_voice_ime": string;
   "vime.trigger.fn": string;
   "vime.trigger.option": string;
