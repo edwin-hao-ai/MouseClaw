@@ -1,0 +1,996 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MouseClaw · 拖文档喂桌宠 + 文档语音提问</title>
+<style>
+  /* ===== DESIGN.md tokens ===== */
+  :root {
+    --bg: #faf7f2; --card: #ffffff; --ink: #2b2622; --muted: #8a8178;
+    --pink: #e8638c; --pink-soft: #fce4ec; --pink-deep: #d63d6a;
+    --green: #3fa66a; --green-soft: #e6f4ec;
+    --amber: #d9952b; --amber-soft: #fdf3e0;
+    --blue: #5b8def; --blue-soft: #e8f0fe;
+    --line: #ece6dd; --line-strong: #d8d0c4;
+    --radius-s: 8px; --radius-m: 14px; --radius-l: 22px;
+    --shadow-card: 0 1px 2px rgba(43,38,34,.06), 0 8px 24px rgba(43,38,34,.06);
+    --shadow-bubble: 0 8px 32px rgba(43,38,34,.12);
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --font: -apple-system, "PingFang SC", system-ui, sans-serif;
+    --m-body:#cfcfcf; --m-belly:#fff; --m-ear-in:#ff9bb8; --m-ear-out:#cfcfcf;
+    --m-eye:#1a1a1a; --m-nose:#d63d6a; --m-tail:#8a8a8a; --m-paw:#fff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 15px/1.65 var(--font);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+  .layout { display: grid; grid-template-columns: 220px 1fr; gap: 48px; padding-top: 48px; padding-bottom: 80px; }
+  .toc { position: sticky; top: 24px; align-self: start; font-size: 13px; line-height: 1.9; }
+  .toc h4 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 8px; }
+  .toc a { display: block; padding: 4px 10px; border-radius: 6px; color: var(--ink); text-decoration: none; }
+  .toc a:hover { background: var(--pink-soft); color: var(--pink-deep); }
+
+  h1 { font-size: 32px; margin: 0 0 4px; letter-spacing: -.02em; }
+  h2 { font-size: 22px; margin: 56px 0 10px; padding-bottom: 8px; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 16px; margin: 24px 0 8px; }
+  .sub { color: var(--muted); margin: 0 0 28px; font-size: 14px; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-m); padding: 20px 22px; box-shadow: var(--shadow-card); }
+  .card + .card { margin-top: 14px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .grid-7 { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
+
+  code, kbd { font-family: var(--mono); font-size: 12.5px; background: #f2ede5; padding: 1.5px 6px; border-radius: 5px; }
+  kbd { background: #fff; border: 1px solid var(--line-strong); box-shadow: 0 1px 0 var(--line-strong); padding: 1px 7px; font-weight: 600; }
+
+  .pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 999px; vertical-align: middle; }
+  .pill-pink { background: var(--pink-soft); color: var(--pink-deep); }
+  .pill-green { background: var(--green-soft); color: var(--green); }
+  .pill-amber { background: var(--amber-soft); color: var(--amber); }
+  .pill-blue { background: var(--blue-soft); color: var(--blue); }
+  .pill-muted { background: #f0ebe2; color: var(--muted); }
+
+  .mouse-svg { image-rendering: pixelated; shape-rendering: crispEdges; }
+
+  /* ===== Stage (mock desktop) ===== */
+  .stage {
+    position: relative; height: 460px; border-radius: var(--radius-l);
+    border: 1px solid var(--line-strong); overflow: hidden;
+    background:
+      radial-gradient(800px 400px at 80% -10%, #fff 0%, transparent 60%),
+      radial-gradient(800px 600px at 10% 110%, #f1ece2 0%, transparent 60%),
+      linear-gradient(180deg, #efe8db, #e6dfd1);
+  }
+  .menubar {
+    position: absolute; left: 0; right: 0; top: 0; height: 22px;
+    background: rgba(255,255,255,.55); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+    font-size: 11px; color: var(--ink);
+    display: flex; align-items: center; padding: 0 10px; gap: 14px;
+  }
+  .menubar .apple { font-weight: 700; }
+  .menubar .right { margin-left: auto; color: var(--muted); }
+
+  /* Finder window */
+  .finder {
+    position: absolute; left: 32px; top: 60px; width: 360px; height: 230px;
+    background: #fff; border: 1px solid var(--line-strong);
+    border-radius: 10px; box-shadow: 0 12px 30px rgba(43,38,34,.18);
+    overflow: hidden;
+  }
+  .finder .titlebar {
+    height: 28px; background: linear-gradient(180deg, #fafafa, #ececec);
+    border-bottom: 1px solid var(--line); display: flex; align-items: center; padding: 0 10px;
+  }
+  .traffic { display: flex; gap: 6px; }
+  .traffic span { width: 10px; height: 10px; border-radius: 50%; }
+  .traffic .r { background: #ff5f57; } .traffic .y { background: #febc2e; } .traffic .g { background: #28c840; }
+  .finder .title { margin-left: 10px; font-size: 11px; color: var(--muted); }
+  .files { padding: 14px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px 6px; }
+  .file {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 6px 4px; border-radius: 8px; cursor: grab;
+    font-size: 10.5px; color: var(--ink); text-align: center;
+    user-select: none;
+  }
+  .file:hover { background: var(--blue-soft); }
+  .file:active { cursor: grabbing; }
+  .file .icon { width: 38px; height: 46px; display: grid; place-items: center; }
+  .file .name { line-height: 1.2; word-break: break-word; max-width: 70px; }
+  .doc-icon {
+    width: 30px; height: 38px; background: #fff; border: 1.5px solid var(--line-strong);
+    border-radius: 3px; position: relative;
+  }
+  .doc-icon::before { content: ""; position: absolute; right: -1.5px; top: -1.5px; border: 7px solid transparent; border-top-color: var(--line-strong); border-right-color: var(--line-strong); border-radius: 0 3px 0 0; }
+  .doc-icon.pdf { background: #fff5f5; border-color: #f4a5a5; }
+  .doc-icon.pdf::after { content: "PDF"; position: absolute; left: 4px; bottom: 4px; font-size: 8px; font-weight: 800; color: #d63d3d; }
+  .doc-icon.md { background: #f0f7ff; border-color: #aac7f5; }
+  .doc-icon.md::after { content: "MD"; position: absolute; left: 4px; bottom: 4px; font-size: 8px; font-weight: 800; color: var(--blue); }
+  .doc-icon.docx { background: #f0f4ff; border-color: #93acf0; }
+  .doc-icon.docx::after { content: "DOCX"; position: absolute; left: 3px; bottom: 4px; font-size: 7px; font-weight: 800; color: #2a4fb3; }
+  .doc-icon.xlsx { background: #f0fff4; border-color: #88c997; }
+  .doc-icon.xlsx::after { content: "XLSX"; position: absolute; left: 3px; bottom: 4px; font-size: 7px; font-weight: 800; color: #1a7a3a; }
+  .img-icon {
+    width: 38px; height: 38px; border-radius: 3px;
+    background: linear-gradient(135deg, #ffc6dd, #ffd9a8 50%, #b6e5ff);
+    border: 1.5px solid var(--line-strong); position: relative;
+  }
+  .img-icon::after { content: ""; position: absolute; left: 6px; top: 6px; width: 6px; height: 6px; background: #fff; border-radius: 50%; }
+  .exe-icon {
+    width: 30px; height: 38px; background: #2b2622; border-radius: 3px;
+    display: grid; place-items: center; color: #fff; font-size: 10px; font-weight: 800;
+    border: 1.5px solid #000;
+  }
+
+  /* IDE window in background */
+  .ide {
+    position: absolute; right: 28px; top: 80px; width: 320px; height: 280px;
+    background: #1f1c19; border-radius: 10px; box-shadow: 0 12px 30px rgba(43,38,34,.22);
+    border: 1px solid #000; overflow: hidden;
+  }
+  .ide .titlebar { height: 28px; background: #2a2622; display: flex; align-items: center; padding: 0 10px; }
+  .ide .title { color: #aaa; font-size: 11px; margin-left: 10px; }
+  .ide .code { padding: 12px 14px; font: 11px/1.5 var(--mono); color: #d0c8b8; }
+  .ide .kw { color: #e8638c; } .ide .str { color: #88c997; } .ide .com { color: #6a6256; }
+
+  /* Stage caption */
+  .caption {
+    position: absolute; left: 16px; bottom: 14px; right: 16px;
+    font-size: 12px; color: var(--muted);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .controls {
+    position: absolute; right: 14px; top: 32px;
+    display: flex; gap: 8px; align-items: center;
+  }
+  button.play {
+    font: 600 12px var(--font); background: var(--ink); color: #fff;
+    border: none; border-radius: 999px; padding: 7px 14px; cursor: pointer;
+    box-shadow: 0 4px 10px rgba(43,38,34,.18);
+  }
+  button.play:hover { background: var(--pink-deep); }
+  button.play.ghost { background: #fff; color: var(--ink); border: 1px solid var(--line-strong); box-shadow: none; }
+
+  /* ===== Mouse character (live, on stage) ===== */
+  .pet {
+    position: absolute;
+    --x: 700px; --y: 360px; --face: 1;
+    left: 0; top: 0;
+    transform: translate(var(--x), var(--y)) scaleX(var(--face));
+    transform-origin: center bottom;
+    transition: transform 600ms cubic-bezier(0.2, 0.8, 0.3, 1);
+    width: 64px; height: 64px;
+    pointer-events: none;
+  }
+  .pet .sprite {
+    position: relative; width: 64px; height: 64px;
+  }
+  .pet svg { position: absolute; inset: 0; }
+  .pet .bubble {
+    position: absolute; left: 50%; bottom: 68px; transform: translateX(-50%);
+    background: #fff; border: 1px solid var(--line-strong);
+    border-radius: 14px; padding: 6px 12px; font-size: 12px; white-space: nowrap;
+    box-shadow: var(--shadow-bubble);
+    opacity: 0; transition: opacity 200ms ease;
+  }
+  .pet .bubble.show { opacity: 1; }
+  .pet .bubble.alert { background: var(--pink-soft); border-color: var(--pink); color: var(--pink-deep); font-weight: 700; }
+  .pet .bubble.warn { background: var(--amber-soft); border-color: var(--amber); color: var(--amber); }
+  .pet .bubble.recording { background: var(--ink); color: #fff; border-color: #000; }
+  .pet .bubble.recording::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--pink); margin-right: 6px; animation: rec 1s infinite; vertical-align: middle; }
+  @keyframes rec { 50% { opacity: .3; } }
+
+  /* Ghost preview tracking cursor while dragging */
+  .drag-ghost {
+    position: absolute; pointer-events: none; opacity: 0; z-index: 50;
+    transform: translate(-50%, -50%);
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    font-size: 11px; color: var(--ink);
+  }
+  .drag-ghost.show { opacity: 1; }
+  .drag-ghost .label { background: #fff; border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; box-shadow: var(--shadow-card); }
+
+  /* Dust puff on landing */
+  .dust {
+    position: absolute; pointer-events: none; opacity: 0;
+    width: 30px; height: 12px;
+  }
+  .dust span {
+    position: absolute; bottom: 0; width: 6px; height: 6px; border-radius: 50%;
+    background: #e0d6c3; opacity: 0;
+  }
+  .dust.boom span:nth-child(1) { left: 0;  animation: puff1 600ms ease-out; }
+  .dust.boom span:nth-child(2) { left: 12px; animation: puff2 600ms ease-out; }
+  .dust.boom span:nth-child(3) { left: 22px; animation: puff3 600ms ease-out; }
+  @keyframes puff1 { 0% { opacity: 0; transform: translate(0, 0) scale(.6);} 30%{opacity:.8;} 100% { opacity: 0; transform: translate(-10px,-10px) scale(1.3);} }
+  @keyframes puff2 { 0% { opacity: 0; transform: translate(0, 0) scale(.6);} 30%{opacity:.8;} 100% { opacity: 0; transform: translate(0,-14px) scale(1.4);} }
+  @keyframes puff3 { 0% { opacity: 0; transform: translate(0, 0) scale(.6);} 30%{opacity:.8;} 100% { opacity: 0; transform: translate(10px,-10px) scale(1.3);} }
+
+  /* Belly glow during 消化 */
+  .belly-glow {
+    position: absolute; inset: 0; pointer-events: none; opacity: 0;
+    background: radial-gradient(circle at 50% 65%, rgba(232,99,140,.55), transparent 40%);
+    transition: opacity 300ms ease;
+  }
+  .belly-glow.on { opacity: 1; animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: .5; } }
+
+  /* Running gait — body bobs, scale punch */
+  @keyframes bob { 0%,100% { transform: translateY(0); } 25%, 75% { transform: translateY(-3px); } }
+  .pet.running .sprite { animation: bob 220ms steps(2) infinite; }
+
+  /* Eat squash */
+  @keyframes gulp {
+    0% { transform: scaleY(1); }
+    35% { transform: scaleY(.78) scaleX(1.1); }
+    70% { transform: scaleY(1.08) scaleX(.95); }
+    100% { transform: scaleY(1); }
+  }
+  .pet.gulp .sprite { animation: gulp 500ms ease; }
+
+  /* Tongue / mouth open */
+  .mouth-open { display: none; }
+  .pet[data-state="waiting"] .mouth-open,
+  .pet[data-state="sniff"] .nose-twitch { display: block; }
+  @keyframes twitch { 50% { transform: translateY(.3px); } }
+  .nose-twitch { animation: twitch 200ms infinite; transform-origin: center; }
+
+  /* Question mark above head */
+  .qmark {
+    position: absolute; left: 50%; bottom: 56px; transform: translateX(-50%);
+    font: 700 18px var(--font); color: var(--pink-deep);
+    opacity: 0; transition: opacity 200ms;
+  }
+  .qmark.show { opacity: 1; animation: qbob 1s ease-in-out infinite; }
+  @keyframes qbob { 0%,100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(-3px); } }
+
+  /* Sparkles when food enters mouth */
+  .sparkle {
+    position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%);
+    pointer-events: none; opacity: 0; font-size: 16px;
+  }
+  .sparkle.boom { animation: spark 600ms ease-out; }
+  @keyframes spark { 0% { opacity: 0; transform: translateX(-50%) translateY(0) scale(.6); } 40% { opacity: 1; } 100% { opacity: 0; transform: translateX(-50%) translateY(-22px) scale(1.4); } }
+
+  /* Voice waveform inside recording bubble */
+  .wave { display: inline-flex; gap: 2px; vertical-align: middle; margin-left: 4px; }
+  .wave i { display: inline-block; width: 2px; height: 10px; background: #fff; border-radius: 1px; animation: voice 700ms ease-in-out infinite; }
+  .wave i:nth-child(2) { animation-delay: .1s; }
+  .wave i:nth-child(3) { animation-delay: .2s; }
+  .wave i:nth-child(4) { animation-delay: .3s; }
+  @keyframes voice { 0%,100% { transform: scaleY(.4); } 50% { transform: scaleY(1); } }
+
+  /* Frame strip (state library) */
+  .frame {
+    background: linear-gradient(180deg, #f6f1e7, #ece5d6);
+    border: 1px solid var(--line-strong); border-radius: var(--radius-s);
+    height: 130px; position: relative; overflow: hidden;
+    display: grid; place-items: center;
+  }
+  .frame .label { position: absolute; left: 8px; bottom: 6px; font-size: 11px; color: var(--muted); }
+  .frame .label b { display: block; color: var(--ink); font-size: 12px; font-weight: 700; }
+  .frame svg { width: 64px; height: 64px; }
+
+  /* Mini panel mock (after voice question) */
+  .panel-mock {
+    position: absolute; right: 20px; bottom: 16px; width: 280px;
+    background: rgba(255,255,255,.96); backdrop-filter: blur(10px);
+    border: 1px solid var(--line); border-radius: 14px;
+    box-shadow: var(--shadow-bubble); padding: 12px 14px;
+    font-size: 12.5px; opacity: 0; transform: translateY(8px); transition: all 300ms ease;
+  }
+  .panel-mock.show { opacity: 1; transform: translateY(0); }
+  .panel-mock .meta { color: var(--muted); font-size: 11px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+  .panel-mock .chip { background: var(--blue-soft); color: var(--blue); padding: 1px 7px; border-radius: 999px; font-weight: 700; font-size: 10px; }
+  .panel-mock q { display: block; color: var(--ink); margin: 4px 0 8px; font-style: normal; }
+  .panel-mock .reply { color: var(--ink); line-height: 1.55; }
+
+  /* Highlight when pet is the drop target */
+  .pet.target-glow::after {
+    content: ""; position: absolute; inset: -8px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(232,99,140,.35), transparent 65%);
+    animation: pulse 800ms ease-in-out infinite;
+    z-index: -1;
+  }
+
+  ul.tight { margin: 6px 0 0; padding-left: 18px; }
+  ul.tight li { margin: 3px 0; }
+  .note { background: var(--blue-soft); border-left: 3px solid var(--blue); padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 13.5px; }
+  .warn { background: var(--amber-soft); border-left: 3px solid var(--amber); padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 13.5px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap"><div class="layout">
+
+<aside class="toc">
+  <h4>章节</h4>
+  <a href="#intro">1 · 概念</a>
+  <a href="#stage">2 · 完整流程演示</a>
+  <a href="#frames">3 · 7 个动画状态</a>
+  <a href="#flow">4 · 状态机</a>
+  <a href="#types">5 · 文档类型 + 处理</a>
+  <a href="#tech">6 · 工程实现</a>
+  <a href="#risk">7 · 风险 + 边界</a>
+</aside>
+
+<main>
+  <section id="intro">
+    <h1>拖文档喂桌宠 <span class="pill pill-pink">v0.4 候选</span></h1>
+    <p class="sub">把任何文档 / 图片拖到桌宠嘴里 → 桌宠吞下 → 自动激活语音输入法 → 你对着文档发问。</p>
+
+    <div class="card">
+      <h3 style="margin-top:0">一句话价值</h3>
+      <p>当前对文档提问要：① 截图 ② 召唤桌宠 ③ 语音念"这个 PDF 里说……"。三步太重。<br>
+      新流程一步：<b>拖一下</b>。文档 + 语音同时给到 Claude，比截图更准（拿到全文不是 OCR 一页）。</p>
+    </div>
+  </section>
+
+  <!-- ============================================== -->
+  <section id="stage">
+    <h2>2 · 完整流程演示</h2>
+    <p class="sub">点击"播放完整流程"看 7 段动画一气呵成（约 6 秒）。Finder 里的文件也可以真的拖（鼠标按住 → 拖到桌宠脸上）。</p>
+
+    <div class="stage" id="stage">
+      <div class="menubar">
+        <span class="apple">🍎</span>
+        <span>Finder</span><span>文件</span><span>编辑</span><span>显示</span>
+        <span class="right">🦞 MouseClaw · 100% · 14:23</span>
+      </div>
+
+      <div class="controls">
+        <button class="play ghost" id="reset">↺ 重置</button>
+        <button class="play" id="run">▶ 播放完整流程</button>
+      </div>
+
+      <!-- Background IDE -->
+      <div class="ide">
+        <div class="titlebar"><div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div><span class="title">design.md — VS Code</span></div>
+        <div class="code">
+          <span class="com"># MouseClaw v0.4</span><br>
+          <span class="kw">## </span>拖动 → 喂食 → 语音提问<br><br>
+          <span class="kw">- </span>桌宠检测到拖动<br>
+          <span class="kw">- </span>跑到鼠标附近<br>
+          <span class="kw">- </span>张嘴等接收<br>
+          <span class="kw">- </span>吞咽 + 激活语音<br>
+          <span class="kw">- </span>问: <span class="str">"这个文档讲什么?"</span>
+        </div>
+      </div>
+
+      <!-- Finder window with draggable files -->
+      <div class="finder">
+        <div class="titlebar"><div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div><span class="title">~/Documents</span></div>
+        <div class="files">
+          <div class="file" draggable="true" data-name="季度报告.pdf" data-kind="pdf">
+            <div class="icon"><div class="doc-icon pdf"></div></div>
+            <div class="name">季度报告.pdf</div>
+          </div>
+          <div class="file" draggable="true" data-name="README.md" data-kind="md">
+            <div class="icon"><div class="doc-icon md"></div></div>
+            <div class="name">README.md</div>
+          </div>
+          <div class="file" draggable="true" data-name="screenshot.png" data-kind="image">
+            <div class="icon"><div class="img-icon"></div></div>
+            <div class="name">screenshot.png</div>
+          </div>
+          <div class="file" draggable="true" data-name="合同.docx" data-kind="docx">
+            <div class="icon"><div class="doc-icon docx"></div></div>
+            <div class="name">合同.docx</div>
+          </div>
+          <div class="file" draggable="true" data-name="预算.xlsx" data-kind="xlsx">
+            <div class="icon"><div class="doc-icon xlsx"></div></div>
+            <div class="name">预算.xlsx</div>
+          </div>
+          <div class="file" draggable="true" data-name="installer" data-kind="reject">
+            <div class="icon"><div class="exe-icon">.app</div></div>
+            <div class="name">installer.app</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live pet -->
+      <div class="pet" id="pet" data-state="idle" style="--x: 700px; --y: 360px; --face: -1;">
+        <div class="sprite">
+          <div class="belly-glow" id="bellyGlow"></div>
+          <!-- Mouse SVG (reused from voice-ime prototype, ~16x16 grid) -->
+          <svg class="mouse-svg" viewBox="-1 -3 18 18" aria-hidden>
+            <!-- ears -->
+            <rect x="3" y="1" width="2" height="2" fill="var(--m-ear-out)"/>
+            <rect x="2" y="2" width="3" height="2" fill="var(--m-ear-out)"/>
+            <rect x="11" y="1" width="2" height="2" fill="var(--m-ear-out)"/>
+            <rect x="11" y="2" width="3" height="2" fill="var(--m-ear-out)"/>
+            <rect x="3" y="2" width="1" height="1" fill="var(--m-ear-in)"/>
+            <rect x="12" y="2" width="1" height="1" fill="var(--m-ear-in)"/>
+            <!-- head + body -->
+            <rect x="3" y="3" width="10" height="1" fill="var(--m-body)"/>
+            <rect x="2" y="4" width="12" height="3" fill="var(--m-body)"/>
+            <rect x="3" y="7" width="10" height="1" fill="var(--m-body)"/>
+            <rect x="5" y="8" width="6" height="2" fill="var(--m-belly)"/>
+            <rect x="3" y="8" width="2" height="2" fill="var(--m-body)"/>
+            <rect x="11" y="8" width="2" height="2" fill="var(--m-body)"/>
+            <rect x="4" y="10" width="8" height="1" fill="var(--m-body)"/>
+            <!-- tail -->
+            <rect x="13" y="9" width="1" height="1" fill="var(--m-tail)"/>
+            <rect x="14" y="7" width="1" height="3" fill="var(--m-tail)"/>
+            <!-- eyes -->
+            <g id="eyes">
+              <rect x="6" y="5" width="1" height="2" fill="var(--m-eye)"/>
+              <rect x="11" y="5" width="1" height="2" fill="var(--m-eye)"/>
+            </g>
+            <!-- nose -->
+            <rect class="nose-twitch" x="7" y="7" width="2" height="1" fill="var(--m-nose)"/>
+            <!-- paws (run state will show stride) -->
+            <rect x="4" y="11" width="2" height="1" fill="var(--m-paw)"/>
+            <rect x="10" y="11" width="2" height="1" fill="var(--m-paw)"/>
+            <!-- mouth open for waiting state -->
+            <g class="mouth-open">
+              <rect x="7" y="8" width="2" height="2" fill="#3a1a1a"/>
+              <rect x="7" y="9" width="2" height="1" fill="#7a2a2a"/>
+            </g>
+          </svg>
+          <span class="qmark" id="qmark">?</span>
+          <span class="sparkle" id="sparkle">✨</span>
+        </div>
+        <div class="bubble" id="bubble"></div>
+        <div class="dust" id="dust"><span></span><span></span><span></span></div>
+      </div>
+
+      <!-- Drag ghost preview (custom, since we use HTML5 drag) -->
+      <div class="drag-ghost" id="ghost">
+        <div class="doc-icon md" style="width: 26px; height: 32px"></div>
+        <div class="label" id="ghostLabel">README.md</div>
+      </div>
+
+      <!-- After-eat panel mock -->
+      <div class="panel-mock" id="panel">
+        <div class="meta">
+          <span class="chip">🍽 已吃下</span>
+          <span id="panelFile">README.md</span>
+          <span style="margin-left:auto">14.2 KB</span>
+        </div>
+        <q id="panelQ">这文档讲了什么？三句话总结一下。</q>
+        <div class="reply" id="panelA">MouseClaw v0.4 引入"拖文档喂桌宠"…</div>
+      </div>
+
+      <div class="caption">
+        <span class="pill pill-muted" id="phaseLabel">idle · 等待用户拖动</span>
+        <span style="margin-left:auto">提示：你也可以真的拖动 Finder 里的文件到桌宠脸上</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================== -->
+  <section id="frames">
+    <h2>3 · 7 个动画状态（拆解）</h2>
+    <p class="sub">每一格独立循环播放，方便对比和拍板。</p>
+
+    <div class="grid-7">
+      <div class="frame">
+        <svg class="mouse-svg" viewBox="-1 -3 18 18"><rect x="3" y="1" width="2" height="2" fill="var(--m-ear-out)"/><rect x="2" y="2" width="3" height="2" fill="var(--m-ear-out)"/><rect x="11" y="1" width="2" height="2" fill="var(--m-ear-out)"/><rect x="11" y="2" width="3" height="2" fill="var(--m-ear-out)"/><rect x="3" y="3" width="10" height="1" fill="var(--m-body)"/><rect x="2" y="4" width="12" height="3" fill="var(--m-body)"/><rect x="3" y="7" width="10" height="1" fill="var(--m-body)"/><rect x="5" y="8" width="6" height="2" fill="var(--m-belly)"/><rect x="3" y="8" width="2" height="2" fill="var(--m-body)"/><rect x="11" y="8" width="2" height="2" fill="var(--m-body)"/><rect x="4" y="10" width="8" height="1" fill="var(--m-body)"/><rect x="13" y="9" width="1" height="1" fill="var(--m-tail)"/><rect x="14" y="7" width="1" height="3" fill="var(--m-tail)"/><rect x="6" y="5" width="1" height="2" fill="var(--m-eye)"/><rect x="11" y="5" width="1" height="2" fill="var(--m-eye)"/><rect x="7" y="7" width="2" height="1" fill="var(--m-nose)"/><rect x="4" y="11" width="2" height="1" fill="var(--m-paw)"/><rect x="10" y="11" width="2" height="1" fill="var(--m-paw)"/></svg>
+        <div class="label"><b>① idle</b>原地呼吸</div>
+      </div>
+      <div class="frame">
+        <svg class="mouse-svg" viewBox="-1 -3 18 18" style="animation: bob 220ms steps(2) infinite"><rect x="3" y="1" width="2" height="2" fill="var(--m-ear-out)"/><rect x="2" y="2" width="3" height="2" fill="var(--m-ear-out)"/><rect x="11" y="1" width="2" height="2" fill="var(--m-ear-out)"/><rect x="11" y="2" width="3" height="2" fill="var(--m-ear-out)"/><rect x="3" y="3" width="10" height="1" fill="var(--m-body)"/><rect x="2" y="4" width="12" height="3" fill="var(--m-body)"/><rect x="3" y="7" width="10" height="1" fill="var(--m-body)"/><rect x="5" y="8" width="6" height="2" fill="var(--m-belly)"/><rect x="3" y="8" width="2" height="2" fill="var(--m-body)"/><rect x="11" y="8" width="2" height="2" fill="var(--m-body)"/><rect x="4" y="10" width="8" height="1" fill="var(--m-body)"/><rect x="13" y="9" width="1" height="1" fill="var(--m-tail)"/><rect x="14" y="7" width="1" height="3" fill="var(--m-tail)"/><rect x="6" y="5" width="1" height="2" fill="var(--m-eye)"/><rect x="11" y="5" width="1" height="2" fill="var(--m-eye)"/><rect class="nose-twitch" x="7" y="7" width="2" height="1" fill="var(--m-nose)" style="animation: twitch 200ms infinite"/><rect x="4" y="11" width="2" height="1" fill="var(--m-paw)"/><rect x="10" y="11" width="2" height="1" fill="var(--m-paw)"/></svg>
+        <div style="position:absolute;top:18px;color:var(--pink-deep);font-weight:700">?</div>
+        <div class="label"><b>② sniff</b>闻到，问号</div>
+      </div>
+      <div class="frame">
+        <svg class="mouse-svg" viewBox="-1 -3 18 18" style="animation: bob 160ms steps(2) infinite; transform-origin:center bottom"><rect x="3" y="1" width="2" height="2" fill="var(--m-ear-out)"/><rect x="2" y="2" width="3" height="2" fill="var(--m-ear-out)"/><rect x="11" y="1" width="2" height="2" fill="var(--m-ear-out)"/><rect x="11" y="2" width="3" height="2" fill="var(--m-ear-out)"/><rect x="3" y="3" width="10" height="1" fill="var(--m-body)"/><rect x="2" y="4" width="12" height="3" fill="var(--m-body)"/><rect x="3" y="7" width="10" height="1" fill="var(--m-body)"/><rect x="5" y="8" width="6" height="2" fill="var(--m-belly)"/><rect x="3" y="8" width="2" height="2" fill="var(--m-body)"/><rect x="11" y="8" width="2" height="2" fill="var(--m-body)"/><rect x="4" y="10" width="8" height="1" fill="var(--m-body)"/><rect x="13" y="9" width="1" height="1" fill="var(--m-tail)"/><rect x="14" y="7" width="1" height="3" fill="var(--m-tail)"/><rect x="6" y="5" width="1" height="2" fill="var(--m-eye)"/><rect x="11" y="5" width="1" height="2" fill="var(--m-eye)"/><rect x="7" y="7" width="2" height="1" fill="var(--m-nose)"/><rect x="3" y="11" width="2" height="1" fill="var(--m-paw)"/><rect x="11" y="11" width="2" height="1" fill="var(--m-paw)"/></svg>
+        <div class="label"><b>③ run</b>跑步，4 帧步态</div>
+      </div>
+      <div class="frame">
+        <svg class="mouse-svg" viewBox="-1 -3 18 18" style="transform: translateY(-2px) rotate(-3deg); transform-origin: center bottom"><rect x="3" y="1" width="2" height="2" fill="var(--m-ear-out)"/><rect x="2" y="2" width="3" height="2" fill="var(--m-ear-out)"/><rect x="11" y="1" width="2" height="2" fill="var(--m-ear-out)"/><rect x="11" y="2" width="3" height="2" fill="var(--m-ear-out)"/><rect x="3" y="3" width="10" height="1" fill="var(--m-body)"/><rect x="2" y="4" width="12" height="3" fill="var(--m-body)"/><rect x="3" y="7" width="10" height="1" fill="var(--m-body)"/><rect x="5" y="8" width="6" height="2" fill="var(--m-belly)"/><rect x="3" y="8" width="2" height="2" fill="var(--m-body)"/><rect x="11" y="8" width="2" height="2" fill="var(--m-body)"/><rect x="4" y="10" width="8" height="1" fill="var(--m-body)"/><rect x="13" y="9" width="1" height="1" fill="var(--m-tail)"/><rect x="14" y="7" width="1" height="3" fill="var(--m-tail)"/><rect x="6" y="5" width="1" height="2" fill="var(--m-eye)"/><rect x="11" y="5" width="1" height="2" fill="var(--m-eye)"/><rect x="7" y="7" width="2" height="1" fill="var(--m-nose)"/><rect x="2" y="11" width="3" height="1" fill="var(--m-paw)"/><rect x="11" y="11" width="3" height="1" fill="var(--m-paw)"/></svg>
+        <div style="position:absolute;left:8px;bottom:24px;font-size:14px">✨</div>
+        <div class="label"><b>④ brake</b>刹车，扬尘</div>
+      </div>
+      <div class="frame">
+        <svg class="mouse-svg" viewBox="-1 -3 18 18"><rect x="3" y="1" width="2" height="2" fill="var(--m-ear-out)"/><rect x="2" y="2" width="3" height="2" fill="var(--m-ear-out)"/><rect x="11" y="1" width="2" height="2" fill="var(--m-ear-out)"/><rect x="11" y="2" width="3" height="2" fill="var(--m-ear-out)"/><rect x="3" y="3" width="10" height="1" fill="var(--m-body)"/><rect x="2" y="4" width="12" height="3" fill="var(--m-body)"/><rect x="3" y="7" width="10" height="1" fill="var(--m-body)"/><rect x="5" y="8" width="6" height="2" fill="var(--m-belly)"/><rect x="3" y="8" width="2" height="2" fill="var(--m-body)"/><rect x="11" y="8" width="2" height="2" fill="var(--m-body)"/><rect x="4" y="10" width="8" height="1" fill="var(--m-body)"/><rect x="13" y="9" width="1" height="1" fill="var(--m-tail)"/><rect x="14" y="7" width="1" height="3" fill="var(--m-tail)"/><rect x="6" y="5" width="1" height="2" fill="var(--m-eye)"/><rect x="11" y="5" width="1" height="2" fill="var(--m-eye)"/><rect x="7" y="7" width="2" height="1" fill="var(--m-nose)"/><rect x="7" y="8" width="2" height="2" fill="#3a1a1a"/><rect x="7" y="9" width="2" height="1" fill="#7a2a2a"/><rect x="4" y="11" width="2" height="1" fill="var(--m-paw)"/><rect x="10" y="11" width="2" height="1" fill="var(--m-paw)"/></svg>
+        <div style="position:absolute;top:6px;background:var(--pink-soft);color:var(--pink-deep);padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700">🍽️ 喂我？</div>
+        <div class="label"><b>⑤ waiting</b>张嘴等接收</div>
+      </div>
+      <div class="frame">
+        <svg class="mouse-svg" viewBox="-1 -3 18 18" style="animation: gulp 500ms ease infinite; transform-origin: center bottom"><rect x="3" y="1" width="2" height="2" fill="var(--m-ear-out)"/><rect x="2" y="2" width="3" height="2" fill="var(--m-ear-out)"/><rect x="11" y="1" width="2" height="2" fill="var(--m-ear-out)"/><rect x="11" y="2" width="3" height="2" fill="var(--m-ear-out)"/><rect x="3" y="3" width="10" height="1" fill="var(--m-body)"/><rect x="2" y="4" width="12" height="3" fill="var(--m-body)"/><rect x="3" y="7" width="10" height="1" fill="var(--m-body)"/><rect x="5" y="8" width="6" height="2" fill="var(--m-belly)"/><rect x="3" y="8" width="2" height="2" fill="var(--m-body)"/><rect x="11" y="8" width="2" height="2" fill="var(--m-body)"/><rect x="4" y="10" width="8" height="1" fill="var(--m-body)"/><rect x="13" y="9" width="1" height="1" fill="var(--m-tail)"/><rect x="14" y="7" width="1" height="3" fill="var(--m-tail)"/><rect x="6" y="6" width="1" height="1" fill="var(--m-eye)"/><rect x="11" y="6" width="1" height="1" fill="var(--m-eye)"/><rect x="7" y="7" width="2" height="1" fill="var(--m-nose)"/><rect x="4" y="11" width="2" height="1" fill="var(--m-paw)"/><rect x="10" y="11" width="2" height="1" fill="var(--m-paw)"/></svg>
+        <div style="position:absolute;bottom:32px;font-size:14px">✨</div>
+        <div class="label"><b>⑥ gulp</b>吞咽，挤压</div>
+      </div>
+      <div class="frame" style="position: relative">
+        <svg class="mouse-svg" viewBox="-1 -3 18 18"><rect x="3" y="1" width="2" height="2" fill="var(--m-ear-out)"/><rect x="2" y="2" width="3" height="2" fill="var(--m-ear-out)"/><rect x="11" y="1" width="2" height="2" fill="var(--m-ear-out)"/><rect x="11" y="2" width="3" height="2" fill="var(--m-ear-out)"/><rect x="3" y="3" width="10" height="1" fill="var(--m-body)"/><rect x="2" y="4" width="12" height="3" fill="var(--m-body)"/><rect x="3" y="7" width="10" height="1" fill="var(--m-body)"/><rect x="5" y="8" width="6" height="2" fill="var(--m-belly)"/><rect x="3" y="8" width="2" height="2" fill="var(--m-body)"/><rect x="11" y="8" width="2" height="2" fill="var(--m-body)"/><rect x="4" y="10" width="8" height="1" fill="var(--m-body)"/><rect x="13" y="9" width="1" height="1" fill="var(--m-tail)"/><rect x="14" y="7" width="1" height="3" fill="var(--m-tail)"/><rect x="6" y="5" width="1" height="2" fill="var(--m-eye)"/><rect x="11" y="5" width="1" height="2" fill="var(--m-eye)"/><rect x="7" y="7" width="2" height="1" fill="var(--m-nose)"/><rect x="4" y="11" width="2" height="1" fill="var(--m-paw)"/><rect x="10" y="11" width="2" height="1" fill="var(--m-paw)"/></svg>
+        <div style="position:absolute;inset:30% 30% 30% 30%;background:radial-gradient(circle,rgba(232,99,140,.5),transparent 60%);animation: pulse 1s infinite"></div>
+        <div style="position:absolute;top:8px;background:#2b2622;color:#fff;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700">● REC</div>
+        <div class="label"><b>⑦ digest</b>消化 + 录音</div>
+      </div>
+    </div>
+
+    <div class="note" style="margin-top: 16px">
+      <b>动画细节：</b>跑步的关键是 <code>cubic-bezier(0.2, 0.8, 0.3, 1)</code> 让起步爆发、靠近时减速；
+      朝向用 <code>--face: ±1</code> 控制 <code>scaleX</code>；步态用 <code>steps(2)</code> 让像素抖动不糊。
+      长距离 > 800px 时在中段加一个 220ms 喘气帧避免传送感。
+    </div>
+  </section>
+
+  <!-- ============================================== -->
+  <section id="flow">
+    <h2>4 · 状态机</h2>
+    <div class="card">
+      <pre style="font: 12.5px/1.55 var(--mono); margin: 0; color: var(--ink)">
+idle ──[OS drag start with file]──▶ sniff ──(150ms)──▶ run ──(到位)──▶ brake ──▶ waiting
+                                                                                    │
+                                                                ┌── drop hit me ────┤
+                                                                │                   │
+                                                                ▼                   ▼
+                                                              gulp           drag canceled / dropped elsewhere
+                                                                │            │
+                                                                ▼            ▼
+                                                            digest ──▶ recording (语音 IME 自动开)
+                                                                │            │
+                                                                │            └── 3s 静默 / Esc ──▶ idle
+                                                                ▼
+                                                            panel (回答展示) ──▶ idle (回角落)
+
+不支持格式：waiting → reject (摇头 + 吐出来) ──▶ idle</pre>
+    </div>
+  </section>
+
+  <!-- ============================================== -->
+  <section id="types">
+    <h2>5 · 文档类型 + 处理策略</h2>
+    <table>
+      <thead>
+        <tr><th>类型</th><th>扩展名</th><th>提取方式</th><th>送给 Claude 的形式</th><th>大小上限</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="pill pill-blue">图片</span></td>
+          <td>png · jpg · heic · webp · gif</td>
+          <td>直接读 bytes</td>
+          <td>复用截图 pipeline，作为 <code>Read tool</code> 的图片 attachment</td>
+          <td>10 MB</td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-green">纯文本</span></td>
+          <td>txt · md · json · yaml · csv · log · 任意源码</td>
+          <td><code>std::fs::read_to_string</code></td>
+          <td>prompt 内联 <code>[文档 README.md]\n...\n[/文档]</code></td>
+          <td>200 KB (~50K token)</td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-amber">PDF</span></td>
+          <td>pdf</td>
+          <td>系统自带 <code>mdimport</code> / <code>pdftotext</code>，无依赖打包</td>
+          <td>抽文本后内联，>3 页时分段 + 页号标注</td>
+          <td>20 MB / 100 页</td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-amber">DOCX</span></td>
+          <td>docx</td>
+          <td>unzip → 取 <code>word/document.xml</code> 抽 <code>&lt;w:t&gt;</code> 文本</td>
+          <td>同纯文本</td>
+          <td>10 MB</td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-amber">XLSX</span></td>
+          <td>xlsx</td>
+          <td>unzip → 取 <code>xl/sharedStrings.xml</code> + 各 sheet</td>
+          <td>转 Markdown 表格内联</td>
+          <td>5 MB</td>
+        </tr>
+        <tr>
+          <td><span class="pill pill-pink">拒绝</span></td>
+          <td>app · exe · dmg · zip · 视频 · 音频 · &gt;上限</td>
+          <td>不处理</td>
+          <td>桌宠摇头吐出 + 气泡 "❌ 这个吃不下"</td>
+          <td>—</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="warn" style="margin-top: 14px">
+      <b>多文件喂：</b>用户拖多个文件 → 桌宠"咬一摞"动画 → 都吃下，prompt 里依次拼接 <code>[文档 1] ... [文档 2]</code>。
+      上限 5 个 / 总大小 30 MB；超了只吃前 N 个 + 警告气泡。
+    </div>
+  </section>
+
+  <!-- ============================================== -->
+  <section id="tech">
+    <h2>6 · 工程实现</h2>
+
+    <div class="card">
+      <h3 style="margin-top:0">6.1 拖动检测：把桌宠窗口变成全屏 drop overlay</h3>
+      <p>桌宠平时是 64×64 透明小窗。<b>OS 检测到拖动开始</b>那一刻（macOS：<code>NSPasteboard</code> 监听 + window <code>draggingEntered:</code>），
+      Tauri 后端立刻把窗口扩成<b>全屏 1px-transparent overlay</b>（<code>pointer-events: none</code>，除了桌宠 hitbox），
+      这样任何屏幕位置的拖动都能被 webview 的 <code>dragenter/dragover/drop</code> 事件捕获。drop 完成或拖动取消 → 收回 64×64。</p>
+      <ul class="tight">
+        <li>Tauri 2 原生事件：<code>tauri://drag-enter</code> / <code>tauri://drag-over</code> / <code>tauri://drag-drop</code> / <code>tauri://drag-leave</code></li>
+        <li>需要在 <code>tauri.conf.json</code> 打开 <code>dragDropEnabled: true</code>（默认就开）</li>
+        <li>放大窗口的瞬间不能抢焦点（保持 NSPanel + nonactivating），否则前台 app 失焦体验劣化</li>
+        <li>拖动期间老鼠用 <code>cursor_position</code> 跟随鼠标位置（V1 唯一允许跟随鼠标的场景）</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">6.2 文件路径拿到之后</h3>
+      <pre style="font: 12.5px/1.55 var(--mono); margin: 0; color: var(--ink); background: #f7f3eb; padding: 12px 14px; border-radius: 8px; overflow-x: auto">
+// src-tauri/src/feed.rs
+pub async fn ingest(paths: Vec&lt;PathBuf&gt;) -&gt; Result&lt;FeedBundle&gt; {
+    let mut bundle = FeedBundle::new();
+    for path in paths.iter().take(MAX_FILES) {
+        let kind = classify(&path)?;  // 看扩展名 + magic bytes
+        match kind {
+            Kind::Image  =&gt; bundle.add_image(path)?,
+            Kind::Text   =&gt; bundle.add_text(path, fs::read_to_string(path)?)?,
+            Kind::Pdf    =&gt; bundle.add_text(path, pdf_to_text(path)?)?,   // mdimport
+            Kind::Docx   =&gt; bundle.add_text(path, docx_to_text(path)?)?,
+            Kind::Xlsx   =&gt; bundle.add_text(path, xlsx_to_md(path)?)?,
+            Kind::Reject =&gt; bundle.reject(path, "格式不支持"),
+        }
+    }
+    Ok(bundle)
+}</pre>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0">6.3 自动激活语音 IME</h3>
+      <p>吞咽动画结束的 <code>onAnimationEnd</code> 里 <code>invoke("voice_ime_start", { context: bundle.id })</code>。
+      录音 → sherpa-onnx 转写 → 拼成最终 prompt：<br>
+      <code style="white-space: pre-wrap">[已附文档]\n- README.md (14KB markdown)\n- screenshot.png (image)\n\n[/已附文档]\n\n{user_voice_transcript}</code></p>
+    </div>
+  </section>
+
+  <!-- ============================================== -->
+  <section id="risk">
+    <h2>7 · 风险 + 边界</h2>
+    <table>
+      <thead><tr><th style="width:30%">风险</th><th>影响</th><th>缓解</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>全屏 overlay 偷焦点</b></td>
+          <td>用户 Finder 拖文件时桌宠把 Finder 拍到后台 → drag session 中断</td>
+          <td>macOS 用 <code>NSPanel</code> + <code>nonactivating</code> style mask；overlay 期间 <code>orderFront:</code> 不抢 key</td>
+        </tr>
+        <tr>
+          <td><b>不是拖文件的拖动也触发</b></td>
+          <td>用户拖文字选区 / 拖窗口标题栏 / Mission Control 触发 sniff</td>
+          <td>只在 <code>dragenter</code> 看到 <code>dataTransfer.types.includes('Files')</code> 时才进入 sniff</td>
+        </tr>
+        <tr>
+          <td><b>大文件读卡住</b></td>
+          <td>用户拖一个 500MB PDF，UI 冻 30 秒</td>
+          <td>spawn 单独 tokio task；超 200ms 没回 → 气泡显示 "嚼一下…" 进度；超 5s 失败 → 吐出来</td>
+        </tr>
+        <tr>
+          <td><b>语音 IME 没人说话</b></td>
+          <td>吃完了但用户没问，桌宠一直录</td>
+          <td>3 秒静默自动结束录音，发"我吃完了，没问题就走了 🍽️→💤" 气泡，回 idle</td>
+        </tr>
+        <tr>
+          <td><b>用户拖到桌宠脸上又拖走</b></td>
+          <td>桌宠张嘴等待但 drop 取消，需要回 idle</td>
+          <td>监听 <code>tauri://drag-leave</code> + 全局 <code>dragend</code>，2s 没有 drop → 失望气泡 "🥲 不给吃？" → 跑回原位</td>
+        </tr>
+        <tr>
+          <td><b>跨 app 拖动数据不全</b></td>
+          <td>从浏览器拖图片可能是 URL 不是文件</td>
+          <td>识别 <code>text/uri-list</code>：本地 file:// 走文件流程；http(s):// 先 download 到 <code>/tmp/mouseclaw-feed-XXX</code> 再处理</td>
+        </tr>
+        <tr>
+          <td><b>终端窗口在前台</b></td>
+          <td>用户在终端 drag-and-drop 路径补全，触发桌宠</td>
+          <td>检测前台 app bundle id 是 Terminal / iTerm / Warp → overlay 期间不抢响应，drop 让终端先处理</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="note" style="margin-top: 16px">
+      <b>开发节奏建议：</b>
+      <ul class="tight" style="margin-top: 6px">
+        <li><b>P0（1 天）</b>：图片 + 纯文本 + md，全屏 overlay + 跑步动画 + 吞咽 + 自动语音</li>
+        <li><b>P1（半天）</b>：PDF / DOCX / XLSX 提取（外挂 macOS <code>mdimport</code>，零新依赖）</li>
+        <li><b>P2（半天）</b>：多文件、URL 拖入、终端豁免、3s 静默回 idle</li>
+        <li>共 ~2 天，<b>不超 v0.4 预算</b></li>
+      </ul>
+    </div>
+  </section>
+</main>
+</div></div>
+
+<script>
+(function () {
+  const stage   = document.getElementById('stage');
+  const pet     = document.getElementById('pet');
+  const bubble  = document.getElementById('bubble');
+  const qmark   = document.getElementById('qmark');
+  const sparkle = document.getElementById('sparkle');
+  const dust    = document.getElementById('dust');
+  const ghost   = document.getElementById('ghost');
+  const ghostLabel = document.getElementById('ghostLabel');
+  const belly   = document.getElementById('bellyGlow');
+  const panel   = document.getElementById('panel');
+  const panelFile = document.getElementById('panelFile');
+  const panelQ  = document.getElementById('panelQ');
+  const panelA  = document.getElementById('panelA');
+  const phase   = document.getElementById('phaseLabel');
+
+  const HOME_X = 700, HOME_Y = 360, HOME_FACE = -1;
+
+  function setPhase(label, cls = 'pill-muted') {
+    phase.textContent = label;
+    phase.className = 'pill ' + cls;
+  }
+  function setState(s) { pet.dataset.state = s; }
+  function moveTo(x, y, ms = 800) {
+    const dx = x - parseFloat(pet.style.getPropertyValue('--x'));
+    pet.style.setProperty('--face', dx < 0 ? -1 : 1);
+    pet.style.transition = `transform ${ms}ms cubic-bezier(0.2, 0.8, 0.3, 1)`;
+    pet.style.setProperty('--x', x + 'px');
+    pet.style.setProperty('--y', y + 'px');
+  }
+  function showBubble(text, cls = '', timeout = 0) {
+    bubble.className = 'bubble show ' + cls;
+    bubble.innerHTML = text;
+    if (timeout) setTimeout(() => bubble.classList.remove('show'), timeout);
+  }
+  function hideBubble() { bubble.classList.remove('show'); }
+  function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  async function playSequence(opts = {}) {
+    const { fileName = 'README.md', kind = 'md', targetX = 220, targetY = 200 } = opts;
+    reset(false);
+    await delay(300);
+
+    // 1. sniff
+    setState('sniff');
+    setPhase('① sniff · 闻到了', 'pill-amber');
+    qmark.classList.add('show');
+    showBubble('🍞 闻到了…', '');
+    await delay(600);
+
+    // 2. run
+    qmark.classList.remove('show');
+    setState('running'); pet.classList.add('running');
+    setPhase('② run · 冲刺中', 'pill-amber');
+    showBubble('🏃 来啦！', '');
+    moveTo(targetX, targetY, 900);
+    await delay(900);
+
+    // 3. brake + dust
+    pet.classList.remove('running');
+    setState('brake');
+    setPhase('③ brake · 刹车');
+    const petRect = pet.getBoundingClientRect();
+    const stageRect = stage.getBoundingClientRect();
+    dust.style.left = (parseFloat(pet.style.getPropertyValue('--x')) + 16) + 'px';
+    dust.style.top  = (parseFloat(pet.style.getPropertyValue('--y')) + 50) + 'px';
+    dust.classList.add('boom');
+    await delay(300);
+    dust.classList.remove('boom');
+
+    // 4. waiting
+    setState('waiting');
+    setPhase('④ waiting · 张嘴等接收', 'pill-pink');
+    showBubble('🍽️ 喂我？', 'alert');
+    await delay(1100);
+
+    // 5. gulp
+    setState('gulp'); pet.classList.add('gulp');
+    setPhase('⑤ gulp · 吞咽', 'pill-pink');
+    sparkle.classList.add('boom');
+    showBubble('嗯！', 'alert');
+    await delay(500);
+    sparkle.classList.remove('boom');
+    pet.classList.remove('gulp');
+
+    // 6. digest + recording
+    setState('digest');
+    belly.classList.add('on');
+    setPhase('⑥ digest · 消化 + 录音中', 'pill-pink');
+    showBubble('<span class="wave"><i></i><i></i><i></i><i></i></span> 听着呢', 'recording');
+    await delay(1800);
+
+    // 7. answer (mock)
+    setState('idle');
+    belly.classList.remove('on');
+    hideBubble();
+    panelFile.textContent = fileName;
+    panelQ.textContent = pickQuestion(kind);
+    panelA.textContent = pickAnswer(kind);
+    panel.classList.add('show');
+    setPhase('⑦ answer · 回答展示', 'pill-green');
+
+    await delay(2200);
+    panel.classList.remove('show');
+    moveTo(HOME_X, HOME_Y, 900);
+    pet.style.setProperty('--face', HOME_FACE);
+    setPhase('idle · 等待用户拖动');
+  }
+
+  function pickQuestion(kind) {
+    return {
+      md:    '这文档讲了什么？三句话总结一下。',
+      pdf:   '这季度报告的核心结论是什么？',
+      docx:  '合同里有哪些对我方不利的条款？',
+      xlsx:  '哪个分类支出最多？给我画个 ASCII 柱状图。',
+      image: '这张截图里有什么问题？',
+    }[kind] || '帮我看看这个文件。';
+  }
+  function pickAnswer(kind) {
+    return {
+      md:    'MouseClaw v0.4 引入"拖文档喂桌宠"，目标是把文档提问从三步压到一步。',
+      pdf:   'Q3 营收同比 +18%，但净利率下滑 2.3pp，主要因获客成本上升。',
+      docx:  '第 5.2 条单方面解约权对乙方不利；第 7.4 条违约金封顶过低，建议谈判。',
+      xlsx:  '差旅占 42%（最多），餐饮 18%。\n差旅 ████████████ 42%\n餐饮 █████ 18%',
+      image: '截图里 PetMenu.css 的 .header 缩进多了一层，导致字号继承错了。',
+    }[kind] || '已收到文档，请继续提问。';
+  }
+
+  function reset(panelToo = true) {
+    pet.style.transition = 'none';
+    pet.style.setProperty('--x', HOME_X + 'px');
+    pet.style.setProperty('--y', HOME_Y + 'px');
+    pet.style.setProperty('--face', HOME_FACE);
+    setState('idle');
+    pet.classList.remove('running', 'gulp', 'target-glow');
+    belly.classList.remove('on');
+    qmark.classList.remove('show');
+    sparkle.classList.remove('boom');
+    hideBubble();
+    if (panelToo) panel.classList.remove('show');
+    setPhase('idle · 等待用户拖动');
+  }
+
+  document.getElementById('run').addEventListener('click', () => playSequence());
+  document.getElementById('reset').addEventListener('click', () => reset());
+
+  // ----- Real drag interactions on stage -----
+  const files = document.querySelectorAll('.file');
+  let activeDrag = null;
+
+  files.forEach(f => {
+    f.addEventListener('dragstart', (e) => {
+      activeDrag = { name: f.dataset.name, kind: f.dataset.kind };
+      // Hide the OS-native ghost: set a transparent 1x1 image
+      const img = new Image();
+      img.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACwAAAAAAQABAAA=';
+      e.dataTransfer.setDragImage(img, 0, 0);
+      e.dataTransfer.effectAllowed = 'copy';
+
+      ghostLabel.textContent = f.dataset.name;
+      ghost.querySelector('.doc-icon, .img-icon, .exe-icon')?.remove();
+      const iconClone = f.querySelector('.doc-icon, .img-icon, .exe-icon').cloneNode(true);
+      iconClone.style.width = '26px'; iconClone.style.height = '32px';
+      ghost.insertBefore(iconClone, ghost.firstChild);
+
+      // sniff immediately
+      setState('sniff'); qmark.classList.add('show');
+      setPhase('① sniff · 闻到了', 'pill-amber');
+    });
+
+    f.addEventListener('drag', (e) => {
+      if (!activeDrag) return;
+      // page coords → stage coords
+      const stageRect = stage.getBoundingClientRect();
+      if (e.clientX === 0 && e.clientY === 0) return; // end frame fires (0,0)
+      const x = e.clientX - stageRect.left;
+      const y = e.clientY - stageRect.top;
+      ghost.style.left = x + 'px';
+      ghost.style.top = y + 'px';
+      ghost.classList.add('show');
+
+      // make pet run toward cursor (lagging follow)
+      const px = parseFloat(pet.style.getPropertyValue('--x')) + 32;
+      const dx = x - px;
+      if (Math.abs(dx) > 80 && pet.dataset.state !== 'running') {
+        setState('running');
+        pet.classList.add('running');
+        setPhase('② run · 冲刺中', 'pill-amber');
+        qmark.classList.remove('show');
+      }
+      moveTo(x - 32, Math.min(y - 32, 360), 500);
+
+      // close enough to mouth → waiting
+      if (Math.abs(dx) < 60 && Math.abs(y - parseFloat(pet.style.getPropertyValue('--y'))) < 80) {
+        if (pet.dataset.state !== 'waiting') {
+          pet.classList.remove('running');
+          setState('waiting');
+          setPhase('④ waiting · 张嘴等接收', 'pill-pink');
+          showBubble('🍽️ 喂我？', 'alert');
+          pet.classList.add('target-glow');
+        }
+      } else {
+        if (pet.dataset.state === 'waiting') {
+          setState('running');
+          pet.classList.add('running');
+          pet.classList.remove('target-glow');
+          hideBubble();
+        }
+      }
+    });
+
+    f.addEventListener('dragend', (e) => {
+      ghost.classList.remove('show');
+      pet.classList.remove('target-glow');
+      // if not dropped on pet → disappointed
+      if (pet.dataset.state === 'waiting') {
+        setState('reject');
+        showBubble('🥲 不给吃？', 'warn', 1200);
+        setPhase('drag canceled · 失望', 'pill-muted');
+        setTimeout(() => reset(), 1300);
+      } else {
+        setTimeout(() => reset(), 600);
+      }
+      activeDrag = null;
+    });
+  });
+
+  // Drop target: the pet itself (and a small hitbox around it)
+  pet.style.pointerEvents = 'auto';
+  ['dragenter', 'dragover'].forEach(ev =>
+    pet.addEventListener(ev, e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; })
+  );
+  pet.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    if (!activeDrag) return;
+    const { name, kind } = activeDrag;
+    activeDrag = null;
+    ghost.classList.remove('show');
+
+    if (kind === 'reject') {
+      setState('reject');
+      showBubble('❌ 这个吃不下', 'warn', 1500);
+      setPhase('reject · 格式不支持', 'pill-amber');
+      // shake
+      pet.animate([
+        { transform: `translate(${pet.style.getPropertyValue('--x')}, ${pet.style.getPropertyValue('--y')}) scaleX(${pet.style.getPropertyValue('--face')}) translateX(0)` },
+        { transform: `translate(${pet.style.getPropertyValue('--x')}, ${pet.style.getPropertyValue('--y')}) scaleX(${pet.style.getPropertyValue('--face')}) translateX(-4px)` },
+        { transform: `translate(${pet.style.getPropertyValue('--x')}, ${pet.style.getPropertyValue('--y')}) scaleX(${pet.style.getPropertyValue('--face')}) translateX(4px)` },
+        { transform: `translate(${pet.style.getPropertyValue('--x')}, ${pet.style.getPropertyValue('--y')}) scaleX(${pet.style.getPropertyValue('--face')}) translateX(0)` },
+      ], { duration: 300, iterations: 2 });
+      await delay(1500);
+      reset();
+      return;
+    }
+
+    // accepted → gulp → digest → answer
+    setState('gulp'); pet.classList.add('gulp');
+    setPhase('⑤ gulp · 吞咽', 'pill-pink');
+    sparkle.classList.add('boom');
+    showBubble('嗯！', 'alert');
+    await delay(500);
+    sparkle.classList.remove('boom');
+    pet.classList.remove('gulp');
+
+    setState('digest');
+    belly.classList.add('on');
+    setPhase('⑥ digest · 消化 + 录音中', 'pill-pink');
+    showBubble('<span class="wave"><i></i><i></i><i></i><i></i></span> 听着呢', 'recording');
+    await delay(1800);
+
+    setState('idle');
+    belly.classList.remove('on');
+    hideBubble();
+    panelFile.textContent = name;
+    panelQ.textContent = pickQuestion(kind);
+    panelA.textContent = pickAnswer(kind);
+    panel.classList.add('show');
+    setPhase('⑦ answer · 回答展示', 'pill-green');
+
+    await delay(2400);
+    panel.classList.remove('show');
+    moveTo(HOME_X, HOME_Y, 900);
+    pet.style.setProperty('--face', HOME_FACE);
+    setPhase('idle · 等待用户拖动');
+  });
+
+  // initial position
+  reset();
+})();
+</script>
+</body>
+</html>
