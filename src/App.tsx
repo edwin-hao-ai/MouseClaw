@@ -14,8 +14,12 @@ import { PixelMouse, type MouseState } from "./components/PixelMouse";
 import { Bubble } from "./components/Bubble";
 import { Panel } from "./components/Panel";
 import { PetMenu } from "./components/PetMenu";
+import { NudgeBubble } from "./components/NudgeBubble";
 import { RecordingBubble } from "./components/RecordingBubble";
-import { EV_VIEW_CHANGED, EV_SKIN_CHANGED, type ViewKind, type SkinId } from "./types";
+import {
+  EV_VIEW_CHANGED, EV_SKIN_CHANGED, EV_NUDGE,
+  type ViewKind, type SkinId, type NudgePayload,
+} from "./types";
 import { DEFAULT_SKIN } from "./skins";
 import { useT } from "./i18n";
 
@@ -52,6 +56,8 @@ export default function App() {
   const [petMenuOpen, setPetMenuOpen] = useState(false);
   // 临时 ack 气泡（喂奶酪 / 休息了 等本地动作的反馈）
   const [transientAck, setTransientAck] = useState<string | null>(null);
+  // v0.1.27 P3 · 主动提醒（presence + nudge 引擎触发）
+  const [nudge, setNudge] = useState<NudgePayload | null>(null);
 
   // 启动时从 Rust 读当前皮肤（避免闪一下默认 classic 再切换）
   useEffect(() => {
@@ -86,6 +92,16 @@ export default function App() {
     } catch (e) {
       console.warn("Tauri event listen unavailable (browser-only mode):", e);
     }
+    return () => { if (unlisten) unlisten(); };
+  }, []);
+
+  // v0.1.27 P3 · nudge event listener
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    try {
+      const p = listen<NudgePayload>(EV_NUDGE, (e) => setNudge(e.payload));
+      p.then((fn) => { unlisten = fn; }).catch(() => {});
+    } catch { /* browser-only mode */ }
     return () => { if (unlisten) unlisten(); };
   }, []);
 
@@ -197,9 +213,13 @@ export default function App() {
     // TODO P3: emit FedPet event so presence/nudge can reward streaks & swap animation
   }, [showAck, t]);
 
-  const handleNap = useCallback((_minutes: number) => {
+  const handleNap = useCallback((minutes: number) => {
     showAck(t("petmenu.nap_ack"), 3200);
-    // TODO P3: persist DnD-until timestamp; tray/nudge engine reads it to suppress reminders
+    // v0.1.27 P3 · persist nap-until so nudge.rs suppresses reminders
+    invoke("set_nap_until", { minutes }).catch((e) =>
+      console.warn("set_nap_until failed:", e));
+    // Also clear any currently-showing nudge so it goes away immediately
+    setNudge(null);
   }, [showAck, t]);
 
   const handleMouseClick = useCallback((e: React.MouseEvent) => {
@@ -231,6 +251,9 @@ export default function App() {
           onFeed={handleFeed}
           onNap={handleNap}
         />
+        {nudge && !petMenuOpen && (
+          <NudgeBubble payload={nudge} onDismiss={() => setNudge(null)} />
+        )}
       </div>
     </div>
   );

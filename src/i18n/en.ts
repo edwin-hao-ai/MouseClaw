@@ -59,6 +59,10 @@ export const en: Strings = {
   "petmenu.settings": "Settings",
   "petmenu.feed_ack": "🍖 Nom nom… thanks!",
   "petmenu.nap_ack": "💤 zzz… quiet for 15 min",
+
+  // Nudge bubble (v0.1.27 P3)
+  "nudge.later": "Later",
+  "nudge.mute_today": "😶 Quiet this for 30 min",
   "onboarding.cta.next_voice_ime": "Next: Voice key →",
   "vime.trigger.fn": "fn key (the globe icon)",
   "vime.trigger.option": "⌥ option (either side)",

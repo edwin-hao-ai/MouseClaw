@@ -46,3 +46,14 @@ export const EV_VIEW_CHANGED = "view-changed";
 export const EV_SKIN_CHANGED = "skin-changed";
 export const EV_STREAM_CHUNK = "stream-chunk";
 export const EV_COUNTDOWN    = "countdown-tick";
+export const EV_NUDGE        = "nudge";
+
+/** Proactive reminder kind (v0.1.27 P3) — matches Rust `NudgeKind`. */
+export type NudgeKind = "stretch" | "stuck" | "late-night";
+
+export interface NudgePayload {
+  kind: NudgeKind;
+  message: string;
+  ctaLabel?: string;
+  ctaAction?: string;
+}
