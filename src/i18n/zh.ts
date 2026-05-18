@@ -50,7 +50,7 @@ export const zh: Strings = {
   "anchor.hidden": "👻 隐藏",
   "anchor.tray_title": "📍 桌宠位置",
   "anchor.follow_hint": "高级 · 实时跟随鼠标，会更费 CPU",
-  "anchor.hidden_hint": "完全不显示桌宠 —— 只在按快捷键召唤或主动提醒时出现",
+  "anchor.hidden_hint": "完全不显示桌宠 —— 只在按快捷键召唤或主动提醒时出现。⚠️ 拖文档喂桌宠会失效（需要桌宠可见）",
 
   // 点击桌宠菜单 (v0.1.27 P2)
   "petmenu.summon": "开始说话",

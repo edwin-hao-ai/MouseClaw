@@ -50,7 +50,7 @@ export const en: Strings = {
   "anchor.hidden": "👻 Hidden",
   "anchor.tray_title": "📍 Pet location",
   "anchor.follow_hint": "Advanced · tracks the cursor live, uses more CPU",
-  "anchor.hidden_hint": "Hide the pet completely — only appears on shortcut summon or nudge",
+  "anchor.hidden_hint": "Hide the pet completely — only appears on shortcut summon or nudge. ⚠️ Drag-to-feed disabled while hidden (pet must be visible)",
 
   // Pet click menu (v0.1.27 P2)
   "petmenu.summon": "Start talking",
