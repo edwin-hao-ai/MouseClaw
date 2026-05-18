@@ -50,4 +50,8 @@ mddock.md
 
 # Whisper model bundled into the .app at build time (fetched by scripts/fetch-whisper-model.sh)
 src-tauri/resources/ggml-*.bin
+# Sherpa ASR + punctuation ONNX models — fetched by scripts/fetch-sherpa-model.sh at build time,
+# too big for git (~180MB ASR + ~72MB punct)
+src-tauri/resources/sherpa-zh-en/
+src-tauri/resources/sherpa-punct/
 .claude/scheduled_tasks.lock
