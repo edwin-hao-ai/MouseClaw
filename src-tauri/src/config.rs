@@ -109,6 +109,9 @@ pub enum PetAnchor {
     BottomLeft,
     BottomRight,
     Follow,
+    /// v0.1.28 · 完全不显示桌宠（除被快捷键召唤 / nudge 触发时）。
+    /// 给"我只想要静默工具，不要伴侣"的用户用。
+    Hidden,
 }
 
 impl Default for PetAnchor {
@@ -123,6 +126,7 @@ impl PetAnchor {
             PetAnchor::BottomLeft  => "bottom-left",
             PetAnchor::BottomRight => "bottom-right",
             PetAnchor::Follow      => "follow",
+            PetAnchor::Hidden      => "hidden",
         }
     }
     pub fn from_str(s: &str) -> Self {
@@ -131,18 +135,24 @@ impl PetAnchor {
             "top-right"    => PetAnchor::TopRight,
             "bottom-left"  => PetAnchor::BottomLeft,
             "follow"       => PetAnchor::Follow,
+            "hidden"       => PetAnchor::Hidden,
             _              => PetAnchor::BottomRight, // 默认兜底
         }
     }
     pub fn all() -> &'static [PetAnchor] {
         &[PetAnchor::TopLeft, PetAnchor::TopRight,
-          PetAnchor::BottomLeft, PetAnchor::BottomRight, PetAnchor::Follow]
+          PetAnchor::BottomLeft, PetAnchor::BottomRight,
+          PetAnchor::Follow, PetAnchor::Hidden]
     }
     pub fn tray_menu_id(&self) -> String { format!("anchor:{}", self.as_str()) }
     /// 闲置时是否要让 overlay 持续可见地停在那个角落。
-    /// Follow = false（由 cursor_follow 接管）；4 个角 = true（桌宠"住"在角落）
+    /// 4 个角 = true（桌宠"住"在角落）
+    /// Follow = false（由 cursor_follow 接管显示）
+    /// Hidden = false（彻底隐身，召唤时才出现）
     pub fn pin_visible_when_idle(&self) -> bool {
-        !matches!(self, PetAnchor::Follow)
+        matches!(self,
+            PetAnchor::TopLeft  | PetAnchor::TopRight |
+            PetAnchor::BottomLeft | PetAnchor::BottomRight)
     }
 }
 
@@ -360,9 +370,11 @@ mod tests {
             assert_eq!(PetAnchor::from_str(a.as_str()), *a, "{:?} round-trip", a);
         }
         assert_eq!(PetAnchor::from_str("garbage"), PetAnchor::BottomRight);
-        // visibility hint: 4 corners pin; follow doesn't
+        // visibility: 4 corners pin; follow + hidden don't
         assert!(PetAnchor::BottomRight.pin_visible_when_idle());
+        assert!(PetAnchor::TopLeft.pin_visible_when_idle());
         assert!(!PetAnchor::Follow.pin_visible_when_idle());
+        assert!(!PetAnchor::Hidden.pin_visible_when_idle());
     }
 
     #[test]

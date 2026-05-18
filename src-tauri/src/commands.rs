@@ -126,12 +126,17 @@ pub fn save_pet_anchor(anchor: String, app: AppHandle) -> Result<(), String> {
     cfg.pet_anchor = parsed;
     cfg.save().map_err(|e| format!("保存桌宠位置失败：{e}"))?;
 
-    // 已 onboarded 的话立即应用 —— 让用户即时看到老鼠跑到新角落
+    // 已 onboarded 的话立即应用 —— 让用户即时看到老鼠跑到新位置
     if cfg.onboarded {
         if parsed.pin_visible_when_idle() {
             crate::anchor::apply_idle_anchor(&app, parsed);
+        } else {
+            // Follow / Hidden → 让 overlay 立刻消失（旧角落不该残留）
+            // Follow 后续靠 cursor_follow 接管；Hidden 就彻底等召唤
+            if let Some(w) = app.webview_windows().get("mouse") {
+                let _ = w.hide();
+            }
         }
-        // Follow 模式不动 —— cursor_follow 已经在跑或马上接管
     }
     crate::tray::rebuild_tray_menu(&app);
     println!("[mouseclaw] pet_anchor saved → {:?}", parsed);
@@ -141,6 +146,30 @@ pub fn save_pet_anchor(anchor: String, app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn get_pet_anchor() -> String {
     config::Config::load().pet_anchor.as_str().to_string()
+}
+
+/// v0.1.28 · Onboarding 检测：给定后端 id，返回是否能在 PATH 里找到对应 CLI。
+/// 同时把人类可读的安装命令 + 官网 URL 也带回去，前端没装时显示给用户。
+#[derive(serde::Serialize)]
+pub struct BackendInstallStatus {
+    pub installed: bool,
+    pub binary: String,
+    #[serde(rename = "installCmd")]
+    pub install_cmd: String,
+    #[serde(rename = "installUrl")]
+    pub install_url: String,
+}
+
+#[tauri::command]
+pub fn check_backend_installed(backend: String) -> BackendInstallStatus {
+    let b = Backend::from_choice(&backend);
+    let installed = crate::claude_cli::find_binary(b.binary_name()).is_ok();
+    BackendInstallStatus {
+        installed,
+        binary: b.binary_name().into(),
+        install_cmd: b.install_cmd().into(),
+        install_url: b.install_url().into(),
+    }
 }
 
 /// v0.1.27 P3 · 让用户开启「休息一下」—— 在 minutes 分钟内所有 nudge 都不会发。
