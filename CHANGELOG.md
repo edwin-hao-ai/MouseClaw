@@ -6,6 +6,36 @@ versioning follows [SemVer](https://semver.org/).
 
 ---
 
+## [0.1.27] · 2026-05-18
+
+### Added
+- **🦞 桌宠悬停位置 / Pet anchor** — 老鼠有"家"了。4 个屏角或跟随光标 5 选 1。闲置时在角落
+  打盹 zzz，召唤时跑到光标位置工作，完事跑回家。Onboarding 多一步、托盘新增 `📍 桌宠位置 ▸`
+  子菜单
+- **🖱️ 点击桌宠 → 菜单 / Click pet → menu** — 6 项玻璃气泡：召唤 / 历史 / 喂奶酪 / 休息 15min /
+  换形象 / 设置。喂奶酪有 +N 累计 badge，休息会让 nudge 引擎全静音
+- **🔔 环境感知主动提醒 / Proactive nudges** — 老鼠"看你做什么"全靠本地系统信号，**0 LLM
+  调用 / 0 token 成本**：
+  - 🧘 久坐（鼠标 ≥ 90min 不动）
+  - 🤔 卡壳侦测（IDE 前台 5min 无敲键 + 鼠标乱动）⭐ — 主动喂 LLM 入口
+  - 🌙 深夜劝睡（≥ 23:30 + 仍活跃）
+- **心流保护** — 连续敲键 30min → 所有提醒自动排队不打扰
+- **隐私红线** — 用 `CGEventSourceSecondsSinceLastEventType`（API 物理上拿不到键值），只看
+  前台 bundle id，30min 环形 buffer 不落盘不联网
+
+### Changed
+- 点击桌宠从"直接打开剪贴板"改成"弹出菜单"（菜单里仍有 📜 历史入口）
+- Onboarding 从 5 步扩到 6 步（多了 anchor picker，伴侣感的"选个家"环节）
+- `config.json` schema v14 → v15（自动迁移）
+
+### Technical
+- 新模块：`anchor.rs` · `presence.rs` · `nudge.rs`（~650 LOC + 20 单测）
+- 新前端组件：`PetMenu.tsx` · `NudgeBubble.tsx`
+- 新 commands：`save_pet_anchor` / `get_pet_anchor` / `set_nap_until` / `dismiss_nudge`
+- 设计原型：`docs/prototypes/pet-anchor-menu-nudges-20260518.html`
+
+---
+
 ## [0.1.26] · 2026-05-18
 
 ### English
