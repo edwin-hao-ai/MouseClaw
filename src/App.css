@@ -12,6 +12,9 @@
   padding: var(--space-3);
   gap: var(--space-3);
   background: transparent;
+  /* v0.1.29 · 透明区域必须能穿透到底层 app，否则整个 320×320 overlay 会挡住
+     Finder / IDE 的点击。具体的可点击元素（pet / menu / bubble）单独 opt-in。 */
+  pointer-events: none;
 }
 
 .stage-mouse-bubble {
@@ -27,5 +30,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  pointer-events: none;
+  position: relative; /* 让 .pet-menu / .nudge-bubble 这些 absolute 子元素相对它定位 */
+  /* v0.1.29 · 桌宠区域必须能接 click（否则角落桌宠点了没反应）。
+     透明 .stage 的 pointer-events:none 保证 stage-mouse 之外的区域穿透到底层 app。 */
+  pointer-events: auto;
 }

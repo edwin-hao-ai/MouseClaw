@@ -6,6 +6,32 @@ versioning follows [SemVer](https://semver.org/).
 
 ---
 
+## [0.1.29] · 2026-05-18
+
+### Fixed
+- **🖱️ 角落桌宠真的能点了** — v0.1.28 加了 `acceptFirstMouse: true` 后用户反馈
+  依旧无法点击。真正的根因是 [App.css](src/App.css) 里 `.stage-mouse` 设了
+  `pointer-events: none`（早期为了让透明 overlay 穿透到底层 app），同时也把
+  桌宠自己一起灭了。`PixelMouse.css` 的 `.mouse-wrap` 也是同样问题。
+  v0.1.29 把容器 `.stage` 设 pointer-events:none（继续穿透透明区），但桌宠
+  本体和 menu/bubble 区开 auto，PetMenu / NudgeBubble / 召唤菜单这些都终于
+  能正常 click 了
+- **🎙️ Whisper 中文识别率突然变差** — v0.1.25 起把 Base 模型（59 MB）打进
+  bundle 做"零网络 OOTB"体验，同时把默认从 Small 改成 Base。用户实际感受：
+  「内置版准度明显不如以前下载的版本」。修复：
+  - 默认改回 **Small** (190 MB · 中文质量大跳)
+  - 新增 **fallback chain**：Small 没下载好时临时用 bundled Base，下载完
+    自动切回 Small —— 既保留 OOTB 体验又给出更好的最终准度
+  - schema v15 → v16 迁移：现有 config 上仍是 Base 的用户自动升级到 Small
+
+### Technical
+- `pointer-events` 分层：透明 stage 穿透 / 桌宠自己接 click / 菜单+气泡 absolute
+  子元素从 .stage-mouse position:relative 起算
+- `transcribe::resolve_loadable()` 实现 fallback chain · 优雅降级 Small → Base
+- config v16 migration：Base → Small auto-upgrade，next save 后再不触发
+
+---
+
 ## [0.1.28] · 2026-05-18
 
 ### Fixed
