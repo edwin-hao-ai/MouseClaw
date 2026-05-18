@@ -35,6 +35,8 @@ export const en: Strings = {
   "onboarding.voice_ime.subtitle": "Hold it, speak, release → typed at cursor. 300ms threshold avoids accidental triggers.",
   "onboarding.voice_ime.tip": "Short-tapping still works as macOS default. You can turn this off any time from the tray.",
   "onboarding.voice_ime.disabled": "Don't enable voice IME",
+  "onboarding.autostart.title": "Launch at login",
+  "onboarding.autostart.sub": "Starts when you log in · lives in your menu bar (off in System Settings → General → Login Items)",
   "onboarding.cta.next_voice_ime": "Next: Voice key →",
   "vime.trigger.fn": "fn key (the globe icon)",
   "vime.trigger.option": "⌥ option (either side)",

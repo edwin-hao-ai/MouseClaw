@@ -35,6 +35,8 @@ export const zh: Strings = {
   "onboarding.voice_ime.subtitle": "按住它说话，松开 → 文字写到光标。300ms 才触发，避免误触。",
   "onboarding.voice_ime.tip": "短按这个键仍走 macOS 原生行为（切语言/打字等）。不喜欢可随时托盘里关。",
   "onboarding.voice_ime.disabled": "暂时不用语音输入法",
+  "onboarding.autostart.title": "开机自启动",
+  "onboarding.autostart.sub": "登录 Mac 时自动启动 · 住在菜单栏（系统设置 → 通用 → 登录项里可关）",
   "onboarding.cta.next_voice_ime": "下一步：选语音键 →",
   "vime.trigger.fn": "fn 键（地球图标）",
   "vime.trigger.option": "⌥ option（任意一边）",

@@ -85,14 +85,15 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     };
 
     let (s_summon, s_history, s_clipboard, s_skin, s_model, s_browser_on, s_browser_off,
-         s_status, s_about, s_quit, s_lang_menu, s_tidy, s_vime, s_pause) = if en {
+         s_status, s_about, s_quit, s_lang_menu, s_tidy, s_vime, s_pause, s_autostart) = if en {
         ("🦞 Summon", "📜 History…", "📋 Clipboard… ⌘⇧V",
          "🎨 Change pet", "🎙️ Voice model",
          "🌐 Browser automation: enabled ✓", "🌐 Enable browser automation…",
          "📊 System status…", "ℹ️  About MouseClaw", "Quit MouseClaw", "🌐 Language",
          "✨ LLM polish voice (+3–8s, off by default)",
          "🎙️ Voice IME (hold fn → type at cursor)",
-         "⏸️ Pause clipboard recording")
+         "⏸️ Pause clipboard recording",
+         "🚀 Launch at login")
     } else {
         ("🦞 召唤老鼠", "📜 查看历史记录…", "📋 剪贴板… ⌘⇧V",
          "🎨 换个桌宠", "🎙️ 语音模型",
@@ -100,7 +101,8 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
          "📊 系统状态…", "ℹ️  关于 MouseClaw", "退出 MouseClaw", "🌐 语言",
          "✨ LLM 精修语音（+3–8s，默认关）",
          "🎙️ 语音输入法（长按 fn → 写到光标）",
-         "⏸️ 暂停剪贴板记录")
+         "⏸️ 暂停剪贴板记录",
+         "🚀 开机自启动")
     };
 
     let summon  = MenuItem::with_id(app, "summon",  s_summon,  true, None::<&str>)?;
@@ -172,6 +174,10 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let current_paused = crate::config::Config::load().clipboard_paused;
     let pause_item = CheckMenuItem::with_id(app, "toggle-clipboard-pause", s_pause,
         true, current_paused, None::<&str>)?;
+    // v0.1.26 · 开机自启动
+    let current_autostart = crate::config::Config::load().autostart;
+    let autostart_item = CheckMenuItem::with_id(app, "toggle-autostart", s_autostart,
+        true, current_autostart, None::<&str>)?;
 
     // Voice IME trigger 子菜单 —— Fn/Option/Control/RightShift/RightCmd/RightOption
     let current_trigger = crate::voice_ime::ImeTrigger::from_str(
@@ -223,6 +229,7 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     }
     items.extend([
         &browser_item as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
+        &autostart_item as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
         &status as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
         &sep2,
         &about,
@@ -325,6 +332,7 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
         "toggle-tidy"     => { toggle_tidy_up(app); rebuild_tray_menu(app); }
         "toggle-voice-ime"=> { toggle_voice_ime(app); rebuild_tray_menu(app); }
         "toggle-clipboard-pause" => { toggle_clipboard_pause(app); rebuild_tray_menu(app); }
+        "toggle-autostart" => { toggle_autostart(app); rebuild_tray_menu(app); }
         "set-workspace"   => { set_workspace_via_picker(app); rebuild_tray_menu(app); }
         "clear-workspace" => {
             let _ = crate::commands::save_workspace_path(None);
@@ -417,6 +425,37 @@ fn toggle_clipboard_pause(app: &AppHandle) {
     for (_, w) in app.webview_windows() {
         let _ = w.emit(crate::events::EV_VIEW_CHANGED, serde_json::json!({
             "kind": "reply", "transcript": "clipboard pause",
+            "reply": msg, "mode": "A", "streaming": false,
+        }));
+    }
+}
+
+/// v0.1.26 · 开机自启动切换 —— 真信源是 LaunchAgent，config 是镜像
+fn toggle_autostart(app: &AppHandle) {
+    use tauri::Emitter;
+    use tauri_plugin_autostart::ManagerExt;
+    let autolaunch = app.autolaunch();
+    let want_on = !autolaunch.is_enabled().unwrap_or(false);
+    let result = if want_on { autolaunch.enable() } else { autolaunch.disable() };
+    if let Err(e) = result {
+        eprintln!("[mouseclaw] toggle_autostart system call failed: {e}");
+        return;
+    }
+    // 回写 config 镜像
+    let mut cfg = crate::config::Config::load();
+    cfg.autostart = autolaunch.is_enabled().unwrap_or(want_on);
+    let _ = cfg.save();
+
+    let msg = if cfg.language == "en" {
+        if want_on { "🚀 Launch at login enabled. MouseClaw will start when you log in." }
+        else { "🚪 Launch at login disabled." }
+    } else {
+        if want_on { "🚀 已开启开机自启动。下次登录 Mac 自动启动。" }
+        else { "🚪 已关闭开机自启动。" }
+    };
+    for (_, w) in app.webview_windows() {
+        let _ = w.emit(crate::events::EV_VIEW_CHANGED, serde_json::json!({
+            "kind": "reply", "transcript": "autostart toggle",
             "reply": msg, "mode": "A", "streaming": false,
         }));
     }

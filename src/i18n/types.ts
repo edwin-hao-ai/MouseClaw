@@ -51,6 +51,8 @@ export interface Strings {
   "onboarding.voice_ime.subtitle": string;
   "onboarding.voice_ime.tip": string;
   "onboarding.voice_ime.disabled": string;
+  "onboarding.autostart.title": string;
+  "onboarding.autostart.sub": string;
   "onboarding.cta.next_voice_ime": string;
   "vime.trigger.fn": string;
   "vime.trigger.option": string;

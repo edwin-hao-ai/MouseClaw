@@ -138,6 +138,12 @@ pub struct Config {
     /// 用户在托盘「📁 设置工作区…」选；默认 None = 走 macOS 系统默认 cwd（home）
     #[serde(default)]
     pub workspace_path: Option<String>,
+    /// 开机自启动 (v0.1.26) —— 登录 Mac 时自动启动 MouseClaw，住在菜单栏
+    /// 真值与 LaunchAgent / SMAppService 的实际状态在启动时双向同步：
+    /// 用户在系统设置里手动关掉 → 下次启动回写 config 为 false
+    /// 默认 true —— 菜单栏常驻应用的用户期待
+    #[serde(default = "default_autostart")]
+    pub autostart: bool,
     /// Set to true the first time the user completes Onboarding. Until then,
     /// the app doesn't register a global shortcut — clicking the tray or
     /// launching the app re-opens the Onboarding window instead.
@@ -158,6 +164,7 @@ fn default_language() -> String { "zh".into() }
 fn default_tidy_up() -> bool { false }
 fn default_voice_ime() -> bool { true }
 fn default_voice_ime_trigger() -> String { "fn".into() }
+fn default_autostart() -> bool { true }
 
 impl Default for Config {
     fn default() -> Self {
@@ -172,6 +179,7 @@ impl Default for Config {
             voice_ime_trigger: default_voice_ime_trigger(),
             clipboard_paused: false,
             workspace_path: None,
+            autostart: default_autostart(),
             onboarded: false,
             version: CURRENT_CONFIG_VERSION,
         }
