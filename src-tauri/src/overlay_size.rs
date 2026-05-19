@@ -32,6 +32,13 @@ static LAST_PET_CENTER_Y: AtomicI32 = AtomicI32::new(0);
 pub const COMPACT_SIZE: f64 = 80.0;
 pub const EXPANDED_SIZE: f64 = 320.0;
 
+/// v0.4 · 给 show_mouse 用：把 CURRENT_MODE 强制设为 expanded，
+/// 这样后续 emit_view 调 expand_to_full 时是 no-op（已是 expanded 模式），
+/// 不会再触发一次 set_size + anchor-preserve 资源浪费 / 视觉抖动。
+pub fn mark_expanded() {
+    CURRENT_MODE.store(1, Ordering::SeqCst);
+}
+
 /// 进入 compact 模式（100×100，只占桌宠像素）。
 pub fn shrink_to_compact(app: &AppHandle) {
     set_mode(app, COMPACT_SIZE, 0);

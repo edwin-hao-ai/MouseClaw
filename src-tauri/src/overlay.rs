@@ -37,18 +37,26 @@ pub fn reposition_to_cursor(app: &AppHandle) {
 /// 之前 show_mouse 从全局快捷键 handler 线程直接调，NSScreen.mainScreen 离开
 /// 主线程访问会静默崩溃。现在统一 marshal 到主线程。
 pub fn show_mouse(app: &AppHandle) {
+    use tauri::LogicalSize;
     let app2 = app.clone();
     let _ = app.run_on_main_thread(move || {
         let Some(window) = app2.get_webview_window("mouse") else { return };
-        // 现在在主线程 —— cocoa 调用安全
+        // v0.4 fix · 一个 closure 内做完所有事 —— 之前 show_mouse 只 set_position，
+        // 跟 emit_view 在后面调的 expand_to_full 形成竞态：set_mode 的 anchor-preserve
+        // 用 80×80 当前尺寸算位置，把窗口移回 anchor 位置上 resize，桌宠没跟到光标。
+        //
+        // 现在：先 expand 到 320，再用 320 尺寸算光标偏移，最后 set_position。
+        // CURRENT_MODE 同步标记为 expanded，下游 emit_view 的 expand_to_full no-op。
+        let _ = window.set_size(LogicalSize::new(
+            crate::overlay_size::EXPANDED_SIZE,
+            crate::overlay_size::EXPANDED_SIZE,
+        ));
+        crate::overlay_size::mark_expanded();
         if let Some((x, y)) = current_mouse_pos_top_left(&window) {
-            let (ww, wh) = match window.outer_size().ok() {
-                Some(s) => (s.width as f64, s.height as f64),
-                None => (320.0, 320.0),
-            };
-            let scale = window.scale_factor().unwrap_or(1.0);
-            let pos_x = x - (ww / scale) / 2.0;
-            let pos_y = y - (wh / scale) + 32.0;
+            let half = crate::overlay_size::EXPANDED_SIZE / 2.0;
+            let pos_x = x - half;
+            // 桌宠在窗口底部中心，下沿距光标 32px
+            let pos_y = y - crate::overlay_size::EXPANDED_SIZE + 32.0;
             let _ = window.set_position(LogicalPosition::new(pos_x, pos_y));
         }
         let _ = window.show();
