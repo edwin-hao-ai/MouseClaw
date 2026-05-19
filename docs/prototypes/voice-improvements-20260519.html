@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MouseClaw · 语音输入三个基础改进（2026-05-19）</title>
+<style>
+  :root {
+    --bg: #faf7f2; --card: #ffffff; --ink: #2b2622; --muted: #8a8178;
+    --pink: #e8638c; --pink-soft: #fce4ec; --pink-deep: #d63d6a;
+    --green: #3fa66a; --green-soft: #e6f4ec;
+    --amber: #d9952b; --amber-soft: #fdf3e0;
+    --blue: #5b8def; --blue-soft: #e8f0fe;
+    --red: #c33d3d; --red-soft: #fbe3e3;
+    --line: #ece6dd; --line-strong: #d8d0c4;
+    --radius-s: 8px; --radius-m: 14px; --radius-l: 22px;
+    --shadow-card: 0 1px 2px rgba(43,38,34,.06), 0 8px 24px rgba(43,38,34,.06);
+    --shadow-bubble: 0 8px 32px rgba(43,38,34,.12);
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --font: -apple-system, "PingFang SC", system-ui, sans-serif;
+    --m-body:#cfcfcf; --m-belly:#fff; --m-ear-in:#ff9bb8; --m-ear-out:#cfcfcf;
+    --m-eye:#1a1a1a; --m-nose:#d63d6a; --m-tail:#8a8a8a; --m-paw:#fff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 15px/1.65 var(--font);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+  .layout { display: grid; grid-template-columns: 220px 1fr; gap: 48px; padding-top: 48px; }
+  .toc { position: sticky; top: 24px; align-self: start; font-size: 13px; line-height: 1.9; }
+  .toc h4 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 8px; }
+  .toc a { display: block; padding: 4px 10px; border-radius: 6px; color: var(--ink); text-decoration: none; }
+  .toc a:hover { background: var(--pink-soft); color: var(--pink-deep); }
+
+  h1 { font-size: 32px; margin: 0 0 4px; letter-spacing: -.02em; }
+  h2 { font-size: 22px; margin: 56px 0 10px; padding-bottom: 8px; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 16px; margin: 24px 0 8px; }
+  .sub { color: var(--muted); margin: 0 0 28px; font-size: 14px; }
+  .lead { color: var(--muted); font-size: 14.5px; max-width: 720px; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius-m); padding: 20px 22px;
+    box-shadow: var(--shadow-card);
+  }
+  .card + .card { margin-top: 14px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+
+  code, kbd {
+    font-family: var(--mono); font-size: 12.5px;
+    background: #f2ede5; padding: 1.5px 6px; border-radius: 5px;
+  }
+  kbd {
+    background: #fff; border: 1px solid var(--line-strong);
+    box-shadow: 0 1px 0 var(--line-strong);
+    padding: 1px 7px; font-weight: 600;
+  }
+  .pill { display: inline-block; font-size: 11px; font-weight: 700;
+          padding: 2px 9px; border-radius: 999px; vertical-align: middle; }
+  .pill-pink   { background: var(--pink-soft);  color: var(--pink-deep); }
+  .pill-green  { background: var(--green-soft); color: var(--green); }
+  .pill-amber  { background: var(--amber-soft); color: var(--amber); }
+  .pill-blue   { background: var(--blue-soft);  color: var(--blue); }
+  .pill-red    { background: var(--red-soft);   color: var(--red); }
+  .pill-muted  { background: #f0ebe2; color: var(--muted); }
+
+  /* Mock desktop stage */
+  .stage {
+    position: relative; min-height: 320px;
+    border-radius: var(--radius-l); overflow: hidden;
+    background:
+      radial-gradient(ellipse at 30% 20%, #5b8def22, transparent 50%),
+      radial-gradient(ellipse at 80% 80%, #e8638c22, transparent 50%),
+      linear-gradient(135deg, #f8efe4, #efe5d5);
+    border: 1px solid var(--line);
+    padding: 20px;
+  }
+  .mock-app {
+    background: rgba(255,255,255,.94); backdrop-filter: blur(8px);
+    border-radius: 10px; padding: 14px 16px;
+    border: 1px solid #00000010; box-shadow: 0 4px 16px #00000010;
+    font-size: 13.5px; line-height: 1.85;
+    min-height: 140px;
+  }
+  .mock-toolbar {
+    display: flex; gap: 6px; padding-bottom: 8px; margin-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+    align-items: center;
+  }
+  .mock-toolbar i { width: 11px; height: 11px; border-radius: 999px; display: inline-block; }
+  .tl-red { background: #ff5f57; } .tl-yellow { background: #febc2e; } .tl-green { background: #28c840; }
+  .mock-title {
+    margin-left: 8px; color: var(--muted); font-size: 12px;
+  }
+  .mock-cursor {
+    display: inline-block; width: 2px; height: 16px;
+    background: var(--pink-deep); vertical-align: middle; margin-left: 1px;
+    animation: blink 1s steps(2) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .hot { background: linear-gradient(transparent 65%, var(--amber-soft) 65%);
+         padding: 0 2px; border-radius: 2px; }
+  .corrected { background: linear-gradient(transparent 65%, var(--green-soft) 65%);
+               padding: 0 2px; border-radius: 2px; }
+  .struck { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--red); }
+
+  /* pixel mouse */
+  .mouse-svg { image-rendering: pixelated; shape-rendering: crispEdges; display: block; }
+  .mouse-stage {
+    position: absolute; display: flex; flex-direction: column; align-items: center;
+    transition: transform .35s cubic-bezier(.4,.0,.2,1);
+  }
+  .listen-bounce { animation: listenBounce .6s ease-in-out infinite; }
+  @keyframes listenBounce {
+    0%,100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+  }
+
+  /* Bubble */
+  .bubble {
+    background: #fff; border: 1px solid var(--line);
+    border-radius: 18px; padding: 8px 14px;
+    box-shadow: var(--shadow-bubble);
+    font-size: 13.5px; line-height: 1.5; font-weight: 500;
+    max-width: 320px; margin-bottom: 6px;
+  }
+  .bubble-warn { background: linear-gradient(135deg, #fff7e0, #ffffff); }
+  .bubble-success { background: linear-gradient(135deg, #d8f8e6, #ffffff); }
+
+  /* voice bars */
+  .vbars { display: inline-flex; gap: 3px; vertical-align: middle; margin-left: 6px; }
+  .vbars i { width: 3px; background: var(--pink-deep); border-radius: 2px; display: inline-block;
+             animation: vbar .7s ease-in-out infinite; }
+  .vbars i:nth-child(1) { height: 10px; animation-delay: 0s; }
+  .vbars i:nth-child(2) { height: 16px; animation-delay: .1s; }
+  .vbars i:nth-child(3) { height: 8px;  animation-delay: .2s; }
+  .vbars i:nth-child(4) { height: 14px; animation-delay: .3s; }
+  @keyframes vbar { 0%,100% { transform: scaleY(.6); } 50% { transform: scaleY(1.05); } }
+
+  /* before/after split */
+  .ba { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .ba > div { border-radius: var(--radius-m); padding: 14px 16px; border: 1px solid var(--line); }
+  .ba-bad { background: #fbf3f1; border-color: #f0d8d4; }
+  .ba-good { background: #f1f8f3; border-color: #d2eedd; }
+  .ba h4 { margin: 0 0 8px; font-size: 13px; letter-spacing: 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
+
+  /* Vocab editor mock */
+  .vocab {
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.9;
+    background: #1a1a1a; color: #e6e6e6; padding: 14px 16px;
+    border-radius: var(--radius-s); white-space: pre;
+  }
+  .vocab .key { color: #ffb3c8; }
+  .vocab .num { color: #88e2b7; }
+  .vocab .cmt { color: #8a8178; }
+
+  /* timing bar */
+  .timeline {
+    height: 6px; background: #f0ebe2; border-radius: 999px;
+    position: relative; overflow: hidden; margin: 10px 0 4px;
+  }
+  .timeline .fill {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    background: linear-gradient(90deg, var(--amber), var(--red));
+    width: 100%; animation: countdown 3s linear infinite;
+  }
+  @keyframes countdown { from { width: 100%; } to { width: 0%; } }
+  .tlabel { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="layout">
+    <nav class="toc">
+      <h4>本文档</h4>
+      <a href="#intro">总览</a>
+      <a href="#p0">P0 · 中英混说默认</a>
+      <a href="#p1">P1 · 术语库</a>
+      <a href="#p2">P2 · 3 秒规则纠错</a>
+      <a href="#summary">取舍 & 顺序</a>
+    </nav>
+    <main>
+      <h1 id="intro">语音输入三个基础改进</h1>
+      <p class="sub">v0.4 候选 · 2026-05-19 · 全部本地 · 不引入大模型 · 不增加常驻内存</p>
+
+      <div class="card">
+        <p class="lead" style="margin:0">
+          目标：让"按住快捷键说一句话"的体验明显超过 Typeless。三件事都基于
+          <strong>现有 sherpa-onnx 栈</strong>，不引入本地 LLM，不增加常驻内存（&lt; 600MB 上限不动）。
+          预算合计：<strong>≤ 1 周</strong>。
+        </p>
+      </div>
+
+      <!-- ======================= P0 ======================= -->
+      <h2 id="p0">P0 · 中英混说设为默认（半天活）</h2>
+      <p class="lead">
+        sherpa zh-en Zipformer 本来就是双语联合训练的模型。当前却让用户在 onboarding
+        二选一，被迫"中文"或"英文"——选错就崩。改成默认混合，体感立刻提升。
+      </p>
+
+      <h3>当前 vs. 修订</h3>
+      <div class="ba">
+        <div class="ba-bad">
+          <h4>❌ 当前 · 强制二选一</h4>
+          <p style="margin:0; font-size:13.5px;">用户说：「这个 <span class="struck">useEffect</span> 的依赖数组要加 <span class="struck">props.value</span>」</p>
+          <p style="margin:6px 0 0; font-size:12.5px; color: var(--muted);">
+            选了中文 → 英文词全转拼音<br>
+            选了英文 → 中文全丢
+          </p>
+        </div>
+        <div class="ba-good">
+          <h4>✅ 修订 · 混合为默认</h4>
+          <p style="margin:0; font-size:13.5px;">
+            用户说：「这个 <span class="hot">useEffect</span> 的依赖数组要加 <span class="hot">props.value</span>」<br>
+            <span class="corrected">完美双语识别</span>
+          </p>
+          <p style="margin:6px 0 0; font-size:12.5px; color: var(--muted);">
+            零模型变更 · 零延迟变化
+          </p>
+        </div>
+      </div>
+
+      <h3>改动清单</h3>
+      <div class="card">
+        <table>
+          <tr><th width="38%">位置</th><th>改动</th></tr>
+          <tr><td><code>transcribe_stream.rs:54-61</code></td><td>把 <code>active_spec()</code> 锁死返回 <code>zh_en_spec()</code>，删除 en-only 分支</td></tr>
+          <tr><td><code>config.rs · voice_lang</code></td><td>字段保留但只读 <code>"zh-en"</code>，向后兼容旧 config</td></tr>
+          <tr><td><code>punctuation.rs</code></td><td>不动（CT-Transformer 本来就是 zh-en 双语）</td></tr>
+          <tr><td>Onboarding 第 X 步</td><td>删除"中文 / 英文"二选一选项，文案改成"中英混合识别（默认）"</td></tr>
+          <tr><td>i18n keys</td><td>三处更新 · 见 <code>CLAUDE.md::i18n 硬规则</code></td></tr>
+        </table>
+      </div>
+
+      <h3 style="margin-top:18px;">演示</h3>
+      <div class="stage" style="min-height:230px;">
+        <div class="mock-app" style="max-width: 560px;">
+          <div class="mock-toolbar">
+            <i class="tl-red"></i><i class="tl-yellow"></i><i class="tl-green"></i>
+            <span class="mock-title">VS Code · App.tsx</span>
+          </div>
+          <div>
+            <code>// 用户对着光标按住快捷键说：「这个 useEffect 依赖加 props.value 试一下」</code><br>
+            useEffect(() =&gt; { ... }, [<span class="corrected">props.value</span><span class="mock-cursor"></span>])
+          </div>
+        </div>
+        <div class="mouse-stage" style="right: 36px; bottom: 20px;">
+          <div class="bubble">
+            听着呢
+            <span class="vbars"><i></i><i></i><i></i><i></i></span>
+          </div>
+          <svg class="mouse-svg listen-bounce" width="64" height="64" viewBox="0 0 16 16">
+            <rect x="3" y="0" width="2" height="2" fill="var(--m-ear-out)"/>
+            <rect x="11" y="0" width="2" height="2" fill="var(--m-ear-out)"/>
+            <rect x="2" y="1" width="4" height="3" fill="var(--m-ear-out)"/>
+            <rect x="10" y="1" width="4" height="3" fill="var(--m-ear-out)"/>
+            <rect x="3" y="2" width="2" height="2" fill="var(--m-ear-in)"/>
+            <rect x="11" y="2" width="2" height="2" fill="var(--m-ear-in)"/>
+            <rect x="1" y="4" width="14" height="7" fill="var(--m-body)"/>
+            <rect x="4" y="6" width="1" height="2" fill="var(--m-eye)"/>
+            <rect x="11" y="6" width="1" height="2" fill="var(--m-eye)"/>
+            <rect x="7" y="9" width="2" height="1" fill="var(--m-nose)"/>
+            <rect x="4" y="11" width="8" height="3" fill="var(--m-belly)"/>
+            <rect x="13" y="11" width="3" height="1" fill="var(--m-tail)"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- ======================= P1 ======================= -->
+      <h2 id="p1">P1 · 术语库（hotwords）—— Typeless 没有的差异化</h2>
+      <p class="lead">
+        sherpa-onnx 原生支持 <code>hotwords_file</code> + <code>hotwords_score</code>，
+        在解码时把指定词的概率拉高。<strong>零额外模型 · 零延迟 · 零成本</strong>。
+        程序员说「Tauri」「useEffect」「async/await」从此再也不会被听成「他爱瑞」「use effect」。
+      </p>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3 style="margin-top:0;">内置词表（首装即有）</h3>
+          <div class="vocab"><span class="cmt"># ~/.mouseclaw/vocab/programmer.txt</span>
+<span class="cmt"># 内置 · 默认开启 · 用户可关</span>
+<span class="key">Tauri</span> :<span class="num">2.5</span>
+<span class="key">useEffect</span> :<span class="num">2.0</span>
+<span class="key">async</span> :<span class="num">1.8</span>
+<span class="key">await</span> :<span class="num">1.8</span>
+<span class="key">TypeScript</span> :<span class="num">2.0</span>
+<span class="key">claude</span> :<span class="num">2.5</span>
+<span class="key">MouseClaw</span> :<span class="num">3.0</span>
+<span class="cmt"># … 总 ~80 词</span></div>
+        </div>
+        <div class="card">
+          <h3 style="margin-top:0;">用户自定义（Panel 里加）</h3>
+          <div class="vocab"><span class="cmt"># ~/.mouseclaw/vocab/user.txt</span>
+<span class="cmt"># Edwin 自己加的</span>
+<span class="key">心房颤动</span> :<span class="num">2.5</span>
+<span class="key">edwinhao</span> :<span class="num">3.0</span>
+<span class="key">sherpa-onnx</span> :<span class="num">2.5</span>
+<span class="key">RuVector</span> :<span class="num">2.0</span></div>
+        </div>
+      </div>
+
+      <h3>命中可视化（关键 UX 决定）</h3>
+      <p class="lead" style="margin-bottom:10px;">
+        识别出术语库命中词时，气泡里那个词<strong>短暂高亮 0.5 秒</strong>，让用户感知"啊它真的认识这个词"。
+        没有这个反馈用户不知道功能有没有 work。
+      </p>
+
+      <div class="stage" style="min-height:220px;">
+        <div class="mock-app" style="max-width: 540px;">
+          <div class="mock-toolbar">
+            <i class="tl-red"></i><i class="tl-yellow"></i><i class="tl-green"></i>
+            <span class="mock-title">Slack · #engineering</span>
+          </div>
+          <div style="font-size:13.5px;">
+            刚改完 <span class="hot">Tauri</span> 的 <span class="hot">useEffect</span> hook，
+            <span class="hot">MouseClaw</span> 这个版本应该稳了<span class="mock-cursor"></span>
+          </div>
+        </div>
+        <div class="mouse-stage" style="right: 30px; top: 16px;">
+          <div class="bubble bubble-success" style="font-size: 12.5px;">
+            ✓ 命中 3 个术语
+          </div>
+        </div>
+      </div>
+
+      <h3>UI · 术语管理</h3>
+      <div class="card">
+        <p style="margin:0 0 8px;">
+          Panel 顶部 chip 区加一个 <span class="pill pill-amber">术语 ▾</span> 按钮，点开抽出术语 tab：
+        </p>
+        <ul style="margin: 0; padding-left: 20px; font-size: 13.5px;">
+          <li>列表显示当前生效的词（内置 + 用户）· 内置可单独关，不能删</li>
+          <li>底部一个输入框：<code>新词 [Enter]</code> · 默认 score 2.0</li>
+          <li>按 Esc 折叠 · 不打断主流程</li>
+        </ul>
+        <p style="margin: 10px 0 0; color: var(--muted); font-size: 12.5px;">
+          ⚠️ 改完后下一次启动 sherpa 时重新 load（不能热加载——sherpa config 是 init-time 注入的）。
+          UI 加一句"已保存，下次说话生效"。
+        </p>
+      </div>
+
+      <h3>改动清单</h3>
+      <div class="card">
+        <table>
+          <tr><th width="38%">位置</th><th>改动</th></tr>
+          <tr><td><code>transcribe_stream.rs</code></td><td><code>OnlineRecognizerConfig</code> 设 <code>hotwords_file</code> + <code>hotwords_score</code>，路径指向 merged 词表</td></tr>
+          <tr><td>新文件 <code>vocab.rs</code></td><td>读取 <code>~/.mouseclaw/vocab/{programmer,user}.txt</code>，merge 写入 <code>~/.mouseclaw/vocab/active.txt</code>，去重</td></tr>
+          <tr><td><code>resources/vocab/programmer.txt</code></td><td>bundle 一份 80 词的程序员通用词表</td></tr>
+          <tr><td>Panel UI</td><td>新增 vocab tab + add/list/toggle</td></tr>
+          <tr><td>commands.rs</td><td><code>vocab_list</code> / <code>vocab_add</code> / <code>vocab_remove</code> / <code>vocab_set_builtin_enabled</code></td></tr>
+        </table>
+      </div>
+
+      <!-- ======================= P2 ======================= -->
+      <h2 id="p2">P2 · 3 秒规则纠错（不用 LLM）</h2>
+      <p class="lead">
+        刚听写完 3 秒内，再次按快捷键说一句"修正口令"，自动改掉刚写入的文本。
+        覆盖 4 个高频 pattern，<strong>纯正则 + 字符串匹配</strong>，&lt; 5ms 完成，零成本。
+      </p>
+
+      <h3>支持的 4 个 pattern</h3>
+      <div class="card">
+        <table>
+          <tr><th>说法</th><th>动作</th><th>例子</th></tr>
+          <tr>
+            <td>「把 <em>X</em> 改成 <em>Y</em>」<br>「<em>X</em> 改成 <em>Y</em>」</td>
+            <td>把刚写入文本里最后一处 X 替换成 Y</td>
+            <td>「把张三改成李四」</td>
+          </tr>
+          <tr>
+            <td>「不是 <em>X</em>，是 <em>Y</em>」<br>「不对，是 <em>Y</em>」</td>
+            <td>替换最近一个名词短语（启发式：最后一个名字 / 数字 / 标识符）</td>
+            <td>「不对，是 42」</td>
+          </tr>
+          <tr>
+            <td>「删掉<em> X </em>」<br>「去掉<em> X </em>」</td>
+            <td>移除刚写入文本里最后一处 X（连同前导空格）</td>
+            <td>「删掉那个 the」</td>
+          </tr>
+          <tr>
+            <td>「重说」<br>「全部删掉」</td>
+            <td>整段撤销 · 等同 ⌘Z（发模拟键盘事件）</td>
+            <td>「重说」</td>
+          </tr>
+        </table>
+      </div>
+
+      <h3>触发窗口 · 视觉反馈（关键 UX 决定）</h3>
+      <p class="lead">
+        听写完气泡变成「✓ 已写入」绿色 success 状态，<strong>头顶亮一道 3 秒倒数细线</strong>
+        提示"在这 3 秒里你还可以说改正"。3 秒后线消失，气泡淡出，恢复 sleep。
+      </p>
+
+      <div class="card">
+        <div class="tlabel"><span>刚写完 · 可纠错窗口</span><span>3 秒</span></div>
+        <div class="timeline"><div class="fill"></div></div>
+        <p style="margin: 6px 0 0; font-size: 12px; color: var(--muted);">
+          ⚠️ 同一次 sherpa session continue 不重置窗口——3 秒是从"上次写入完成"起算。
+          按快捷键开新录音 → 立刻判定为「可能是纠错」分支。
+        </p>
+      </div>
+
+      <h3>完整时间线演示</h3>
+      <div class="stage" style="min-height:340px;">
+        <div class="mock-app" style="max-width: 600px;">
+          <div class="mock-toolbar">
+            <i class="tl-red"></i><i class="tl-yellow"></i><i class="tl-green"></i>
+            <span class="mock-title">备忘录 · 会议记录</span>
+          </div>
+          <div style="font-size:13.5px; line-height: 2;">
+            参会人：<span class="struck">张三</span> <span class="corrected">李四</span>、王五、赵六<br>
+            议题：Q3 路线图<br>
+            决议项：<span class="mock-cursor"></span>
+          </div>
+        </div>
+        <div class="mouse-stage" style="right: 32px; top: 90px;">
+          <div class="bubble bubble-success">
+            ✓ 已替换「张三 → 李四」
+          </div>
+          <svg class="mouse-svg" width="56" height="56" viewBox="0 0 16 16">
+            <rect x="3" y="0" width="2" height="2" fill="var(--m-ear-out)"/>
+            <rect x="11" y="0" width="2" height="2" fill="var(--m-ear-out)"/>
+            <rect x="2" y="1" width="4" height="3" fill="var(--m-ear-out)"/>
+            <rect x="10" y="1" width="4" height="3" fill="var(--m-ear-out)"/>
+            <rect x="3" y="2" width="2" height="2" fill="var(--m-ear-in)"/>
+            <rect x="11" y="2" width="2" height="2" fill="var(--m-ear-in)"/>
+            <rect x="1" y="4" width="14" height="7" fill="var(--m-body)"/>
+            <rect x="4" y="6" width="1" height="2" fill="var(--m-eye)"/>
+            <rect x="11" y="6" width="1" height="2" fill="var(--m-eye)"/>
+            <rect x="7" y="9" width="2" height="1" fill="var(--m-nose)"/>
+            <rect x="4" y="11" width="8" height="3" fill="var(--m-belly)"/>
+            <rect x="13" y="11" width="3" height="1" fill="var(--m-tail)"/>
+          </svg>
+        </div>
+      </div>
+
+      <h3>失败兜底 · 不要骚扰用户</h3>
+      <div class="card">
+        <ul style="margin:0; padding-left: 20px; font-size: 13.5px;">
+          <li><strong>没匹配到任何 pattern</strong> → 当成普通新写入处理（追加到光标，不改前文）</li>
+          <li><strong>匹配到 pattern 但 X 在前文里找不到</strong> → 气泡 amber：<span class="pill pill-amber">没找到「张三」</span>，按 Esc 关闭</li>
+          <li><strong>「重说」之后又说了普通话</strong> → 撤销 + 写入新内容，两步动作合并为一次"听起来很顺"的体验</li>
+          <li><strong>前台 app 是终端</strong> → 直接禁用纠错（不能模拟键盘改前文，可能误执行命令）—— 与 Mode B 同源风险</li>
+        </ul>
+      </div>
+
+      <h3>改动清单</h3>
+      <div class="card">
+        <table>
+          <tr><th width="38%">位置</th><th>改动</th></tr>
+          <tr><td>新文件 <code>voice_correct.rs</code></td><td>4 个正则 + replace/undo 实现，输入 (last_written, new_transcript) → enum CorrectionAction</td></tr>
+          <tr><td><code>voice_ime.rs</code></td><td>写入后存 <code>last_written</code> + <code>last_written_at</code>。下次录音 onset 时检查 &lt; 3s 则尝试匹配 correction patterns</td></tr>
+          <tr><td><code>voice_ime.rs · undo</code></td><td>「重说」走 <code>CGEvent ⌘Z</code> · 不依赖剪贴板</td></tr>
+          <tr><td>气泡组件</td><td>新增 success-with-countdown 变体（绿底 + 3s 顶部细线）</td></tr>
+          <tr><td>i18n</td><td>新增 4 条 key：correction.replaced / correction.notfound / correction.undone / correction.window_hint</td></tr>
+        </table>
+      </div>
+
+      <!-- ======================= Summary ======================= -->
+      <h2 id="summary">取舍 & 顺序</h2>
+      <div class="card">
+        <table>
+          <tr>
+            <th>档</th><th>预算</th><th>新模型</th><th>内存增量</th><th>用户感知</th><th>Typeless 比较</th>
+          </tr>
+          <tr>
+            <td>P0 · 混说默认</td><td>0.5 天</td><td>无</td><td>0</td>
+            <td>立刻：「再也不用切语言了」</td>
+            <td>持平（它也有，但我们隐私+本地胜出）</td>
+          </tr>
+          <tr>
+            <td>P1 · 术语库</td><td>2-3 天</td><td>无（用 sherpa hotwords）</td><td>~5 KB（词表内存常驻）</td>
+            <td>程序员瞬间种草</td>
+            <td><span class="pill pill-green">独家</span> 它没有</td>
+          </tr>
+          <tr>
+            <td>P2 · 规则纠错</td><td>3-5 天</td><td>无</td><td>0</td>
+            <td>"它居然能听懂我改话"——惊艳点</td>
+            <td>它有 LLM 版纠错；我们规则版覆盖 70% 案例，剩下 30% 留空（不假装）</td>
+          </tr>
+          <tr style="background: #f8f4ea;">
+            <td colspan="2"><strong>合计</strong></td>
+            <td>0</td><td>~5 KB</td>
+            <td colspan="2">≤ 1 周 · 不引入 LLM · DMG 不变胖 · 常驻内存不变</td>
+          </tr>
+        </table>
+      </div>
+
+      <h3>建议执行顺序</h3>
+      <div class="card">
+        <ol style="margin:0; padding-left: 20px; font-size: 13.5px; line-height: 1.9;">
+          <li><strong>D1 · P0 落地 + commit</strong>（半天）—— 一步出货，发 v0.4.0-rc1 给少量用户试</li>
+          <li><strong>D2-D4 · P1 落地</strong>—— 词表 + UI + 内置程序员词表，发 v0.4.0-rc2</li>
+          <li><strong>D5-D7 · P2 落地</strong>—— 规则纠错 + 3 秒窗口 UX，发 v0.4.0 正式版</li>
+          <li>正式版 release notes 主打<strong>「程序员的语音输入」</strong>角度，对标 Typeless</li>
+        </ol>
+      </div>
+
+      <h3>未做的事（坦白 · CLAUDE.md 头号规则）</h3>
+      <div class="card">
+        <ul style="margin:0; padding-left: 20px; font-size: 13.5px; line-height: 1.9;">
+          <li>❌ 语气切换（邮件 vs IM 不同正式度）—— 需要 LLM，本轮跳过</li>
+          <li>❌ 写作风格学习（"像你"）—— 需要 LLM + 数据沉淀，本轮跳过</li>
+          <li>❌ 30% 模糊纠错案例（"那个数字"指哪个）—— 规则覆盖不了，本轮跳过</li>
+          <li>❌ Windows 支持 —— 仍是 V2 议题</li>
+        </ul>
+        <p style="margin: 10px 0 0; font-size: 12.5px; color: var(--muted);">
+          这些都不是"做不到"，是<strong>明确不在本轮范围</strong>。等用户跑起来 70% 覆盖之后再决定要不要追剩下的 30%。
+        </p>
+      </div>
+
+      <p style="margin: 48px 0 64px; color: var(--muted); font-size: 13px; text-align: center;">
+        Prototype · 2026-05-19 · 拍板后才动 Rust
+      </p>
+    </main>
+  </div>
+</div>
+</body>
+</html>
