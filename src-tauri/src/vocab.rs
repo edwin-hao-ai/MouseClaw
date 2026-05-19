@@ -176,4 +176,49 @@ mod tests {
         collect_entries(BUILTIN_PROGRAMMER, &mut out);
         assert!(out.len() >= 40, "builtin should have ≥40 entries, got {}", out.len());
     }
+
+    #[test]
+    fn collect_entries_handles_chinese_space_split() {
+        // sherpa 双语模型需要中文字符级分词；测合并器原样保留
+        let mut out = Vec::new();
+        collect_entries("心 房 颤 动 :2.5\n", &mut out);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].0, "心 房 颤 动");
+        assert_eq!(out[0].1, Some(2.5));
+    }
+
+    #[test]
+    fn collect_entries_handles_extra_whitespace() {
+        let mut out = Vec::new();
+        collect_entries("  useEffect  :  2.0  \n", &mut out);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].0, "useEffect");
+        assert_eq!(out[0].1, Some(2.0));
+    }
+
+    #[test]
+    fn builtin_contains_critical_terms() {
+        // 内置词表必须包含的程序员高频词 —— 缺一漏的话 P1 卖点就少了一截
+        let critical = ["useEffect", "Tauri", "Claude", "MouseClaw", "TypeScript"];
+        for term in &critical {
+            assert!(
+                BUILTIN_PROGRAMMER.contains(term),
+                "builtin missing critical term: {term}"
+            );
+        }
+    }
+
+    #[test]
+    fn default_hotwords_score_is_reasonable() {
+        // sherpa 文档建议 1.5-3.0；过低没效果，过高过 boost
+        assert!(DEFAULT_HOTWORDS_SCORE >= 1.5);
+        assert!(DEFAULT_HOTWORDS_SCORE <= 3.0);
+    }
+
+    #[test]
+    fn user_template_is_bilingual() {
+        // template 模板必须中英对照（用户文档）
+        assert!(USER_FILE_TEMPLATE.contains("中文"));
+        assert!(USER_FILE_TEMPLATE.contains("Example") || USER_FILE_TEMPLATE.contains("example"));
+    }
 }

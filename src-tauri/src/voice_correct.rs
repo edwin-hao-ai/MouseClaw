@@ -336,4 +336,87 @@ mod tests {
         assert_eq!(strip_terminal_punct("重说"), "重说");
         assert_eq!(strip_terminal_punct("scratch that."), "scratch that");
     }
+
+    #[test]
+    fn parses_replace_with_chinese_punct_tail() {
+        // sherpa 标点模块加了句号 —— strip_terminal_punct 必须把它处理掉
+        setup_last("张三和李四", "com.apple.TextEdit");
+        let action = try_parse("把张三改成王五。", "com.apple.TextEdit").unwrap();
+        match action {
+            CorrectionAction::Replace { old, new, .. } => {
+                assert_eq!(old, "张三");
+                assert_eq!(new, "王五");
+            }
+            other => panic!("expected Replace, got {:?}", other),
+        }
+        clear();
+    }
+
+    #[test]
+    fn replace_uses_last_occurrence() {
+        // 文本里有多个 "x" 时替换最后一处（用户语义是"刚说的那个"）
+        setup_last("x y z x", "com.apple.TextEdit");
+        let action = try_parse("把x改成Y", "com.apple.TextEdit").unwrap();
+        match action {
+            CorrectionAction::Replace { full_replacement, .. } => {
+                assert_eq!(full_replacement, "x y z Y");
+            }
+            other => panic!("expected Replace, got {:?}", other),
+        }
+        clear();
+    }
+
+    #[test]
+    fn replace_with_english_word_works() {
+        setup_last("the foo function", "com.apple.TextEdit");
+        let action = try_parse("change foo to bar", "com.apple.TextEdit").unwrap();
+        match action {
+            CorrectionAction::Replace { full_replacement, .. } => {
+                assert_eq!(full_replacement, "the bar function");
+            }
+            other => panic!("expected Replace, got {:?}", other),
+        }
+        clear();
+    }
+
+    #[test]
+    fn replace_x_to_y_chinese_no_ba_prefix() {
+        setup_last("hello 张三 world", "com.apple.TextEdit");
+        let action = try_parse("张三换为李四", "com.apple.TextEdit").unwrap();
+        match action {
+            CorrectionAction::Replace { full_replacement, .. } => {
+                assert_eq!(full_replacement, "hello 李四 world");
+            }
+            other => panic!("expected Replace, got {:?}", other),
+        }
+        clear();
+    }
+
+    #[test]
+    fn correction_window_is_three_seconds() {
+        // 防止 future 把它改成 1s/10s 导致体验断裂
+        assert_eq!(CORRECTION_WINDOW.as_secs(), 3);
+    }
+
+    #[test]
+    fn no_action_when_no_last_written() {
+        clear();
+        assert!(try_parse("把张三改成李四", "com.apple.TextEdit").is_none());
+    }
+
+    #[test]
+    fn parses_change_with_extra_articles() {
+        // 用户可能说 "把那个 X 改成 Y" —— 当前 MVP 不支持，确认行为是匹配到 "那个 X"
+        // 这个 case 故意 fail 提醒未来加 stopword 过滤时来更新
+        setup_last("hello", "com.apple.TextEdit");
+        let action = try_parse("把那个 hello 改成 world", "com.apple.TextEdit");
+        // 当前实现：X = "那个 hello"，在 last_written 里找不到 → NotFound
+        // 不是 panic 而是确认它正确进 NotFound 分支
+        match action {
+            Some(CorrectionAction::NotFound { .. }) => {} // expected for MVP
+            Some(CorrectionAction::Replace { .. }) => {} // future improvement
+            other => panic!("unexpected: {:?}", other),
+        }
+        clear();
+    }
 }

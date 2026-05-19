@@ -28,6 +28,7 @@ pub mod clipboard_action;
 pub mod clipboard_crypto;
 pub mod cursor_follow;
 pub mod cursor_trail;
+pub mod drag_detector;
 pub mod pet_passthrough;
 pub mod overlay_size;
 pub mod commands;
@@ -43,6 +44,7 @@ pub mod pipeline;
 pub mod provider_env;
 pub mod reactive;
 pub mod screenshot;
+pub mod selection;
 pub mod sessions;
 pub mod skins;
 pub mod tidy_up;
@@ -374,7 +376,7 @@ pub fn run() {
             commands::vocab_reload,
             commands::vocab_get_builtin_enabled,
             commands::vocab_set_builtin_enabled,
-            clipboard_action::process_clipboard_action,
+            clipboard_action::process_reactive_action,
         ])
         .setup(move |app| {
             set_accessory_activation_policy();
@@ -390,6 +392,12 @@ pub fn run() {
             // 20fps 后台 task：光标在桌宠 hit-box 内 = 接收事件；在透明区 = 穿透。
             pet_passthrough::spawn_loop(app.handle().clone(), app_state.clone());
 
+            // v0.4.x · 全屏隐形 drag-detector —— 用户从屏幕任意位置拖文件，
+            //   detector 收 NSDragging enter → feed_flow::on_drag_enter →
+            //   桌宠跑过去迎接（puppy greets drag）。
+            //   纯 NSWindow + NSView 子类，无 WebKit backing，零视觉遮挡。
+            drag_detector::install(app.handle().clone(), app_state.clone());
+
             // v0.1.27 P3 · 启动环境感知 + 主动提醒
             // presence 每 30s 采样到 30min ring buffer；nudge 每 60s 评估规则
             // 隐私红线：只数键击频率 / 鼠标移动时间戳 / 前台 bundle id —— 不读内容
@@ -404,9 +412,13 @@ pub fn run() {
             // v0.4 · reactive 模块挂 AppHandle，clipboard 新条目时按 tier 发 event
             reactive::init(app.handle().clone());
             clipboard::spawn_capture_loop();
+            // v0.4 · 选区轮询 —— Accessibility API 监听 AXSelectedText
+            // 没 AX 权限时线程自己 skip，等用户授权后自动生效
+            selection::spawn_capture_loop();
             // 用户上次会话设过暂停的话，恢复状态
             if cfg.clipboard_paused {
                 clipboard::set_paused(true);
+                selection::set_paused(true);
             }
 
             // v0.1.11 启动 fn 长按监听 —— CGEventTap on FlagsChanged
