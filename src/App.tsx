@@ -175,6 +175,29 @@ export default function App() {
 
   const dismissReactive = useCallback(() => setReactive(null), []);
 
+  // v0.4 · Reactive 处理完通知 —— ribbon 可能已被 dismiss / 超时 / 切到别的视图，
+  // 后端处理完时 emit reactive-result。这里：
+  //   - 如果 ribbon 还在（reactive 非 null）→ ribbon 自己显示了 done/err，不重复打扰
+  //   - 如果 ribbon 已消失 → 通过 transientAck 弹一个 3s 气泡告知（成功 / 失败都告知）
+  //   - 如果 view.kind 不是 idle（用户已经切到 listening / thinking 等）→ 仍然显示，
+  //     用户起码知道之前那个 action 跑完了；transientAck 会出现在桌宠上方一会儿
+  const reactiveRef = useRef<ReactivePayload | null>(null);
+  useEffect(() => { reactiveRef.current = reactive; }, [reactive]);
+  useEffect(() => {
+    interface ResultPayload { action: string; ok: boolean; summary: string; }
+    let unlisten: (() => void) | null = null;
+    try {
+      const p = listen<ResultPayload>("reactive-result", (e) => {
+        // ribbon 还在 → ribbon 自己已经显示了 done/err，跳过 transient 气泡
+        if (reactiveRef.current) return;
+        setTransientAck(e.payload.summary);
+        window.setTimeout(() => setTransientAck(null), 3000);
+      });
+      p.then((fn) => { unlisten = fn; }).catch(() => {});
+    } catch {/* dev mode */}
+    return () => { if (unlisten) unlisten(); };
+  }, []);
+
   // v0.4.x · CLI 装好 → 桌宠头顶弹个庆祝气泡 5s（学会了 browser use / office use）
   // 设计文档：docs/prototypes/auto-install-cli-20260520.html State 7
   useEffect(() => {

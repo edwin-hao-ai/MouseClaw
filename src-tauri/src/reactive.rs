@@ -24,6 +24,32 @@ use tauri::{AppHandle, Emitter};
 
 pub const EV_CLIPBOARD_REACTIVE: &str = "clipboard-reactive";
 
+/// process_reactive_action 完成时（成功 / 失败）emit 的事件 channel。
+/// 让前端在 ribbon 已消失（用户切走 / 4s 超时）时也能看到一个 transient 反馈气泡。
+pub const EV_REACTIVE_RESULT: &str = "reactive-result";
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ReactiveResultPayload {
+    pub action: String,
+    pub ok: bool,
+    /// 中文短句，前端直接 toast。失败时是错误摘要。
+    pub summary: String,
+}
+
+/// 在 process_reactive_action 末尾调，告诉前端"我做完了"，
+/// 这样即使 ribbon 已被 dismiss 用户也会从 transientAck 气泡看到反馈。
+pub fn emit_action_result(action: &str, ok: bool, summary: &str) {
+    let Some(app) = APP_HANDLE.get() else { return };
+    let payload = ReactiveResultPayload {
+        action: action.to_string(),
+        ok,
+        summary: summary.to_string(),
+    };
+    if let Err(e) = app.emit(EV_REACTIVE_RESULT, &payload) {
+        eprintln!("[mouseclaw] 📋 reactive-result emit failed: {e}");
+    }
+}
+
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 
 /// 最近一次触发 reactive 的原文（供 process_reactive_action 取用）。

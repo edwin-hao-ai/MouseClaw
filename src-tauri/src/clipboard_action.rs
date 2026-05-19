@@ -17,12 +17,23 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 /// 副作用：处理完会把结果写回系统剪贴板，用户 ⌘V 直接粘贴。
 #[tauri::command]
 pub async fn process_reactive_action(action: String) -> Result<String, String> {
+    let outcome = run(&action).await;
+    // v0.4 · 处理完通知 —— ribbon 可能已被 dismiss（用户切去做别的事 / 4s 超时），
+    // 不管成败都 emit reactive-result 让前端在那种情况下也给一个 transient 气泡告知。
+    match &outcome {
+        Ok(_) => crate::reactive::emit_action_result(&action, true, &result_summary(&action)),
+        Err(e) => crate::reactive::emit_action_result(&action, false, &format!("✗ {e}")),
+    }
+    outcome
+}
+
+async fn run(action: &str) -> Result<String, String> {
     let text = crate::reactive::take_last_text()
         .ok_or_else(|| "没有待处理的剪贴板 / 选词内容（可能已超时）".to_string())?;
     if text.trim().is_empty() {
         return Err("待处理内容为空".into());
     }
-    let prompt = build_prompt(&action, &text)
+    let prompt = build_prompt(action, &text)
         .map_err(|e| e.to_string())?;
     let result = run_claude_text_only(&prompt).await
         .map_err(|e| format!("调用后台失败：{e}"))?;
@@ -34,6 +45,17 @@ pub async fn process_reactive_action(action: String) -> Result<String, String> {
         eprintln!("[mouseclaw] 📋 write back failed: {e}");
     }
     Ok(cleaned)
+}
+
+/// 给 reactive-result.summary 用的口语短句（前端直接 toast）。
+fn result_summary(action: &str) -> String {
+    match action {
+        "clean"     => "📄 整理好了 · ⌘V 粘贴".to_string(),
+        "translate" => "🌐 翻译好了 · ⌘V 粘贴".to_string(),
+        "explain"   => "💡 解释好了 · ⌘V 粘贴".to_string(),
+        "reply"     => "✉️ 回信草稿好了 · ⌘V 粘贴".to_string(),
+        _           => format!("✓ {action} 完成 · ⌘V 粘贴"),
+    }
 }
 
 /// 按 action 选择不同的系统提示词。
@@ -237,5 +259,22 @@ mod tests {
     #[test]
     fn strip_passthrough() {
         assert_eq!(strip_wrappers("plain text"), "plain text");
+    }
+
+    #[test]
+    fn result_summary_all_actions_have_emoji() {
+        for action in ["clean", "translate", "explain", "reply"] {
+            let s = result_summary(action);
+            assert!(s.contains("⌘V"), "{action} summary 缺 paste 提示: {s}");
+            // 确保不是 fallback 路径（fallback 是 "✓ {action}"）
+            assert!(!s.starts_with("✓ "), "{action} 没有命中专属 summary, 走了 fallback");
+        }
+    }
+
+    #[test]
+    fn result_summary_unknown_action_fallback() {
+        let s = result_summary("frobnicate");
+        assert!(s.contains("frobnicate"));
+        assert!(s.contains("⌘V"));
     }
 }
