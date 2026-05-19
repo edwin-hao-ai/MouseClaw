@@ -87,11 +87,14 @@ const NEUTRAL: CompanionFrame = {
  */
 /**
  * @param ctx 帧间累计状态 —— hook 自管，纯函数测试时手动构造
+ *
+ * **注意**：从 v0.4+ bug fix（2026-05-20）开始，tick.x/y 已经是 **mouse 窗口本地坐标**
+ * （Rust 端 companion.rs 已经减过窗口 outer_position）。前端**不再做坐标减法**，
+ * 直接用 tick.x/y 算 dx/dy。
  */
 export function deriveCompanionFrame(
   tick: CompanionTick,
   petCenter: { x: number; y: number } | null,
-  windowScreenXY: { x: number; y: number },
   ctx: { typingStormSecs: number; nowHour: number } = { typingStormSecs: 0, nowHour: 12 },
 ): CompanionFrame {
   const isDrowsyHour = ctx.nowHour >= DROWSY_HOUR_START || ctx.nowHour < DROWSY_HOUR_END;
@@ -106,11 +109,9 @@ export function deriveCompanionFrame(
     return { ...NEUTRAL, state: isDrowsyHour ? "drowsy" : "idle" };
   }
 
-  // 桌面坐标 → webview-local
-  const localCursorX = tick.x - windowScreenXY.x;
-  const localCursorY = tick.y - windowScreenXY.y;
-  const dx = localCursorX - petCenter.x;
-  const dy = localCursorY - petCenter.y;
+  // tick.x/y 已经是 mouse 窗口本地坐标（Rust 端已减过 outer_position）
+  const dx = tick.x - petCenter.x;
+  const dy = tick.y - petCenter.y;
   const dist = Math.hypot(dx, dy);
 
   // 眼球偏移 —— 分量化软饱和（tanh），X / Y 解耦
@@ -180,9 +181,8 @@ export function useCompanion(petElRef: { current: HTMLElement | null }): Compani
       }
       const rect = el.getBoundingClientRect();
       const petCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-      const screen = { x: window.screenX ?? 0, y: window.screenY ?? 0 };
       setFrame(deriveCompanionFrame(
-        e.payload, petCenter, screen,
+        e.payload, petCenter,
         { typingStormSecs: stormSecsRef.current, nowHour: new Date().getHours() },
       ));
     }).then((u) => {

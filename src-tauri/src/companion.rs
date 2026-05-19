@@ -20,7 +20,7 @@
 
 use serde::Serialize;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::time::sleep;
 
 pub const EV_COMPANION_TICK: &str = "companion-tick";
@@ -49,7 +49,7 @@ pub struct CompanionTick {
 pub fn spawn(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         loop {
-            let tick = sample();
+            let tick = sample(&app);
             // 只发给 mouse 窗口 —— picker / hub / panel 都不画桌宠主体
             if let Err(e) = app.emit_to("mouse", EV_COMPANION_TICK, &tick) {
                 // 启动早期 mouse 窗口可能还没建好；只在 debug 噪音里出现
@@ -63,13 +63,30 @@ pub fn spawn(app: AppHandle) {
     println!("[mouseclaw] 🐾 companion tick spawned ({TICK_INTERVAL_MS}ms · 30 FPS)");
 }
 
+/// 取 mouse 窗口的桌面 logical 坐标（top-left）。
+///
+/// **关键设计**（2026-05-20 bug fix）：之前让前端用 window.screenX 算窗口位置，
+/// Tauri 透明 always-on-top NSPanel 在 WebKit 里返回 0/不准。结果 React 算出来的
+/// 局部光标坐标永远是 global 值（如 1500），tanh 饱和到 +1 → 眼睛永远朝固定方向。
+/// 改成 Rust 端用 `WebviewWindow::outer_position()` + scale_factor 转 logical，
+/// **直接送 webview-local 坐标**给前端，前端不再做减法。
+fn mouse_window_origin(app: &AppHandle) -> (f64, f64) {
+    let Some(w) = app.get_webview_window("mouse") else { return (0.0, 0.0) };
+    let Ok(pos) = w.outer_position() else { return (0.0, 0.0) };
+    let scale = w.scale_factor().unwrap_or(1.0);
+    (pos.x as f64 / scale, pos.y as f64 / scale)
+}
+
 /// 采一帧。non-macOS 平台返回零值（V1 macOS 优先，Windows 待 V2 各自实现）。
-fn sample() -> CompanionTick {
+fn sample(app: &AppHandle) -> CompanionTick {
     #[cfg(target_os = "macos")]
     {
-        let (x, y) = mac::cursor_xy().unwrap_or((-1.0, -1.0));
+        let (gx, gy) = mac::cursor_xy().unwrap_or((-1.0, -1.0));
+        let (wx, wy) = mouse_window_origin(app);
+        // 送出 **mouse 窗口本地** 坐标 —— 前端直接用，不再做减法
         CompanionTick {
-            x, y,
+            x: gx - wx,
+            y: gy - wy,
             since_key:   mac::secs_since_event(mac::EVENT_KEY_DOWN),
             since_mouse: mac::secs_since_event(mac::EVENT_MOUSE_MOVED),
             since_click: mac::secs_since_event(mac::EVENT_LEFT_MOUSE_DOWN),
@@ -77,6 +94,7 @@ fn sample() -> CompanionTick {
     }
     #[cfg(not(target_os = "macos"))]
     {
+        let _ = app;
         CompanionTick { x: -1.0, y: -1.0, since_key: 999.0, since_mouse: 999.0, since_click: 999.0 }
     }
 }
