@@ -1,15 +1,19 @@
 /**
- * Six-step Onboarding (v0.1.27):
+ * Eight-step Onboarding (v0.4.x):
  *   Step 1 — pick a global shortcut (AI summon)
  *   Step 2 — pick an AI backend
  *   Step 3 — pick a desktop pet skin
  *   Step 4 — pick voice IME trigger key
- *   Step 5 — pick pet anchor / where the pet lives (NEW v0.1.27)
+ *   Step 5 — pick pet anchor / where the pet lives
  *   Step 6 — grant required permissions
+ *   Step 7 — install Browser Use + Office Use CLIs (NEW v0.4.x)
+ *   Step 8 — three "Try this" tutorial cards (NEW v0.4.x)
  */
 import { useState, useEffect, useCallback, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { PixelMouse } from "./PixelMouse";
+import { OnboardingInstall } from "./OnboardingInstall";
+import { OnboardingTutorial } from "./OnboardingTutorial";
 import type { BackendChoice, SkinId, PetAnchor } from "../types";
 import { SKINS, DEFAULT_SKIN } from "../skins";
 import { useT } from "../i18n";
@@ -105,7 +109,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   const t = useT();
   const OPTIONS = buildOptions(t);
   const PERMISSIONS = buildPermissions(t);
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8>(1);
   const [selected, setSelected] = useState<ShortcutChoice>("hold-option");
   const [backend, setBackend] = useState<BackendChoice>("claude-cli");
   const [skin, setSkin] = useState<SkinId>(DEFAULT_SKIN);
@@ -481,6 +485,21 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     );
   }
 
+  // ── Step 7: 装 Browser Use + Office Use CLI (v0.4.x) ─────────────────────
+  if (step === 7) {
+    return <OnboardingInstall onNext={() => setStep(8)} />;
+  }
+
+  // ── Step 8: learn-by-doing 三卡教程 (v0.4.x) ──────────────────────────────
+  if (step === 8) {
+    return (
+      <OnboardingTutorial
+        onDone={() => onComplete(selected, backend, skin, voiceImeTrigger, petAnchor, voiceLang)}
+        onSkip={() => onComplete(selected, backend, skin, voiceImeTrigger, petAnchor, voiceLang)}
+      />
+    );
+  }
+
   // ── Step 6: 权限申请 ──────────────────────────────────────────────────────
   return (
     <div className="ob-root">
@@ -554,12 +573,12 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         </label>
       </div>
 
-      {/* 主按钮永远可点 —— 即使检测有偏差也不卡死用户。
-          allDone 时是「完成并重启」主样式；否则是「跳过检查」次要样式。 */}
+      {/* v0.4.x · 权限拿完进 install step（7），不直接 onComplete。
+          allDone 时主样式 → 进 step 7；没全拿到 → 跳过检查走主流程。 */}
       <button
         type="button"
         className={`ob-cta ${!allDone ? "ob-cta-secondary" : ""}`}
-        onClick={() => onComplete(selected, backend, skin, voiceImeTrigger, petAnchor, voiceLang)}
+        onClick={() => setStep(7)}
       >
         {allDone ? t("onboarding.cta.finish") : t("onboarding.cta.skip")}
       </button>
