@@ -125,7 +125,7 @@ describe("ReactiveOverlay", () => {
 
   it("renders English strings when lang=en", () => {
     render(<ReactiveOverlay payload={makePayload()} lang="en" onDismiss={() => {}} />);
-    expect(screen.getByTestId("rx-action-clean").textContent).toContain("Clean");
+    expect(screen.getByTestId("rx-action-clean").textContent).toContain("Plain");
     expect(screen.getByTestId("rx-action-translate").textContent).toContain("Translate");
     expect(screen.getByTestId("rx-action-reply").textContent).toContain("Reply");
   });

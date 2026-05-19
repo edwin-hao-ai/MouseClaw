@@ -82,11 +82,13 @@ export function ReactiveOverlay({
 
   if (!payload || payload.tier !== "hint") return null;
 
+  // 2026-05-20 · 用户反馈"清理"太抽象 —— 改成描述输出结果的「纯文本」
+  // 跟另三个按钮（翻译 / 解释 / 回信）都是"你会拿到什么"的语义对齐
   const L = lang === "zh"
-    ? { clean: "清理", translate: "翻译", explain: "解释", reply: "回信",
+    ? { clean: "纯文本", translate: "翻译", explain: "解释", reply: "回信",
         busy: "处理中…", done: "✓ 已写回 · ⌘V 粘贴", fail: "出错了",
         srcClip: "📋", srcSel: "🔤" }
-    : { clean: "Clean", translate: "Translate", explain: "Explain", reply: "Reply",
+    : { clean: "Plain", translate: "Translate", explain: "Explain", reply: "Reply",
         busy: "Working…", done: "✓ Copied · ⌘V", fail: "Failed",
         srcClip: "📋", srcSel: "🔤" };
 
@@ -129,7 +131,7 @@ export function ReactiveOverlay({
             onClick={() => run("clean")}
             title={L.clean}
           >
-            <span className="rx-pill-glyph">📝</span>
+            <span className="rx-pill-glyph">📄</span>
             <span className="rx-pill-label">{L.clean}</span>
           </button>
           <button
