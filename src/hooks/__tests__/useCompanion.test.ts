@@ -72,15 +72,29 @@ describe("deriveCompanionFrame", () => {
     expect(f.state).toBe("idle");
   });
 
-  it("eyeOffset 上限不超过 MAX_EYE_OFFSET（远距离 + 远距离 = 饱和）", () => {
+  it("eyeOffset 上限不超过 MAX_EYE_OFFSET（远距离 = tanh 饱和）", () => {
     const f = deriveCompanionFrame(
       { x: 10000, y: PET_CENTER.y, sinceKey: 1, sinceMouse: 0, sinceClick: 999 },
       PET_CENTER, WIN,
     );
-    // 鼠标在正右方 → cos=1 → eyeOffsetX = MAX_EYE_OFFSET 饱和
+    // 鼠标在正右方很远 → tanh→1 → eyeOffsetX ≈ MAX_EYE_OFFSET 饱和
     expect(Math.abs(f.eyeOffsetX)).toBeLessThanOrEqual(MAX_EYE_OFFSET + 1e-9);
     expect(Math.abs(f.eyeOffsetX)).toBeGreaterThan(MAX_EYE_OFFSET * 0.95);
-    expect(f.eyeOffsetY).toBeCloseTo(0, 5); // 同一水平
+    expect(f.eyeOffsetY).toBeCloseTo(0, 5); // 同一水平 → Y 分量为 0
+  });
+
+  it("REGRESSION: X 和 Y 解耦 —— 桌宠在角落、鼠标在屏幕中间（dy 大、dx 小）也能看见 X 偏移", () => {
+    // 模拟真 app 场景：桌宠在屏幕右下角(1820, 1100)，鼠标在屏幕左上(200, 200)
+    // 之前用极坐标 cos(atan2)*r → 因为 dy 远大于 dx，eyeOffsetX 接近 0
+    // 现在用 tanh(dx/falloff) 分量映射 → dx 单独决定 X，dy 单独决定 Y
+    const f = deriveCompanionFrame(
+      { x: 200, y: 200, sinceKey: 1, sinceMouse: 0, sinceClick: 999 },
+      { x: 1820, y: 1100 }, { x: 0, y: 0 },
+    );
+    // dx = 200 - 1820 = -1620 → 远 → tanh 饱和负方向
+    expect(f.eyeOffsetX).toBeLessThan(-MAX_EYE_OFFSET * 0.9);
+    // dy = 200 - 1100 = -900 → 远 → Y 也饱和负方向（但 weight 0.75）
+    expect(f.eyeOffsetY).toBeLessThan(-MAX_EYE_OFFSET * 0.6);
   });
 
   it("光标在桌宠正左 → eyeOffsetX 为负", () => {

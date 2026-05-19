@@ -29,8 +29,17 @@ export const IDLE_TO_SLEEP_SECS = 10;
 export const TYPING_PULSE_SECS = 0.4;
 export const ALERT_PX = 80;
 export const EXCITED_PX = 30;
-export const MAX_EYE_OFFSET = 0.6;       // SVG 单位（16×16 viewBox）
-export const EYE_FALLOFF_PX = 200;       // 鼠标 200px 外瞳孔已偏到极限
+export const MAX_EYE_OFFSET = 1.4;       // SVG 单位（16×16 viewBox）
+/**
+ * 分量化"软饱和"距离：鼠标在 X 方向越过这个值就达到 X 方向最大偏移；Y 同理。
+ *
+ * **关键设计**（2026-05-20 fix）：早期版本用极坐标 `cos(atan2(dy,dx))*r`
+ * 把 (dx,dy) 转成方向 + 距离，结果桌宠常驻屏幕右下角时 mouse 在屏幕大部
+ * 分位置 dy 远大于 dx → 角度接近 -π/2 → eyeOffsetX ≈ 0，用户感受上眼
+ * 球"只会上下不会左右"。改成 tanh(dx/falloff)*MAX 的分量映射后 X 和 Y
+ * 解耦，鼠标 X 方向小幅变化也能看到瞳孔水平偏移。
+ */
+export const EYE_FALLOFF_PX = 180;
 export const CLICK_FLASH_SECS = 0.25;    // 点击后桌宠耳朵抽搐持续时间
 /** "打字风暴"判定：连续这么多秒 sinceKey 都 < 0.15 → 用户大概率在狂打 / 退格挣扎 */
 export const TYPING_STORM_DURATION_SECS = 1.5;
@@ -104,14 +113,11 @@ export function deriveCompanionFrame(
   const dy = localCursorY - petCenter.y;
   const dist = Math.hypot(dx, dy);
 
-  // 眼球偏移
-  let eyeOffsetX = 0, eyeOffsetY = 0;
-  if (dist > 0.5 && Number.isFinite(dist)) {
-    const norm = Math.min(1, dist / EYE_FALLOFF_PX);
-    const ang = Math.atan2(dy, dx);
-    eyeOffsetX = Math.cos(ang) * norm * MAX_EYE_OFFSET;
-    eyeOffsetY = Math.sin(ang) * norm * MAX_EYE_OFFSET * 0.85;
-  }
+  // 眼球偏移 —— 分量化软饱和（tanh），X / Y 解耦
+  // tanh(dx / EYE_FALLOFF_PX) ∈ (-1, 1)：dx=0 时 0，dx=±falloff 时 ±0.76，
+  // 远距离逐渐饱和到 ±1。比线性 clamp 更"自然"（小幅鼠标移动也有可见反应）。
+  const eyeOffsetX = Number.isFinite(dx) ? Math.tanh(dx / EYE_FALLOFF_PX) * MAX_EYE_OFFSET : 0;
+  const eyeOffsetY = Number.isFinite(dy) ? Math.tanh(dy / EYE_FALLOFF_PX) * MAX_EYE_OFFSET * 0.75 : 0;
 
   // 2) clicked —— 刚点过鼠标（最高优先级，覆盖 typing/excited 之类，瞬时反应）
   if (tick.sinceClick < CLICK_FLASH_SECS) {
