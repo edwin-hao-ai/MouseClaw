@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>MouseClaw · 一键装上 Browser/Office Use · prototype 2026-05-20</title>
+<style>
+  :root {
+    /* DESIGN.md tokens */
+    --surface-deep: #0a0e1a;
+    --surface-glass: rgba(255,255,255,0.06);
+    --surface-glass-strong: rgba(255,255,255,0.10);
+    --surface-border: rgba(255,255,255,0.10);
+    --panel-bg: rgba(252,252,254,0.98);
+    --bubble-border: rgba(0,0,0,0.06);
+    --text-primary: #1a1a1a;
+    --text-on-dark: #f5f5f7;
+    --text-dim: #a1a1a8;
+    --text-bubble-dim: #6c6c70;
+    --accent-primary: #ff6b9d;
+    --accent-soft: #ff9bb8;
+    --accent-gradient: linear-gradient(135deg, #ff6b9d, #ff9bb8);
+    --accent-glow: rgba(255,107,157,0.15);
+    --success: #5cd6a0;
+    --warn: #ffd166;
+    --danger: #ff5f57;
+    --radius-md: 8px;
+    --radius-xl: 12px;
+    --radius-3xl: 16px;
+    --radius-pill: 999px;
+    --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", sans-serif;
+    --font-mono: ui-monospace, "SF Mono", monospace;
+    --shadow-card: 0 12px 32px rgba(0,0,0,0.35), 0 2px 6px rgba(0,0,0,0.2);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: radial-gradient(ellipse at top, #1a2138 0%, var(--surface-deep) 70%);
+    color: var(--text-on-dark);
+    font-family: var(--font-system);
+    min-height: 100vh;
+  }
+  .page {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 40px 32px 80px;
+  }
+  h1 {
+    font-size: 28px; font-weight: 700; margin: 0 0 8px;
+    letter-spacing: -0.01em;
+  }
+  .subtitle { color: var(--text-dim); font-size: 14px; margin-bottom: 32px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));
+    gap: 28px;
+  }
+  .state {
+    background: var(--surface-glass);
+    border: 1px solid var(--surface-border);
+    border-radius: var(--radius-3xl);
+    padding: 20px;
+    backdrop-filter: blur(20px);
+  }
+  .state-title {
+    font-size: 13px; font-weight: 600;
+    color: var(--accent-soft);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 14px;
+  }
+  /* Card = onboarding/panel surface */
+  .card {
+    background: var(--panel-bg);
+    color: var(--text-primary);
+    border-radius: var(--radius-3xl);
+    border: 1px solid var(--bubble-border);
+    box-shadow: var(--shadow-card);
+    padding: 22px 22px 18px;
+  }
+  .card h2 {
+    font-size: 17px; font-weight: 700; margin: 0 0 4px;
+  }
+  .card .lead {
+    font-size: 13px; color: var(--text-bubble-dim); margin: 0 0 18px;
+  }
+  /* CLI row */
+  .cli {
+    border: 1px solid var(--bubble-border);
+    border-radius: var(--radius-xl);
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    background: #fff;
+    display: grid;
+    grid-template-columns: 22px 1fr auto;
+    gap: 10px;
+    align-items: center;
+  }
+  .cli .icon {
+    width: 22px; height: 22px;
+    border-radius: 6px;
+    display: grid; place-items: center;
+    font-size: 13px;
+    background: linear-gradient(135deg, #f4f4f7, #e8e8ec);
+  }
+  .cli .name {
+    font-size: 13.5px; font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.3;
+  }
+  .cli .meta {
+    font-size: 12px; color: var(--text-bubble-dim);
+    margin-top: 2px;
+  }
+  .cli .check {
+    width: 18px; height: 18px;
+    border-radius: 5px;
+    border: 1.5px solid #c8c8d0;
+    background: #fff;
+    display: grid; place-items: center;
+    color: #fff;
+    font-size: 12px; line-height: 1;
+  }
+  .cli .check.on {
+    background: var(--accent-gradient);
+    border-color: transparent;
+  }
+  .cli .check.on::after { content: "✓"; }
+  /* Progress bar */
+  .progress {
+    grid-column: 2 / 4;
+    height: 6px;
+    border-radius: var(--radius-pill);
+    background: #ececef;
+    overflow: hidden;
+    margin-top: 8px;
+    position: relative;
+  }
+  .progress > div {
+    height: 100%;
+    background: var(--accent-gradient);
+    border-radius: var(--radius-pill);
+    transition: width 0.4s ease;
+  }
+  .progress.indet > div {
+    width: 40% !important;
+    animation: indet 1.4s ease-in-out infinite;
+  }
+  @keyframes indet {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(280%); }
+  }
+  .status-line {
+    grid-column: 2 / 4;
+    font-size: 11.5px;
+    color: var(--text-bubble-dim);
+    margin-top: 6px;
+    font-family: var(--font-mono);
+  }
+  .status-line.ok    { color: #14a268; }
+  .status-line.warn  { color: #b58900; }
+  .status-line.error { color: #b8302c; }
+  /* Buttons */
+  .btn {
+    border: 0;
+    border-radius: var(--radius-pill);
+    padding: 9px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .btn.primary {
+    background: var(--accent-gradient);
+    color: #fff;
+    box-shadow: 0 4px 12px var(--accent-glow);
+  }
+  .btn.ghost {
+    background: transparent;
+    color: var(--text-bubble-dim);
+  }
+  .btn.sm { padding: 5px 11px; font-size: 12px; }
+  .btn.danger-ghost { color: #b8302c; }
+  .row-actions {
+    display: flex; gap: 10px; align-items: center;
+    justify-content: space-between;
+    margin-top: 14px;
+  }
+  .link {
+    color: var(--accent-primary);
+    font-size: 12px;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .link:hover { text-decoration: underline; }
+  /* Code reveal */
+  details.cmd {
+    margin: 10px 0 0;
+    background: #f6f6f8;
+    border-radius: var(--radius-md);
+    padding: 8px 10px;
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: #3a3a40;
+  }
+  details.cmd summary {
+    cursor: pointer;
+    font-family: var(--font-system);
+    color: var(--text-bubble-dim);
+    font-size: 12px;
+    list-style: none;
+  }
+  details.cmd summary::before { content: "▸ "; }
+  details.cmd[open] summary::before { content: "▾ "; }
+  details.cmd pre {
+    margin: 8px 0 0; white-space: pre-wrap; word-break: break-all;
+  }
+  /* Status page row (separate state) */
+  .status-card {
+    background: var(--panel-bg);
+    color: var(--text-primary);
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--bubble-border);
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    display: grid;
+    grid-template-columns: 14px 1fr auto;
+    gap: 12px;
+    align-items: center;
+  }
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    box-shadow: 0 0 0 3px rgba(0,0,0,0.04);
+  }
+  .dot.red  { background: var(--danger); }
+  .dot.amber{ background: var(--warn); }
+  .dot.green{ background: var(--success); }
+  .status-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+  .status-sub   { font-size: 12px; color: var(--text-bubble-dim); margin-top: 2px; }
+  .hint {
+    font-size: 12px; color: var(--text-dim); margin-top: 14px;
+    line-height: 1.5;
+  }
+  .badge {
+    display: inline-block;
+    font-size: 10.5px; font-weight: 600;
+    padding: 2px 7px; border-radius: var(--radius-pill);
+    background: var(--accent-glow); color: var(--accent-primary);
+    margin-left: 6px;
+    vertical-align: 1px;
+  }
+  .badge.ok   { background: rgba(92,214,160,0.18); color: #14a268; }
+  .badge.warn { background: rgba(255,209,102,0.22); color: #a07700; }
+  .step-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--accent-glow); color: var(--accent-primary);
+    font-size: 11px; font-weight: 600;
+    padding: 3px 10px; border-radius: var(--radius-pill);
+    margin-bottom: 12px;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>🦞 Auto-install Browser / Office Use · prototype</h1>
+  <div class="subtitle">2026-05-20 · 拍板视觉后再写 Rust/TS · 全部状态同屏对比</div>
+
+  <div class="grid">
+
+  <!-- STATE 1 -->
+  <section class="state">
+    <div class="state-title">① Onboarding 第二步 · 默认勾选</div>
+    <div class="card">
+      <div class="step-chip">第 2 / 3 步</div>
+      <h2>给老鼠装上动手能力</h2>
+      <p class="lead">两个开源 CLI，让老鼠真能操作浏览器和 Office 文件。约 30–60 秒。</p>
+
+      <div class="cli">
+        <span class="icon">🌐</span>
+        <div>
+          <div class="name">Browser Use · <span style="font-weight:500">agent-browser</span></div>
+          <div class="meta">让老鼠操作浏览器 · @vercel · 需要 Node</div>
+        </div>
+        <span class="check on"></span>
+      </div>
+
+      <div class="cli">
+        <span class="icon">📄</span>
+        <div>
+          <div class="name">Office Use · <span style="font-weight:500">OfficeCLI</span> <span class="badge ok">无需账号</span></div>
+          <div class="meta">读写 Word / Excel / PPT · @iOfficeAI · 单二进制</div>
+        </div>
+        <span class="check on"></span>
+      </div>
+
+      <details class="cmd">
+        <summary>显示要执行的完整命令</summary>
+        <pre>npm i -g @vercel/agent-browser
+curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash</pre>
+      </details>
+
+      <div class="row-actions">
+        <a class="link">跳过 · 之后在状态页装</a>
+        <button class="btn primary">装好这两个 →</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATE 2 -->
+  <section class="state">
+    <div class="state-title">② 安装中 · 并行 + 流式日志</div>
+    <div class="card">
+      <div class="step-chip">第 2 / 3 步 · 安装中</div>
+      <h2>正在装上动手能力…</h2>
+      <p class="lead">两个并行跑。可以收起这一步去看其它，装完会通知你。</p>
+
+      <div class="cli">
+        <span class="icon">🌐</span>
+        <div>
+          <div class="name">agent-browser</div>
+          <div class="meta">npm 全局安装中</div>
+        </div>
+        <span style="font-size:12px;color:var(--text-bubble-dim);">62%</span>
+        <div class="progress"><div style="width:62%"></div></div>
+        <div class="status-line">npm http fetch GET 200 https://registry.npmjs.org/playwright</div>
+      </div>
+
+      <div class="cli">
+        <span class="icon">📄</span>
+        <div>
+          <div class="name">OfficeCLI</div>
+          <div class="meta">下载 macOS arm64 二进制</div>
+        </div>
+        <span style="font-size:12px;color:var(--success);font-weight:600;">✓</span>
+        <div class="progress"><div style="width:100%"></div></div>
+        <div class="status-line ok">✓ 装到 /usr/local/bin/officecli · 12.4 MB · 2.1 s</div>
+      </div>
+
+      <div class="row-actions">
+        <a class="link">查看完整日志 →</a>
+        <button class="btn ghost">最小化</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATE 3 -->
+  <section class="state">
+    <div class="state-title">③ 全部装好 · 高亮继续</div>
+    <div class="card">
+      <div class="step-chip" style="background:rgba(92,214,160,0.18); color:#14a268;">✓ 完成</div>
+      <h2>动手能力已就位</h2>
+      <p class="lead">现在让老鼠帮你操作浏览器 / 改 Office 文件，它都做得到了。</p>
+
+      <div class="cli">
+        <span class="icon">🌐</span>
+        <div>
+          <div class="name">agent-browser</div>
+          <div class="meta ok" style="color:#14a268;">✓ v0.18.2 · 装在 ~/.npm-global/bin/</div>
+        </div>
+        <span style="font-size:14px;color:var(--success);font-weight:700;">✓</span>
+      </div>
+
+      <div class="cli">
+        <span class="icon">📄</span>
+        <div>
+          <div class="name">OfficeCLI</div>
+          <div class="meta" style="color:#14a268;">✓ v2.4.1 · 装在 /usr/local/bin/officecli</div>
+        </div>
+        <span style="font-size:14px;color:var(--success);font-weight:700;">✓</span>
+      </div>
+
+      <div class="row-actions">
+        <span style="font-size:12px;color:var(--text-bubble-dim);">用时 47 秒</span>
+        <button class="btn primary">继续 · 下一步</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATE 4 -->
+  <section class="state">
+    <div class="state-title">④ agent-browser 装不了 · 没 Node</div>
+    <div class="card">
+      <h2>差一步 · 还需要先装 Node.js</h2>
+      <p class="lead">agent-browser 走 npm 装，你机器上还没有 Node。OfficeCLI 不依赖 Node 已经装好。</p>
+
+      <div class="cli">
+        <span class="icon">🌐</span>
+        <div>
+          <div class="name">agent-browser</div>
+          <div class="meta" style="color:#b8302c;">⚠️ 没找到 npm · 装 Node 之后回来这里再装</div>
+        </div>
+        <button class="btn sm primary">打开 nodejs.org →</button>
+      </div>
+
+      <div class="cli">
+        <span class="icon">📄</span>
+        <div>
+          <div class="name">OfficeCLI</div>
+          <div class="meta" style="color:#14a268;">✓ v2.4.1 · 已就位</div>
+        </div>
+        <span style="font-size:14px;color:var(--success);font-weight:700;">✓</span>
+      </div>
+
+      <div class="hint">
+        装好 Node 之后老鼠会自动检测到，状态页那行会自己变绿，不用重启。
+      </div>
+
+      <div class="row-actions">
+        <a class="link">先这样 · 之后再装</a>
+        <button class="btn primary">继续 · 下一步</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATE 5 -->
+  <section class="state">
+    <div class="state-title">⑤ OfficeCLI 失败 · 网络断 / 权限</div>
+    <div class="card">
+      <h2>OfficeCLI 没装成 · 给你三条出路</h2>
+      <p class="lead">下载脚本中途失败。下面三种走法你挑一个：</p>
+
+      <div class="cli">
+        <span class="icon">📄</span>
+        <div>
+          <div class="name">OfficeCLI</div>
+          <div class="meta" style="color:#b8302c;">⚠️ curl: (7) Failed to connect to raw.githubusercontent.com</div>
+        </div>
+        <button class="btn sm primary">重试</button>
+      </div>
+
+      <details class="cmd" open>
+        <summary>三个选项</summary>
+        <pre>① 检查网络 / VPN → 点「重试」
+② 直接下载二进制 → 打开 releases 页 → 把 officecli-mac-arm64 拖到 /usr/local/bin/
+③ 手动跑安装脚本（看清楚再粘）：
+   curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash</pre>
+      </details>
+
+      <div class="row-actions">
+        <a class="link">打开 GitHub releases →</a>
+        <button class="btn ghost">跳过 · 之后再装</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATE 6 -->
+  <section class="state">
+    <div class="state-title">⑥ 状态页 · 三态过渡（未装 → 装中 → 绿）</div>
+
+    <div class="status-card">
+      <span class="dot red"></span>
+      <div>
+        <div class="status-title">Office Use · OfficeCLI</div>
+        <div class="status-sub">还差一步 · 让老鼠能改 Word/Excel/PPT</div>
+      </div>
+      <button class="btn primary sm">装上 →</button>
+    </div>
+
+    <div class="status-card">
+      <span class="dot amber"></span>
+      <div>
+        <div class="status-title">Office Use · OfficeCLI <span class="badge warn">安装中</span></div>
+        <div class="status-sub" style="font-family:var(--font-mono);font-size:11.5px;">下载二进制 8.4 / 12.4 MB…</div>
+      </div>
+      <a class="link">取消</a>
+    </div>
+
+    <div class="status-card">
+      <span class="dot green"></span>
+      <div>
+        <div class="status-title">Office Use · OfficeCLI</div>
+        <div class="status-sub" style="color:#14a268;">✓ v2.4.1 · 装在 /usr/local/bin/officecli</div>
+      </div>
+      <a class="link">检查更新</a>
+    </div>
+
+    <div class="hint">
+      Browser Use 那行是同样的三态。装完 60 秒内状态行自己变绿，不需要重启 app。
+    </div>
+  </section>
+
+  </div>
+
+  <div style="margin-top:48px; color:var(--text-dim); font-size:12px; line-height:1.7;">
+    <strong style="color:var(--text-on-dark);">设计约束 reminder</strong><br>
+    • 所有 curl|bash / npm i -g 命令必须在「显示完整命令」里全文可见，不藏。<br>
+    • 没 npm 就不假装能一键装 Node，引导到 nodejs.org 比静默失败强。<br>
+    • 安装失败的每条路径都给"下一步具体动作"，不甩 stack trace。<br>
+    • 状态页轮询 1.5s，装完不需要重启 app。<br>
+    • 跳过永远存在 —— 不强制，但默认勾上。
+  </div>
+</div>
+</body>
+</html>
