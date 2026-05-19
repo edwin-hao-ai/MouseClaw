@@ -25,7 +25,8 @@ import { invoke } from "@tauri-apps/api/core";
 
 const PADDING_PX = 24;       // 给 drop-shadow / 圆角留点透气
 const DEBOUNCE_MS = 16;      // 一帧 60fps
-const POLL_FALLBACK_MS = 250; // 兜底轮询
+const POLL_FALLBACK_MS = 1000; // 兜底轮询（v0.4 fix · 250ms → 1s，亚像素抖动放大成飘移的元凶）
+const CHANGE_THRESHOLD_PX = 4; // v0.4 fix · 变化 < 4px 不 invoke（ceil + 亚像素 → 1-2px 噪声）
 
 /** 需要纳入测量的 UI 元素选择器（按类名 / data-testid 找）。新加的浮窗 UI 也加这里。 */
 const VISIBLE_UI_SELECTORS = [
@@ -71,9 +72,13 @@ export function useAdaptiveOverlay(
         if (r.bottom > maxY) maxY = r.bottom;
       });
       if (minX === Infinity) return;
-      const w = Math.ceil(maxX - minX + PADDING_PX);
-      const h = Math.ceil(maxY - minY + PADDING_PX);
-      if (w === lastSizeRef.current.w && h === lastSizeRef.current.h) return;
+      // v0.4 fix (2026-05-20)：Math.ceil 永远向上取整 + 亚像素 getBoundingClientRect
+      // 会被放大成单向累积飘移。改用 Math.round + 4px 容差阈值。
+      const w = Math.round(maxX - minX + PADDING_PX);
+      const h = Math.round(maxY - minY + PADDING_PX);
+      const dw = Math.abs(w - lastSizeRef.current.w);
+      const dh = Math.abs(h - lastSizeRef.current.h);
+      if (dw < CHANGE_THRESHOLD_PX && dh < CHANGE_THRESHOLD_PX) return;
       lastSizeRef.current = { w, h };
       invoke("set_overlay_content_size", { width: w, height: h }).catch(() => {});
     };

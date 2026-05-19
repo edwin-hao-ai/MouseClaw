@@ -289,6 +289,11 @@ pub fn on_drag_leave(app: &AppHandle, state: &Arc<AppState>) {
 ///   3. 400ms ease-out cubic 插值窗口位置 → 鼠标位置
 ///   4. 动画结束才启用 cursor_follow，30fps 跟着鼠标走（直到 drop / leave）
 pub fn on_drag_enter(app: &AppHandle, state: &Arc<AppState>) {
+    // v0.4 fix (2026-05-20)：清掉待处理的 leave debounce —— 否则 200ms 内
+    // re-enter 时旧 leave 仍会在 commit 时把 feed_drag_active 设回 false，
+    // 跟新启动的 run_to_cursor 任务打架（老任务下一帧看到 false 也退出，
+    // 新任务跟着第二次 enter 启动，整体看就是"飘+死"）。
+    *state.feed_last_leave.lock().unwrap() = None;
     // 重复 enter（macOS 会反复触发）：仅在第一次启动动画
     if state.feed_drag_active.swap(true, Ordering::SeqCst) {
         return;

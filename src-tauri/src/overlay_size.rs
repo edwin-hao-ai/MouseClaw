@@ -70,21 +70,58 @@ pub fn set_to_explicit(app: &AppHandle, want_w: f64, want_h: f64) {
         let cur_y = pos.y as f64 / scale;
         let cur_w = size.width as f64 / scale;
         let cur_h = size.height as f64 / scale;
-        // 已经一致就 no-op，避免每帧 set_size 的抖动
-        if (cur_w - w).abs() < 0.5 && (cur_h - h).abs() < 0.5 {
+        // v0.4 fix (2026-05-20)：把容差从 0.5px 提到 3px。useAdaptiveOverlay
+        // 用 Math.ceil + 亚像素 getBoundingClientRect → 经常飘 1-2px，老阈值挡不住
+        // → 触发 resize → 锚点保持反算又造成 1-2px 偏移 → 累积 → 桌宠"飘"+ crash。
+        if (cur_w - w).abs() < 3.0 && (cur_h - h).abs() < 3.0 {
             return;
         }
         let pet_cx = cur_x + cur_w * PET_X_OFFSET_RATIO;
         let pet_cy = cur_y + cur_h - PET_BOTTOM_OFFSET;
-        let new_x = pet_cx - w * PET_X_OFFSET_RATIO;
-        let new_y = pet_cy - (h - PET_BOTTOM_OFFSET);
-        // 内容驱动尺寸不切 CURRENT_MODE —— 复用 expanded 标记让 pet_passthrough 走全窗 hit-box
+        let raw_new_x = pet_cx - w * PET_X_OFFSET_RATIO;
+        let raw_new_y = pet_cy - (h - PET_BOTTOM_OFFSET);
+        // v0.4 fix · clamp 到 visibleFrame 防止累积飘移把窗口推出屏幕导致 NSWindow
+        // 收到非法 frame crash。用 macOS visibleFrame（已扣 menubar + dock）。
+        let (new_x, new_y) = clamp_to_screen(raw_new_x, raw_new_y, w, h);
         CURRENT_MODE.store(1, Ordering::Relaxed);
         LAST_PET_CENTER_X.store(pet_cx as i32, Ordering::Relaxed);
         LAST_PET_CENTER_Y.store(pet_cy as i32, Ordering::Relaxed);
         let _ = window.set_size(LogicalSize::new(w, h));
         let _ = window.set_position(LogicalPosition::new(new_x, new_y));
     });
+}
+
+/// 把 (x, y) clamp 到主屏 visibleFrame 内（top-left origin, logical pt），让宽 w / 高 h
+/// 的窗口仍完整在屏幕内。返回 (safe_x, safe_y)。
+/// 主屏拿不到 → 返回原值（兜底退化）。
+fn clamp_to_screen(x: f64, y: f64, w: f64, h: f64) -> (f64, f64) {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some((sx, sy, sw, sh)) = visible_frame_top_left() {
+            let max_x = sx + sw - w;
+            let max_y = sy + sh - h;
+            let safe_x = x.clamp(sx, max_x.max(sx));
+            let safe_y = y.clamp(sy, max_y.max(sy));
+            return (safe_x, safe_y);
+        }
+    }
+    (x, y)
+}
+
+#[cfg(target_os = "macos")]
+fn visible_frame_top_left() -> Option<(f64, f64, f64, f64)> {
+    use cocoa::base::id;
+    use cocoa::foundation::NSRect;
+    use objc::{class, msg_send, sel, sel_impl};
+    unsafe {
+        let screen: id = msg_send![class!(NSScreen), mainScreen];
+        if screen as usize == 0 { return None; }
+        let full: NSRect = msg_send![screen, frame];
+        let visible: NSRect = msg_send![screen, visibleFrame];
+        let screen_h = full.size.height;
+        let top_y = screen_h - (visible.origin.y + visible.size.height);
+        Some((visible.origin.x, top_y, visible.size.width, visible.size.height))
+    }
 }
 
 fn set_mode(app: &AppHandle, new_size: f64, mode_tag: u32) {
