@@ -325,6 +325,10 @@ fn current_pasteboard_text() -> Option<String> {
 #[cfg(not(target_os = "macos"))]
 fn current_pasteboard_text() -> Option<String> { None }
 
+/// 公共导出 —— selection.rs / 其它 ambient 通道也需要这条 frontmost app 信息
+/// 来命中 SENSITIVE_BUNDLES。重复实现成本高于直接 re-export。
+pub fn frontmost_app_pub() -> (String, String) { frontmost_app() }
+
 /// 拿前台 app 的 (bundle_id, display_name)
 #[cfg(target_os = "macos")]
 fn frontmost_app() -> (String, String) {
@@ -391,7 +395,7 @@ fn on_clipboard_changed() -> Result<()> {
         }
     }
     // v0.4 · reactive hook —— 在 move 之前发事件给前端
-    crate::reactive::on_new_clip(id, &text, &bundle);
+    crate::reactive::on_new_text(crate::reactive::Source::Clipboard, &text, &bundle);
 
     hist.push_back(ClipItem {
         id, kind: "text".into(), text, app_bundle: bundle, app_name: name,

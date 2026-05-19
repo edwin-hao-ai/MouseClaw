@@ -1,11 +1,11 @@
-//! Clipboard-driven actions（v0.4+）
+//! Reactive 桌宠 ribbon 动作执行（v0.4+）
 //!
-//! 用户 hover 桌宠 → 弹 T3 action panel → 点动作（清理 / 翻译 / 解释 / ...）
-//! → 前端 invoke `process_clipboard_action(clip_id, action)`
-//! → 这里取剪贴板内容 → 拼 prompt → 调后台 CLI → 写回剪贴板 + 返回结果给前端
+//! 用户 hover 桌宠头顶 ribbon → 点动作（清理 / 翻译 / 解释 / 写回信）
+//! → 前端 invoke `process_reactive_action(action)`
+//! → 这里从 `reactive::LAST_TEXT` 缓存读最新触发的原文（剪贴板或选词都行）
+//! → 拼 prompt → 调后台 CLI → 写回剪贴板 + 返回结果给前端
 //!
-//! MVP 只 wire "clean"（清理格式），其他 action 走同一 prompt template 框架，
-//! 加几行就能扩。
+//! 命令命名故意不带 "clipboard"，因为来源可能是 selection。前端不需要传 source。
 
 use anyhow::{bail, Context, Result};
 use std::process::Stdio;
@@ -13,32 +13,31 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 
 /// 前端 Tauri command 入口。
 ///
-/// 返回最终清洗后的纯文本。失败时返回错误字符串（友好可显示）。
+/// 返回最终处理后的纯文本。失败时返回错误字符串（友好可显示）。
 /// 副作用：处理完会把结果写回系统剪贴板，用户 ⌘V 直接粘贴。
 #[tauri::command]
-pub async fn process_clipboard_action(clip_id: u64, action: String) -> Result<String, String> {
-    let text = crate::clipboard::get_text(clip_id)
-        .ok_or_else(|| "未找到对应剪贴板条目（可能已被清理）".to_string())?;
+pub async fn process_reactive_action(action: String) -> Result<String, String> {
+    let text = crate::reactive::take_last_text()
+        .ok_or_else(|| "没有待处理的剪贴板 / 选词内容（可能已超时）".to_string())?;
     if text.trim().is_empty() {
-        return Err("剪贴板条目为空".into());
+        return Err("待处理内容为空".into());
     }
     let prompt = build_prompt(&action, &text)
         .map_err(|e| e.to_string())?;
     let result = run_claude_text_only(&prompt).await
         .map_err(|e| format!("调用后台失败：{e}"))?;
-    let cleaned = result.trim().to_string();
+    let cleaned = strip_wrappers(result.trim());
     if cleaned.is_empty() {
         return Err("后台返回空结果".into());
     }
     if let Err(e) = write_to_pasteboard(&cleaned) {
         eprintln!("[mouseclaw] 📋 write back failed: {e}");
-        // 不 fail —— 用户至少能看到结果
     }
     Ok(cleaned)
 }
 
-/// 按 action 选择不同的系统提示词。MVP 只填 "clean"，其他先占位（返回错误，前端能识别）。
-fn build_prompt(action: &str, text: &str) -> Result<String> {
+/// 按 action 选择不同的系统提示词。
+pub fn build_prompt(action: &str, text: &str) -> Result<String> {
     let body = match action {
         "clean" => format!(
             "请把下面这段文字的格式清理一下：\n\
@@ -64,15 +63,49 @@ fn build_prompt(action: &str, text: &str) -> Result<String> {
              - 只输出解释本身，不要加引号 / 标题 / Markdown\n\n\
              ===== 原文 START =====\n{text}\n===== 原文 END ====="
         ),
-        "reply" => bail!("'reply' 还未实现，下个版本支持"),
+        "reply" => format!(
+            "请给下面这段消息写一段恰当的回复（语言与原消息一致）：\n\
+             - 语气客气、专业、简洁，3-5 句话\n\
+             - 如果原文是问题：先简短答复，再补 1 句澄清 / 后续\n\
+             - 如果原文是请求：先回复是否能做 + 时间 / 条件\n\
+             - 如果原文是邮件 / 长信：开头不要 'Dear X'，直接进正文（用户可能贴到自己的邮件 / IM 里）\n\
+             - 只输出回复正文，不要加 'Reply:' / 引号 / Markdown / 签名\n\n\
+             ===== 原文 START =====\n{text}\n===== 原文 END ====="
+        ),
         _ => bail!("未知 action: {action}"),
     };
     Ok(body)
 }
 
-/// 跑 claude CLI 拿一段纯文本结果。
-/// 复用 claude_cli 的二进制定位 / PATH 拓宽 / workspace cwd，但用更简单的 stdin 注入 prompt
-/// 而非走 stream-json（这是个单次纯文本回包动作，不需要 token-level streaming）。
+/// AI 可能不听话给加 ``` 或 "" 包裹 —— 这里兜底剥掉。
+fn strip_wrappers(s: &str) -> String {
+    let trimmed = s.trim();
+    // 三反引号包裹（带 / 不带 lang 标签）
+    if let Some(inner) = trimmed.strip_prefix("```") {
+        if let Some(end) = inner.rfind("```") {
+            // 去掉可能的语言标识（第一行短词）
+            let body = &inner[..end];
+            let body = body
+                .split_once('\n')
+                .map(|(_, rest)| rest)
+                .unwrap_or(body);
+            return body.trim().to_string();
+        }
+    }
+    // 一对双引号 / 中文引号
+    let pairs = [('"', '"'), ('"', '"'), ('\'', '\''), ('「', '」')];
+    for (open, close) in pairs {
+        if trimmed.starts_with(open) && trimmed.ends_with(close) && trimmed.chars().count() > 2 {
+            let mut iter = trimmed.chars();
+            iter.next();
+            let mut s: String = iter.collect();
+            s.pop();
+            return s.trim().to_string();
+        }
+    }
+    trimmed.to_string()
+}
+
 async fn run_claude_text_only(prompt: &str) -> Result<String> {
     let bin = crate::claude_cli::find_binary("claude")
         .context("找不到 claude CLI")?;
@@ -88,7 +121,7 @@ async fn run_claude_text_only(prompt: &str) -> Result<String> {
 
     cmd.arg("-p").arg(prompt)
         .arg("--permission-mode").arg("auto")
-        .arg("--allowedTools").arg("");  // 纯文本任务，不需要任何 tool
+        .arg("--allowedTools").arg("");
 
     let mut child = cmd
         .stdout(Stdio::piped())
@@ -111,9 +144,6 @@ async fn run_claude_text_only(prompt: &str) -> Result<String> {
     Ok(out)
 }
 
-/// 把结果写回系统剪贴板（macOS NSPasteboard）。
-/// 故意不更新 clipboard.rs 的历史 —— 这条是"老鼠帮你处理过的结果"，
-/// 不是用户主动复制的，混进历史会污染时间线。
 #[cfg(target_os = "macos")]
 fn write_to_pasteboard(text: &str) -> Result<()> {
     use cocoa::base::{id, nil, BOOL, YES};
@@ -142,4 +172,70 @@ fn write_to_pasteboard(text: &str) -> Result<()> {
 #[cfg(not(target_os = "macos"))]
 fn write_to_pasteboard(_text: &str) -> Result<()> {
     bail!("write_to_pasteboard 仅支持 macOS");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_prompt_clean() {
+        let p = build_prompt("clean", "Hello  world").unwrap();
+        assert!(p.contains("清理"));
+        assert!(p.contains("Hello  world"));
+        // clean 必须明确"不要改写、不要翻译"否则 AI 会自作主张
+        assert!(p.contains("不要翻译"));
+        // clean 主指令是"清理一下"
+        assert!(p.contains("格式清理"));
+    }
+
+    #[test]
+    fn build_prompt_translate() {
+        let p = build_prompt("translate", "Hello world").unwrap();
+        assert!(p.contains("翻译"));
+        assert!(p.contains("自动判断语向"));
+    }
+
+    #[test]
+    fn build_prompt_explain() {
+        let p = build_prompt("explain", "fn main() {}").unwrap();
+        assert!(p.contains("解释"));
+        assert!(p.contains("代码"));
+    }
+
+    #[test]
+    fn build_prompt_reply() {
+        let p = build_prompt("reply", "Hi can you confirm?").unwrap();
+        assert!(p.contains("回复"));
+        assert!(p.contains("Hi can you confirm?"));
+    }
+
+    #[test]
+    fn build_prompt_unknown_fails() {
+        assert!(build_prompt("hack-me", "x").is_err());
+        assert!(build_prompt("", "x").is_err());
+    }
+
+    #[test]
+    fn strip_backticks() {
+        let s = "```rust\nlet x = 1;\n```";
+        assert_eq!(strip_wrappers(s), "let x = 1;");
+    }
+
+    #[test]
+    fn strip_no_lang_backticks() {
+        let s = "```\nhello\nworld\n```";
+        assert_eq!(strip_wrappers(s), "hello\nworld");
+    }
+
+    #[test]
+    fn strip_quotes() {
+        assert_eq!(strip_wrappers("\"hello\""), "hello");
+        assert_eq!(strip_wrappers("「中文」"), "中文");
+    }
+
+    #[test]
+    fn strip_passthrough() {
+        assert_eq!(strip_wrappers("plain text"), "plain text");
+    }
 }

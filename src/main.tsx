@@ -1,6 +1,13 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "./styles/tokens.css";
+import { shouldInstallDevTauriMock, installDevTauriMock } from "./lib/dev-tauri-mock";
+
+// v0.4 E2E · 普通 Chromium / Chrome MCP 跑组件时装上 Tauri 桩。
+// 触发：localStorage.setItem("mouseclaw.e2e.tauriMock", "1") + reload。
+if (shouldInstallDevTauriMock()) {
+  installDevTauriMock();
+}
 
 // Route based on ?view= query param so a single bundle serves four windows:
 //   ?view=history    → HistoryView

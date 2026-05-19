@@ -2,21 +2,23 @@
 //!
 //! 设计原型：`docs/prototypes/reactive-pet-20260519.html`
 //!
-//! 用户复制 / 选词 → 老鼠立刻有反应，但 99% 情况只是纯像素动画（抖耳 / 瞟眼），
-//! 不弹按钮、不出 UI。只在内容"看着值得处理"时升级到 tier 2（头顶飘小图标），
-//! 用户主动 hover 桌宠才到 tier 3（动作面板，前端本地展开，不走后端事件）。
+//! 用户复制 / 选词 → 老鼠立刻有反应。99% 情况只是抖耳（T1，无 UI），
+//! 内容"看着值得处理"时升级到 T2（头顶 ribbon 弹按钮）。
+//!
+//! ## 两条 source 共用同一管道
+//! - `Source::Clipboard` —— `clipboard.rs` 的 500ms 轮询发现新 NSPasteboard
+//! - `Source::Selection` —— `selection.rs` 的 500ms 轮询发现 AXSelectedText 变化
+//!
+//! 两者都调 `on_new_text()` → classify → 缓存原文 → emit `clipboard-reactive` 事件。
+//! 前端 ribbon 在 idle 收到事件时弹按钮；点按钮 → invoke `process_reactive_action`
+//! → 后端从 LAST_TEXT 缓存读最新一条 → 喂给 claude CLI → 写回剪贴板。
 //!
 //! ## Tier 决策
-//! - Silent  : 短复制 < 20 字 / 高熵密码串 / 敏感前台 app —— 不发事件
-//! - T1 Acknowledge : 默认通过，前端表现 = 抖耳 ~400ms，零 UI
-//! - T2 Hint        : 内容看着可处理（URL / 代码 / 乱格式 / 长文本）
-//!
-//! ## 为什么不在 backend 里做 2s paste suppression
-//! macOS 没有"用户按了 ⌘V"事件可监听（要 Accessibility 全权限）。
-//! 替代设计：T2 头顶图标 2.5s 自动消失 —— 用户搬运完早就移走视线，
-//! 那点像素动画属于"察觉到但没打扰"。explicit suppression 留到 v0.5。
+//! - Silent : 短复制 < 20 字 / 高熵密码串 / 敏感前台 → 不发事件
+//! - T1     : 默认通过，前端表现 = 抖耳 ~400ms，零 UI
+//! - T2     : 内容看着可处理（URL / 代码 / 乱格式 / 长文本）→ 抖耳 + 弹 ribbon
 
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
@@ -24,51 +26,57 @@ pub const EV_CLIPBOARD_REACTIVE: &str = "clipboard-reactive";
 
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 
-/// 启动时由 lib.rs 调用一次。OnceLock 保证只能 set 一次；重复调用静默忽略。
+/// 最近一次触发 reactive 的原文（供 process_reactive_action 取用）。
+///
+/// 设计取舍：原文最大 1MB，每次 emit 都塞进事件 payload 会冲爆 IPC；
+/// 改成"缓存最近一条 + 前端 invoke 命令时后端读它"。一次只服务一个动作，
+/// 用户在 ribbon 显示期间不会同时连发多个 action，竞争窗口 < 几秒，安全。
+pub static LAST_TEXT: once_cell::sync::Lazy<Mutex<Option<String>>> =
+    once_cell::sync::Lazy::new(|| Mutex::new(None));
+
 pub fn init(app: AppHandle) {
     let _ = APP_HANDLE.set(app);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Source {
+    /// 来自系统剪贴板的新条目
+    Clipboard,
+    /// 来自 Accessibility 选区（用户在某个 app 里选中了文字）
+    Selection,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ReactiveTier {
-    /// T1 · 默默抖耳，没 UI。
     Acknowledge,
-    /// T2 · 头顶飘小图标，2.5s 自动消失。
     Hint,
 }
 
-/// 头顶图标暗示 —— 给用户一个"老鼠看到了你大概想干嘛"的弱提示。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HintIcon {
-    /// 📝 看着像乱格式（多空格 / 多换行）
     Format,
-    /// 🌐 看着像跨语言文本（V1 暂不启用，保留 enum 给 v0.5）
     Translate,
-    /// 💻 看着像代码（花括号 / 关键字 / 多分号）
     Code,
-    /// 🔗 看着像 URL
     Url,
-    /// ✨ 单纯就是长文本
     Generic,
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct ClipboardReactivePayload {
+pub struct ReactivePayload {
+    pub source: Source,
     pub tier: ReactiveTier,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<HintIcon>,
-    #[serde(rename = "clipId")]
-    pub clip_id: u64,
-    /// 80 字符以内的预览（换行压成空格，末尾省略号）
     pub preview: String,
     #[serde(rename = "charLen")]
     pub char_len: usize,
 }
 
 /// 比 clipboard.rs::EXCLUDED_BUNDLES 多覆盖一些 —— EXCLUDED 是"不记录历史"，
-/// 这里是"reactive 通道也别响"（更激进一点，覆盖银行 / 邮件等）。
+/// 这里是"reactive 通道也别响"（更激进，覆盖银行 / 邮件等）。
 const SENSITIVE_BUNDLES: &[&str] = &[
     "com.agilebits.onepassword7",
     "com.agilebits.onepassword-osx",
@@ -78,20 +86,22 @@ const SENSITIVE_BUNDLES: &[&str] = &[
     "com.lastpass.LastPass",
 ];
 
-/// 由 clipboard.rs::on_clipboard_changed 在 push_back 之后调用。
-/// text/bundle 取的是当前刚入历史的那条。
-pub fn on_new_clip(clip_id: u64, text: &str, bundle: &str) {
+/// 统一入口 —— clipboard 和 selection 都调它。
+pub fn on_new_text(source: Source, text: &str, bundle: &str) {
     let Some((tier, icon)) = classify(text, bundle) else {
         return; // 静音
     };
+    // 缓存原文供 action 用（一定要在 emit 之前 set，否则前端立刻 invoke 拿到旧文本）
+    if let Ok(mut g) = LAST_TEXT.lock() {
+        *g = Some(text.to_string());
+    }
     let Some(app) = APP_HANDLE.get() else {
-        // init 还没跑（早期启动），直接放过
         return;
     };
-    let payload = ClipboardReactivePayload {
+    let payload = ReactivePayload {
+        source,
         tier,
         icon,
-        clip_id,
         preview: preview_of(text, 80),
         char_len: text.chars().count(),
     };
@@ -100,23 +110,36 @@ pub fn on_new_clip(clip_id: u64, text: &str, bundle: &str) {
     }
 }
 
+/// 把当前缓存的原文取走（拿走后清空，避免同一段被反复处理）。
+/// process_reactive_action 用它。
+pub fn take_last_text() -> Option<String> {
+    LAST_TEXT.lock().ok()?.take()
+}
+
+/// 只读读取（测试用）。
+#[cfg(test)]
+pub fn peek_last_text() -> Option<String> {
+    LAST_TEXT.lock().ok()?.clone()
+}
+
 // ───────────────────────── 分类 ─────────────────────────
 
-fn classify(text: &str, bundle: &str) -> Option<(ReactiveTier, Option<HintIcon>)> {
+pub fn classify(text: &str, bundle: &str) -> Option<(ReactiveTier, Option<HintIcon>)> {
     let n = text.chars().count();
-    if n < 20 { return None; } // 短复制 → silent
+    if n < 20 { return None; }
     if SENSITIVE_BUNDLES.iter().any(|b| b.eq_ignore_ascii_case(bundle)) {
-        return None; // 敏感前台
+        return None;
     }
-    if looks_like_secret(text) { return None; } // 高熵串
+    if looks_like_secret(text) { return None; }
 
-    // Tier 2 提升判定（优先级从特异到一般）
     let icon = if looks_like_url(text) {
         Some(HintIcon::Url)
     } else if looks_like_code(text) {
         Some(HintIcon::Code)
     } else if messy_whitespace(text) {
         Some(HintIcon::Format)
+    } else if cross_language(text) {
+        Some(HintIcon::Translate)
     } else if n > 80 {
         Some(HintIcon::Generic)
     } else {
@@ -129,7 +152,7 @@ fn classify(text: &str, bundle: &str) -> Option<(ReactiveTier, Option<HintIcon>)
     })
 }
 
-fn preview_of(text: &str, max_chars: usize) -> String {
+pub fn preview_of(text: &str, max_chars: usize) -> String {
     let collapsed: String = text.chars().take(max_chars)
         .map(|c| if c == '\n' || c == '\t' { ' ' } else { c })
         .collect::<String>()
@@ -144,24 +167,49 @@ fn preview_of(text: &str, max_chars: usize) -> String {
 
 fn looks_like_url(text: &str) -> bool {
     let t = text.trim();
-    t.starts_with("http://") || t.starts_with("https://") || t.starts_with("ftp://")
+    (t.starts_with("http://") || t.starts_with("https://") || t.starts_with("ftp://"))
+        && !t.contains(char::is_whitespace)
 }
 
 fn looks_like_code(text: &str) -> bool {
     let braces = text.contains('{') && text.contains('}');
     let semis = text.matches(';').count();
     let kws = ["fn ", "const ", "let ", "var ", "function ", "def ", "import ", "export ",
-              "return ", "class ", "public ", "private "];
+              "return ", "class ", "public ", "private ", "async ", "await "];
     let has_kw = kws.iter().any(|k| text.contains(k));
-    braces || semis >= 2 || has_kw
+    let arrows = text.contains("=>") || text.contains("->");
+    braces || semis >= 2 || has_kw || arrows
 }
 
 fn messy_whitespace(text: &str) -> bool {
-    // 连续 2+ 空格 / Tab 后跟空格 / 空格紧贴换行
-    text.contains("  ") || text.contains("\t ") || text.contains(" \n")
+    // 多空格 / Tab + 空格混用 / 行尾尾随空格 / 多于 1 个连续换行
+    text.contains("  ") || text.contains("\t ") || text.contains(" \n") || text.contains("\n\n\n")
 }
 
-/// 看着像 token / API key / 密码 → 跳过整条 reactive 路径
+/// 判定是否跨语言文本（用户大概率想翻译）。
+/// 简单启发：包含 CJK 字符 AND 包含 ASCII 字母（中英混排）→ false（不算"跨语言"，就是带技术词的中文）。
+/// 全 ASCII 字母 + 当前用户配置语言 ≠ "en" → 视为外文（想翻成母语）。
+/// 全 CJK + 用户配置 ≠ "zh" → 反之亦然。
+fn cross_language(text: &str) -> bool {
+    let has_cjk = text.chars().any(|c|
+        ('\u{4E00}'..='\u{9FFF}').contains(&c) ||
+        ('\u{3040}'..='\u{30FF}').contains(&c) ||
+        ('\u{AC00}'..='\u{D7AF}').contains(&c)
+    );
+    let has_ascii_letter = text.chars().any(|c| c.is_ascii_alphabetic());
+    // 必须有字母类内容，不能纯符号
+    if !has_ascii_letter && !has_cjk { return false; }
+
+    let user_lang = crate::config::Config::load().language;
+    if user_lang == "zh" {
+        // 用户母语中文 → 全 ASCII 字母 / 主要非中文 = 想翻译
+        !has_cjk && has_ascii_letter
+    } else {
+        // 用户母语英文 → 主要 CJK = 想翻译
+        has_cjk && !has_ascii_letter
+    }
+}
+
 fn looks_like_secret(text: &str) -> bool {
     let t = text.trim();
     let n = t.chars().count();
@@ -184,12 +232,21 @@ mod tests {
     fn short_copy_silent() {
         assert_eq!(classify("OK", ""), None);
         assert_eq!(classify("yes please", ""), None);
+        assert_eq!(classify("", ""), None);
+        assert_eq!(classify("a".repeat(19).as_str(), ""), None);
     }
 
     #[test]
     fn long_text_t2_generic() {
         let s = "this is a fairly long piece of normal english text without any special markers but it keeps going past eighty characters";
-        assert!(matches!(classify(s, ""), Some((ReactiveTier::Hint, Some(HintIcon::Generic)))));
+        // 注意：纯 ASCII 字母在 zh 用户下会被 cross_language 抓为 Translate（默认母语 zh）。
+        // 测试场景下 Config::load() 读不到 ~/.mouseclaw/config.json → 走默认 zh。
+        // 这条样本会先命中 cross_language 然后给 Translate（不是 Generic）—— 改成 cjk 文本来命中 Generic。
+        let cn = "这是一段相当长的纯中文文字内容用来测试 generic tier 触发当文字超过八十字符没有命中其他特殊判定的时候应该走 generic icon 而不是 translate 因为这里全是中文";
+        let r = classify(cn, "");
+        assert!(matches!(r, Some((ReactiveTier::Hint, Some(HintIcon::Generic)))), "got {r:?}");
+        // 原英文 sample 走 Translate 也算 Hint：
+        assert!(matches!(classify(s, ""), Some((ReactiveTier::Hint, Some(HintIcon::Translate)))));
     }
 
     #[test]
@@ -199,33 +256,113 @@ mod tests {
     }
 
     #[test]
+    fn url_with_trailing_text_not_url() {
+        // URL 后跟空格再有文字 → 不是单纯 URL
+        let s = "see https://example.com for more info on the topic";
+        let r = classify(s, "");
+        // 应该走其他分支（generic/translate），但不是 Url
+        match r {
+            Some((_, Some(HintIcon::Url))) => panic!("误判为 URL"),
+            _ => {}
+        }
+    }
+
+    #[test]
     fn code_t2_code() {
         let s = "fn main() { let x = 1; let y = 2; return x + y; }";
         assert!(matches!(classify(s, ""), Some((ReactiveTier::Hint, Some(HintIcon::Code)))));
     }
 
     #[test]
+    fn code_arrow_detected() {
+        let s = "const add = (a, b) => a + b; const sub = (a, b) => a - b;";
+        assert!(matches!(classify(s, ""), Some((ReactiveTier::Hint, Some(HintIcon::Code)))));
+    }
+
+    #[test]
+    fn code_rust_arrow_detected() {
+        let s = "let result: Result<i32, Error> = process_input(data).await?;";
+        // -> 在返回类型上 + async/await 关键字
+        assert!(matches!(classify(s, ""), Some((ReactiveTier::Hint, Some(HintIcon::Code)))));
+    }
+
+    #[test]
     fn messy_t2_format() {
-        let s = "Hello    world  this   is    a   messy    paragraph    with extra spaces";
+        let s = "Hello    world  这是   一段     乱   格式    的    文字    需要    清理";
+        assert!(matches!(classify(s, ""), Some((ReactiveTier::Hint, Some(HintIcon::Format)))));
+    }
+
+    #[test]
+    fn messy_multi_newline_t2_format() {
+        let s = "first line\n\n\n\nsecond line after big gap that exceeds 20 chars";
         assert!(matches!(classify(s, ""), Some((ReactiveTier::Hint, Some(HintIcon::Format)))));
     }
 
     #[test]
     fn medium_clean_t1_acknowledge() {
-        // 20-80 字符, 无特殊 → T1
-        let s = "moderately normal short sentence ok";
-        assert!(matches!(classify(s, ""), Some((ReactiveTier::Acknowledge, None))));
+        let s = "这是一个中等长度的中文句子刚好够得上二十字符阈值但是又不到八十字符";
+        // 33 字符，全 CJK，用户默认 zh → cross_language=false → 长度 < 80 → Acknowledge
+        let r = classify(s, "");
+        assert!(matches!(r, Some((ReactiveTier::Acknowledge, None))), "got {r:?}");
     }
 
     #[test]
-    fn secret_silent() {
+    fn secret_silent_base64ish() {
         let s = "sk-abc123XYZdef456GHI789jklMNO012pqrSTU345vwx";
         assert_eq!(classify(s, ""), None);
+    }
+
+    #[test]
+    fn secret_silent_hex() {
+        let s = "deadbeef1234567890cafebabe98765432";
+        assert_eq!(classify(s, ""), None);
+    }
+
+    #[test]
+    fn secret_with_space_not_secret() {
+        // 含空格的 → 是普通文本不是 token
+        let s = "deadbeef 1234567890 cafebabe 98765432";
+        assert_ne!(classify(s, ""), None);
     }
 
     #[test]
     fn sensitive_bundle_silent() {
         let s = "this would normally be a t2 url https://example.com/a/long/path";
         assert_eq!(classify(s, "com.bitwarden.desktop"), None);
+        assert_eq!(classify(s, "com.agilebits.onepassword7"), None);
+    }
+
+    #[test]
+    fn preview_truncates_long() {
+        let s = "a".repeat(200);
+        let p = preview_of(&s, 80);
+        assert!(p.ends_with('…'));
+        assert_eq!(p.chars().count(), 81); // 80 + …
+    }
+
+    #[test]
+    fn preview_collapses_newlines() {
+        let p = preview_of("line1\nline2\tline3", 100);
+        assert!(!p.contains('\n'));
+        assert!(!p.contains('\t'));
+    }
+
+    #[test]
+    fn last_text_roundtrip() {
+        // 直接调 on_new_text 没 AppHandle 也能 set LAST_TEXT
+        on_new_text(Source::Clipboard, "hello world a long enough message", "");
+        let got = peek_last_text();
+        assert_eq!(got.as_deref(), Some("hello world a long enough message"));
+        let taken = take_last_text();
+        assert_eq!(taken.as_deref(), Some("hello world a long enough message"));
+        assert_eq!(peek_last_text(), None); // 拿走后清空
+    }
+
+    #[test]
+    fn unicode_safe_preview() {
+        // 多字节 UTF-8 在边界 char_count > byte len/4 时不能崩
+        let s = "🦞".repeat(100);
+        let p = preview_of(&s, 10);
+        assert!(p.chars().count() <= 11);
     }
 }

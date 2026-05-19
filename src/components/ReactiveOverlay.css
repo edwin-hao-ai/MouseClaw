@@ -65,6 +65,16 @@
 .rx-pill-glyph { font-size: 14px; }
 .rx-pill-label { font-size: 11px; letter-spacing: 0.02em; }
 
+/* source 来源小图标 —— 📋 剪贴板 / 🔤 选词 */
+.rx-source-tag {
+  display: inline-block;
+  margin-right: 2px;
+  margin-left: 2px;
+  font-size: 12px;
+  opacity: 0.55;
+  user-select: none;
+}
+
 /* ── 处理中 / 完成 / 失败 状态 —— 替换整个 ribbon 内容 ── */
 .rx-status {
   display: inline-flex;
