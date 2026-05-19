@@ -46,33 +46,40 @@ fn set_mode(app: &AppHandle, new_size: f64, mode_tag: u32) {
     if CURRENT_MODE.swap(mode_tag, Ordering::SeqCst) == mode_tag {
         return; // 已是目标模式
     }
-    let Some(window) = app.get_webview_window("mouse") else { return; };
-    // 拿当前窗口位置和尺寸（逻辑像素）
-    let Ok(pos) = window.outer_position() else { return; };
-    let Ok(size) = window.outer_size() else { return; };
-    let Ok(scale) = window.scale_factor() else { return; };
-    let cur_x = pos.x as f64 / scale;
-    let cur_y = pos.y as f64 / scale;
-    let cur_w = size.width as f64 / scale;
-    let cur_h = size.height as f64 / scale;
+    // v0.4.0 fix · 必须 marshal 到主线程 ——
+    // emit_view 可能来自 CGEventTap 工作线程（fn 按键 → start_recording_for_ime →
+    // show_mouse 排队主线程闭包 → emit_view 同步直接调 set_mode）。
+    // 如果这里同步在工作线程跑 set_size + set_position，会跟主线程上 show_mouse 闭包的
+    // set_position 形成竞态，结果是窗口最终位置 = 锚点位置（老 anchor），桌宠没跟到光标。
+    // 全部走 run_on_main_thread 后所有窗口操作按 FIFO 序列在主线程上跑，竞态消失。
+    let app2 = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let Some(window) = app2.get_webview_window("mouse") else { return; };
+        let Ok(pos) = window.outer_position() else { return; };
+        let Ok(size) = window.outer_size() else { return; };
+        let Ok(scale) = window.scale_factor() else { return; };
+        let cur_x = pos.x as f64 / scale;
+        let cur_y = pos.y as f64 / scale;
+        let cur_w = size.width as f64 / scale;
+        let cur_h = size.height as f64 / scale;
 
-    // 当前桌宠的屏幕绝对位置（视觉锚点）
-    let pet_cx = cur_x + cur_w * PET_X_OFFSET_RATIO;
-    let pet_cy = cur_y + cur_h - PET_BOTTOM_OFFSET;
+        // 当前桌宠的屏幕绝对位置（视觉锚点）
+        let pet_cx = cur_x + cur_w * PET_X_OFFSET_RATIO;
+        let pet_cy = cur_y + cur_h - PET_BOTTOM_OFFSET;
 
-    // 新窗口需要放在哪里才能让桌宠中心保持原位
-    let new_x = pet_cx - new_size * PET_X_OFFSET_RATIO;
-    let new_y = pet_cy - new_size + PET_BOTTOM_OFFSET;
+        // 新窗口需要放在哪里才能让桌宠中心保持原位
+        let new_x = pet_cx - new_size * PET_X_OFFSET_RATIO;
+        let new_y = pet_cy - new_size + PET_BOTTOM_OFFSET;
 
-    LAST_PET_CENTER_X.store(pet_cx as i32, Ordering::Relaxed);
-    LAST_PET_CENTER_Y.store(pet_cy as i32, Ordering::Relaxed);
+        LAST_PET_CENTER_X.store(pet_cx as i32, Ordering::Relaxed);
+        LAST_PET_CENTER_Y.store(pet_cy as i32, Ordering::Relaxed);
 
-    // 先 resize 再 reposition（顺序无所谓但要都做）
-    let _ = window.set_size(LogicalSize::new(new_size, new_size));
-    let _ = window.set_position(LogicalPosition::new(new_x, new_y));
-    println!(
-        "[overlay_size] mode={mode_tag} size={new_size:.0} anchor_xy=({pet_cx:.0},{pet_cy:.0}) win_xy=({new_x:.0},{new_y:.0})"
-    );
+        let _ = window.set_size(LogicalSize::new(new_size, new_size));
+        let _ = window.set_position(LogicalPosition::new(new_x, new_y));
+        println!(
+            "[overlay_size] mode={mode_tag} size={new_size:.0} anchor_xy=({pet_cx:.0},{pet_cy:.0}) win_xy=({new_x:.0},{new_y:.0})"
+        );
+    });
 }
 
 /// 启动时初始化 —— 把窗口缩到 compact 模式，让默认 idle 静默状态就只占桌宠区域。
