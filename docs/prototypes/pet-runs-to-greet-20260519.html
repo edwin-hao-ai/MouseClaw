@@ -1,0 +1,595 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MouseClaw · 桌宠跑去迎接拖拽（小狗式 puppy greet）· 2026-05-19</title>
+<style>
+  :root {
+    --bg: #faf7f2; --card: #ffffff; --ink: #2b2622; --muted: #8a8178;
+    --pink: #e8638c; --pink-soft: #fce4ec; --pink-deep: #d63d6a;
+    --green: #3fa66a; --green-soft: #e6f4ec;
+    --amber: #d9952b; --amber-soft: #fdf3e0;
+    --red: #c33d3d; --red-soft: #fbe3e3;
+    --line: #ece6dd; --line-strong: #d8d0c4;
+    --radius-m: 14px; --radius-l: 22px;
+    --shadow-card: 0 1px 2px rgba(43,38,34,.06), 0 8px 24px rgba(43,38,34,.06);
+    --shadow-bubble: 0 8px 32px rgba(43,38,34,.12);
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --font: -apple-system, "PingFang SC", system-ui, sans-serif;
+    --m-body:#cfcfcf; --m-belly:#fff; --m-ear-in:#ff9bb8; --m-ear-out:#cfcfcf;
+    --m-eye:#1a1a1a; --m-nose:#d63d6a; --m-tail:#8a8a8a; --m-paw:#fff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font: 15px/1.65 var(--font);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 48px 24px 80px; }
+  h1 { font-size: 30px; margin: 0 0 4px; letter-spacing: -.02em; }
+  h2 { font-size: 20px; margin: 48px 0 10px; padding-bottom: 8px; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 15px; margin: 22px 0 8px; }
+  .sub { color: var(--muted); margin: 0 0 28px; font-size: 14px; }
+  .lead { color: var(--muted); font-size: 14.5px; max-width: 760px; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius-m); padding: 18px 22px;
+    box-shadow: var(--shadow-card);
+  }
+  .card + .card { margin-top: 12px; }
+
+  code, kbd {
+    font-family: var(--mono); font-size: 12.5px;
+    background: #f2ede5; padding: 1.5px 6px; border-radius: 5px;
+  }
+
+  /* Mock desktop stage */
+  .stage {
+    position: relative; height: 480px;
+    border-radius: var(--radius-l); overflow: hidden;
+    background:
+      radial-gradient(ellipse at 30% 20%, #5b8def22, transparent 50%),
+      radial-gradient(ellipse at 80% 80%, #e8638c22, transparent 50%),
+      linear-gradient(135deg, #f8efe4, #efe5d5);
+    border: 1px solid var(--line);
+  }
+  .stage .menu-bar {
+    height: 24px; background: rgba(255,255,255,.6); backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(0,0,0,.06); display: flex; align-items: center;
+    padding: 0 14px; gap: 14px; font-size: 12px; color: #555;
+  }
+  .stage .menu-bar .item { font-weight: 600; }
+  .stage .menu-bar .right { margin-left: auto; display: flex; gap: 10px; font-size: 11px; color: #777; }
+  .stage .menu-bar .pet-tray { width: 14px; height: 14px; background:
+    radial-gradient(circle at 50% 65%, var(--m-body) 30%, transparent 31%); }
+
+  /* Finder mock window */
+  .finder {
+    position: absolute; top: 56px; left: 32px;
+    width: 320px;
+    background: rgba(255,255,255,.94); backdrop-filter: blur(8px);
+    border-radius: 10px; padding: 10px 12px 14px;
+    border: 1px solid #00000010; box-shadow: 0 6px 20px #00000018;
+  }
+  .finder .tb {
+    display: flex; gap: 5px; padding-bottom: 8px; margin-bottom: 8px;
+    border-bottom: 1px solid var(--line); align-items: center;
+  }
+  .finder .tb i { width: 10px; height: 10px; border-radius: 999px; }
+  .tl-r { background: #ff5f57; } .tl-y { background: #febc2e; } .tl-g { background: #28c840; }
+  .finder .tb span { font-size: 11px; color: var(--muted); margin-left: 8px; }
+  .files { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .file {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 6px 4px 8px; border-radius: 6px;
+    font-size: 11px; color: #333; user-select: none;
+    cursor: grab;
+  }
+  .file .icon {
+    width: 36px; height: 44px; background: linear-gradient(135deg, #fff, #e8eef8);
+    border: 1px solid #c5cfdb; border-radius: 4px; position: relative;
+  }
+  .file .icon::after {
+    content: ""; position: absolute; top: 0; right: 0; width: 12px; height: 12px;
+    background: linear-gradient(135deg, #e8eef8 50%, #c5cfdb 50%);
+    border-left: 1px solid #c5cfdb; border-bottom: 1px solid #c5cfdb;
+  }
+  .file .icon.pdf { background: linear-gradient(135deg, #fff, #fde2e2); border-color: #d99; }
+  .file .icon.img { background: linear-gradient(135deg, #f0fae8, #c8e6b8); border-color: #9c5; }
+  .file.dragging { opacity: .3; }
+  .file:active .icon { transform: scale(0.94); }
+
+  /* Drag ghost (file thumbnail following cursor) */
+  .ghost {
+    position: absolute; pointer-events: none; z-index: 30;
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(255,255,255,.96); border: 1px solid #00000020;
+    border-radius: 6px; padding: 4px 8px;
+    box-shadow: 0 4px 12px #00000022;
+    font-size: 11px; color: #333;
+    opacity: 0; transform: scale(.94); transition: opacity 100ms, transform 100ms;
+  }
+  .ghost.on { opacity: 1; transform: scale(1); }
+  .ghost .mini-icon {
+    width: 14px; height: 16px; background: linear-gradient(135deg, #fff, #e8eef8);
+    border: 1px solid #c5cfdb; border-radius: 2px;
+  }
+  .ghost .count {
+    background: var(--pink-deep); color: white; font-size: 9px;
+    border-radius: 999px; padding: 1px 5px; font-weight: 700;
+  }
+
+  /* The pet — pixel SVG positioned absolutely */
+  .pet-host {
+    position: absolute; width: 80px; height: 80px;
+    display: flex; align-items: flex-end; justify-content: center;
+    transition: left 380ms cubic-bezier(.4,.0,.2,1),
+                top  380ms cubic-bezier(.4,.0,.2,1);
+    z-index: 20;
+  }
+  .pet-host svg { image-rendering: pixelated; shape-rendering: crispEdges; display: block; }
+  /* Idle: gentle breathing */
+  .pet-host.idle svg { animation: breathe 3.2s ease-in-out infinite; transform-origin: bottom center; }
+  /* Running: bounce + tail wag */
+  .pet-host.running svg { animation: run 280ms steps(2) infinite; transform-origin: bottom center; }
+  /* Waiting: mouth open + small bounce */
+  .pet-host.waiting svg { animation: anticipate 600ms ease-in-out infinite; transform-origin: bottom center; }
+  /* Eating: chomp */
+  .pet-host.eating svg { animation: chomp 180ms ease-in-out 4; transform-origin: bottom center; }
+  @keyframes breathe {
+    0%, 100% { transform: scaleY(1); }
+    50% { transform: scaleY(0.98); }
+  }
+  @keyframes run {
+    0%   { transform: translateY(0) rotate(-2deg); }
+    100% { transform: translateY(-4px) rotate(2deg); }
+  }
+  @keyframes anticipate {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-2px) scale(1.04); }
+  }
+  @keyframes chomp {
+    0%, 100% { transform: scaleY(1); }
+    50% { transform: scaleY(0.85) translateY(2px); }
+  }
+  /* Mouth-open marker (waiting/eating states show a wider nose region) */
+  .pet-host .mouth-open { display: none; }
+  .pet-host.waiting .mouth-closed, .pet-host.eating .mouth-closed { display: none; }
+  .pet-host.waiting .mouth-open, .pet-host.eating .mouth-open { display: block; }
+
+  /* Speech bubble */
+  .bubble {
+    position: absolute; pointer-events: none;
+    background: #fff; border: 1px solid var(--line);
+    border-radius: 14px; padding: 5px 10px;
+    box-shadow: var(--shadow-bubble);
+    font-size: 12px; line-height: 1.4; font-weight: 600;
+    transition: opacity 200ms;
+    opacity: 0;
+  }
+  .bubble.on { opacity: 1; }
+  .bubble.green { background: linear-gradient(135deg, #d8f8e6, #fff); }
+  .bubble.amber { background: linear-gradient(135deg, #fff7e0, #fff); }
+
+  /* Drop target indicator — pulsing ring around pet when waiting */
+  .pet-ring {
+    position: absolute; width: 80px; height: 80px;
+    border-radius: 50%; pointer-events: none;
+    opacity: 0; z-index: 19;
+  }
+  .pet-host.waiting + .pet-ring,
+  .pet-host.waiting ~ .pet-ring {
+    opacity: 1;
+    animation: ring-pulse 1.4s ease-out infinite;
+  }
+  @keyframes ring-pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(255,107,157,.45); }
+    100% { box-shadow: 0 0 0 36px rgba(255,107,157,0); }
+  }
+
+  /* Control bar */
+  .controls {
+    display: flex; gap: 10px; padding: 14px 16px; align-items: center;
+    background: #fff; border: 1px solid var(--line); border-radius: 10px;
+    margin-top: 14px;
+  }
+  .controls button {
+    font: inherit; font-size: 13px; padding: 7px 14px; border-radius: 7px;
+    background: var(--pink); color: white; border: none; cursor: pointer;
+    font-weight: 600;
+  }
+  .controls button:hover { background: var(--pink-deep); }
+  .controls button:disabled { background: #d8d0c4; cursor: default; }
+  .controls .step {
+    font-size: 12px; color: var(--muted); margin-left: 8px;
+  }
+  .controls .speed {
+    margin-left: auto; font-size: 12px; color: var(--muted);
+    display: flex; gap: 6px; align-items: center;
+  }
+  .controls .speed select {
+    font: inherit; font-size: 12px; padding: 3px 6px; border-radius: 5px;
+    border: 1px solid var(--line-strong);
+  }
+
+  /* Architecture diagram */
+  .arch { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .arch .box {
+    background: #f8f4ea; border: 1px dashed #c8b89c; border-radius: 8px;
+    padding: 12px 14px; font-size: 13px; line-height: 1.6;
+  }
+  .arch .box.good { background: var(--green-soft); border-color: #88c8a0; border-style: solid; }
+  .arch .box.bad { background: var(--red-soft); border-color: #d99; border-style: solid; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>桌宠跑去迎接拖拽 · puppy-greets-drag</h1>
+  <p class="sub">v0.4.x · 2026-05-19 · 让用户从屏幕任意位置拖文件，桌宠都立刻跑去光标附近接</p>
+
+  <div class="card">
+    <p class="lead" style="margin:0">
+      <strong>核心约束</strong>：用户明确说「<strong>别影响到使用别的应用</strong>」——
+      drag-detector 窗口必须 100% click-through，无视觉遮挡，绝对不挡 Finder / 桌面 / 其它 app 的点击。
+      只在"屏幕上正在发生 file drag"时被 NSDragging 系统点亮，事件分发给老鼠。
+    </p>
+  </div>
+
+  <h2>① 交互演示（点 Play 看完整流程）</h2>
+  <div class="stage" id="stage">
+    <div class="menu-bar">
+      <span class="item">  Finder</span>
+      <span>File</span><span>Edit</span><span>View</span>
+      <span class="right">
+        <span>🔋 87%</span><span>📶</span><span class="pet-tray" title="MouseClaw 托盘"></span><span>10:24</span>
+      </span>
+    </div>
+
+    <!-- Finder window with drag source -->
+    <div class="finder">
+      <div class="tb"><i class="tl-r"></i><i class="tl-y"></i><i class="tl-g"></i><span>📁 项目资料</span></div>
+      <div class="files">
+        <div class="file" id="file-1"><div class="icon pdf"></div>合同.pdf</div>
+        <div class="file" id="file-2"><div class="icon img"></div>截图.png</div>
+        <div class="file"><div class="icon"></div>笔记.md</div>
+        <div class="file"><div class="icon"></div>data.csv</div>
+        <div class="file"><div class="icon img"></div>logo.png</div>
+        <div class="file"><div class="icon pdf"></div>报价.pdf</div>
+      </div>
+    </div>
+
+    <!-- Drag ghost (file follows cursor) -->
+    <div class="ghost" id="ghost">
+      <div class="mini-icon"></div>
+      <span id="ghost-name">合同.pdf</span>
+      <span class="count" id="ghost-count">1</span>
+    </div>
+
+    <!-- The pet -->
+    <div class="pet-host idle" id="pet" style="left: 600px; top: 380px;">
+      <svg width="64" height="64" viewBox="0 0 16 16">
+        <!-- ears -->
+        <rect x="3" y="0" width="2" height="2" fill="var(--m-ear-out)"/>
+        <rect x="11" y="0" width="2" height="2" fill="var(--m-ear-out)"/>
+        <rect x="2" y="1" width="4" height="3" fill="var(--m-ear-out)"/>
+        <rect x="10" y="1" width="4" height="3" fill="var(--m-ear-out)"/>
+        <rect x="3" y="2" width="2" height="2" fill="var(--m-ear-in)"/>
+        <rect x="11" y="2" width="2" height="2" fill="var(--m-ear-in)"/>
+        <!-- body -->
+        <rect x="1" y="4" width="14" height="7" fill="var(--m-body)"/>
+        <!-- eyes -->
+        <rect x="4" y="6" width="1" height="2" fill="var(--m-eye)"/>
+        <rect x="11" y="6" width="1" height="2" fill="var(--m-eye)"/>
+        <!-- mouth closed (normal nose) -->
+        <rect class="mouth-closed" x="7" y="9" width="2" height="1" fill="var(--m-nose)"/>
+        <!-- mouth open (wider, anticipating food) -->
+        <rect class="mouth-open" x="6" y="9" width="4" height="2" fill="var(--m-nose)"/>
+        <!-- belly -->
+        <rect x="4" y="11" width="8" height="3" fill="var(--m-belly)"/>
+        <!-- tail -->
+        <rect x="13" y="11" width="3" height="1" fill="var(--m-tail)"/>
+      </svg>
+    </div>
+    <div class="pet-ring" id="pet-ring"></div>
+
+    <!-- Bubble -->
+    <div class="bubble" id="bubble"></div>
+  </div>
+
+  <div class="controls">
+    <button id="play-btn">▶ 播放</button>
+    <button id="reset-btn">↺ 重置</button>
+    <span class="step" id="step-label">阶段 0 · 桌宠在 anchor 打盹</span>
+    <span class="speed">
+      速度
+      <select id="speed-sel">
+        <option value="1">1×</option>
+        <option value="0.5">0.5× 慢动作</option>
+        <option value="2">2×</option>
+      </select>
+    </span>
+  </div>
+
+  <h2>② 关键交互细节</h2>
+  <div class="card">
+    <table>
+      <tr><th width="20%">阶段</th><th>视觉</th><th>关键时序</th></tr>
+      <tr>
+        <td><strong>0. 空闲</strong></td>
+        <td>桌宠在 anchor（如右下角），breathe 动画，眼半闭</td>
+        <td>窗口 80×80，不挡任何东西</td>
+      </tr>
+      <tr>
+        <td><strong>1. 抓起文件</strong></td>
+        <td>用户在 Finder 按下文件，开始拖。系统 ghost preview 跟着光标</td>
+        <td>MouseClaw <strong>还不知道</strong> drag 发生了 —— 直到 NSDragging 进我们某个窗口</td>
+      </tr>
+      <tr>
+        <td><strong>2. 系统级 drag enter ⚡</strong></td>
+        <td>用户光标进入屏幕任意位置后，我们的隐形 drag-detector 全屏窗口收到 <code>draggingEntered:</code></td>
+        <td>事件转发给 feed_flow。pet 立即 ear-perk + 切到 running 状态</td>
+      </tr>
+      <tr>
+        <td><strong>3. 跑步迎接</strong></td>
+        <td>pet 从 anchor 位置 lerp 到光标附近，~400ms ease-out，跑步精灵</td>
+        <td>到达后切 waiting 状态，张嘴 + ring-pulse 提示"放这"</td>
+      </tr>
+      <tr>
+        <td><strong>4. 跟随光标</strong></td>
+        <td>cursor_follow 30fps 让 pet 紧贴光标侧下方（约 32px offset）</td>
+        <td>用户拖到哪 pet 跟到哪，距离始终 ≤ 32px</td>
+      </tr>
+      <tr>
+        <td><strong>5. 放手 = 吃</strong></td>
+        <td>drop → pet eating 动画 4 帧 chomp，bubble「🍽 收到 N 个文件」</td>
+        <td>file 内容走现有 feed pipeline，AI 召唤进 voice-confirm 倒数</td>
+      </tr>
+      <tr>
+        <td><strong>X. 取消 = 滑回</strong></td>
+        <td>用户拖出屏幕 / Esc / 拖回 Finder：pet 200ms debounce 后滑回 anchor</td>
+        <td>不立刻退场避免抖动（用户瞬间 leave/enter 切换很常见）</td>
+      </tr>
+    </table>
+  </div>
+
+  <h2>③ 架构选型对比（为什么不能简单地把 overlay 扩大）</h2>
+  <div class="arch">
+    <div class="box bad">
+      <strong>❌ 方案 X：把 mouse overlay 扩到全屏</strong><br>
+      简单粗暴：让 80×80 → 全屏。drag enter 全屏覆盖。<br>
+      <br>
+      <strong>致命问题</strong>：f253762 用户实测「即使 transparent + ignore_cursor_events，
+      WebKit 在大窗口上仍渲染半透明 backing，Mission Control / Stage Manager
+      行为奇怪，桌面图标不可点。这是为啥从 320×320 缩到 80×80 的根本原因。」<br>
+      <br>
+      <strong>不可重蹈覆辙</strong>。
+    </div>
+    <div class="box good">
+      <strong>✅ 方案 A：独立纯 NSWindow drag-detector</strong><br>
+      新建一个**不挂 webview** 的纯原生 NSWindow，全屏 transparent + always-on-top
+      + <code>setIgnoresMouseEvents:YES</code>。<br>
+      <br>
+      关键技术点：<br>
+      &nbsp;&nbsp;1. 通过 <code>registerForDraggedTypes:</code> 注册接收 file URL 类型<br>
+      &nbsp;&nbsp;2. 没有 WebKit backing → <strong>不产生</strong> f253762 描述的视觉遮挡<br>
+      &nbsp;&nbsp;3. setIgnoresMouseEvents 阻止点击但 <strong>不阻止 NSDragging</strong>
+      （macOS 这俩走不同 event path · 已查证）<br>
+      &nbsp;&nbsp;4. draggingEntered/Updated/Exited/performDrag 回调通过 NSObject
+      subclass 实现，FFI 到 Rust 转发给 feed_flow<br>
+      <br>
+      <strong>预算：~200 行 obj-c FFI</strong>，一天能 ship。
+    </div>
+  </div>
+
+  <h2>④ 失败模式 / 边界</h2>
+  <div class="card">
+    <ul style="margin: 0; padding-left: 22px; font-size: 13.5px; line-height: 1.85;">
+      <li><strong>多屏</strong>：drag-detector 窗口 cover 主屏 + 副屏（macOS NSScreen.screens 遍历）。pet 跑向**光标所在那一屏**的 anchor，不跨屏</li>
+      <li><strong>非文件 drag</strong>（如 Finder 内部排序、文本选区拖动）：注册的 dragged types 只包含 <code>NSPasteboardTypeFileURL</code>，文本 drag 不会触发 pet</li>
+      <li><strong>Mission Control 激活时</strong>：always-on-top 窗口在 Mission Control 里被系统压到下面（macOS 行为），drag-detector 跟桌宠一起暂时不响应——可接受</li>
+      <li><strong>全屏 app（Keynote 演示模式）</strong>：always-on-top 在 fullscreen space 里被隐藏。drag-detector 暂时失效——可接受（演示时不会拖文件）</li>
+      <li><strong>非常快速 drag</strong>（500ms 内 pickup→drop）：pet 还没跑到光标用户已经 drop 了。drop 走 fallback：直接定位 pet 到 drop 点，立刻 eating 动画。不要让用户觉得"丢了"</li>
+      <li><strong>用户已经在 anchor 上方拖</strong>：pet 不用跑（距离 &lt; 100px 时省略动画，直接进 waiting）</li>
+      <li><strong>窗口尺寸切换</strong>：detector 全屏始终；pet overlay 仍走 f253762 的 80↔320 切换。两个窗口独立</li>
+    </ul>
+  </div>
+
+  <h2>⑤ 实现路径（拍板后）</h2>
+  <div class="card">
+    <ol style="margin:0; padding-left: 22px; font-size: 13.5px; line-height: 1.95;">
+      <li><strong>D1 · obj-c FFI 骨架</strong>：新文件 <code>src-tauri/src/drag_detector.rs</code>。
+        创建透明 NSWindow + NSView subclass <code>MCDragView</code> 重写 draggingEntered/Updated/Exited/performDragOperation。
+        ~150 LOC</li>
+      <li><strong>D1 · 事件转发</strong>：4 个回调通过 <code>extern "C" fn</code> 桥到 Rust。
+        Rust 端拿到 cursor screen pos + file paths → 调 <code>feed_flow::on_drag_enter</code> / on_drag_leave。
+        ~50 LOC</li>
+      <li><strong>D2 · 多屏 + always-on-top + level</strong>：用 <code>NSStatusWindowLevel</code> 让窗口浮在最上，
+        覆盖所有 NSScreen。<code>setCollectionBehavior:</code> 设 ignoresCycle + stationary。
+        ~30 LOC</li>
+      <li><strong>D2 · 老的 mouse overlay 的 drag-drop handler 删掉</strong>：现在统一从 drag-detector 走，
+        避免双倍触发。<code>lib.rs</code> 里的 DragDrop event handler 改成只接 detector forward 的消息</li>
+      <li><strong>D2 · ship 0.4.1</strong>：build / open / 用户测</li>
+    </ol>
+  </div>
+
+  <p style="margin: 48px 0 0; color: var(--muted); font-size: 12.5px; text-align: center;">
+    Prototype · 2026-05-19 · 拍板后才动 Rust。「别影响到使用别的应用」是 hard constraint，
+    所有方案都必须满足 100% click-through + 不遮挡。
+  </p>
+</div>
+
+<script>
+const stage = document.getElementById("stage");
+const pet = document.getElementById("pet");
+const petRing = document.getElementById("pet-ring");
+const bubble = document.getElementById("bubble");
+const ghost = document.getElementById("ghost");
+const ghostName = document.getElementById("ghost-name");
+const ghostCount = document.getElementById("ghost-count");
+const file1 = document.getElementById("file-1");
+const file2 = document.getElementById("file-2");
+const playBtn = document.getElementById("play-btn");
+const resetBtn = document.getElementById("reset-btn");
+const stepLabel = document.getElementById("step-label");
+const speedSel = document.getElementById("speed-sel");
+
+// Anchor pos (bottom-right of stage)
+const ANCHOR = { left: 600, top: 380 };
+// Target near-cursor pos for the demo
+const PATH = [
+  // Start: cursor at file in Finder
+  { x: 90,  y: 220, label: "1 · 用户在 Finder 抓起合同.pdf 开始拖" },
+  // Cursor moves toward center
+  { x: 240, y: 240, label: "2 · 光标进入屏幕中部 → drag-detector ⚡ 触发" },
+  { x: 360, y: 260, label: "3 · pet 切 running，从 anchor 出发跑过来" },
+  // Cursor in middle, pet should now be near
+  { x: 430, y: 270, label: "4 · pet 到达，切 waiting · 张嘴 + ring pulse" },
+  { x: 500, y: 260, label: "5 · pet 跟着光标走（cursor_follow 30fps）" },
+  { x: 470, y: 280, label: "6 · 用户停在好位置准备 drop" },
+  // Drop
+  { x: 470, y: 280, label: "7 · 放手 → eating 4 帧 + 「🍽 收到 1 个文件」" },
+];
+
+let timer = null;
+let speed = 1;
+
+function setStep(label) { stepLabel.textContent = label; }
+function setPet(state) {
+  pet.classList.remove("idle", "running", "waiting", "eating");
+  pet.classList.add(state);
+}
+function movePet(x, y, withDelay = true) {
+  // pet bottom-center should be near (x, y) cursor with 32px offset above
+  pet.style.left = (x - 40) + "px";
+  pet.style.top  = (y - 48) + "px";
+  petRing.style.left = (x - 40) + "px";
+  petRing.style.top  = (y - 48) + "px";
+}
+function moveGhost(x, y) {
+  ghost.style.left = (x + 8) + "px";
+  ghost.style.top  = (y + 8) + "px";
+}
+function showBubble(text, x, y, klass = "") {
+  bubble.className = "bubble on " + klass;
+  bubble.textContent = text;
+  bubble.style.left = (x + 6) + "px";
+  bubble.style.top  = (y - 32) + "px";
+}
+function hideBubble() {
+  bubble.className = "bubble";
+}
+
+function reset() {
+  if (timer) { clearTimeout(timer); timer = null; }
+  setPet("idle");
+  pet.style.left = ANCHOR.left + "px";
+  pet.style.top  = ANCHOR.top  + "px";
+  petRing.style.left = ANCHOR.left + "px";
+  petRing.style.top  = ANCHOR.top  + "px";
+  ghost.classList.remove("on");
+  hideBubble();
+  file1.classList.remove("dragging");
+  setStep("阶段 0 · 桌宠在 anchor 打盹");
+  playBtn.disabled = false;
+  playBtn.textContent = "▶ 播放";
+}
+
+function wait(ms) {
+  return new Promise(r => setTimeout(r, ms / speed));
+}
+
+async function play() {
+  playBtn.disabled = true;
+  playBtn.textContent = "▶ 播放中…";
+  reset();
+  await wait(400);
+
+  // Stage 1: pick up file
+  setStep(PATH[0].label);
+  file1.classList.add("dragging");
+  ghost.classList.add("on");
+  ghostName.textContent = "合同.pdf";
+  ghostCount.textContent = "1";
+  moveGhost(PATH[0].x, PATH[0].y);
+  await wait(800);
+
+  // Stage 2: cursor moves into stage — detector triggers
+  setStep(PATH[1].label);
+  // Animate ghost cursor moving
+  for (let i = 0; i <= 12; i++) {
+    const t = i / 12;
+    const x = PATH[0].x + (PATH[1].x - PATH[0].x) * t;
+    const y = PATH[0].y + (PATH[1].y - PATH[0].y) * t;
+    moveGhost(x, y);
+    await wait(35);
+  }
+  await wait(300);
+
+  // Stage 3: pet starts running
+  setStep(PATH[2].label);
+  setPet("running");
+  movePet(PATH[2].x, PATH[2].y);
+  // Continue ghost movement during pet run
+  for (let i = 0; i <= 10; i++) {
+    const t = i / 10;
+    const x = PATH[1].x + (PATH[2].x - PATH[1].x) * t;
+    const y = PATH[1].y + (PATH[2].y - PATH[1].y) * t;
+    moveGhost(x, y);
+    await wait(40);
+  }
+  await wait(380); // wait for pet transition
+
+  // Stage 4: pet arrives, waiting
+  setStep(PATH[3].label);
+  setPet("waiting");
+  showBubble("🐭 张嘴等吃", PATH[3].x, PATH[3].y - 30);
+  movePet(PATH[3].x, PATH[3].y);
+  await wait(800);
+  hideBubble();
+
+  // Stage 5: cursor moves, pet follows
+  setStep(PATH[4].label);
+  for (let i = 0; i <= 14; i++) {
+    const t = i / 14;
+    const x = PATH[3].x + (PATH[4].x - PATH[3].x) * t;
+    const y = PATH[3].y + (PATH[4].y - PATH[3].y) * t;
+    moveGhost(x, y);
+    pet.style.transition = "left 120ms linear, top 120ms linear";
+    movePet(x, y);
+    await wait(70);
+  }
+  pet.style.transition = "left 380ms cubic-bezier(.4,.0,.2,1), top 380ms cubic-bezier(.4,.0,.2,1)";
+  await wait(400);
+
+  // Stage 6: pause to drop
+  setStep(PATH[5].label);
+  moveGhost(PATH[5].x, PATH[5].y);
+  movePet(PATH[5].x, PATH[5].y);
+  await wait(700);
+
+  // Stage 7: drop → eating
+  setStep(PATH[6].label);
+  ghost.classList.remove("on");
+  setPet("eating");
+  showBubble("🍽 收到 1 个文件 · 合同.pdf", PATH[6].x, PATH[6].y - 30, "green");
+  await wait(1200);
+
+  playBtn.disabled = false;
+  playBtn.textContent = "↻ 再播一次";
+  setStep("完成 · 后续走 voice-confirm 倒数 + AI pipeline");
+}
+
+playBtn.addEventListener("click", play);
+resetBtn.addEventListener("click", reset);
+speedSel.addEventListener("change", e => { speed = parseFloat(e.target.value); });
+
+reset();
+</script>
+</body>
+</html>
