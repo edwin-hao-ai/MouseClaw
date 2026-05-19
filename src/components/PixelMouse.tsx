@@ -32,88 +32,118 @@ interface PixelMouseProps {
   skin?: SkinId;
   /** Show the green chain icon above the head (session-continuation indicator). */
   continuing?: boolean;
+  /** v0.4 · Reactive T1：剪贴板触发的一次性抖耳，由 CSS 动画自动消失。 */
+  twitching?: boolean;
 }
 
 // ── Body parts (按 body variant 决定形状) ───────────────────────────
 
+/** Ears — 拆 L/R 两个独立 <g>，每个标 transform-origin 在自身基部，
+ *  这样 reactive 抖耳 / 各种 hover 动画可以让左右独立摆动。
+ *  CSS 走 .mc-ear-l / .mc-ear-r 类。
+ *
+ *  data-pivot 是 CSS 不便直接读取的；我们用 inline style 设 transform-origin。
+ *  注意 SVG transform-origin 必须用像素值在 svg 坐标系下生效。 */
 function Ears({ skin }: { skin: Skin }) {
   const p = skin.palette;
   if (skin.body === "robot") {
-    // 天线代替耳朵
+    // 天线代替耳朵 —— 基部在 (x=4, y=2) 和 (x=11, y=2)，抖起来像 LED 摆动
     return (
       <>
-        <rect x="4"  y="-1" width="1" height="3" fill={p.earOut} />
-        <rect x="4"  y="-2" width="1" height="1" fill={p.earIn} />
-        <rect x="11" y="-1" width="1" height="3" fill={p.earOut} />
-        <rect x="11" y="-2" width="1" height="1" fill={p.earIn} />
+        <g className="mc-ear mc-ear-l" style={{ transformOrigin: "4.5px 2px" }}>
+          <rect x="4"  y="-1" width="1" height="3" fill={p.earOut} />
+          <rect x="4"  y="-2" width="1" height="1" fill={p.earIn} />
+        </g>
+        <g className="mc-ear mc-ear-r" style={{ transformOrigin: "11.5px 2px" }}>
+          <rect x="11" y="-1" width="1" height="3" fill={p.earOut} />
+          <rect x="11" y="-2" width="1" height="1" fill={p.earIn} />
+        </g>
       </>
     );
   }
   if (skin.body === "cat") {
-    // 高三角猫耳 —— 更尖、更立
+    // 高三角猫耳 —— 基部 (x=3, y=3) 和 (x=12, y=3)
     return (
       <>
-        <rect x="2" y="0" width="1" height="3" fill={p.earOut} />
-        <rect x="3" y="1" width="1" height="2" fill={p.earOut} />
-        <rect x="4" y="2" width="1" height="1" fill={p.earOut} />
-        <rect x="3" y="2" width="1" height="1" fill={p.earIn} />
-        <rect x="13" y="0" width="1" height="3" fill={p.earOut} />
-        <rect x="12" y="1" width="1" height="2" fill={p.earOut} />
-        <rect x="11" y="2" width="1" height="1" fill={p.earOut} />
-        <rect x="12" y="2" width="1" height="1" fill={p.earIn} />
+        <g className="mc-ear mc-ear-l" style={{ transformOrigin: "3.5px 3px" }}>
+          <rect x="2" y="0" width="1" height="3" fill={p.earOut} />
+          <rect x="3" y="1" width="1" height="2" fill={p.earOut} />
+          <rect x="4" y="2" width="1" height="1" fill={p.earOut} />
+          <rect x="3" y="2" width="1" height="1" fill={p.earIn} />
+        </g>
+        <g className="mc-ear mc-ear-r" style={{ transformOrigin: "12.5px 3px" }}>
+          <rect x="13" y="0" width="1" height="3" fill={p.earOut} />
+          <rect x="12" y="1" width="1" height="2" fill={p.earOut} />
+          <rect x="11" y="2" width="1" height="1" fill={p.earOut} />
+          <rect x="12" y="2" width="1" height="1" fill={p.earIn} />
+        </g>
       </>
     );
   }
   if (skin.body === "fox") {
-    // 狐耳：更大的三角，立起来
     return (
       <>
-        <rect x="2" y="-1" width="1" height="4" fill={p.earOut} />
-        <rect x="3" y="0"  width="1" height="3" fill={p.earOut} />
-        <rect x="4" y="1"  width="1" height="2" fill={p.earOut} />
-        <rect x="3" y="1"  width="1" height="2" fill={p.earIn} />
-        <rect x="13" y="-1" width="1" height="4" fill={p.earOut} />
-        <rect x="12" y="0"  width="1" height="3" fill={p.earOut} />
-        <rect x="11" y="1"  width="1" height="2" fill={p.earOut} />
-        <rect x="12" y="1"  width="1" height="2" fill={p.earIn} />
+        <g className="mc-ear mc-ear-l" style={{ transformOrigin: "3.5px 3px" }}>
+          <rect x="2" y="-1" width="1" height="4" fill={p.earOut} />
+          <rect x="3" y="0"  width="1" height="3" fill={p.earOut} />
+          <rect x="4" y="1"  width="1" height="2" fill={p.earOut} />
+          <rect x="3" y="1"  width="1" height="2" fill={p.earIn} />
+        </g>
+        <g className="mc-ear mc-ear-r" style={{ transformOrigin: "12.5px 3px" }}>
+          <rect x="13" y="-1" width="1" height="4" fill={p.earOut} />
+          <rect x="12" y="0"  width="1" height="3" fill={p.earOut} />
+          <rect x="11" y="1"  width="1" height="2" fill={p.earOut} />
+          <rect x="12" y="1"  width="1" height="2" fill={p.earIn} />
+        </g>
       </>
     );
   }
   if (skin.body === "frog") {
-    // 蛙：头顶两颗大眼凸起代替耳朵
+    // 蛙：眼鼓包不"抖耳"而是"眼珠转一下"。CSS 用单独 class 走不同 keyframe。
     return (
       <>
-        <rect x="3" y="0" width="3" height="3" fill={p.body} />
-        <rect x="10" y="0" width="3" height="3" fill={p.body} />
-        <rect x="4" y="1" width="1" height="1" fill={p.earIn} />
-        <rect x="11" y="1" width="1" height="1" fill={p.earIn} />
-        <rect x="4" y="0" width="1" height="1" fill={p.earOut} />
-        <rect x="11" y="0" width="1" height="1" fill={p.earOut} />
+        <g className="mc-ear mc-ear-l mc-ear-frog" style={{ transformOrigin: "4.5px 1.5px" }}>
+          <rect x="3" y="0" width="3" height="3" fill={p.body} />
+          <rect x="4" y="1" width="1" height="1" fill={p.earIn} />
+          <rect x="4" y="0" width="1" height="1" fill={p.earOut} />
+        </g>
+        <g className="mc-ear mc-ear-r mc-ear-frog" style={{ transformOrigin: "11.5px 1.5px" }}>
+          <rect x="10" y="0" width="3" height="3" fill={p.body} />
+          <rect x="11" y="1" width="1" height="1" fill={p.earIn} />
+          <rect x="11" y="0" width="1" height="1" fill={p.earOut} />
+        </g>
       </>
     );
   }
   if (skin.body === "chubby") {
-    // 大耳朵（外扩 1px）
     return (
       <>
-        <rect x="2"  y="0" width="3" height="3" fill={p.earOut} />
-        <rect x="1"  y="1" width="4" height="3" fill={p.earOut} />
-        <rect x="11" y="0" width="3" height="3" fill={p.earOut} />
-        <rect x="11" y="1" width="4" height="3" fill={p.earOut} />
-        <rect x="3"  y="1" width="1" height="2" fill={p.earIn} />
-        <rect x="12" y="1" width="1" height="2" fill={p.earIn} />
+        <g className="mc-ear mc-ear-l" style={{ transformOrigin: "3px 3.5px" }}>
+          <rect x="2"  y="0" width="3" height="3" fill={p.earOut} />
+          <rect x="1"  y="1" width="4" height="3" fill={p.earOut} />
+          <rect x="3"  y="1" width="1" height="2" fill={p.earIn} />
+        </g>
+        <g className="mc-ear mc-ear-r" style={{ transformOrigin: "13px 3.5px" }}>
+          <rect x="11" y="0" width="3" height="3" fill={p.earOut} />
+          <rect x="11" y="1" width="4" height="3" fill={p.earOut} />
+          <rect x="12" y="1" width="1" height="2" fill={p.earIn} />
+        </g>
       </>
     );
   }
-  // standard / slim / ninja / round
+  // standard / slim / ninja / round —— 基部 (x=4, y=3) / (x=12, y=3)
   return (
     <>
-      <rect x="3"  y="1" width="2" height="2" fill={p.earOut} />
-      <rect x="2"  y="2" width="3" height="2" fill={p.earOut} />
-      <rect x="11" y="1" width="2" height="2" fill={p.earOut} />
-      <rect x="11" y="2" width="3" height="2" fill={p.earOut} />
-      <rect x="3"  y="2" width="1" height="1" fill={p.earIn} />
-      <rect x="12" y="2" width="1" height="1" fill={p.earIn} />
+      <g className="mc-ear mc-ear-l" style={{ transformOrigin: "4px 3px" }}>
+        <rect x="3"  y="1" width="2" height="2" fill={p.earOut} />
+        <rect x="2"  y="2" width="3" height="2" fill={p.earOut} />
+        <rect x="3"  y="2" width="1" height="1" fill={p.earIn} />
+      </g>
+      <g className="mc-ear mc-ear-r" style={{ transformOrigin: "12px 3px" }}>
+        <rect x="11" y="1" width="2" height="2" fill={p.earOut} />
+        <rect x="11" y="2" width="3" height="2" fill={p.earOut} />
+        <rect x="12" y="2" width="1" height="1" fill={p.earIn} />
+      </g>
     </>
   );
 }
@@ -426,10 +456,10 @@ function Extras({ state, skin }: { state: MouseState; skin: Skin }) {
   return null;
 }
 
-export function PixelMouse({ state, size = 96, skin = "classic", continuing = false }: PixelMouseProps) {
+export function PixelMouse({ state, size = 96, skin = "classic", continuing = false, twitching = false }: PixelMouseProps) {
   const s = getSkin(skin);
   return (
-    <div className={`mouse-wrap mouse-${state} mouse-skin-${s.id}`} style={{ width: size, height: size }}>
+    <div className={`mouse-wrap mouse-${state} mouse-skin-${s.id}${twitching ? " mouse-twitch" : ""}`} style={{ width: size, height: size }}>
       {continuing && <div className="mouse-chain" aria-hidden />}
       <svg
         viewBox="-1 -3 18 18"
@@ -442,12 +472,16 @@ export function PixelMouse({ state, size = 96, skin = "classic", continuing = fa
         <Ears skin={s} />
         <NinjaMask skin={s} />
         <Body skin={s} />
-        <Tail skin={s} />
-        <Eyes state={state} skin={s} />
+        <g className="mc-tail" style={{ transformOrigin: "13px 9px" }}>
+          <Tail skin={s} />
+        </g>
+        <g className="mc-eyes">
+          <Eyes state={state} skin={s} />
+        </g>
         <Extras state={state} skin={s} />
         <rect x="4" y="11" width="2" height="1" fill={s.palette.paw} />
         <rect x="10" y="11" width="2" height="1" fill={s.palette.paw} />
-        <rect x="7" y="7" width="2" height="1" fill={s.palette.nose} />
+        <rect className="mc-nose" x="7" y="7" width="2" height="1" fill={s.palette.nose} style={{ transformOrigin: "8px 7.5px" }} />
       </svg>
     </div>
   );

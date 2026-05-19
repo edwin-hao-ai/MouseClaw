@@ -1,0 +1,773 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>MouseClaw · 剪贴板 & 选词交互流程 · 2026-05-19</title>
+<style>
+  :root {
+    --bg-page: #14141c;
+    --bg-desktop: linear-gradient(135deg, #2b2738, #1a1722);
+    --bg-card: #ffffff;
+    --bg-soft: #faf9f6;
+    --bg-chip: rgba(0,0,0,0.06);
+
+    --ink-1: #1a1a22;
+    --ink-2: #4a4a55;
+    --ink-3: #8a8a95;
+    --ink-on-dark: #f5f5f0;
+
+    --line: rgba(0,0,0,0.08);
+    --line-strong: rgba(0,0,0,0.18);
+
+    --accent: #7a5af8;
+    --accent-soft: rgba(122,90,248,0.18);
+    --accent-clip: #3b82f6;
+    --accent-clip-soft: rgba(59,130,246,0.18);
+
+    --ok: #16a34a;
+    --warn: #f59e0b;
+
+    --radius-card: 14px;
+    --radius-bubble: 16px;
+    --radius-chip: 999px;
+
+    --shadow-soft: 0 4px 16px rgba(0,0,0,0.08);
+    --shadow-pop: 0 14px 40px rgba(0,0,0,0.32);
+
+    --text-display: 22px;
+    --text-title: 15px;
+    --text-body: 13px;
+    --text-meta: 11px;
+
+    --motion-fast: 120ms;
+    --motion-base: 220ms;
+    --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    background: var(--bg-page);
+    color: var(--ink-1);
+    font-size: var(--text-body);
+    line-height: 1.55;
+    padding: 32px;
+    min-height: 100vh;
+  }
+  h1 {
+    color: var(--ink-on-dark);
+    font-size: var(--text-display);
+    font-weight: 700;
+    margin: 0 0 4px;
+  }
+  .lead {
+    color: rgba(245,245,240,0.6);
+    margin: 0 0 24px;
+    max-width: 760px;
+  }
+  h2.section-title {
+    color: var(--ink-on-dark);
+    font-size: var(--text-title);
+    font-weight: 600;
+    margin: 0 0 12px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.85;
+  }
+  .section-title .sub {
+    font-size: var(--text-meta);
+    color: rgba(245,245,240,0.4);
+    letter-spacing: 0;
+    text-transform: none;
+    margin-left: 8px;
+  }
+
+  /* ---------- stage（桌面 mock）---------- */
+  .stage {
+    position: relative;
+    background: var(--bg-desktop);
+    border-radius: var(--radius-card);
+    height: 460px;
+    overflow: hidden;
+    box-shadow: var(--shadow-soft);
+    margin-bottom: 32px;
+  }
+  .menubar {
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 24px;
+    background: rgba(20,20,28,0.6);
+    backdrop-filter: blur(8px);
+    color: rgba(245,245,240,0.7);
+    font-size: 11px;
+    display: flex; align-items: center; padding: 0 12px; gap: 14px;
+    z-index: 10;
+  }
+  .menubar .tray-mouse {
+    margin-left: auto;
+    width: 16px; height: 16px;
+  }
+
+  .window-mock {
+    position: absolute;
+    top: 56px; left: 32px;
+    width: calc(100% - 64px); height: calc(100% - 96px);
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: var(--shadow-soft);
+    overflow: hidden;
+  }
+  .window-mock .titlebar {
+    height: 28px;
+    background: #ececec;
+    border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; padding: 0 12px; gap: 8px;
+  }
+  .window-mock .traffic {
+    display: flex; gap: 6px;
+  }
+  .window-mock .traffic span {
+    width: 11px; height: 11px; border-radius: 50%;
+  }
+  .window-mock .traffic .r { background: #ff5f57; }
+  .window-mock .traffic .y { background: #febc2e; }
+  .window-mock .traffic .g { background: #28c840; }
+  .window-mock .title {
+    color: var(--ink-3); font-size: 11px;
+  }
+
+  .window-mock .body {
+    padding: 18px 24px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 13px;
+    line-height: 1.85;
+    color: var(--ink-1);
+  }
+  .window-mock .body p { margin: 0 0 10px; }
+  .selection {
+    background: var(--accent-soft);
+    padding: 0 2px;
+    border-radius: 2px;
+    position: relative;
+  }
+  .selection.live::after {
+    content: "";
+    position: absolute;
+    right: -2px; top: 0; bottom: 0;
+    width: 2px;
+    background: var(--accent);
+    animation: caret 1s steps(2) infinite;
+  }
+  @keyframes caret {
+    50% { opacity: 0; }
+  }
+
+  /* ---------- pixel mouse ---------- */
+  .pixel { shape-rendering: crispEdges; image-rendering: pixelated; }
+  .mouse-svg { display: block; }
+  @keyframes idle-bob {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-2px); }
+  }
+  .mouse-svg.bob { animation: idle-bob 2.4s ease-in-out infinite; }
+
+  /* ---------- mouse anchor ---------- */
+  .mouse-anchor {
+    position: absolute;
+    display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+    transition: top 600ms var(--ease), left 600ms var(--ease), opacity var(--motion-base) var(--ease);
+    z-index: 5;
+  }
+
+  .bubble {
+    background: var(--bg-card);
+    border-radius: var(--radius-bubble);
+    padding: 12px 14px;
+    box-shadow: var(--shadow-pop);
+    max-width: 320px;
+    font-size: var(--text-body);
+    color: var(--ink-1);
+    position: relative;
+    animation: speech-in 320ms var(--ease);
+  }
+  @keyframes speech-in {
+    from { opacity: 0; transform: translateY(6px) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .bubble .who {
+    font-size: var(--text-meta);
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: 4px;
+    letter-spacing: 0.04em;
+  }
+  .bubble .clip-hint {
+    background: var(--accent-clip-soft);
+    border-radius: 8px;
+    padding: 6px 10px;
+    margin: 8px 0 0;
+    color: var(--ink-2);
+    font-size: var(--text-meta);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .bubble .clip-hint .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-clip); }
+  .bubble .actions {
+    display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap;
+  }
+  .bubble .actions button {
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-chip);
+    padding: 5px 12px;
+    font-size: var(--text-meta);
+    color: var(--ink-1);
+    cursor: pointer;
+    transition: all var(--motion-fast) var(--ease);
+  }
+  .bubble .actions button:hover {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+  .bubble .actions button.active {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+    animation: pulse 600ms ease-out;
+  }
+  @keyframes pulse {
+    0%   { transform: scale(1); }
+    50%  { transform: scale(1.08); }
+    100% { transform: scale(1); }
+  }
+
+  .bubble.result {
+    border-left: 3px solid var(--ok);
+  }
+  .bubble.result .ok-row {
+    color: var(--ok);
+    font-size: var(--text-meta);
+    font-weight: 600;
+    display: flex; align-items: center; gap: 4px;
+    margin-top: 6px;
+  }
+
+  /* ---------- key hint chip ---------- */
+  .keys {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: rgba(20,20,28,0.85);
+    color: var(--ink-on-dark);
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: var(--text-meta);
+    box-shadow: var(--shadow-soft);
+  }
+  .keys kbd {
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-family: -apple-system, monospace;
+    font-size: 10px;
+  }
+
+  /* ---------- timeline ---------- */
+  .timeline {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 12px;
+    background: var(--bg-card);
+    padding: 12px;
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-soft);
+    align-items: stretch;
+  }
+  .timeline .step {
+    flex: 1;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: var(--bg-soft);
+    font-size: var(--text-meta);
+    color: var(--ink-3);
+    text-align: center;
+    border-top: 2px solid transparent;
+    transition: all var(--motion-base) var(--ease);
+  }
+  .timeline .step.active {
+    background: var(--accent-soft);
+    color: var(--ink-1);
+    border-top-color: var(--accent);
+    font-weight: 600;
+  }
+  .timeline .step .num {
+    display: block;
+    font-size: 10px;
+    color: var(--ink-3);
+    margin-bottom: 2px;
+  }
+  .timeline .step.active .num { color: var(--accent); }
+
+  /* ---------- controls ---------- */
+  .controls {
+    display: flex; gap: 8px; margin-bottom: 12px;
+    align-items: center;
+  }
+  .controls button {
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: var(--text-meta);
+    color: var(--ink-1);
+    cursor: pointer;
+  }
+  .controls .status {
+    color: rgba(245,245,240,0.5);
+    font-size: var(--text-meta);
+  }
+
+  /* ---------- pros & cons block ---------- */
+  .notes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 16px;
+  }
+  .note-card {
+    background: var(--bg-card);
+    border-radius: var(--radius-card);
+    padding: 16px;
+    box-shadow: var(--shadow-soft);
+  }
+  .note-card h3 {
+    margin: 0 0 8px;
+    font-size: var(--text-body);
+    font-weight: 700;
+    color: var(--ink-1);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .note-card ul {
+    margin: 0; padding-left: 18px;
+    color: var(--ink-2);
+  }
+  .note-card li { margin: 4px 0; }
+  .note-card .tag {
+    display: inline-block;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-right: 4px;
+    background: var(--bg-chip);
+    color: var(--ink-3);
+  }
+  .note-card .tag.ok { background: rgba(22,163,74,0.12); color: var(--ok); }
+  .note-card .tag.no { background: rgba(245,158,11,0.16); color: var(--warn); }
+
+  /* voice waveform fake */
+  .voice {
+    display: inline-flex; align-items: center; gap: 3px;
+    margin-left: 6px;
+  }
+  .voice span {
+    display: inline-block;
+    width: 3px; background: var(--accent);
+    border-radius: 2px;
+    animation: wave 800ms ease-in-out infinite;
+  }
+  .voice span:nth-child(1) { height: 8px;  animation-delay: 0ms; }
+  .voice span:nth-child(2) { height: 14px; animation-delay: 100ms; }
+  .voice span:nth-child(3) { height: 10px; animation-delay: 200ms; }
+  .voice span:nth-child(4) { height: 16px; animation-delay: 300ms; }
+  .voice span:nth-child(5) { height: 8px;  animation-delay: 400ms; }
+  @keyframes wave {
+    0%, 100% { transform: scaleY(0.5); }
+    50%      { transform: scaleY(1); }
+  }
+</style>
+</head>
+<body>
+
+<h1>剪贴板 & 选词交互流程 · prototype</h1>
+<p class="lead">
+  两条触发路径都走在线下"用户主动表达意图"的轨道上 —— 不监听剪贴板、不轮询选区。
+  上方是流程逐帧动画（自动循环），下方是工程评估。鼠标移到 timeline 上可以暂停 / 拖到指定帧。
+</p>
+
+<!-- ===================================================== -->
+<!-- 流程 A：选词 → 双击 ⌘ -->
+<!-- ===================================================== -->
+<h2 class="section-title">A · 选词流程 <span class="sub">用户选了文字，双击 ⌘ 唤老鼠到选区</span></h2>
+
+<div class="timeline" id="tl-a">
+  <div class="step active" data-step="0"><span class="num">01</span>用户选中文字</div>
+  <div class="step" data-step="1"><span class="num">02</span>双击 ⌘ 触发</div>
+  <div class="step" data-step="2"><span class="num">03</span>老鼠跳到选区旁</div>
+  <div class="step" data-step="3"><span class="num">04</span>选动作</div>
+  <div class="step" data-step="4"><span class="num">05</span>结果写回 / 气泡显示</div>
+</div>
+
+<div class="stage" id="stage-a">
+  <div class="menubar">
+    <span>● MouseClaw</span><span>文件</span><span>编辑</span><span>视图</span>
+    <div class="tray-mouse" id="tray-mouse-a"></div>
+  </div>
+  <div class="window-mock">
+    <div class="titlebar">
+      <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+      <div class="title">meeting-notes.md — Obsidian</div>
+    </div>
+    <div class="body">
+      <p># Q3 Product Review</p>
+      <p>The team discussed quarterly goals and concluded that <span class="selection" id="selection-a">we should ship the personality system in v0.4 before the end of June, given that user feedback consistently asks for character-driven assistants.</span> Edwin will draft the spec.</p>
+      <p>Action items will be tracked in Linear.</p>
+    </div>
+  </div>
+
+  <!-- key hint -->
+  <div id="key-hint-a" style="position:absolute; bottom: 22px; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity 200ms;">
+    <div class="keys"><kbd>⌘</kbd><kbd>⌘</kbd> <span style="margin-left:4px">双击 = 唤老鼠到选区</span></div>
+  </div>
+
+  <!-- mouse + bubble anchor -->
+  <div class="mouse-anchor" id="anchor-a" style="top: 200px; right: -120px; opacity: 0;">
+    <div id="bubble-a"></div>
+    <div id="mouse-a"></div>
+  </div>
+</div>
+
+<div class="notes">
+  <div class="note-card">
+    <h3>✅ 工程上的好处</h3>
+    <ul>
+      <li><span class="tag ok">零监听</span>不订阅 Accessibility selection-changed，零隐私焦虑</li>
+      <li><span class="tag ok">零权限</span>只需要全局快捷键 + 剪贴板读写（这俩已经有）</li>
+      <li><span class="tag ok">已验证</span>PopClip 用同样的模拟 ⌘C 抓选区模式跑了 10 年</li>
+      <li><span class="tag ok">主动意图</span>双击是肌肉记忆动作，触发即代表"我要处理"</li>
+    </ul>
+  </div>
+  <div class="note-card">
+    <h3>⚠️ 要小心的地方</h3>
+    <ul>
+      <li><span class="tag no">恢复剪贴板</span>抓选区前要先存原剪贴板，处理完恢复，否则用户原本想 paste 的东西就丢了</li>
+      <li><span class="tag no">无选区降级</span>用户没选东西就双击 → 老鼠不弹按钮，直接走召唤模式</li>
+      <li><span class="tag no">老鼠位置</span>用 Accessibility 拿到选区屏幕坐标可能慢 100ms，先用"屏幕中央 → 滑入"兜底</li>
+      <li><span class="tag no">手势冲突</span>有些 app 用 ⌘⌘ 做切换，要让用户在 Onboarding 选 ⌘ 或 ⌥</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ===================================================== -->
+<!-- 流程 B：召唤 → 剪贴板顺手带上 -->
+<!-- ===================================================== -->
+<h2 class="section-title" style="margin-top:32px">B · 剪贴板流程 <span class="sub">用户召唤老鼠时，剪贴板顺手带上 —— 复制本身不触发任何事</span></h2>
+
+<div class="timeline" id="tl-b">
+  <div class="step active" data-step="0"><span class="num">01</span>用户按召唤 hotkey</div>
+  <div class="step" data-step="1"><span class="num">02</span>老鼠出现 + 剪贴板小提示</div>
+  <div class="step" data-step="2"><span class="num">03</span>用户语音说意图</div>
+  <div class="step" data-step="3"><span class="num">04</span>处理剪贴板内容</div>
+  <div class="step" data-step="4"><span class="num">05</span>结果回到气泡</div>
+</div>
+
+<div class="stage" id="stage-b">
+  <div class="menubar">
+    <span>● MouseClaw</span><span>Safari</span><span>文件</span><span>编辑</span>
+    <div class="tray-mouse" id="tray-mouse-b"></div>
+  </div>
+  <div class="window-mock">
+    <div class="titlebar">
+      <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+      <div class="title">developer.mozilla.org — Safari</div>
+    </div>
+    <div class="body">
+      <p style="color:var(--ink-3); font-size: 11px; margin-bottom: 16px">// 30 秒前用户从这里复制了一段英文 ...</p>
+      <p style="color: var(--ink-2)">"The Clipboard API provides the ability to respond to clipboard commands (cut, copy, and paste) as well as to asynchronously read from and write to the system clipboard."</p>
+      <p style="margin-top: 18px; color: var(--ink-3); font-size: 11px">📋 剪贴板内容长度：158 字符 · 语言：英文</p>
+    </div>
+  </div>
+
+  <!-- hotkey hint -->
+  <div id="key-hint-b" style="position:absolute; bottom: 22px; left: 50%; transform: translateX(-50%); opacity: 1; transition: opacity 200ms;">
+    <div class="keys"><kbd>⌃</kbd><kbd>Space</kbd> <span style="margin-left:4px">召唤 MouseClaw</span></div>
+  </div>
+
+  <div class="mouse-anchor" id="anchor-b" style="top: 80px; right: 60px; opacity: 0;">
+    <div id="bubble-b"></div>
+    <div id="mouse-b"></div>
+  </div>
+</div>
+
+<div class="notes">
+  <div class="note-card">
+    <h3>✅ 工程上的好处</h3>
+    <ul>
+      <li><span class="tag ok">零监听</span>剪贴板复制本身**不**触发 MouseClaw 任何行为</li>
+      <li><span class="tag ok">零打扰</span>用户 200+ 次/天纯搬运复制，老鼠一次都不动</li>
+      <li><span class="tag ok">召唤即上下文</span>每次召唤都顺手收集剪贴板 + 选中 + 截图 + 前台 app，一次性</li>
+      <li><span class="tag ok">隐私易理解</span>"召唤瞬间读一次"和 Spotlight/Raycast 同性质，用户能接受</li>
+    </ul>
+  </div>
+  <div class="note-card">
+    <h3>⚠️ 要小心的地方</h3>
+    <ul>
+      <li><span class="tag no">剪贴板过滤</span>密码 / 高熵串 / 银行号要在 prompt 前过滤掉</li>
+      <li><span class="tag no">前台 app 黑名单</span>密码管理器在前台时不读剪贴板</li>
+      <li><span class="tag no">气泡里的提示要"不抢戏"</span>剪贴板那一行只是 hint，不能挤掉用户的主输入意图</li>
+      <li><span class="tag no">忽略也要顺手</span>⌘+2 / 点 X 一键忽略剪贴板，下次召唤不再带</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ===================================================== -->
+<!-- 控制条 -->
+<!-- ===================================================== -->
+<div class="controls" style="margin-top: 32px">
+  <button id="restart-a">↻ 重播流程 A</button>
+  <button id="restart-b">↻ 重播流程 B</button>
+  <span class="status" id="status">两个流程都在自动循环中（约 12s 一轮）</span>
+</div>
+
+<script>
+// =====================================================================
+// 像素老鼠：14×12 网格
+// =====================================================================
+const NS = "http://www.w3.org/2000/svg";
+function rect(x, y, w, h, fill) {
+  const r = document.createElementNS(NS, "rect");
+  r.setAttribute("x", x); r.setAttribute("y", y);
+  r.setAttribute("width", w); r.setAttribute("height", h);
+  r.setAttribute("fill", fill);
+  return r;
+}
+function drawMouse({ px = 5, body = "#cdb8ff", accent = "#7a5af8" } = {}) {
+  const W = 14, H = 12;
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("class", "pixel mouse-svg bob");
+  svg.setAttribute("viewBox", `0 0 ${W*px} ${H*px}`);
+  svg.setAttribute("width", W*px);
+  svg.setAttribute("height", H*px);
+  const set = (x, y, c) => svg.appendChild(rect(x*px, y*px, px, px, c));
+  const bodyMap = [
+    "...########..",
+    "..##########.",
+    ".############",
+    ".############",
+    ".############",
+    "..##########.",
+    "...########..",
+  ];
+  for (let r = 0; r < bodyMap.length; r++) {
+    for (let c = 0; c < bodyMap[r].length; c++) {
+      if (bodyMap[r][c] === "#") set(c + 1, r + 3, body);
+    }
+  }
+  set(3, 1, body); set(4, 1, body); set(3, 2, accent); set(4, 2, accent);
+  set(9, 1, body); set(10, 1, body); set(9, 2, accent); set(10, 2, accent);
+  set(5, 5, "#1a1a22");
+  set(9, 5, "#1a1a22");
+  set(7, 7, "#ff7aa2");
+  set(13, 7, body); set(13, 6, body); set(12, 8, body);
+  return svg;
+}
+function drawTrayMouse() {
+  const px = 1;
+  const W = 14, H = 10;
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("class", "pixel");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.setAttribute("width", 16);
+  svg.setAttribute("height", 16);
+  const set = (x, y, c) => svg.appendChild(rect(x, y, 1, 1, c));
+  const c = "rgba(245,245,240,0.85)";
+  const body = ["..########..", ".##########.", "############", "############", "############", ".##########.", "..########.."];
+  for (let r = 0; r < body.length; r++)
+    for (let cx = 0; cx < body[r].length; cx++)
+      if (body[r][cx] === "#") set(cx + 1, r + 2, c);
+  set(3, 1, c); set(10, 1, c);
+  set(5, 4, "#1a1a22"); set(9, 4, "#1a1a22");
+  return svg;
+}
+
+document.getElementById("mouse-a").appendChild(drawMouse({ px: 5 }));
+document.getElementById("mouse-b").appendChild(drawMouse({ px: 5 }));
+document.getElementById("tray-mouse-a").appendChild(drawTrayMouse());
+document.getElementById("tray-mouse-b").appendChild(drawTrayMouse());
+
+// =====================================================================
+// 流程 A：选词 → 双击 ⌘
+// =====================================================================
+const anchorA = document.getElementById("anchor-a");
+const bubbleA = document.getElementById("bubble-a");
+const keyHintA = document.getElementById("key-hint-a");
+const tlA = document.getElementById("tl-a");
+const selA = document.getElementById("selection-a");
+
+function setStep(timeline, idx) {
+  timeline.querySelectorAll(".step").forEach(s => s.classList.remove("active"));
+  const el = timeline.querySelector(`.step[data-step="${idx}"]`);
+  if (el) el.classList.add("active");
+}
+
+function flowA() {
+  // step 0: 选中文字（已经在 DOM 里高亮）
+  setStep(tlA, 0);
+  selA.classList.add("live");
+  anchorA.style.opacity = 0;
+  bubbleA.innerHTML = "";
+  keyHintA.style.opacity = 0;
+
+  // step 1: 双击 ⌘ 提示
+  setTimeout(() => {
+    setStep(tlA, 1);
+    keyHintA.style.opacity = 1;
+  }, 1400);
+
+  // step 2: 老鼠滑入选区右侧
+  setTimeout(() => {
+    setStep(tlA, 2);
+    const rect = selA.getBoundingClientRect();
+    const stageRect = document.getElementById("stage-a").getBoundingClientRect();
+    anchorA.style.top = (rect.bottom - stageRect.top + 6) + "px";
+    anchorA.style.left = (rect.right - stageRect.left - 80) + "px";
+    anchorA.style.right = "auto";
+    anchorA.style.opacity = 1;
+    keyHintA.style.opacity = 0;
+    selA.classList.remove("live");
+  }, 2800);
+
+  // step 3: 气泡出现，3 个动作
+  setTimeout(() => {
+    setStep(tlA, 3);
+    bubbleA.innerHTML = `
+      <div class="bubble">
+        <div class="who">🐭 收到选区 · 158 字符</div>
+        <div style="color:var(--ink-3); font-size: var(--text-meta)">"we should ship the personality system..."</div>
+        <div class="actions">
+          <button data-act="translate">🌐 翻译</button>
+          <button data-act="explain">💡 解释</button>
+          <button data-act="polish">✨ 润色</button>
+          <button data-act="more">⋯</button>
+        </div>
+      </div>`;
+  }, 3600);
+
+  // step 4: 点翻译（自动 demo）
+  setTimeout(() => {
+    const btn = bubbleA.querySelector('button[data-act="translate"]');
+    if (btn) btn.classList.add("active");
+  }, 5400);
+
+  setTimeout(() => {
+    setStep(tlA, 4);
+    bubbleA.innerHTML = `
+      <div class="bubble result">
+        <div class="who">🐭 翻译完成</div>
+        <div>我们应该在 6 月底前于 v0.4 发布角色系统 —— 因为用户反馈一直在问"有性格的助手"。Edwin 来起草 spec。</div>
+        <div class="ok-row">✓ 已写回剪贴板 · ⌘+V 粘贴</div>
+      </div>`;
+  }, 6800);
+
+  // 收尾 → 重置
+  setTimeout(() => {
+    anchorA.style.opacity = 0;
+  }, 11000);
+}
+
+// =====================================================================
+// 流程 B：召唤 → 剪贴板顺手带上
+// =====================================================================
+const anchorB = document.getElementById("anchor-b");
+const bubbleB = document.getElementById("bubble-b");
+const keyHintB = document.getElementById("key-hint-b");
+const tlB = document.getElementById("tl-b");
+
+function flowB() {
+  setStep(tlB, 0);
+  anchorB.style.opacity = 0;
+  bubbleB.innerHTML = "";
+  keyHintB.style.opacity = 1;
+
+  // step 1: 老鼠出现 + 剪贴板提示
+  setTimeout(() => {
+    setStep(tlB, 1);
+    keyHintB.style.opacity = 0;
+    anchorB.style.opacity = 1;
+    bubbleB.innerHTML = `
+      <div class="bubble">
+        <div class="who">🐭 在听</div>
+        <div style="color:var(--ink-3); font-size: var(--text-meta)">说点什么或继续打字 ...</div>
+        <div class="clip-hint">
+          <span class="dot"></span>
+          <span>📋 剪贴板里有 158 字符的英文段落</span>
+        </div>
+        <div style="font-size: 10px; color: var(--ink-3); margin-top: 4px">
+          <kbd style="background: var(--bg-soft); padding: 0 4px; border-radius: 3px; border: 1px solid var(--line)">⌘1</kbd> 一起处理 ·
+          <kbd style="background: var(--bg-soft); padding: 0 4px; border-radius: 3px; border: 1px solid var(--line)">⌘2</kbd> 忽略
+        </div>
+      </div>`;
+  }, 1400);
+
+  // step 2: 用户语音
+  setTimeout(() => {
+    setStep(tlB, 2);
+    bubbleB.innerHTML = `
+      <div class="bubble">
+        <div class="who">🐭 收到 <span class="voice"><span></span><span></span><span></span><span></span><span></span></span></div>
+        <div>"翻译一下我刚复制的"</div>
+        <div class="clip-hint">
+          <span class="dot"></span>
+          <span>📋 自动纳入剪贴板内容</span>
+        </div>
+      </div>`;
+  }, 4000);
+
+  // step 3: 处理中
+  setTimeout(() => {
+    setStep(tlB, 3);
+    bubbleB.innerHTML = `
+      <div class="bubble">
+        <div class="who">🐭 处理中 ...</div>
+        <div style="color:var(--ink-3)">把剪贴板里的英文丢给后台 CLI 翻译 ...</div>
+      </div>`;
+  }, 5800);
+
+  // step 4: 结果
+  setTimeout(() => {
+    setStep(tlB, 4);
+    bubbleB.innerHTML = `
+      <div class="bubble result">
+        <div class="who">🐭 翻译完成</div>
+        <div>Clipboard API 提供了响应剪贴板命令（剪切、复制、粘贴）的能力，并支持异步读取和写入系统剪贴板。</div>
+        <div class="ok-row">✓ 已写回剪贴板 · 原内容已恢复</div>
+      </div>`;
+  }, 7800);
+
+  setTimeout(() => {
+    anchorB.style.opacity = 0;
+  }, 11500);
+}
+
+// =====================================================================
+// 循环
+// =====================================================================
+let intervalA, intervalB;
+function startLoops() {
+  flowA();
+  setTimeout(flowB, 800);
+  intervalA = setInterval(flowA, 12000);
+  intervalB = setInterval(flowB, 12000);
+}
+function restartAll() {
+  clearInterval(intervalA); clearInterval(intervalB);
+  startLoops();
+}
+document.getElementById("restart-a").onclick = () => flowA();
+document.getElementById("restart-b").onclick = () => flowB();
+startLoops();
+
+</script>
+
+</body>
+</html>

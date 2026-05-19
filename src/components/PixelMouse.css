@@ -1,5 +1,76 @@
 /* PixelMouse animations — durations/curves come from tokens.css per DESIGN.md §2.7 */
 
+/* ───────── v0.4 · Reactive T1：剪贴板触发的一次性反应 ─────────
+ *
+ * App.tsx 在收到 clipboard-reactive 事件时给 .mouse-wrap 加 .mouse-twitch
+ * class，CSS animation 跑完后 React state 移除（500ms 后），下次 trigger 重新加。
+ *
+ * 设计：四个独立部位各跑各的动画，营造"全身一瞬间警觉"的反应：
+ *   - .mc-ear-l / .mc-ear-r —— 两只耳朵反向抽搐（动画 phase 错开 60ms）
+ *   - .mc-tail —— 尾巴轻甩一下
+ *   - .mc-nose —— 鼻子嗅一下（scale 1.2 一瞬）
+ *
+ * 适配所有 skin：耳朵动画在 Ears() 里每个 body variant 都 wrap 了 .mc-ear 组并
+ *   设了 transform-origin（inline style）。蛙的眼鼓包用 .mc-ear-frog 走单独 keyframe
+ *   —— 不旋转，转而做"眼珠扫一下"的微 scale。
+ */
+
+.mouse-wrap.mouse-twitch .mc-ear-l {
+  animation: mc-ear-flick-l 380ms ease-out;
+}
+.mouse-wrap.mouse-twitch .mc-ear-r {
+  animation: mc-ear-flick-r 380ms ease-out 50ms;
+}
+.mouse-wrap.mouse-twitch .mc-ear-l.mc-ear-frog,
+.mouse-wrap.mouse-twitch .mc-ear-r.mc-ear-frog {
+  animation: mc-ear-frog-bob 380ms ease-out;
+}
+.mouse-wrap.mouse-twitch .mc-tail {
+  animation: mc-tail-flick 400ms ease-out 30ms;
+}
+.mouse-wrap.mouse-twitch .mc-nose {
+  animation: mc-nose-sniff 320ms ease-out;
+}
+
+/* 幅度调校（2026-05-19 用户反馈"会闪一下"）：
+ * 之前 22deg + scale 1.45 太夸张 → 像素艺术放大后看着像整个老鼠在跳。
+ * 现在改成温柔察觉：耳朵 ±12deg，尾巴 ±10deg，鼻子 1.15 嗅一下。 */
+@keyframes mc-ear-flick-l {
+  0%   { transform: rotate(0deg); }
+  35%  { transform: rotate(-12deg); }
+  65%  { transform: rotate(4deg); }
+  100% { transform: rotate(0deg); }
+}
+@keyframes mc-ear-flick-r {
+  0%   { transform: rotate(0deg); }
+  35%  { transform: rotate(12deg); }
+  65%  { transform: rotate(-4deg); }
+  100% { transform: rotate(0deg); }
+}
+@keyframes mc-ear-frog-bob {
+  /* 蛙没耳朵，眼鼓包做温柔的"眼珠扫一下" */
+  0%   { transform: scale(1)    translateY(0); }
+  45%  { transform: scale(1.1)  translateY(-0.3px); }
+  100% { transform: scale(1)    translateY(0); }
+}
+@keyframes mc-tail-flick {
+  0%   { transform: rotate(0deg); }
+  35%  { transform: rotate(-10deg); }
+  65%  { transform: rotate(4deg); }
+  100% { transform: rotate(0deg); }
+}
+@keyframes mc-nose-sniff {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.15); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mouse-wrap.mouse-twitch .mc-ear-l,
+  .mouse-wrap.mouse-twitch .mc-ear-r,
+  .mouse-wrap.mouse-twitch .mc-tail,
+  .mouse-wrap.mouse-twitch .mc-nose { animation: none; }
+}
+
 .mouse-wrap {
   position: relative;
   display: inline-block;

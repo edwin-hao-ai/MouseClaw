@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>MouseClaw · 老鼠 reactive 三层模型 · 2026-05-19</title>
+<style>
+  :root {
+    --bg-page: #14141c;
+    --bg-desktop: linear-gradient(135deg, #2b2738, #1a1722);
+    --bg-card: #ffffff;
+    --bg-soft: #faf9f6;
+    --bg-chip: rgba(0,0,0,0.06);
+
+    --ink-1: #1a1a22;
+    --ink-2: #4a4a55;
+    --ink-3: #8a8a95;
+    --ink-on-dark: #f5f5f0;
+
+    --line: rgba(0,0,0,0.08);
+    --accent: #7a5af8;
+    --accent-soft: rgba(122,90,248,0.18);
+    --accent-clip: #3b82f6;
+    --ok: #16a34a;
+    --warn: #f59e0b;
+    --mute: #6b7280;
+
+    --radius-card: 14px;
+    --radius-bubble: 14px;
+    --radius-chip: 999px;
+
+    --shadow-soft: 0 4px 16px rgba(0,0,0,0.08);
+    --shadow-pop: 0 14px 40px rgba(0,0,0,0.32);
+
+    --text-display: 22px;
+    --text-title: 15px;
+    --text-body: 13px;
+    --text-meta: 11px;
+
+    --motion-fast: 120ms;
+    --motion-base: 220ms;
+    --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    background: var(--bg-page);
+    color: var(--ink-1);
+    font-size: var(--text-body);
+    line-height: 1.55;
+    padding: 32px;
+    min-height: 100vh;
+  }
+  h1 {
+    color: var(--ink-on-dark);
+    font-size: var(--text-display);
+    font-weight: 700;
+    margin: 0 0 4px;
+  }
+  .lead {
+    color: rgba(245,245,240,0.6);
+    margin: 0 0 24px;
+    max-width: 780px;
+  }
+  h2.section-title {
+    color: var(--ink-on-dark);
+    font-size: var(--text-title);
+    font-weight: 600;
+    margin: 0 0 12px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.85;
+  }
+  .section-title .sub {
+    font-size: var(--text-meta);
+    color: rgba(245,245,240,0.4);
+    letter-spacing: 0;
+    text-transform: none;
+    margin-left: 8px;
+  }
+
+  /* ---------- tier 总览表 ---------- */
+  .tiers {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+  .tier {
+    background: var(--bg-card);
+    border-radius: var(--radius-card);
+    padding: 16px;
+    box-shadow: var(--shadow-soft);
+    border-top: 3px solid var(--accent);
+  }
+  .tier.t1 { border-top-color: var(--mute); }
+  .tier.t2 { border-top-color: var(--accent-clip); }
+  .tier.t3 { border-top-color: var(--accent); }
+  .tier h3 {
+    margin: 0 0 4px;
+    font-size: var(--text-title);
+    font-weight: 700;
+  }
+  .tier .freq {
+    color: var(--ink-3);
+    font-size: var(--text-meta);
+    margin-bottom: 12px;
+  }
+  .tier .demo {
+    background: var(--bg-soft);
+    border-radius: 10px;
+    height: 100px;
+    display: grid; place-items: center;
+    margin-bottom: 12px;
+    position: relative;
+    overflow: hidden;
+  }
+  .tier p { margin: 0; color: var(--ink-2); }
+
+  /* ---------- 像素老鼠 ---------- */
+  .pixel { shape-rendering: crispEdges; image-rendering: pixelated; }
+  .mouse-svg { display: block; }
+  @keyframes idle-bob {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-2px); }
+  }
+  .mouse-svg.bob { animation: idle-bob 2.4s ease-in-out infinite; }
+
+  /* tier 1: ear twitch animation */
+  @keyframes ear-twitch-loop {
+    0%, 70%, 100% { transform: translateY(0); }
+    72%           { transform: translateY(-1px) rotate(-4deg); }
+    74%           { transform: translateY(-0.5px) rotate(2deg); }
+    76%           { transform: translateY(0); }
+  }
+  .ear-twitch .ear-L { transform-origin: 20px 10px; animation: ear-twitch-loop 2.6s ease-in-out infinite; }
+  .ear-twitch .ear-R { transform-origin: 50px 10px; animation: ear-twitch-loop 2.6s ease-in-out infinite 0.05s; }
+
+  /* tier 1 eye glance */
+  @keyframes glance {
+    0%, 50%, 100% { transform: translateX(0); }
+    60%, 80%      { transform: translateX(2px); }
+  }
+  .glance .eyes { animation: glance 3s ease-in-out infinite; }
+
+  /* ---------- 主舞台 ---------- */
+  .stage {
+    position: relative;
+    background: var(--bg-desktop);
+    border-radius: var(--radius-card);
+    height: 460px;
+    overflow: hidden;
+    box-shadow: var(--shadow-soft);
+    margin-bottom: 16px;
+  }
+  .menubar {
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 24px;
+    background: rgba(20,20,28,0.6);
+    backdrop-filter: blur(8px);
+    color: rgba(245,245,240,0.7);
+    font-size: 11px;
+    display: flex; align-items: center; padding: 0 12px; gap: 14px;
+    z-index: 10;
+  }
+  .window-mock {
+    position: absolute;
+    top: 56px; left: 32px;
+    width: calc(100% - 64px); height: calc(100% - 96px);
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: var(--shadow-soft);
+    overflow: hidden;
+  }
+  .window-mock .titlebar {
+    height: 28px; background: #ececec;
+    border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; padding: 0 12px; gap: 8px;
+  }
+  .traffic { display: flex; gap: 6px; }
+  .traffic span { width: 11px; height: 11px; border-radius: 50%; }
+  .traffic .r { background: #ff5f57; }
+  .traffic .y { background: #febc2e; }
+  .traffic .g { background: #28c840; }
+  .window-mock .title { color: var(--ink-3); font-size: 11px; }
+  .window-mock .body {
+    padding: 18px 24px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 13px; line-height: 1.85;
+    color: var(--ink-1);
+  }
+  .window-mock .body p { margin: 0 0 8px; }
+  .sel {
+    background: var(--accent-soft);
+    padding: 0 2px; border-radius: 2px;
+  }
+  .copy-flash {
+    background: rgba(22,163,74,0.22);
+    padding: 0 2px; border-radius: 2px;
+    animation: flash 600ms ease-out;
+  }
+  @keyframes flash {
+    0%   { background: rgba(22,163,74,0.55); }
+    100% { background: rgba(22,163,74,0.22); }
+  }
+
+  /* ---------- 老鼠 anchor（停在右下角）---------- */
+  .pet-corner {
+    position: absolute;
+    right: 60px; bottom: 56px;
+    display: flex; flex-direction: column; align-items: center;
+    z-index: 5;
+  }
+  .pet-corner .head-icon {
+    position: absolute;
+    top: -38px; left: 50%;
+    transform: translate(-50%, 6px);
+    background: var(--bg-card);
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 13px;
+    box-shadow: var(--shadow-pop);
+    opacity: 0;
+    transition: opacity var(--motion-base) var(--ease), transform var(--motion-base) var(--ease);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .pet-corner .head-icon.show {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+  .pet-corner .head-icon::after {
+    content: "";
+    position: absolute;
+    bottom: -5px; left: 50%;
+    margin-left: -5px;
+    width: 0; height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 5px solid var(--bg-card);
+  }
+
+  /* tier 3 panel */
+  .action-panel {
+    position: absolute;
+    right: 0; bottom: 80px;
+    background: var(--bg-card);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-pop);
+    padding: 12px;
+    width: 240px;
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+    transition: all var(--motion-base) var(--ease);
+    pointer-events: none;
+  }
+  .action-panel.show {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+  }
+  .action-panel .preview {
+    background: var(--bg-soft);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: var(--text-meta);
+    color: var(--ink-3);
+    margin-bottom: 10px;
+    max-height: 60px; overflow: hidden;
+    border-left: 2px solid var(--accent);
+  }
+  .action-panel .preview .src {
+    color: var(--accent-clip);
+    font-weight: 600;
+    margin-bottom: 2px;
+    display: block;
+  }
+  .action-panel .actions {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+  }
+  .action-panel .actions button {
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: var(--text-body);
+    color: var(--ink-1);
+    cursor: pointer;
+    text-align: left;
+    transition: all var(--motion-fast) var(--ease);
+  }
+  .action-panel .actions button:hover {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+  .action-panel .hint {
+    margin-top: 8px;
+    font-size: 10px;
+    color: var(--ink-3);
+    text-align: center;
+  }
+
+  /* ---------- timeline ---------- */
+  .timeline {
+    display: flex; gap: 4px; align-items: stretch;
+    background: var(--bg-card);
+    padding: 12px;
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-soft);
+    margin-bottom: 12px;
+  }
+  .timeline .step {
+    flex: 1;
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: var(--bg-soft);
+    font-size: var(--text-meta);
+    color: var(--ink-3);
+    text-align: center;
+    border-top: 2px solid transparent;
+    transition: all var(--motion-base) var(--ease);
+  }
+  .timeline .step.active {
+    background: var(--accent-soft);
+    color: var(--ink-1);
+    border-top-color: var(--accent);
+    font-weight: 600;
+  }
+  .timeline .step .num {
+    display: block;
+    font-size: 10px;
+    color: var(--ink-3);
+    margin-bottom: 2px;
+  }
+
+  /* ---------- suppression rules ---------- */
+  .rules-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  .rule {
+    background: var(--bg-card);
+    border-radius: var(--radius-card);
+    padding: 14px;
+    box-shadow: var(--shadow-soft);
+    border-left: 3px solid var(--mute);
+  }
+  .rule h4 {
+    margin: 0 0 4px;
+    font-size: var(--text-body);
+    font-weight: 700;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .rule .case {
+    color: var(--ink-3);
+    font-size: var(--text-meta);
+    margin-bottom: 6px;
+  }
+  .rule p {
+    margin: 0;
+    color: var(--ink-2);
+    font-size: var(--text-meta);
+  }
+  .rule .mini-mouse {
+    width: 32px; height: 28px;
+    background: var(--bg-soft);
+    border-radius: 6px;
+    display: inline-grid; place-items: center;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+
+  /* ---------- intensity slider ---------- */
+  .intensity {
+    background: var(--bg-card);
+    border-radius: var(--radius-card);
+    padding: 16px;
+    box-shadow: var(--shadow-soft);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 32px;
+  }
+  .intensity .label {
+    font-weight: 600;
+    font-size: var(--text-body);
+    color: var(--ink-1);
+    min-width: 120px;
+  }
+  .intensity .opts {
+    display: flex; gap: 8px; flex: 1;
+  }
+  .intensity .opt {
+    flex: 1;
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: all var(--motion-fast) var(--ease);
+  }
+  .intensity .opt.active {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+  }
+  .intensity .opt .opt-name {
+    font-weight: 600; font-size: var(--text-body);
+    color: var(--ink-1);
+  }
+  .intensity .opt .opt-desc {
+    font-size: 10px; color: var(--ink-3);
+    margin-top: 2px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Reactive 老鼠 · 三层反应模型 prototype</h1>
+<p class="lead">
+  老鼠永远在桌面角落。复制 / 选词 → 它立刻有反应 —— 但 99% 情况只是<b>像素动画</b>（耳朵抖一下、眼睛瞟一下），
+  不弹按钮、不出 UI。"看着值得"时才升到 tier 2（头顶飘小图标），用户主动 hover 老鼠才到 tier 3（动作面板）。
+  下面同屏展示三层、suppression 规则、强度档位、和完整剧本动画。
+</p>
+
+<!-- ============= 三层总览 ============= -->
+<h2 class="section-title">1 · 三层反应总览</h2>
+<div class="tiers">
+
+  <div class="tier t1">
+    <h3>Tier 1 · 察觉</h3>
+    <div class="freq">~200 次/天 · 持续 ~400ms · 零 UI</div>
+    <div class="demo" id="demo-t1"></div>
+    <p>每次复制 / 选词都触发。表现：耳朵抖 / 眼睛瞟向光标方向。<b>不弹任何东西</b> —— 它只是让你"知道老鼠看见了"，像家里的猫。</p>
+  </div>
+
+  <div class="tier t2">
+    <h3>Tier 2 · 提示</h3>
+    <div class="freq">~30 次/天 · 持续 2-3s · 头顶小气泡</div>
+    <div class="demo" id="demo-t2"></div>
+    <p>内容判断为"值得处理"（长 / 跨语言 / 像代码 / 像 URL）时升级。头顶飘一个小图标，2-3s 自动消失。<b>不打断当前操作</b>。</p>
+  </div>
+
+  <div class="tier t3">
+    <h3>Tier 3 · 展开</h3>
+    <div class="freq">~5 次/天 · 用户主动 hover/点 老鼠</div>
+    <div class="demo" id="demo-t3"></div>
+    <p>用户走过去碰一下老鼠 → 弹出动作面板（翻译 / 解释 / 润色 / 总结 / 自定义）。点完结果回写剪贴板 + 气泡确认。</p>
+  </div>
+
+</div>
+
+<!-- ============= 完整剧本 ============= -->
+<h2 class="section-title">2 · 完整剧本动画 <span class="sub">复制乱码 → 老鼠抖耳 → 飘图标 → hover 展开 → 选清理 → 写回剪贴板</span></h2>
+
+<div class="timeline" id="tl">
+  <div class="step active" data-step="0"><span class="num">01</span>用户复制一段乱码</div>
+  <div class="step" data-step="1"><span class="num">02</span>T1 抖耳（即时）</div>
+  <div class="step" data-step="2"><span class="num">03</span>T2 头顶📝（1s）</div>
+  <div class="step" data-step="3"><span class="num">04</span>用户 hover 老鼠</div>
+  <div class="step" data-step="4"><span class="num">05</span>T3 弹出面板</div>
+  <div class="step" data-step="5"><span class="num">06</span>选清理 → 写回</div>
+</div>
+
+<div class="stage" id="stage">
+  <div class="menubar">
+    <span>● MouseClaw</span><span>邮件</span><span>编辑</span>
+    <span style="margin-left:auto; opacity:0.5">14:32</span>
+  </div>
+  <div class="window-mock">
+    <div class="titlebar">
+      <div class="traffic"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+      <div class="title">Mail — 客户回复</div>
+    </div>
+    <div class="body">
+      <p style="color:var(--ink-3); font-size: 11px">From: client@example.com</p>
+      <p id="mail-text">Hi&nbsp;&nbsp;Edwin,&nbsp;&nbsp;&nbsp;&nbsp;thanks&nbsp;for&nbsp;&nbsp;the&nbsp;reply.<br>
+        <span id="copy-target">We&nbsp;&nbsp;think&nbsp;&nbsp;the&nbsp;&nbsp;new&nbsp;&nbsp;&nbsp;personality&nbsp;system&nbsp;&nbsp;sounds&nbsp;&nbsp;&nbsp;&nbsp;cool,&nbsp;but&nbsp;&nbsp;we'd&nbsp;like&nbsp;&nbsp;to&nbsp;&nbsp;see&nbsp;a&nbsp;&nbsp;&nbsp;demo&nbsp;before&nbsp;&nbsp;&nbsp;committing.</span><br>
+        Let&nbsp;us&nbsp;know.</p>
+      <p style="color: var(--ink-3); font-size: 11px; margin-top: 12px">— Sarah</p>
+    </div>
+  </div>
+
+  <!-- 老鼠在右下角 -->
+  <div class="pet-corner" id="pet">
+    <div class="head-icon" id="head-icon">📝 乱格式</div>
+    <div id="mouse-host"></div>
+  </div>
+
+  <!-- tier 3 action panel -->
+  <div class="action-panel" id="panel">
+    <div class="preview">
+      <span class="src">📋 刚刚复制 · 162 字符</span>
+      "We think the new personality system sounds cool..."
+    </div>
+    <div class="actions">
+      <button data-act="clean">📝 清理格式</button>
+      <button data-act="translate">🌐 翻译</button>
+      <button data-act="reply">✉️ 写回信</button>
+      <button data-act="explain">💡 解释</button>
+    </div>
+    <div class="hint">Esc 收起 · ⌘1-4 直选</div>
+  </div>
+</div>
+
+<!-- ============= 静音规则 ============= -->
+<h2 class="section-title" style="margin-top:32px">3 · 静音规则（老鼠完全不动的 4 种情况）</h2>
+<div class="rules-grid">
+  <div class="rule">
+    <h4>🔇 短复制</h4>
+    <div class="case">复制了 "OK" / "Yes" / 短 URL</div>
+    <p>长度 &lt; 20 字符 → 老鼠睡着，连耳朵都不抖。99% 是搬运操作。</p>
+  </div>
+  <div class="rule">
+    <h4>🔇 2s 内 paste</h4>
+    <div class="case">复制后立刻 ⌘V</div>
+    <p>纯搬运闭环 → 老鼠刚抖的耳朵立刻收回，不进 tier 2。</p>
+  </div>
+  <div class="rule">
+    <h4>🔇 高熵串</h4>
+    <div class="case">复制看着像密码 / token / API key</div>
+    <p>shannon entropy &gt; 4.5 或长度 16-64 的 base64 风格 → 不读内容、不进 prompt。</p>
+  </div>
+  <div class="rule">
+    <h4>🔇 敏感前台</h4>
+    <div class="case">1Password / Bitwarden / 银行网页在前台</div>
+    <p>整个 ambient 通道直接关掉，老鼠睡觉直到切走。</p>
+  </div>
+</div>
+
+<!-- ============= 强度档 ============= -->
+<h2 class="section-title" style="margin-top:32px">4 · 用户可调"反应强度"</h2>
+<div class="intensity">
+  <div class="label">老鼠反应强度</div>
+  <div class="opts">
+    <div class="opt">
+      <div class="opt-name">🌙 安静</div>
+      <div class="opt-desc">只 T1（抖耳） · 任何复制 / 选词都不弹小图标</div>
+    </div>
+    <div class="opt active">
+      <div class="opt-name">⚖️ 标准（默认）</div>
+      <div class="opt-desc">T1 + T2 · "值得处理"才飘图标</div>
+    </div>
+    <div class="opt">
+      <div class="opt-name">🔔 主动</div>
+      <div class="opt-desc">T1 + T2 + 文字判断为另一种语言时自动翻译写回</div>
+    </div>
+  </div>
+</div>
+
+<p style="color: rgba(245,245,240,0.45); font-size: var(--text-meta); margin-top: 24px; max-width: 760px">
+  💡 这一层 = 老鼠的"性格"在产品里真正的体现：学者鼠默认"安静"，段子鼠默认"主动"，
+  打工鼠默认"标准"。Persona 不是 framework，就是一个 string + 一组默认值。
+</p>
+
+<script>
+const NS = "http://www.w3.org/2000/svg";
+
+function rect(x, y, w, h, fill) {
+  const r = document.createElementNS(NS, "rect");
+  r.setAttribute("x", x); r.setAttribute("y", y);
+  r.setAttribute("width", w); r.setAttribute("height", h);
+  r.setAttribute("fill", fill);
+  return r;
+}
+
+// 像素老鼠 with named groups（便于动画）
+function drawMouse({ px = 5, body = "#cdb8ff", accent = "#7a5af8", extraClass = "" } = {}) {
+  const W = 14, H = 12;
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("class", "pixel mouse-svg bob " + extraClass);
+  svg.setAttribute("viewBox", `0 0 ${W*px} ${H*px}`);
+  svg.setAttribute("width", W*px);
+  svg.setAttribute("height", H*px);
+
+  const set = (x, y, c, group) => {
+    const r = rect(x*px, y*px, px, px, c);
+    if (group) group.appendChild(r);
+    else svg.appendChild(r);
+  };
+
+  // ears (separate groups for twitch)
+  const earL = document.createElementNS(NS, "g"); earL.setAttribute("class", "ear-L");
+  const earR = document.createElementNS(NS, "g"); earR.setAttribute("class", "ear-R");
+  svg.appendChild(earL); svg.appendChild(earR);
+  set(3, 1, body, earL); set(4, 1, body, earL); set(3, 2, accent, earL); set(4, 2, accent, earL);
+  set(9, 1, body, earR); set(10, 1, body, earR); set(9, 2, accent, earR); set(10, 2, accent, earR);
+
+  // body
+  const bodyMap = [
+    "...########..",
+    "..##########.",
+    ".############",
+    ".############",
+    ".############",
+    "..##########.",
+    "...########..",
+  ];
+  for (let r = 0; r < bodyMap.length; r++)
+    for (let c = 0; c < bodyMap[r].length; c++)
+      if (bodyMap[r][c] === "#") set(c + 1, r + 3, body);
+
+  // eyes group
+  const eyes = document.createElementNS(NS, "g"); eyes.setAttribute("class", "eyes");
+  svg.appendChild(eyes);
+  set(5, 5, "#1a1a22", eyes); set(9, 5, "#1a1a22", eyes);
+
+  // nose + tail
+  set(7, 7, "#ff7aa2");
+  set(13, 7, body); set(13, 6, body); set(12, 8, body);
+  return svg;
+}
+
+// 三层 demo
+document.getElementById("demo-t1").appendChild(drawMouse({ px: 5, extraClass: "ear-twitch" }));
+document.getElementById("demo-t2").appendChild((() => {
+  const wrap = document.createElement("div");
+  wrap.style.position = "relative";
+  const m = drawMouse({ px: 5 });
+  const icon = document.createElement("div");
+  icon.textContent = "📝";
+  icon.style.cssText = "position:absolute; top:-24px; left:50%; transform:translateX(-50%); background:#fff; border-radius:999px; padding:3px 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); font-size: 14px;";
+  wrap.appendChild(icon); wrap.appendChild(m);
+  return wrap;
+})());
+document.getElementById("demo-t3").appendChild((() => {
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "display:flex; gap:8px; align-items:flex-end;";
+  const panel = document.createElement("div");
+  panel.style.cssText = "background:#fff; border-radius:10px; padding:8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); font-size:10px;";
+  panel.innerHTML = `<div style="background:#faf9f6; border-radius:6px; padding:4px 6px; margin-bottom:4px; border-left:2px solid #7a5af8">📋 162 字符</div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:3px">
+      <div style="background:#7a5af8; color:#fff; padding:3px 6px; border-radius:4px">📝 清理</div>
+      <div style="background:#faf9f6; padding:3px 6px; border-radius:4px">🌐 翻译</div>
+    </div>`;
+  const m = drawMouse({ px: 4 });
+  wrap.appendChild(panel); wrap.appendChild(m);
+  return wrap;
+})());
+
+// 完整剧本
+const mouseHost = document.getElementById("mouse-host");
+mouseHost.appendChild(drawMouse({ px: 6 }));
+
+const stage = document.getElementById("stage");
+const headIcon = document.getElementById("head-icon");
+const panel = document.getElementById("panel");
+const copyTarget = document.getElementById("copy-target");
+const pet = document.getElementById("pet");
+const tl = document.getElementById("tl");
+
+function setStep(i) {
+  tl.querySelectorAll(".step").forEach(s => s.classList.remove("active"));
+  const el = tl.querySelector(`.step[data-step="${i}"]`);
+  if (el) el.classList.add("active");
+}
+
+function applyTwitch(on) {
+  const svg = mouseHost.querySelector("svg");
+  if (!svg) return;
+  if (on) svg.classList.add("ear-twitch");
+  else svg.classList.remove("ear-twitch");
+}
+
+function script() {
+  // 0: 起始态
+  setStep(0);
+  copyTarget.classList.remove("copy-flash");
+  applyTwitch(false);
+  headIcon.classList.remove("show");
+  panel.classList.remove("show");
+
+  // 1: 复制（高亮 + 闪一下）
+  setTimeout(() => {
+    setStep(0);
+    copyTarget.classList.add("sel");
+  }, 800);
+  setTimeout(() => {
+    copyTarget.classList.remove("sel");
+    copyTarget.classList.add("copy-flash");
+  }, 1800);
+
+  // 2: T1 抖耳（即时反应）
+  setTimeout(() => {
+    setStep(1);
+    applyTwitch(true);
+  }, 1900);
+  setTimeout(() => applyTwitch(false), 3200);
+
+  // 3: T2 头顶图标（判定"值得处理" → 出图标）
+  setTimeout(() => {
+    setStep(2);
+    headIcon.classList.add("show");
+  }, 3300);
+
+  // 4: 用户 hover 老鼠
+  setTimeout(() => {
+    setStep(3);
+    headIcon.classList.remove("show");
+    pet.style.transform = "translateY(-3px)";
+    pet.style.transition = "transform 200ms";
+  }, 5500);
+
+  // 5: T3 面板展开
+  setTimeout(() => {
+    setStep(4);
+    panel.classList.add("show");
+  }, 6000);
+
+  // 6: 用户点"清理"
+  setTimeout(() => {
+    const btn = panel.querySelector('button[data-act="clean"]');
+    if (btn) {
+      btn.style.background = "var(--accent)";
+      btn.style.color = "white";
+      btn.style.borderColor = "var(--accent)";
+    }
+  }, 8000);
+
+  setTimeout(() => {
+    setStep(5);
+    panel.innerHTML = `
+      <div class="preview" style="border-left-color: var(--ok)">
+        <span class="src" style="color: var(--ok)">✓ 已清理 · 写回剪贴板</span>
+        "We think the new personality system sounds cool, but we'd like to see a demo before committing."
+      </div>
+      <div class="hint">⌘V 粘贴清理后的版本</div>`;
+  }, 9200);
+
+  // 收尾
+  setTimeout(() => {
+    panel.classList.remove("show");
+    pet.style.transform = "";
+    copyTarget.classList.remove("copy-flash");
+  }, 13000);
+}
+
+script();
+setInterval(script, 15000);
+
+// 强度档切换
+document.querySelectorAll(".intensity .opt").forEach(el => {
+  el.addEventListener("click", () => {
+    document.querySelectorAll(".intensity .opt").forEach(o => o.classList.remove("active"));
+    el.classList.add("active");
+  });
+});
+</script>
+
+</body>
+</html>

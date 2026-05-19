@@ -390,6 +390,9 @@ fn on_clipboard_changed() -> Result<()> {
             return Ok(());
         }
     }
+    // v0.4 · reactive hook —— 在 move 之前发事件给前端
+    crate::reactive::on_new_clip(id, &text, &bundle);
+
     hist.push_back(ClipItem {
         id, kind: "text".into(), text, app_bundle: bundle, app_name: name,
         ts, pinned: false,

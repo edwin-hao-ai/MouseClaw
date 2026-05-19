@@ -1,0 +1,874 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>MouseClaw · Sub-agent 鼠舍 prototype · 2026-05-19</title>
+<style>
+  /* ---------- design tokens（与 DESIGN.md 对齐） ---------- */
+  :root {
+    --bg-desktop: #1a1a22;
+    --bg-surface: rgba(255, 255, 255, 0.92);
+    --bg-card: #ffffff;
+    --bg-card-soft: #faf9f6;
+    --bg-chip: rgba(0, 0, 0, 0.06);
+    --bg-overlay: rgba(20, 20, 28, 0.72);
+
+    --ink-1: #1a1a22;
+    --ink-2: #4a4a55;
+    --ink-3: #8a8a95;
+    --ink-on-dark: #f5f5f0;
+
+    --line: rgba(0, 0, 0, 0.08);
+    --line-strong: rgba(0, 0, 0, 0.18);
+
+    --accent-scholar:  #7a5af8;  /* 紫 */
+    --accent-worker:   #6b7280;  /* 灰 */
+    --accent-translator:#3b82f6; /* 蓝 */
+    --accent-coder:    #16a34a;  /* 绿 */
+    --accent-jester:   #f59e0b;  /* 橙 */
+    --accent-guardian: #111827;  /* 黑 */
+
+    --radius-card: 14px;
+    --radius-chip: 999px;
+    --radius-bubble: 16px;
+
+    --shadow-soft: 0 4px 16px rgba(0, 0, 0, 0.08);
+    --shadow-pop: 0 12px 40px rgba(0, 0, 0, 0.28);
+
+    --text-display: 22px;
+    --text-title: 15px;
+    --text-body: 13px;
+    --text-meta: 11px;
+
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+
+    --motion-fast: 120ms;
+    --motion-base: 220ms;
+    --motion-slow: 440ms;
+    --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    background: var(--bg-desktop);
+    color: var(--ink-1);
+    font-size: var(--text-body);
+    line-height: 1.55;
+    padding: var(--space-6);
+    min-height: 100vh;
+  }
+
+  .page-title {
+    color: var(--ink-on-dark);
+    font-size: var(--text-display);
+    font-weight: 700;
+    margin: 0 0 var(--space-2);
+    letter-spacing: -0.01em;
+  }
+  .page-lead {
+    color: rgba(245,245,240,0.6);
+    margin: 0 0 var(--space-6);
+    max-width: 720px;
+  }
+
+  section { margin-bottom: var(--space-6); }
+  h2.section-title {
+    color: var(--ink-on-dark);
+    font-size: var(--text-title);
+    font-weight: 600;
+    margin: 0 0 var(--space-3);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.85;
+  }
+
+  /* ---------- 像素老鼠 base ---------- */
+  .pixel { shape-rendering: crispEdges; image-rendering: pixelated; }
+  .mouse-svg { display: block; }
+  @keyframes idle-bob {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-2px); }
+  }
+  @keyframes ear-twitch {
+    0%, 92%, 100% { transform: rotate(0); }
+    94%           { transform: rotate(-8deg); }
+    96%           { transform: rotate(4deg); }
+  }
+  .mouse-svg.bob { animation: idle-bob 2.4s ease-in-out infinite; }
+
+  /* ---------- 1. 鼠舍卡片 ---------- */
+  .mice-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-4);
+  }
+  .mouse-card {
+    background: var(--bg-card);
+    border-radius: var(--radius-card);
+    padding: var(--space-4);
+    box-shadow: var(--shadow-soft);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    border-top: 3px solid var(--accent);
+  }
+  .mouse-card[data-role="scholar"]    { --accent: var(--accent-scholar); }
+  .mouse-card[data-role="worker"]     { --accent: var(--accent-worker); }
+  .mouse-card[data-role="translator"] { --accent: var(--accent-translator); }
+  .mouse-card[data-role="coder"]      { --accent: var(--accent-coder); }
+  .mouse-card[data-role="jester"]     { --accent: var(--accent-jester); }
+  .mouse-card[data-role="guardian"]   { --accent: var(--accent-guardian); }
+
+  .mouse-card .header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+  .mouse-card .avatar {
+    width: 64px; height: 64px;
+    background: var(--bg-card-soft);
+    border-radius: 12px;
+    display: grid; place-items: center;
+    flex-shrink: 0;
+  }
+  .mouse-card .name {
+    font-size: var(--text-title);
+    font-weight: 700;
+    margin: 0;
+  }
+  .mouse-card .role-tag {
+    font-size: var(--text-meta);
+    color: var(--accent);
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .mouse-card .persona {
+    color: var(--ink-2);
+    font-size: var(--text-body);
+    margin: 0;
+  }
+  .mouse-card .traits {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-2);
+  }
+  .chip {
+    background: var(--bg-chip);
+    color: var(--ink-2);
+    padding: 2px 8px;
+    border-radius: var(--radius-chip);
+    font-size: var(--text-meta);
+  }
+  .chip.strong {
+    background: var(--accent);
+    color: white;
+  }
+  .mouse-card .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--space-2);
+    padding: 6px 0;
+    border-top: 1px dashed var(--line);
+    font-size: var(--text-meta);
+  }
+  .mouse-card .row .key { color: var(--ink-3); }
+  .mouse-card .row .val { color: var(--ink-1); text-align: right; }
+
+  /* ---------- 2. Personality wheel ---------- */
+  .wheel-stage {
+    position: relative;
+    background: var(--bg-overlay);
+    border-radius: var(--radius-card);
+    padding: var(--space-6);
+    height: 420px;
+    overflow: hidden;
+    display: grid; place-items: center;
+    backdrop-filter: blur(6px);
+  }
+  .wheel {
+    position: relative;
+    width: 320px; height: 320px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 50%, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+    border: 1px solid rgba(255,255,255,0.12);
+    animation: wheel-in 320ms var(--ease);
+  }
+  @keyframes wheel-in {
+    from { transform: scale(0.6); opacity: 0; }
+    to   { transform: scale(1);   opacity: 1; }
+  }
+  .wheel-center {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    color: var(--ink-on-dark);
+  }
+  .wheel-center .label {
+    font-size: var(--text-meta);
+    color: rgba(245,245,240,0.55);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .wheel-center .picked {
+    font-size: var(--text-title);
+    font-weight: 700;
+    margin-top: 4px;
+  }
+  .wheel-slot {
+    position: absolute;
+    width: 72px; height: 72px;
+    top: 50%; left: 50%;
+    margin-left: -36px; margin-top: -36px;
+    border-radius: 18px;
+    background: var(--bg-card);
+    box-shadow: var(--shadow-pop);
+    display: grid; place-items: center;
+    cursor: pointer;
+    transition: transform var(--motion-base) var(--ease);
+  }
+  .wheel-slot::after {
+    content: attr(data-name);
+    position: absolute;
+    bottom: -22px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: var(--ink-on-dark);
+    font-size: var(--text-meta);
+    white-space: nowrap;
+  }
+  .wheel-slot.picked {
+    transform: scale(1.18);
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .wheel-hint {
+    position: absolute;
+    bottom: 16px; left: 50%;
+    transform: translateX(-50%);
+    color: rgba(245,245,240,0.5);
+    font-size: var(--text-meta);
+    white-space: nowrap;
+  }
+
+  /* ---------- 3. 同 prompt 不同性格回复 ---------- */
+  .scenario {
+    background: var(--bg-card);
+    border-radius: var(--radius-card);
+    padding: var(--space-4);
+    box-shadow: var(--shadow-soft);
+  }
+  .scenario .prompt {
+    background: var(--bg-card-soft);
+    border-radius: 10px;
+    padding: var(--space-3);
+    color: var(--ink-2);
+    font-size: var(--text-body);
+    margin-bottom: var(--space-3);
+  }
+  .scenario .prompt .label {
+    font-size: var(--text-meta);
+    color: var(--ink-3);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 4px;
+  }
+  .replies {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-3);
+  }
+  .reply {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    border-left: 3px solid var(--accent);
+  }
+  .reply[data-role="scholar"]    { --accent: var(--accent-scholar); }
+  .reply[data-role="jester"]     { --accent: var(--accent-jester); }
+  .reply[data-role="worker"]     { --accent: var(--accent-worker); }
+  .reply[data-role="coder"]      { --accent: var(--accent-coder); }
+  .reply[data-role="translator"] { --accent: var(--accent-translator); }
+  .reply[data-role="guardian"]   { --accent: var(--accent-guardian); }
+
+  .reply .head {
+    display: flex; align-items: center; gap: var(--space-2);
+    font-size: var(--text-meta);
+    color: var(--ink-3);
+  }
+  .reply .head .name { color: var(--accent); font-weight: 600; }
+  .reply .body {
+    color: var(--ink-1);
+    font-size: var(--text-body);
+    white-space: pre-wrap;
+  }
+  .reply .meta {
+    margin-top: auto;
+    display: flex;
+    gap: 6px;
+    font-size: var(--text-meta);
+    color: var(--ink-3);
+    flex-wrap: wrap;
+  }
+
+  /* ---------- 4. ambient trigger matrix ---------- */
+  table.matrix {
+    width: 100%;
+    background: var(--bg-card);
+    border-radius: var(--radius-card);
+    border-collapse: collapse;
+    overflow: hidden;
+    box-shadow: var(--shadow-soft);
+  }
+  table.matrix th, table.matrix td {
+    padding: 10px 12px;
+    text-align: center;
+    font-size: var(--text-body);
+    border-bottom: 1px solid var(--line);
+  }
+  table.matrix thead th {
+    background: var(--bg-card-soft);
+    color: var(--ink-2);
+    font-weight: 600;
+    font-size: var(--text-meta);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  table.matrix tbody td:first-child {
+    text-align: left;
+    font-weight: 600;
+    color: var(--ink-1);
+  }
+  .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; }
+  .dot.on  { background: var(--ink-1); }
+  .dot.off { background: transparent; border: 1px dashed var(--line-strong); }
+
+  /* ---------- 5. desktop scene mock ---------- */
+  .scene {
+    position: relative;
+    background: linear-gradient(135deg, #2b2738, #1a1722);
+    border-radius: var(--radius-card);
+    height: 360px;
+    overflow: hidden;
+    box-shadow: var(--shadow-soft);
+  }
+  .window-mock {
+    position: absolute;
+    top: 24px; left: 24px; right: 24px; bottom: 24px;
+    background: rgba(255,255,255,0.95);
+    border-radius: 10px;
+    padding: 36px 20px 20px;
+    box-shadow: var(--shadow-soft);
+    color: var(--ink-1);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    overflow: hidden;
+  }
+  .window-mock::before {
+    content: "";
+    position: absolute; top: 0; left: 0; right: 0; height: 26px;
+    background: #ececec; border-bottom: 1px solid var(--line);
+  }
+  .window-mock::after {
+    content: "● ● ●";
+    position: absolute; top: 4px; left: 10px;
+    color: #d34; letter-spacing: 4px; font-size: 10px;
+  }
+  .window-mock .line { color: var(--ink-2); }
+  .window-mock .hl   { background: rgba(122, 90, 248, 0.18); padding: 0 2px; border-radius: 2px; }
+
+  .pet-anchor {
+    position: absolute;
+    right: 56px; bottom: 32px;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+  }
+  .speech {
+    background: var(--bg-card);
+    border-radius: var(--radius-bubble);
+    padding: 10px 12px;
+    box-shadow: var(--shadow-pop);
+    max-width: 280px;
+    font-size: var(--text-body);
+    color: var(--ink-1);
+    position: relative;
+    animation: speech-in 320ms var(--ease);
+  }
+  @keyframes speech-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .speech .who {
+    font-size: var(--text-meta);
+    color: var(--accent-scholar);
+    font-weight: 600;
+    margin-bottom: 2px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .speech::after {
+    content: "";
+    position: absolute;
+    bottom: 10px; right: -6px;
+    width: 0; height: 0;
+    border-left: 6px solid var(--bg-card);
+    border-top: 6px solid transparent;
+    border-bottom: 6px solid transparent;
+  }
+
+  /* ---------- 6. spec sheet ---------- */
+  .spec {
+    background: var(--bg-card);
+    border-radius: var(--radius-card);
+    padding: var(--space-4);
+    box-shadow: var(--shadow-soft);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--ink-1);
+    overflow-x: auto;
+  }
+  .spec .k { color: var(--accent-scholar); }
+  .spec .s { color: var(--accent-coder); }
+  .spec .c { color: var(--ink-3); }
+</style>
+</head>
+<body>
+
+<h1 class="page-title">Sub-agent 鼠舍 · prototype v0</h1>
+<p class="page-lead">
+  每只老鼠 = 一份"角色清单"（character sheet），不绑模型 —— 模型由当前后台（Claude Code / Codex / OpenClaw）决定。
+  老鼠决定的是 <b>系统提示词 / 工具集 / 自动 context / ambient 触发 / 回复风格</b>。
+  这一页同屏展示：6 只起手鼠、长按召唤的 personality wheel、同一个问题不同性格的回答、ambient 触发偏好表、桌面真实叠加效果、JSON spec。
+</p>
+
+<!-- ====================================================== -->
+<!-- 1. 鼠舍卡片 -->
+<!-- ====================================================== -->
+<section>
+  <h2 class="section-title">1 · 起手 6 只老鼠（character sheets）</h2>
+  <div class="mice-grid" id="mice-grid"></div>
+</section>
+
+<!-- ====================================================== -->
+<!-- 2. Personality wheel -->
+<!-- ====================================================== -->
+<section>
+  <h2 class="section-title">2 · 长按召唤 hotkey 0.5s → 弹出 personality wheel</h2>
+  <div class="wheel-stage">
+    <div class="wheel" id="wheel"></div>
+    <div class="wheel-hint">松手 = 选定 · Esc = 取消 · 数字键 1-6 直选</div>
+  </div>
+</section>
+
+<!-- ====================================================== -->
+<!-- 3. 同 prompt 不同回复 -->
+<!-- ====================================================== -->
+<section>
+  <h2 class="section-title">3 · 同一句话，3 只老鼠完全不同的回答</h2>
+  <div class="scenario">
+    <div class="prompt">
+      <span class="label">用户语音输入</span>
+      "把刚才那段会议纪要整理一下，顺便看看有没有遗漏的 action item。"
+    </div>
+    <div class="replies">
+      <div class="reply" data-role="scholar">
+        <div class="head"><span class="name">📚 学者鼠</span>· 严谨 / 结构化 / 长</div>
+        <div class="body">已识别 3 个明确 action item 与 2 个隐含承诺：
+
+1. Edwin → 周四前提交 v0.4 spec（明确）
+2. Jess → 下周一对账（明确）
+3. 整组 → 复审 metrics 命名（明确）
+
+隐含项：
+• "我们是不是该和 legal 聊聊" — 未指派负责人，建议指给 Edwin
+• "压测那块" — 时间未定，建议补 due date
+
+是否生成 Linear ticket？</div>
+        <div class="meta"><span class="chip">tools: read,write,linear</span><span class="chip">format: outline</span></div>
+      </div>
+
+      <div class="reply" data-role="worker">
+        <div class="head"><span class="name">☕️ 打工鼠</span>· 极简 / 直接</div>
+        <div class="body">3 个 action item 已抓：
+
+• Edwin · v0.4 spec · 周四
+• Jess · 对账 · 周一
+• 全员 · 复审 metrics 命名
+
+已复制到剪贴板。要发到 Slack #standup 吗？</div>
+        <div class="meta"><span class="chip">tools: read,clipboard</span><span class="chip">format: bullet</span></div>
+      </div>
+
+      <div class="reply" data-role="jester">
+        <div class="head"><span class="name">🤡 段子鼠</span>· 嘴贫 / 短</div>
+        <div class="body">三件事躲不掉了 👀
+
+• Edwin 你周四前的 spec 我都帮你立 flag 了
+• Jess 周一对账（祝你 Excel 不崩）
+• 全员要重命名 metrics（这是第几次了……）
+
+需要我假装没听见隐含的那俩吗？</div>
+        <div class="meta"><span class="chip">tools: read</span><span class="chip">format: chat</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ====================================================== -->
+<!-- 4. Ambient 触发矩阵 -->
+<!-- ====================================================== -->
+<section>
+  <h2 class="section-title">4 · 不同老鼠对 ambient 触发的偏好（用户养哪只 = 选哪种打扰程度）</h2>
+  <table class="matrix">
+    <thead>
+      <tr>
+        <th></th>
+        <th>剪贴板长内容</th>
+        <th>剪贴板非母语</th>
+        <th>选中文字 (双击 ⌘)</th>
+        <th>长悬停 30s</th>
+        <th>主动召唤</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>📚 学者鼠</td>
+        <td><span class="dot off"></span></td>
+        <td><span class="dot off"></span></td>
+        <td><span class="dot off"></span></td>
+        <td><span class="dot off"></span></td>
+        <td><span class="dot on"></span></td>
+      </tr>
+      <tr>
+        <td>☕️ 打工鼠</td>
+        <td><span class="dot on"></span></td>
+        <td><span class="dot off"></span></td>
+        <td><span class="dot on"></span></td>
+        <td><span class="dot off"></span></td>
+        <td><span class="dot on"></span></td>
+      </tr>
+      <tr>
+        <td>🌐 翻译鼠</td>
+        <td><span class="dot off"></span></td>
+        <td><span class="dot on"></span></td>
+        <td><span class="dot on"></span></td>
+        <td><span class="dot off"></span></td>
+        <td><span class="dot on"></span></td>
+      </tr>
+      <tr>
+        <td>🛠 代码鼠</td>
+        <td><span class="dot off"></span></td>
+        <td><span class="dot off"></span></td>
+        <td><span class="dot on"></span></td>
+        <td><span class="dot off"></span></td>
+        <td><span class="dot on"></span></td>
+      </tr>
+      <tr>
+        <td>🤡 段子鼠</td>
+        <td><span class="dot on"></span></td>
+        <td><span class="dot on"></span></td>
+        <td><span class="dot on"></span></td>
+        <td><span class="dot on"></span></td>
+        <td><span class="dot on"></span></td>
+      </tr>
+      <tr>
+        <td>🛡 保镖鼠</td>
+        <td><span class="dot off"></span></td>
+        <td><span class="dot off"></span></td>
+        <td><span class="dot off"></span></td>
+        <td><span class="dot off"></span></td>
+        <td><span class="dot on"></span></td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ====================================================== -->
+<!-- 5. desktop scene mock -->
+<!-- ====================================================== -->
+<section>
+  <h2 class="section-title">5 · 桌面叠加效果（学者鼠 active · 用户主动召唤场景）</h2>
+  <div class="scene">
+    <div class="window-mock">
+      <span class="line">// meeting-notes.md</span><br>
+      <span class="line">- Edwin 说周四前能交 spec</span><br>
+      <span class="line">- Jess 下周一对账</span><br>
+      <span class="line">- 大家觉得 metrics 命名要复审</span><br>
+      <span class="line">- <span class="hl">"我们是不是该和 legal 聊聊？"</span></span><br>
+      <span class="line">- <span class="hl">压测那块也要排上</span></span><br>
+    </div>
+    <div class="pet-anchor">
+      <div class="speech">
+        <div class="who">📚 学者鼠 · Sub-agent</div>
+        已识别 3 个明确 action + 2 个隐含承诺。要我生成 Linear ticket 吗？
+      </div>
+      <div id="scene-mouse"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ====================================================== -->
+<!-- 6. JSON spec -->
+<!-- ====================================================== -->
+<section>
+  <h2 class="section-title">6 · 角色清单 schema（character sheet · 不含模型）</h2>
+  <div class="spec"><pre style="margin:0">{
+  <span class="k">"id"</span>: <span class="s">"scholar"</span>,
+  <span class="k">"name_zh"</span>: <span class="s">"学者鼠"</span>,
+  <span class="k">"name_en"</span>: <span class="s">"Scholar"</span>,
+  <span class="k">"accent"</span>: <span class="s">"#7a5af8"</span>,
+  <span class="k">"skin"</span>: <span class="s">"pixel/scholar.svg"</span>,
+  <span class="k">"voice_pack"</span>: <span class="s">"calm-female-zh"</span>,
+
+  <span class="c">// —— 后台无关：模型由当下后台决定 ——</span>
+  <span class="k">"system_prompt_addon"</span>: <span class="s">"你是 MouseClaw 学者鼠。严谨、深度、爱引用。"</span>,
+  <span class="k">"reply_style"</span>: { <span class="k">"tone"</span>: <span class="s">"formal"</span>, <span class="k">"max_len"</span>: 600, <span class="k">"emoji"</span>: <span class="s">"sparing"</span>, <span class="k">"format"</span>: <span class="s">"outline"</span> },
+
+  <span class="c">// —— 工具与权限 ——</span>
+  <span class="k">"allowed_tools"</span>: [<span class="s">"Read"</span>, <span class="s">"Grep"</span>, <span class="s">"WebSearch"</span>, <span class="s">"WebFetch"</span>],
+  <span class="k">"confirm_threshold"</span>: <span class="s">"normal"</span>,
+  <span class="k">"insert_at_cursor"</span>: <span class="s">"disabled"</span>,
+
+  <span class="c">// —— 自动 context（召唤时收集什么）——</span>
+  <span class="k">"auto_context"</span>: { <span class="k">"screenshot"</span>: <span class="s">true</span>, <span class="k">"clipboard"</span>: <span class="s">true</span>, <span class="k">"selection"</span>: <span class="s">true</span>, <span class="k">"frontmost"</span>: <span class="s">true</span> },
+
+  <span class="c">// —— ambient 触发（不订阅任何项 = 安静老鼠）——</span>
+  <span class="k">"ambient_triggers"</span>: [],
+  <span class="k">"cooldown_minutes"</span>: 60
+}</pre></div>
+</section>
+
+<script>
+// =====================================================================
+// 像素老鼠工厂：14×12 网格，rect 拼出来
+// =====================================================================
+const P = 5;  // 每像素 5px（卡片 avatar 用 4，wheel 用 5，scene 用 8）
+const NS = "http://www.w3.org/2000/svg";
+
+function rect(x, y, w, h, fill) {
+  const r = document.createElementNS(NS, "rect");
+  r.setAttribute("x", x); r.setAttribute("y", y);
+  r.setAttribute("width", w); r.setAttribute("height", h);
+  r.setAttribute("fill", fill);
+  return r;
+}
+
+function drawMouse(opts) {
+  const { px = 4, body, accent, accessory } = opts;
+  const W = 14, H = 12;
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("class", "pixel mouse-svg bob");
+  svg.setAttribute("viewBox", `0 0 ${W*px} ${H*px}`);
+  svg.setAttribute("width", W*px);
+  svg.setAttribute("height", H*px);
+
+  const set = (x, y, c) => svg.appendChild(rect(x*px, y*px, px, px, c));
+
+  // body shape (mouse oval)
+  const bodyMap = [
+    "...########..",
+    "..##########.",
+    ".############",
+    ".############",
+    ".############",
+    "..##########.",
+    "...########..",
+  ];
+  for (let r = 0; r < bodyMap.length; r++) {
+    for (let c = 0; c < bodyMap[r].length; c++) {
+      if (bodyMap[r][c] === "#") set(c + 1, r + 3, body);
+    }
+  }
+  // ears
+  set(3, 1, body); set(4, 1, body); set(3, 2, accent); set(4, 2, accent);
+  set(9, 1, body); set(10, 1, body); set(9, 2, accent); set(10, 2, accent);
+  // eyes
+  set(5, 5, "#1a1a22");
+  set(9, 5, "#1a1a22");
+  // nose
+  set(7, 7, "#ff7aa2");
+  // tail
+  set(13, 7, body); set(13, 6, body); set(12, 8, body);
+  // accessory layer
+  if (accessory === "glasses") {
+    set(4, 5, accent); set(6, 5, accent); set(8, 5, accent); set(10, 5, accent);
+    set(7, 5, accent);
+  } else if (accessory === "cup") {
+    set(2, 7, "#8b5e34"); set(2, 8, "#8b5e34"); set(1, 8, "#8b5e34");
+  } else if (accessory === "flag") {
+    set(12, 3, accent); set(12, 4, accent); set(12, 5, accent); set(11, 3, accent);
+  } else if (accessory === "term") {
+    set(2, 6, "#0a0a0a"); set(3, 6, "#0a0a0a"); set(2, 7, "#0a0a0a"); set(3, 7, "#0a0a0a");
+    set(2, 6, "#16a34a");
+  } else if (accessory === "smile") {
+    set(6, 8, "#1a1a22"); set(8, 8, "#1a1a22"); set(7, 9, "#1a1a22");
+  } else if (accessory === "shield") {
+    set(1, 5, accent); set(1, 6, accent); set(1, 7, accent); set(0, 6, accent);
+  }
+  return svg;
+}
+
+// =====================================================================
+// 6 只老鼠定义
+// =====================================================================
+const MICE = [
+  {
+    id: "scholar", role: "scholar", emoji: "📚",
+    name: "学者鼠", roleTag: "Researcher",
+    body: "#cdb8ff", accent: "#7a5af8", accessory: "glasses",
+    persona: "严谨、深度、爱引用。开会议纪要、写论文、调研文献。",
+    traits: ["formal", "structured", "long-form", "citations"],
+    rows: [
+      ["工具集", "Read / Grep / Web Search / Fetch"],
+      ["自动 context", "截图 + 剪贴板 + 选中 + 前台"],
+      ["B 模式写入", "禁用"],
+      ["Ambient", "永不主动（only 召唤）"],
+    ],
+  },
+  {
+    id: "worker", role: "worker", emoji: "☕️",
+    name: "打工鼠", roleTag: "Worker",
+    body: "#c9c9d1", accent: "#6b7280", accessory: "cup",
+    persona: "极简、零废话、效率优先。日常办公、清理格式、改字。",
+    traits: ["terse", "fast", "no-emoji", "action-first"],
+    rows: [
+      ["工具集", "Read / Edit / Clipboard"],
+      ["自动 context", "剪贴板 + 选中"],
+      ["B 模式写入", "3s 倒数"],
+      ["Ambient", "剪贴板长内容 / 选词"],
+    ],
+  },
+  {
+    id: "translator", role: "translator", emoji: "🌐",
+    name: "翻译鼠", roleTag: "Translator",
+    body: "#bcd6ff", accent: "#3b82f6", accessory: "flag",
+    persona: "沉默高效，自动检测语向。复制非母语 → 直接翻译进剪贴板。",
+    traits: ["bilingual", "silent", "ambient-on"],
+    rows: [
+      ["工具集", "Clipboard 读 / 写（仅）"],
+      ["自动 context", "剪贴板 + 选中"],
+      ["B 模式写入", "禁用（写回剪贴板）"],
+      ["Ambient", "剪贴板非母语 / 选词"],
+    ],
+  },
+  {
+    id: "coder", role: "coder", emoji: "🛠",
+    name: "代码鼠", roleTag: "Coder",
+    body: "#b9e8c8", accent: "#16a34a", accessory: "term",
+    persona: "agentic 全开，会读 repo / 改文件 / 跑命令。写代码主力。",
+    traits: ["agentic", "full-tools", "verbose-thinking"],
+    rows: [
+      ["工具集", "Read / Edit / Write / Bash / Grep"],
+      ["自动 context", "截图 + 前台 + 选中"],
+      ["B 模式写入", "5s 倒数"],
+      ["Ambient", "选中代码（双击 ⌘）"],
+    ],
+  },
+  {
+    id: "jester", role: "jester", emoji: "🤡",
+    name: "段子鼠", roleTag: "Jester",
+    body: "#ffd6a8", accent: "#f59e0b", accessory: "smile",
+    persona: "嘴贫、emoji 多、短回答。摸鱼陪聊、社交回复。",
+    traits: ["casual", "short", "emoji-heavy", "playful"],
+    rows: [
+      ["工具集", "Read（仅）"],
+      ["自动 context", "剪贴板 + 选中 + 前台"],
+      ["B 模式写入", "禁用"],
+      ["Ambient", "全开（最贱）"],
+    ],
+  },
+  {
+    id: "guardian", role: "guardian", emoji: "🛡",
+    name: "保镖鼠", roleTag: "Guardian",
+    body: "#a8acb8", accent: "#111827", accessory: "shield",
+    persona: "所有动作都问。在生产代码 / 重要文档里干活时用。",
+    traits: ["paranoid", "confirm-everything", "no-ambient"],
+    rows: [
+      ["工具集", "全工具，但每次执行前 confirm"],
+      ["自动 context", "截图 + 前台"],
+      ["B 模式写入", "10s 倒数"],
+      ["Ambient", "永不主动（only 召唤）"],
+    ],
+  },
+];
+
+// =====================================================================
+// 渲染卡片
+// =====================================================================
+const grid = document.getElementById("mice-grid");
+MICE.forEach(m => {
+  const card = document.createElement("div");
+  card.className = "mouse-card";
+  card.dataset.role = m.role;
+  card.innerHTML = `
+    <div class="header">
+      <div class="avatar"></div>
+      <div>
+        <div class="role-tag">${m.emoji} ${m.roleTag}</div>
+        <h3 class="name">${m.name}</h3>
+      </div>
+    </div>
+    <p class="persona">${m.persona}</p>
+    <div class="traits">${m.traits.map(t => `<span class="chip">${t}</span>`).join("")}</div>
+    ${m.rows.map(([k, v]) => `<div class="row"><span class="key">${k}</span><span class="val">${v}</span></div>`).join("")}
+  `;
+  const avatar = card.querySelector(".avatar");
+  avatar.appendChild(drawMouse({ px: 4, body: m.body, accent: m.accent, accessory: m.accessory }));
+  grid.appendChild(card);
+});
+
+// =====================================================================
+// Wheel 渲染
+// =====================================================================
+const wheel = document.getElementById("wheel");
+const RADIUS = 120;
+const center = document.createElement("div");
+center.className = "wheel-center";
+center.innerHTML = `<div class="label">SUB-AGENT</div><div class="picked" id="picked-name">学者鼠</div>`;
+wheel.appendChild(center);
+
+MICE.forEach((m, i) => {
+  const angle = (i / MICE.length) * Math.PI * 2 - Math.PI / 2;
+  const x = Math.cos(angle) * RADIUS;
+  const y = Math.sin(angle) * RADIUS;
+  const slot = document.createElement("div");
+  slot.className = "wheel-slot" + (i === 0 ? " picked" : "");
+  slot.style.transform = `translate(${x}px, ${y}px)`;
+  slot.style.setProperty("--accent", m.accent);
+  slot.dataset.name = `${i + 1} · ${m.name}`;
+  slot.appendChild(drawMouse({ px: 4, body: m.body, accent: m.accent, accessory: m.accessory }));
+  slot.addEventListener("mouseenter", () => {
+    document.querySelectorAll(".wheel-slot").forEach(s => s.classList.remove("picked"));
+    slot.classList.add("picked");
+    document.getElementById("picked-name").textContent = m.name;
+  });
+  wheel.appendChild(slot);
+});
+
+// =====================================================================
+// scene mouse
+// =====================================================================
+const sceneAnchor = document.getElementById("scene-mouse");
+sceneAnchor.appendChild(drawMouse({ px: 6, body: "#cdb8ff", accent: "#7a5af8", accessory: "glasses" }));
+
+</script>
+
+</body>
+</html>

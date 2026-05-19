@@ -21,7 +21,8 @@ import {
   type ViewKind, type SkinId, type NudgePayload,
 } from "./types";
 import { DEFAULT_SKIN } from "./skins";
-import { useT } from "./i18n";
+import { useT, getCurrentLang } from "./i18n";
+import { ReactiveOverlay, type ReactivePayload } from "./components/ReactiveOverlay";
 
 const PREVIEW_LONG = "这篇 Nature 文章讨论 2026 年 AI 加速材料发现的三个突破：室温超导候选材料、新型电池电解液、碳捕获催化剂。核心机制是自动化实验室加大模型生成假设的迭代闭环。";
 
@@ -68,15 +69,21 @@ export default function App() {
   const [transientAck, setTransientAck] = useState<string | null>(null);
   // v0.1.27 P3 · 主动提醒（presence + nudge 引擎触发）
   const [nudge, setNudge] = useState<NudgePayload | null>(null);
+  // v0.4 · Reactive 桌宠：剪贴板变化时立刻反应。
+  // - twitching：T1 抖耳一次，~500ms 后自动清掉
+  // - reactive：T2 payload —— ribbon 在桌宠头顶弹一组按钮，5s 自动消失（或点了 action）
+  const [twitching, setTwitching] = useState(false);
+  const [reactive, setReactive] = useState<ReactivePayload | null>(null);
 
-  // v0.3.12 · 在 idle 状态下显示 React-only UI（下载提示气泡 / petMenu / nudge / ack）
-  // 时主动通知 Rust 把窗口 hit-box 扩到全窗口；其余时间 Rust 自动按 view.kind 处理。
-  // 这是为了让 idle 静默时透明区域真的穿透到底层 app，但 React 临时弹的气泡也可点。
+  // v0.3.12 · 在 idle 状态下显示 React-only UI（下载提示气泡 / petMenu / nudge / ack
+  //   / v0.4 reactive ribbon）时主动通知 Rust 把窗口 hit-box 扩到全窗口；
+  //   其余时间 Rust 自动按 view.kind 处理。
+  //   这是为了让 idle 静默时透明区域真的穿透到底层 app，但 React 临时弹的气泡也可点。
   useEffect(() => {
-    const hasReactUi = !!modelProgress || petMenuOpen || !!nudge || !!transientAck;
+    const hasReactUi = !!modelProgress || petMenuOpen || !!nudge || !!transientAck || !!reactive;
     if (view.kind !== "idle") return; // 非 idle 由 Rust emit_view 那侧管，前端不要干扰
     invoke("set_overlay_has_ui", { hasUi: hasReactUi }).catch(() => {});
-  }, [view.kind, modelProgress, petMenuOpen, nudge, transientAck]);
+  }, [view.kind, modelProgress, petMenuOpen, nudge, transientAck, reactive]);
 
   // 启动时从 Rust 读当前皮肤（避免闪一下默认 classic 再切换）
   useEffect(() => {
@@ -127,6 +134,37 @@ export default function App() {
     } catch {/* dev mode */}
     return () => { if (unlisten) unlisten(); };
   }, []);
+
+
+  // v0.4 · Reactive 桌宠 —— Rust clipboard 捕获到新条目时按 tier 发事件
+  //   - tier=acknowledge → 只触发抖耳（不弹 ribbon）
+  //   - tier=hint        → 抖耳 + ribbon 弹按钮组
+  // 注意：overlay 窗口 idle 时是 compact 80×80，ribbon 超出会被裁掉。
+  //   set_overlay_has_ui 的调用由上面那个 useEffect 通过 `reactive` 依赖自动驱动 ——
+  //   reactive 非空 ⇒ hasUi=true（窗口撑大）；reactive=null ⇒ hasUi=false（缩回去）。
+  //   这里不要再重复 invoke，会跟那个 effect 抢状态。
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    let twitchTimer: number | undefined;
+    type Inbound = Omit<ReactivePayload, "receivedAt">;
+    try {
+      const p = listen<Inbound>("clipboard-reactive", (e) => {
+        setTwitching(true);
+        if (twitchTimer) window.clearTimeout(twitchTimer);
+        twitchTimer = window.setTimeout(() => setTwitching(false), 600);
+        if (e.payload.tier === "hint") {
+          setReactive({ ...e.payload, receivedAt: Date.now() });
+        }
+      });
+      p.then((fn) => { unlisten = fn; }).catch(() => {});
+    } catch {/* dev mode */}
+    return () => {
+      if (unlisten) unlisten();
+      if (twitchTimer) window.clearTimeout(twitchTimer);
+    };
+  }, []);
+
+  const dismissReactive = useCallback(() => setReactive(null), []);
 
 
   // 托盘菜单换皮肤 → Rust 广播 skin-changed → 实时切换，不重启
@@ -371,7 +409,7 @@ export default function App() {
     // v0.3.12 · 拖动结束 —— 放开 has_ui 锁定。下一帧 useEffect 会按 idle 状态自动恢复
     // 正确值（idle 静默 = false / 有气泡 = true）。
     if (view.kind === "idle") {
-      const hasReactUi = !!modelProgress || petMenuOpen || !!nudge || !!transientAck;
+      const hasReactUi = !!modelProgress || petMenuOpen || !!nudge || !!transientAck || !!reactive;
       invoke("set_overlay_has_ui", { hasUi: hasReactUi }).catch(() => {});
     }
     if (!wasDragged) return; // 轻点 → onClick 负责开菜单
@@ -425,6 +463,7 @@ export default function App() {
           state={mouseStateFor(view)} skin={skin}
           size={view.kind === "idle" ? 64 : 96}
           continuing={continuing}
+          twitching={twitching}
         />
         <PetMenu
           open={petMenuOpen}
@@ -434,6 +473,15 @@ export default function App() {
         />
         {nudge && !petMenuOpen && (
           <NudgeBubble payload={nudge} onDismiss={() => setNudge(null)} />
+        )}
+        {/* v0.4 · Reactive ribbon —— idle 视图下浮在桌宠头顶。其他视图（listening / thinking
+            / panel 等）有自己的气泡，让位 */}
+        {view.kind === "idle" && !petMenuOpen && !nudge && (
+          <ReactiveOverlay
+            payload={reactive}
+            lang={getCurrentLang() as "zh" | "en"}
+            onDismiss={dismissReactive}
+          />
         )}
       </div>
     </div>

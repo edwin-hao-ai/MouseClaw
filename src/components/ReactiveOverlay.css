@@ -1,0 +1,103 @@
+/* Reactive 桌宠头顶 ribbon · 轻量化版（v0.4 · 2026-05-19）
+ *
+ * 关键约束：
+ *   - 透明 overlay window 上 box-shadow 会糊成黑边 → 全部改用 filter: drop-shadow()
+ *   - 单层 ribbon，不再有"先小图标后大面板"两段
+ *   - 宽度 ≤ 280px，确保 320×320 expanded 窗口能放下
+ */
+
+.rx-ribbon {
+  position: absolute;
+  /* 浮在桌宠头顶。stage-mouse 是相对定位，bottom: 100% 把 ribbon 推到 stage 顶。
+     再用 margin-bottom: 6px 留个小气口。 */
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 999px;
+  /* 用 drop-shadow filter（针对元素的 alpha 形状投影，比 box-shadow 在透明窗口
+     上表现稳定，不会出现黑边伪影） */
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.18));
+  white-space: nowrap;
+  pointer-events: auto;
+  z-index: 6;
+  animation: rx-ribbon-in 180ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+@keyframes rx-ribbon-in {
+  from { opacity: 0; transform: translate(-50%, 6px) scale(0.9); }
+  to   { opacity: 1; transform: translate(-50%, 0)    scale(1); }
+}
+
+.rx-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  padding: 5px 10px 5px 8px;
+  font-size: 12px;
+  color: var(--ink-1, #1a1a22);
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.rx-pill:hover:not(:disabled) {
+  background: var(--bg-soft, #faf9f6);
+}
+.rx-pill:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+.rx-pill-primary {
+  background: var(--accent-primary, #7a5af8);
+  color: #ffffff;
+}
+.rx-pill-primary:hover:not(:disabled) {
+  background: var(--accent-primary, #7a5af8);
+  filter: brightness(1.08);
+}
+.rx-pill-glyph { font-size: 14px; }
+.rx-pill-label { font-size: 11px; letter-spacing: 0.02em; }
+
+/* ── 处理中 / 完成 / 失败 状态 —— 替换整个 ribbon 内容 ── */
+.rx-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.rx-status-busy { color: var(--ink-2, #4a4a55); }
+.rx-status-ok   { color: #16a34a; }
+.rx-status-err  { color: #b04210; max-width: 260px; white-space: normal; }
+
+/* 处理中三点跳跃 */
+.rx-dot {
+  display: inline-block;
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--accent-primary, #7a5af8);
+  animation: rx-dot 900ms ease-in-out infinite;
+}
+.rx-dot:nth-child(2) { animation-delay: 150ms; }
+.rx-dot:nth-child(3) { animation-delay: 300ms; }
+@keyframes rx-dot {
+  0%, 100% { transform: translateY(0); opacity: 0.6; }
+  50%      { transform: translateY(-3px); opacity: 1; }
+}
+
+.rx-status-text { margin-left: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rx-ribbon { animation: none; }
+  .rx-dot { animation: none; }
+}
