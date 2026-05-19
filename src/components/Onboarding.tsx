@@ -33,8 +33,9 @@ export type VoiceImeTrigger =
   | "right-shift" | "right-command" | "right-option"
   | "disabled"; // 用户选不启用
 
-/** v0.4.0 · 语音识别用的模型语言。"zh" = 中文（含中英混合）/ "en" = English-only */
-export type VoiceLang = "zh" | "en";
+/** v0.4.0 P0 · sherpa Zipformer 双语联合训练 —— 锁死 "zh-en"，不再让用户二选一。
+ *  字段保留是为了 save_shortcut command API 兼容；后端会忽略具体值。 */
+export type VoiceLang = "zh-en";
 
 interface OnboardingProps {
   onComplete: (
@@ -109,14 +110,8 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   const [backend, setBackend] = useState<BackendChoice>("claude-cli");
   const [skin, setSkin] = useState<SkinId>(DEFAULT_SKIN);
   const [voiceImeTrigger, setVoiceImeTrigger] = useState<VoiceImeTrigger>("fn");
-  // v0.4.0 · 语音识别模型语言（zh / en）。决定下哪个 sherpa 模型 (~199MB vs ~73MB)。
-  // 用户切到 en：仅识别英文，但准确率明显高于 zh-en 双语模型上的纯英文。
-  // 默认按 UI 语言推断 —— UI 是中文 → zh；UI 是英文 → en。
-  const [voiceLang, setVoiceLang] = useState<VoiceLang>(() => {
-    // 从 UI 语言推一个合理默认。t() 拿不到，简单判一下浏览器 lang
-    const ui = navigator.language?.toLowerCase() ?? "";
-    return ui.startsWith("zh") ? "zh" : "en";
-  });
+  // v0.4.0 P0 · 锁死中英双语模型，不再让用户二选一（详见 type 注释）。
+  const voiceLang: VoiceLang = "zh-en";
   // v0.1.27 · 默认 bottom-right —— 最不挡视线
   const [petAnchor, setPetAnchor] = useState<PetAnchor>("bottom-right");
   // v0.1.28 · 后端 CLI 安装状态（id → {installed, installCmd, installUrl}）
@@ -362,41 +357,29 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         <div className="ob-mouse-stage">
           <PixelMouse state="listen" size={96} skin={skin} />
         </div>
-        <h1 className="ob-title">{isZhUi ? "语音识别设置" : "Voice Setup"}</h1>
-        <p className="ob-subtitle">
-          {isZhUi
-            ? "先选语音识别模型 —— 首次启动会自动下载（无需手动操作）"
-            : "Pick a voice model — auto-downloaded on first launch"}
-        </p>
+        <h1 className="ob-title">{t("onboarding.voice_setup.title")}</h1>
+        <p className="ob-subtitle">{t("onboarding.voice_setup.subtitle")}</p>
 
-        {/* v0.4.0 · 语音模型语言（决定下哪个 sherpa 模型） */}
-        <div style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: "#5a5249" }}>
-            {isZhUi ? "🎤 语音识别语言" : "🎤 Voice model"}
+        {/* v0.4.0 P0 · 双语模型锁死，原"中文/英文"二选一删除 —— sherpa Zipformer
+            本身联合训练，中英混说零切换；不再让用户做这个错误的决定。
+            首次启动后台自动下载 ~199MB 模型。 */}
+        <div
+          style={{
+            marginBottom: 18,
+            padding: "10px 14px",
+            borderRadius: 10,
+            background: "rgba(255, 107, 157, 0.08)",
+            border: "1px solid rgba(255, 107, 157, 0.18)",
+            fontSize: 13,
+            lineHeight: 1.55,
+            color: "#5a5249",
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: 2 }}>
+            {t("onboarding.voice_setup.mixed_label")}
           </div>
-          <div className="ob-options" role="radiogroup" aria-label="voice lang">
-            <button
-              type="button" role="radio"
-              aria-checked={voiceLang === "zh"}
-              className={`ob-option ${voiceLang === "zh" ? "selected" : ""}`}
-              onClick={() => setVoiceLang("zh")}
-            >
-              <span className="ob-label">
-                {isZhUi ? "中文（含中英混合 · ~199MB）" : "Chinese + mixed zh-en (~199MB)"}
-              </span>
-              {isZhUi && <span className="ob-tag">{t("common.recommended")}</span>}
-            </button>
-            <button
-              type="button" role="radio"
-              aria-checked={voiceLang === "en"}
-              className={`ob-option ${voiceLang === "en" ? "selected" : ""}`}
-              onClick={() => setVoiceLang("en")}
-            >
-              <span className="ob-label">
-                {isZhUi ? "English（纯英文 · ~73MB）" : "English-only (~73MB · best accuracy)"}
-              </span>
-              {!isZhUi && <span className="ob-tag">{t("common.recommended")}</span>}
-            </button>
+          <div style={{ fontSize: 12.5, color: "#8a8178" }}>
+            {t("onboarding.voice_setup.mixed_hint")}
           </div>
         </div>
 

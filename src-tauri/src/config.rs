@@ -114,10 +114,10 @@ pub struct Config {
     /// 加新语言：枚举改成 string + 前端 LANGUAGES 表加项即可，Rust 这边不卡。
     #[serde(default = "default_language")]
     pub language: String,
-    /// v0.4.0 · 语音识别模型语言 ——「zh」(中文 + 中英混合) /「en」(English)。
-    /// 在 Onboarding 选；持久化后 model_downloader 据此决定下哪个 sherpa 模型。
-    /// 默认 zh —— 与原默认中文用户体验对齐。海外用户首次 onboarding 会选 en。
-    /// 不同于上面 `language`（UI 文案 i18n），voice_lang 决定**模型**。
+    /// v0.4.0 P0 起锁死 "zh-en" —— sherpa Zipformer 本身就是双语联合训练，
+    /// 让用户二选一反而损失体感（混说就崩）。字段保留是为了向后兼容，
+    /// 老 config 里的 "zh" / "en" 都会被 transcribe_stream 直接忽略。
+    /// 不同于上面 `language`（UI 文案 i18n），voice_lang 只决定**模型**。
     #[serde(default = "default_voice_lang")]
     pub voice_lang: String,
     /// v0.4.0 · 首次使用引导是否已完成 —— 模型下载完后桌宠主动跳出来教用户用一次。
@@ -177,7 +177,7 @@ pub struct Config {
 
 fn legacy_version() -> u32 { 1 }
 fn default_language() -> String { "zh".into() }
-fn default_voice_lang() -> String { "zh".into() }
+fn default_voice_lang() -> String { "zh-en".into() }
 // LLM tidy 默认**关** —— Claude CLI 调用每次 +3-8s，对 AI 召唤流程是过度优化。
 // 只有写到光标的语音 IME 场景值得开（精修文本，用户看到的就是它）。
 // 用户托盘菜单可一键开。

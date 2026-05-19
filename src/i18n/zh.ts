@@ -36,6 +36,10 @@ export const zh: Strings = {
   "onboarding.voice_ime.subtitle": "按住它说话，松开 → 文字写到光标。300ms 才触发，避免误触。",
   "onboarding.voice_ime.tip": "短按这个键仍走 macOS 原生行为（切语言/打字等）。不喜欢可随时托盘里关。",
   "onboarding.voice_ime.disabled": "暂时不用语音输入法",
+  "onboarding.voice_setup.title": "语音识别设置",
+  "onboarding.voice_setup.subtitle": "首次启动会自动下载模型（无需手动操作）",
+  "onboarding.voice_setup.mixed_label": "🎤 中英混合识别（默认）",
+  "onboarding.voice_setup.mixed_hint": "「这个 useEffect 的依赖加 props.value」一类混说句子直接识别，无需切语言。模型 ~199MB，首次启动后台下载。",
   "onboarding.autostart.title": "开机自启动",
   "onboarding.autostart.sub": "登录 Mac 时自动启动 · 住在菜单栏（系统设置 → 通用 → 登录项里可关）",
   // 桌宠悬停位置 (v0.1.27)

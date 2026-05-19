@@ -64,8 +64,9 @@ pub fn save_shortcut(
 
     let backend = Backend::from_choice(&backend);
     let skin = SkinId::from_str(skin.as_deref().unwrap_or(""));
-    let voice_lang = voice_lang.as_deref().filter(|s| *s == "zh" || *s == "en")
-        .unwrap_or("zh").to_string();
+    // v0.4.0 P0：双语模型锁死，老 onboarding 仍可能传 "zh" / "en"，统一存 "zh-en"。
+    let _ = voice_lang; // 字段保留 API 兼容，值忽略
+    let voice_lang = "zh-en".to_string();
     // 保留用户之前选的语言等设置（重走 onboarding 不要被重置成 default）
     let prev = config::Config::load();
     let cfg = config::Config {
@@ -152,8 +153,14 @@ pub fn save_pet_custom_position(x: f64, y: f64) -> Result<(), String> {
 /// 把 mouse overlay 窗口的 hit-box 从"右下角桌宠区"扩到"整个窗口"，避免气泡左半部分点不到。
 /// 默认 idle 静默时 = false（右下 110×110 hit-box），其余区域穿透到底层 app。
 #[tauri::command]
-pub fn set_overlay_has_ui(has_ui: bool, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+pub fn set_overlay_has_ui(has_ui: bool, app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<(), String> {
     state.overlay_has_ui.store(has_ui, std::sync::atomic::Ordering::Relaxed);
+    // v0.3.12 fix3 · React-only UI（下载提示 / petMenu / nudge / drag）也要触发窗口尺寸切换
+    if has_ui {
+        crate::overlay_size::expand_to_full(&app);
+    } else {
+        crate::overlay_size::shrink_to_compact(&app);
+    }
     Ok(())
 }
 

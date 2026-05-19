@@ -36,6 +36,10 @@ export const en: Strings = {
   "onboarding.voice_ime.subtitle": "Hold it, speak, release → typed at cursor. 300ms threshold avoids accidental triggers.",
   "onboarding.voice_ime.tip": "Short-tapping still works as macOS default. You can turn this off any time from the tray.",
   "onboarding.voice_ime.disabled": "Don't enable voice IME",
+  "onboarding.voice_setup.title": "Voice Setup",
+  "onboarding.voice_setup.subtitle": "Model auto-downloads on first launch — no setup needed.",
+  "onboarding.voice_setup.mixed_label": "🎤 Mixed Chinese + English (default)",
+  "onboarding.voice_setup.mixed_hint": "Say sentences like \"the useEffect dependency 加 props.value\" with no language switching. ~199 MB model, fetched in the background on first launch.",
   "onboarding.autostart.title": "Launch at login",
   "onboarding.autostart.sub": "Starts when you log in · lives in your menu bar (off in System Settings → General → Login Items)",
   // Pet anchor (v0.1.27)

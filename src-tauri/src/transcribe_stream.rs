@@ -37,28 +37,16 @@ pub const MODEL_FILES: &[&str] = &[
     "tokens.txt",
 ];
 
-/// v0.4.0 · 英文模型 (sherpa-onnx-streaming-zipformer-en-2023-06-26)
-pub const EN_MODEL_DIR: &str = "sherpa-en";
-pub const EN_MODEL_FILES: &[&str] = &[
-    "encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx",
-    "decoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx",
-    "joiner-epoch-99-avg-1-chunk-16-left-128.int8.onnx",
-    "tokens.txt",
-];
-
-/// 当前选用的 ASR 语言 —— 读 config.voice_lang，决定 active model dir + files
-pub fn active_lang() -> String {
-    crate::config::Config::load().voice_lang
-}
-fn is_en() -> bool { active_lang() == "en" }
-pub fn active_model_dir() -> &'static str {
-    if is_en() { EN_MODEL_DIR } else { MODEL_DIR }
-}
-pub fn active_model_files() -> &'static [&'static str] {
-    if is_en() { EN_MODEL_FILES } else { MODEL_FILES }
-}
+/// v0.4.0 P0：锁死 zh-en 双语模型 —— 中英混说零切换。
+/// 旧 config.voice_lang ("zh" / "en") 保留字段做向后兼容但**被忽略**。
+/// 原因：sherpa zh-en Zipformer 本身双语联合训练，比单语模型在 code-switch
+/// 场景体感强很多；强制让用户二选一是历史包袱，UX 上是个 bug。
+pub fn active_lang() -> String { "zh-en".into() }
+fn is_en() -> bool { false }
+pub fn active_model_dir() -> &'static str { MODEL_DIR }
+pub fn active_model_files() -> &'static [&'static str] { MODEL_FILES }
 pub fn active_spec() -> crate::model_downloader::ModelSpec {
-    if is_en() { crate::model_downloader::en_spec() } else { crate::model_downloader::zh_en_spec() }
+    crate::model_downloader::zh_en_spec()
 }
 
 /// Cached recognizer —— first transcribe loads it, subsequent ones reuse.

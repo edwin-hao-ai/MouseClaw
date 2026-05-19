@@ -52,6 +52,11 @@ export interface Strings {
   "onboarding.voice_ime.subtitle": string;
   "onboarding.voice_ime.tip": string;
   "onboarding.voice_ime.disabled": string;
+  // v0.4.0 P0 · 语音模型设置（双语锁死后只剩信息提示）
+  "onboarding.voice_setup.title": string;
+  "onboarding.voice_setup.subtitle": string;
+  "onboarding.voice_setup.mixed_label": string;
+  "onboarding.voice_setup.mixed_hint": string;
   "onboarding.autostart.title": string;
   "onboarding.autostart.sub": string;
   // Pet anchor (v0.1.27)

@@ -16,8 +16,8 @@ export default function OnboardingView() {
     voiceLang: VoiceLang,
   ) => {
     try {
-      // 1. 持久化主快捷键 + AI 后端 + 皮肤 + 语音模型语言
-      // v0.4.0 · voiceLang 决定下哪个 sherpa 模型；save_shortcut 返回后会立即触发后台下载
+      // 1. 持久化主快捷键 + AI 后端 + 皮肤
+      // v0.4.0 P0 · 双语模型锁死；voiceLang 仍传只为 API 兼容，后端忽略具体值
       await invoke("save_shortcut", { choice, backend, skin, voiceLang });
       // 2. 持久化 voice IME 触发键 + enable 状态
       if (voiceImeTrigger === "disabled") {
