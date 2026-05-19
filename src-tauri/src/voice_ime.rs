@@ -657,8 +657,18 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
                 }
             }
 
+            // v0.4.0 P2 · 3 秒规则纠错 —— 在写之前检查 transcript 是不是「把 X 改成 Y / 重说」等指令
+            let current_bundle = frontmost_bundle();
+            let correction = crate::voice_correct::try_parse(&final_text, &current_bundle);
+            if let Some(action) = correction {
+                handle_correction(&app2, action, &current_bundle).await;
+                return;
+            }
+
             match crate::mode_b::write_at_cursor(&final_text).await {
                 Ok(()) => {
+                    // v0.4.0 P2 · 记录这次写入 —— 下一次 3 秒内的语音可能要纠错它
+                    crate::voice_correct::record_write(&final_text, &current_bundle);
                     crate::overlay::emit_view(&app2, &crate::events::ViewKind::Reply {
                         transcript: "voice IME".into(),
                         reply: format!("✍️ {final_text}"),
@@ -678,4 +688,81 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
             }
         });
     });
+}
+
+/// v0.4.0 P2 · 执行纠错动作 —— Replace 走 backspace + write，UndoAll 走 backspace，
+/// NotFound 仅气泡反馈不写入。所有路径走完发个气泡 + 自动 hide。
+async fn handle_correction(
+    app: &AppHandle,
+    action: crate::voice_correct::CorrectionAction,
+    current_bundle: &str,
+) {
+    use crate::voice_correct::CorrectionAction;
+    match action {
+        CorrectionAction::Replace { old, new, full_replacement, prev_char_count } => {
+            if let Err(e) = crate::mode_b::delete_chars(prev_char_count) {
+                eprintln!("[mouseclaw] 🎙️ correction backspace failed: {e}");
+                crate::overlay::emit_view(app, &crate::events::ViewKind::Blocked {
+                    reason: format!("纠错失败：{e}"),
+                });
+                return;
+            }
+            // 给前台 app 一点点时间消化 backspace
+            tokio::time::sleep(Duration::from_millis(40)).await;
+            match crate::mode_b::write_at_cursor(&full_replacement).await {
+                Ok(()) => {
+                    crate::voice_correct::record_write(&full_replacement, current_bundle);
+                    println!("[mouseclaw] 🔄 corrected: '{old}' → '{new}'");
+                    crate::overlay::emit_view(app, &crate::events::ViewKind::Reply {
+                        transcript: "voice correction".into(),
+                        reply: format!("✓ 已替换「{old} → {new}」"),
+                        mode: crate::events::ReplyMode::A,
+                        insert_text: None,
+                        streaming: false,
+                    });
+                    tokio::time::sleep(Duration::from_millis(1500)).await;
+                    crate::overlay::hide_overlay(app);
+                }
+                Err(e) => {
+                    eprintln!("[mouseclaw] 🎙️ correction rewrite failed: {e}");
+                    crate::overlay::emit_view(app, &crate::events::ViewKind::Blocked {
+                        reason: format!("重写失败：{e}"),
+                    });
+                }
+            }
+        }
+        CorrectionAction::UndoAll { prev_char_count } => {
+            if let Err(e) = crate::mode_b::delete_chars(prev_char_count) {
+                eprintln!("[mouseclaw] 🎙️ correction undo failed: {e}");
+                crate::overlay::emit_view(app, &crate::events::ViewKind::Blocked {
+                    reason: format!("撤销失败：{e}"),
+                });
+                return;
+            }
+            crate::voice_correct::clear();
+            println!("[mouseclaw] 🔄 undo-all: deleted {prev_char_count} chars");
+            crate::overlay::emit_view(app, &crate::events::ViewKind::Reply {
+                transcript: "voice correction".into(),
+                reply: "↶ 已撤销".into(),
+                mode: crate::events::ReplyMode::A,
+                insert_text: None,
+                streaming: false,
+            });
+            tokio::time::sleep(Duration::from_millis(1500)).await;
+            crate::overlay::hide_overlay(app);
+        }
+        CorrectionAction::NotFound { needle } => {
+            println!("[mouseclaw] 🔄 correction target not found in last write: '{needle}'");
+            // 不动 last_written —— 用户可能想再试一次
+            crate::overlay::emit_view(app, &crate::events::ViewKind::Reply {
+                transcript: "voice correction".into(),
+                reply: format!("⚠️ 上一段没找到「{needle}」"),
+                mode: crate::events::ReplyMode::A,
+                insert_text: None,
+                streaming: false,
+            });
+            tokio::time::sleep(Duration::from_millis(2000)).await;
+            crate::overlay::hide_overlay(app);
+        }
+    }
 }

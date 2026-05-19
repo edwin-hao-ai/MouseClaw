@@ -24,6 +24,7 @@ pub mod transcribe_stream;
 pub mod model_downloader;
 pub mod claude_cli;
 pub mod clipboard;
+pub mod clipboard_action;
 pub mod clipboard_crypto;
 pub mod cursor_follow;
 pub mod cursor_trail;
@@ -47,6 +48,7 @@ pub mod skins;
 pub mod tidy_up;
 pub mod update_check;
 pub mod voice_ime;
+pub mod voice_correct;
 pub mod vocab;
 // transcribe (Whisper) deleted in v0.3 — superseded by transcribe_stream (sherpa-onnx)
 pub mod tray;
@@ -372,6 +374,7 @@ pub fn run() {
             commands::vocab_reload,
             commands::vocab_get_builtin_enabled,
             commands::vocab_set_builtin_enabled,
+            clipboard_action::process_clipboard_action,
         ])
         .setup(move |app| {
             set_accessory_activation_policy();
