@@ -165,6 +165,20 @@ pub fn set_overlay_has_ui(has_ui: bool, app: AppHandle, state: State<'_, Arc<App
     Ok(())
 }
 
+/// v0.4 · 内容驱动 overlay 尺寸 —— React 端 ResizeObserver 实测可见 UI 实际像素，传过来。
+///
+/// 解决"加一个新菜单项就被剪 / 又得改 EXPANDED_SIZE 常量"的循环。
+/// 见 CLAUDE.md "Overlay 窗口尺寸：用内容测量，别拍数字"。
+///
+/// 行为：keep pet 视觉锚点（底部中央那点）不变 → 改窗口 size + position。
+/// has_ui 默认按 true 处理（既然在测尺寸，说明肯定有 UI 要显示）。
+#[tauri::command]
+pub fn set_overlay_content_size(width: f64, height: f64, app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.overlay_has_ui.store(true, std::sync::atomic::Ordering::Relaxed);
+    crate::overlay_size::set_to_explicit(&app, width, height);
+    Ok(())
+}
+
 /// v0.3.6 · 一键打开 macOS 系统设置 → 隐私与安全性 → 辅助功能 面板。
 /// 给 voice IME 失败气泡的"🔓 去授权"按钮用 —— 用户授权完退出 app 重启即可。
 ///
@@ -285,6 +299,8 @@ pub struct CapabilityStatus {
     pub claude_cli: bool,
     pub agent_browser: bool,
     pub chrome_cdp: bool,
+    /// v0.4.x · OfficeCLI（读写 Word/Excel/PPT，自包含二进制无需 Office/账号）
+    pub officecli: bool,
 }
 
 // v0.3 · save_whisper_model / get_whisper_model deleted alongside Whisper.
@@ -792,7 +808,18 @@ pub fn capability_status() -> CapabilityStatus {
         claude_cli: crate::claude_cli::find_binary("claude").is_ok(),
         agent_browser: crate::claude_cli::find_binary("agent-browser").is_ok(),
         chrome_cdp: crate::browser_bridge::cdp_is_alive(),
+        officecli: crate::claude_cli::find_binary("officecli").is_ok(),
     }
+}
+
+/// v0.4.x · 一键装 agent-browser / officecli。
+/// 立即返回 —— 进度通过 EV_INSTALL_PROGRESS 事件流式给前端。
+#[tauri::command]
+pub fn install_cli(app: AppHandle, target: String) -> Result<(), String> {
+    let parsed = crate::cli_install::InstallTarget::parse(&target)
+        .ok_or_else(|| format!("不支持的安装目标：{target}"))?;
+    crate::cli_install::start_install(app, parsed);
+    Ok(())
 }
 
 /// 取消当前 pipeline（cancel_pipeline）—— bump gen + 隐藏 overlay。

@@ -168,6 +168,47 @@ classic 上做完就交差。
 - 检查：`wc -l src-tauri/src/*.rs src/**/*.tsx | sort -rn | head` —— 任何一行超 800 就拆
 - **2026-05-15 教训**：lib.rs 一度涨到 792 行，加新功能前必须先拆，不然滚雪球
 
+## Overlay 窗口尺寸：用内容测量，别拍数字（硬规则 · v0.4+）
+
+**任何浮在桌宠头顶 / 旁边的菜单 / 气泡 / ribbon / panel 都必须走自适应测量管道。**
+
+**反模式（之前踩了 N 次的坑）**：
+- 「PetMenu 加新项 → 显示不全 → 调 `EXPANDED_SIZE: 320 → 360 → 400 → ...`」循环
+- 「reactive ribbon 加按钮 → 被剪 → 又调 panel width」
+- 「翻译结果超长 → 气泡看不到底 → 又拍一个数字」
+
+每次都是同一个根因：**overlay window 物理尺寸固定，React 渲染的内容大于窗口就被剪**。
+
+**正解（已落地）**：
+1. **后端** `overlay_size::set_to_explicit(w, h)` + tauri command `set_overlay_content_size`
+   —— 接受 React 测出来的 (w, h)，改窗口 size + 保持桌宠锚点不变（pet 底部居中那点）
+2. **前端** `hooks/useAdaptiveOverlay.ts` —— 扫 `.stage` subtree 内所有可见 UI 元素的
+   `getBoundingClientRect()` 取**并集** → debounce 16ms → invoke。三路触发：
+   `MutationObserver`（DOM 增删）+ `ResizeObserver`（自身尺寸变）+ 250ms 兜底 ping
+3. **测量目标选择器**（`VISIBLE_UI_SELECTORS`）：
+   `.mouse-wrap, .pet-menu, .nudge-bubble, .rx-ribbon, .reactive-panel, .bubble,
+   .stage-bubble, [data-adaptive-measure]`
+
+**加新浮层 UI 时的 checklist**：
+- [ ] 新组件的根元素加进 `VISIBLE_UI_SELECTORS`（要么用既有 className，要么打 `data-adaptive-measure=""`）
+- [ ] **不要**改 `EXPANDED_SIZE` 常量去"塞下"它 —— 那是 fallback 用的，不是 daily 调整位
+- [ ] 不要在新组件里手动调 `set_overlay_has_ui` / `set_overlay_content_size` —— 让自适应 hook 推
+- [ ] 测一遍：菜单弹出 / 收起 / 内容增加 / 内容减少，4 个动作窗口都正确缩放
+- [ ] 如果 UI 在 idle 视图外（listening / thinking 等），改的是 Rust 端 `emit_view` 的尺寸逻辑，
+  不走自适应 hook（前后端不要同时管同一个窗口尺寸）
+
+**为什么 ResizeObserver(.stage) 不够 / 必须扫 children**：
+`.stage` 是 `width:100% height:100%` 填满 overlay 窗口 —— 它的 boundingRect 永远 = 窗口大小，
+不告诉你"内容实际占多少"。子元素都是 `position: absolute`，逃出 flex 布局，所以必须 union 它们的
+rect 才能知道真正占用了多少像素。这是 jsdom + 真 webview 都验证过的（见 `useAdaptiveOverlay.test.ts`）。
+
+历史教训日期戳：
+- 2026-05-14 调 320 → 360（加 panel）
+- 2026-05-16 调 360 → 400（加 voice IME 失败气泡）
+- 2026-05-18 调 400 → 360 + nudge bubble 移位
+- 2026-05-19 reactive ribbon 显示不全，又一次想改 EXPANDED_SIZE
+- 2026-05-20 PetMenu 加教程项被剪 → 终于上自适应（这个规则就是这一天立的）
+
 ## 技术选型（已锁定）
 
 - **GUI**：Tauri 2（理由：Webview 写"漂亮+流式文本"几乎零成本，纯 Rust GUI 在文本布局上是地狱）

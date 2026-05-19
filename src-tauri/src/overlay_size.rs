@@ -49,6 +49,44 @@ pub fn expand_to_full(app: &AppHandle) {
     set_mode(app, EXPANDED_SIZE, 1);
 }
 
+/// v0.4 · 内容驱动尺寸 —— React 端 ResizeObserver 把"需要多大"传过来。
+/// 跟 set_mode 同样保持桌宠视觉锚点不变（底部居中那点不动）。
+/// 调用者：commands::set_overlay_content_size（由前端 useAdaptiveOverlay 触发）。
+///
+/// 设计取舍：
+///   - 跳过 CURRENT_MODE 检查 —— 每次 React 渲染都可能不一样大小，需要直接生效
+///   - clamp 上限 1200×1200，防止 React 异常算出疯狂数字撑爆屏幕
+///   - clamp 下限 COMPACT_SIZE，防止比桌宠还小（hit-box 失效）
+pub fn set_to_explicit(app: &AppHandle, want_w: f64, want_h: f64) {
+    let w = want_w.clamp(COMPACT_SIZE, 1200.0);
+    let h = want_h.clamp(COMPACT_SIZE, 1200.0);
+    let app2 = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let Some(window) = app2.get_webview_window("mouse") else { return; };
+        let Ok(pos) = window.outer_position() else { return; };
+        let Ok(size) = window.outer_size() else { return; };
+        let Ok(scale) = window.scale_factor() else { return; };
+        let cur_x = pos.x as f64 / scale;
+        let cur_y = pos.y as f64 / scale;
+        let cur_w = size.width as f64 / scale;
+        let cur_h = size.height as f64 / scale;
+        // 已经一致就 no-op，避免每帧 set_size 的抖动
+        if (cur_w - w).abs() < 0.5 && (cur_h - h).abs() < 0.5 {
+            return;
+        }
+        let pet_cx = cur_x + cur_w * PET_X_OFFSET_RATIO;
+        let pet_cy = cur_y + cur_h - PET_BOTTOM_OFFSET;
+        let new_x = pet_cx - w * PET_X_OFFSET_RATIO;
+        let new_y = pet_cy - (h - PET_BOTTOM_OFFSET);
+        // 内容驱动尺寸不切 CURRENT_MODE —— 复用 expanded 标记让 pet_passthrough 走全窗 hit-box
+        CURRENT_MODE.store(1, Ordering::Relaxed);
+        LAST_PET_CENTER_X.store(pet_cx as i32, Ordering::Relaxed);
+        LAST_PET_CENTER_Y.store(pet_cy as i32, Ordering::Relaxed);
+        let _ = window.set_size(LogicalSize::new(w, h));
+        let _ = window.set_position(LogicalPosition::new(new_x, new_y));
+    });
+}
+
 fn set_mode(app: &AppHandle, new_size: f64, mode_tag: u32) {
     if CURRENT_MODE.swap(mode_tag, Ordering::SeqCst) == mode_tag {
         return; // 已是目标模式

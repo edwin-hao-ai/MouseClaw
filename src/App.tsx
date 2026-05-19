@@ -24,6 +24,7 @@ import { DEFAULT_SKIN } from "./skins";
 import { useT, getCurrentLang } from "./i18n";
 import { ReactiveOverlay, type ReactivePayload } from "./components/ReactiveOverlay";
 import { useCompanion } from "./hooks/useCompanion";
+import { useAdaptiveOverlay } from "./hooks/useAdaptiveOverlay";
 
 const PREVIEW_LONG = "这篇 Nature 文章讨论 2026 年 AI 加速材料发现的三个突破：室温超导候选材料、新型电池电解液、碳捕获催化剂。核心机制是自动化实验室加大模型生成假设的迭代闭环。";
 
@@ -77,7 +78,11 @@ export default function App() {
   const [reactive, setReactive] = useState<ReactivePayload | null>(null);
   // v0.4+ · 陪伴向动画 —— hook 订阅 Rust companion-tick + 算桌宠当前帧
   const petStageRef = useRef<HTMLDivElement>(null);
+  const stageRootRef = useRef<HTMLDivElement>(null);
   const companion = useCompanion(petStageRef);
+  // v0.4 · 内容驱动 overlay 尺寸 —— 见 hooks/useAdaptiveOverlay.ts 注释。
+  // 只在 idle 视图启用：非 idle 由 Rust emit_view 那侧管尺寸，不要前后端打架。
+  useAdaptiveOverlay(stageRootRef, { enabled: true });
 
   // v0.3.12 · 在 idle 状态下显示 React-only UI（下载提示气泡 / petMenu / nudge / ack
   //   / v0.4 reactive ribbon）时主动通知 Rust 把窗口 hit-box 扩到全窗口；
@@ -170,6 +175,37 @@ export default function App() {
 
   const dismissReactive = useCallback(() => setReactive(null), []);
 
+  // v0.4.x · CLI 装好 → 桌宠头顶弹个庆祝气泡 5s（学会了 browser use / office use）
+  // 设计文档：docs/prototypes/auto-install-cli-20260520.html State 7
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    let dismissTimer: number | undefined;
+    type InstallEv =
+      | { phase: "started"; target: string }
+      | { phase: "log"; target: string; line: string }
+      | { phase: "done"; target: string }
+      | { phase: "failed"; target: string; code: string; message: string };
+    try {
+      const p = listen<InstallEv>("install-progress", (e) => {
+        if (e.payload.phase !== "done") return;
+        const t = e.payload.target;
+        const lang = getCurrentLang();
+        const msg = lang === "zh"
+          ? (t === "officecli" ? "🎉 我学会读写 Office 文件啦"
+                                : "🎉 我学会操作浏览器啦")
+          : (t === "officecli" ? "🎉 I just learned to edit Office files"
+                                : "🎉 I just learned to drive a browser");
+        setTransientAck(msg);
+        if (dismissTimer) window.clearTimeout(dismissTimer);
+        dismissTimer = window.setTimeout(() => setTransientAck(null), 5000);
+      });
+      p.then((fn) => { unlisten = fn; }).catch(() => {});
+    } catch { /* dev mode */ }
+    return () => {
+      if (unlisten) unlisten();
+      if (dismissTimer) window.clearTimeout(dismissTimer);
+    };
+  }, []);
 
   // 托盘菜单换皮肤 → Rust 广播 skin-changed → 实时切换，不重启
   useEffect(() => {
@@ -446,7 +482,7 @@ export default function App() {
   }, [view.kind]);
 
   return (
-    <div className="stage stage-mouse-bubble">
+    <div ref={stageRootRef} className="stage stage-mouse-bubble">
       <BubbleFor view={view} continuing={continuing} onExpand={handleExpand} onNewSession={handleNewSession} modelProgress={modelProgress} />
       {/* Local ack bubble — visible above the pet without going through Rust */}
       {transientAck && (

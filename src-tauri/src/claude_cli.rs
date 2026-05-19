@@ -178,8 +178,49 @@ pub const MACOS_COMPUTER_USE_PROMPT: &str = r#"
 - `say "text"` 朗读
 "#;
 
+/// 当检测到 `officecli` 已安装时，告诉后端：你的 Bash 里有 OfficeCLI，
+/// 可以读写 Word / Excel / PowerPoint，不需要装 Office、不需要登录。
+///
+/// 跟 agent-browser 一个套路 —— 不自己实现 Office 操作，让后端 agentic 能力调它。
+/// 来源 https://github.com/iOfficeAI/OfficeCLI（自包含二进制，无账号）。
+pub const OFFICE_CAPABILITY_PROMPT: &str = r#"
+
+## Office 文档操作能力（OfficeCLI 已就绪）
+本机装了 `officecli` 单二进制（自包含 .NET runtime，**不需要装 Office**、不需要登录账号）。
+**当用户提到「读这个 Excel / 改这个 Word / 总结 PPT / 把这段写进 docx / 把这个表换个格式」时，
+你必须主动用 Bash 调它，不要回答"我无法操作 Office 文件"**。
+
+### 常用子命令（其它子命令用 `officecli --help` / `officecli <cmd> --help` 自查）
+- `officecli read <file>` —— 读 Word/Excel/PPT 文本内容
+- `officecli edit <file> ...` —— 改 Word 文档内容
+- `officecli convert <input> <output>` —— 格式互转（docx↔pdf↔md 等）
+- 用户拖来的文件路径若是相对路径，先 `cd` 到合适目录或用绝对路径
+
+### 标准任务模板
+- **"总结这个 Excel"** → `officecli read /path/to/file.xlsx | head -200` → 看完给 3 句摘要
+- **"把这段写进 docx"** → 拿用户给的文本 + 路径 → `officecli edit ...`
+- **"把这份 Word 转成 PDF"** → `officecli convert in.docx out.pdf` → `open out.pdf`
+
+### 重要边界
+- **覆盖原文件前先 confirm**（"我要把改动写回 `<原路径>`，确认吗？"）—— Office 文档不可 ⌘Z
+- 文件特别大时先 `read | head -300` 取一段看结构，再决定下一步
+- 路径里有空格 / 中文记得引号"#;
+
+/// 当 `officecli` 没装时，告诉后端不能直接操作 Office 文件，但可以走 fallback：
+/// (1) 看截图给操作步骤；(2) 引导用户去状态页一键装。
+pub const NO_OFFICE_CAPABILITY_PROMPT: &str = r#"
+
+## Office 文档操作能力（未启用）
+本机**没装 OfficeCLI** —— 不能直接读写 Word/Excel/PPT。当用户要求操作 Office 文档时按 fallback：
+
+1. **截图里看得到文档内容** → 给清晰的"在 X 处改成 Y"步骤指南，告诉用户自己改。结尾加一句：
+   "想让我直接帮你改，去托盘 → 系统状态 → 装上 OfficeCLI 就行（无需账号，一次装永久生效）"
+2. **纯文本类的转换** → 走 Mode B 把目标文本写到光标（用户自己粘进 Word）
+
+不要假装会调 officecli —— 调用会直接失败。"#;
+
 /// 按本机已安装的能力拼出最终 system prompt。
-/// macOS 上永远注入 computer-use prompt；浏览器层另外按三档分支。
+/// macOS 上永远注入 computer-use prompt；浏览器 / Office 层按可用性各自分支。
 pub fn system_prompt() -> String {
     let mut p = APPEND_SYSTEM_PROMPT.to_string();
     // v0.1.19 · macOS 系统级 computer use 永远开（Claude 默认就有 Bash 工具）
@@ -197,6 +238,12 @@ pub fn system_prompt() -> String {
     }
     if !cdp_alive && !has_agent_browser {
         p.push_str(NO_BROWSER_CAPABILITY_PROMPT);
+    }
+    // v0.4.x · Office Use
+    if find_binary("officecli").is_ok() {
+        p.push_str(OFFICE_CAPABILITY_PROMPT);
+    } else {
+        p.push_str(NO_OFFICE_CAPABILITY_PROMPT);
     }
     p
 }
@@ -551,6 +598,13 @@ mod tests {
             assert!(p.contains("macOS 系统操作能力"));
             assert!(p.contains("maps://?q="));
             assert!(p.contains("不可逆动作必须先 confirm"));
+        }
+        // v0.4.x · Office Use 分支必须二选一出现
+        let has_office = find_binary("officecli").is_ok();
+        if has_office {
+            assert!(p.contains("OfficeCLI 已就绪"));
+        } else {
+            assert!(p.contains("没装 OfficeCLI"));
         }
     }
 

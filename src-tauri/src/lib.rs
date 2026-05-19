@@ -23,6 +23,7 @@ pub mod tts;
 pub mod transcribe_stream;
 pub mod model_downloader;
 pub mod claude_cli;
+pub mod cli_install;
 pub mod clipboard;
 pub mod clipboard_action;
 pub mod clipboard_crypto;
@@ -332,6 +333,7 @@ pub fn run() {
             commands::get_skin,
             commands::enable_browser_automation,
             commands::capability_status,
+            commands::install_cli,
             commands::save_language,
             commands::get_language,
             commands::list_clipboard,
@@ -368,6 +370,7 @@ pub fn run() {
             commands::get_pet_anchor,
             commands::open_accessibility_settings,
             commands::set_overlay_has_ui,
+            commands::set_overlay_content_size,
             commands::save_pet_custom_position,
             commands::set_nap_until,
             commands::dismiss_nudge,
