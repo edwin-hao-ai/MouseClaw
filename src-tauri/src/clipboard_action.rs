@@ -7,9 +7,7 @@
 //!
 //! 命令命名故意不带 "clipboard"，因为来源可能是 selection。前端不需要传 source。
 
-use anyhow::{bail, Context, Result};
-use std::process::Stdio;
-use tokio::io::{AsyncBufReadExt, BufReader};
+use anyhow::{bail, Result};
 
 /// 前端 Tauri command 入口。
 ///
@@ -35,8 +33,12 @@ async fn run(action: &str) -> Result<String, String> {
     }
     let prompt = build_prompt(action, &text)
         .map_err(|e| e.to_string())?;
-    let result = run_claude_text_only(&prompt).await
-        .map_err(|e| format!("调用后台失败：{e}"))?;
+    // v0.4 · 走统一后端接口，自动适配用户在 Onboarding 选的 CLI
+    //   （Claude / Codex / OpenClaw / Hermes 都走同一份 action prompt）。
+    //   见 CLAUDE.md "多后端 CLI 都要兼容"硬规则。
+    let backend = crate::config::Config::load().backend;
+    let result = crate::backend::ask_text_only(backend, &prompt).await
+        .map_err(|e| format!("调用 {} 失败：{e}", backend.display_name()))?;
     let cleaned = strip_wrappers(result.trim());
     if cleaned.is_empty() {
         return Err("后台返回空结果".into());
@@ -128,43 +130,9 @@ fn strip_wrappers(s: &str) -> String {
     trimmed.to_string()
 }
 
-async fn run_claude_text_only(prompt: &str) -> Result<String> {
-    let bin = crate::claude_cli::find_binary("claude")
-        .context("找不到 claude CLI")?;
-
-    let mut cmd = tokio::process::Command::new(&bin);
-    cmd.env("PATH", crate::claude_cli::expanded_path());
-    crate::provider_env::apply_to(&mut cmd);
-    if let Some(ws) = crate::config::Config::load().workspace_path {
-        if std::path::Path::new(&ws).is_dir() {
-            cmd.current_dir(&ws);
-        }
-    }
-
-    cmd.arg("-p").arg(prompt)
-        .arg("--permission-mode").arg("auto")
-        .arg("--allowedTools").arg("");
-
-    let mut child = cmd
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .context("spawn claude")?;
-
-    let stdout = child.stdout.take().context("stdout not piped")?;
-    let mut reader = BufReader::new(stdout).lines();
-    let mut out = String::new();
-    while let Some(line) = reader.next_line().await.context("read stdout")? {
-        if !out.is_empty() { out.push('\n'); }
-        out.push_str(&line);
-    }
-
-    let status = child.wait().await.context("wait claude")?;
-    if !status.success() {
-        bail!("claude 退出码非 0");
-    }
-    Ok(out)
-}
+// v0.4 (2026-05-20) · run_claude_text_only 删除 —— 替换为 backend::ask_text_only
+// 让 reactive action 跟用户在 Onboarding 选的 CLI 一致（Claude / Codex / OpenClaw / Hermes
+// 都支持），避免「我选了 Codex 但 reactive ribbon 偷偷调 claude」的接线 bug。
 
 #[cfg(target_os = "macos")]
 fn write_to_pasteboard(text: &str) -> Result<()> {

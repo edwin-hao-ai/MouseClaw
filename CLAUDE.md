@@ -209,6 +209,38 @@ rect 才能知道真正占用了多少像素。这是 jsdom + 真 webview 都验
 - 2026-05-19 reactive ribbon 显示不全，又一次想改 EXPANDED_SIZE
 - 2026-05-20 PetMenu 加教程项被剪 → 终于上自适应（这个规则就是这一天立的）
 
+## 多后端 CLI 兼容（硬规则 · v0.1.6+）
+
+**任何"调 AI 跑短任务"的新功能必须走 `backend.rs` 的统一抽象，不能硬编码 `claude` 二进制。**
+
+MouseClaw 支持 4 个 backend，用户在 Onboarding 里选一个：
+- **ClaudeCli** (默认) —— `claude -p` + stream-json
+- **CodexCli** —— `codex exec --skip-git-repo-check`
+- **OpenclawCli** —— `openclaw agent --local -m`
+- **HermesAgent** —— `hermes -z` (Nous Research)
+
+### 反模式（已经踩过的坑）
+**2026-05-20**：`clipboard_action::run_claude_text_only` 直接 spawn `claude` 二进制
+→ 用户选 Codex 的话，主流程走 Codex，但 reactive ribbon 偷偷调 Claude（用户没装就会失败）。
+修法：删掉私有函数，改走 `backend::ask_text_only(Config::load().backend, &prompt)`。
+
+### 现有统一接口
+- `backend::ask_streaming(backend, transcript, image, ...)` —— **带截图的多模态**长任务（主 pipeline）
+- `backend::ask_text_only(backend, prompt)` —— **纯文本** 单次任务（reactive action / 未来的 selection action / 标点 / 任何短任务）
+
+新加路径时的 checklist：
+- [ ] 不直接调 `claude_cli::find_binary("claude")` —— 那是 ClaudeCli 路径自己的事
+- [ ] 通过 `backend::ask_*` 派发，让所有 4 个 backend 都能跑
+- [ ] 错误信息里包含 backend 名（`backend.display_name()`），用户能看到是哪个 CLI 挂了
+- [ ] `system_prompt()` 是 4 个 backend 共用的 —— 改 system prompt 文案时**自动**对 4 个 backend 生效，不要给某个 backend 写独立 prompt
+- [ ] 如果新功能依赖某个 backend 独有 feature（比如 Mode B INSERT 标记只对 Claude 有意义）→ 在 prompt 里 instruct 而不是 if-branch
+- [ ] `Backend` enum 加新变体时，`match` 是 exhaustive，编译器会自动找到所有需要补的地方
+
+### 测试 / acceptance grep 强制项
+`tests/acceptance/reactive-e2e.sh` 必须 grep 检查：
+- `backend::ask_text_only` 在 clipboard_action / 未来的 short-task 模块里被调
+- 不存在裸的 `find_binary("claude")` 在业务模块里（claude_cli.rs 内部除外）
+
 ## 技术选型（已锁定）
 
 - **GUI**：Tauri 2（理由：Webview 写"漂亮+流式文本"几乎零成本，纯 Rust GUI 在文本布局上是地狱）

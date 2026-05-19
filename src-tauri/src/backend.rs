@@ -186,6 +186,43 @@ where
 
 /// OpenAI Codex CLI：`codex exec <prompt>` 非交互模式，逐行 stream stdout。
 /// 截图路径写进 prompt，Codex 的沙箱有文件读权限能读到。
+/// 纯文本 → 文本 单次调用 —— 给 reactive ribbon 的 action（清理 / 翻译 / 解释 / 回信）用。
+/// 不传截图，不开 streaming，等所有输出收完一次性返回。各后端用各自的 CLI 但参数对齐。
+///
+/// 设计原则（CLAUDE.md "多后端 CLI 都要兼容"硬规则）：每次新加一种短任务流水线
+/// （比如 reactive action / 未来的 selection action）**必须**走这个统一接口而不是
+/// 硬编码 `claude` 二进制 —— 否则 Codex / OpenClaw / Hermes 用户拿不到那个功能。
+pub async fn ask_text_only(backend: Backend, prompt: &str) -> Result<String> {
+    let (bin, args): (std::path::PathBuf, Vec<String>) = match backend {
+        Backend::ClaudeCli => {
+            let bin = crate::claude_cli::find_binary("claude")
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            (bin, vec![
+                "-p".into(), prompt.into(),
+                "--permission-mode".into(), "auto".into(),
+                "--allowedTools".into(), "".into(),
+            ])
+        }
+        Backend::CodexCli => {
+            let bin = crate::claude_cli::find_binary("codex")
+                .map_err(|e| anyhow::anyhow!("{e}\n装一下：npm install -g @openai/codex"))?;
+            (bin, vec!["exec".into(), "--skip-git-repo-check".into(), prompt.into()])
+        }
+        Backend::OpenclawCli => {
+            let bin = crate::claude_cli::find_binary("openclaw")
+                .map_err(|e| anyhow::anyhow!("{e}\n装一下：npm install -g openclaw"))?;
+            (bin, vec!["agent".into(), "--local".into(), "-m".into(), prompt.into()])
+        }
+        Backend::HermesAgent => {
+            let bin = crate::claude_cli::find_binary("hermes")
+                .map_err(|e| anyhow::anyhow!("{e}\n装一下：curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash"))?;
+            (bin, vec!["-z".into(), prompt.into()])
+        }
+    };
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    spawn_and_stream(&bin, &arg_refs, |_| {}).await
+}
+
 async fn codex_streaming<F>(
     transcript: &str,
     image: &Path,
@@ -295,5 +332,25 @@ mod tests {
         assert_eq!(json, "\"codex-cli\"");
         let back: Backend = serde_json::from_str("\"openclaw-cli\"").unwrap();
         assert_eq!(back, Backend::OpenclawCli);
+    }
+
+    /// 编译期保证 ask_text_only 覆盖了所有 Backend 变体 ——
+    /// 加新 backend 时 match 漏掉一个就会触发 unreachable_patterns，
+    /// 强制开发者补齐文本路径（CLAUDE.md "多后端 CLI 都要兼容"硬规则）。
+    #[test]
+    fn ask_text_only_covers_all_backends() {
+        fn _assert_exhaustive(b: Backend) {
+            #[allow(clippy::let_underscore_future)]
+            let _ = async move {
+                let _ = match b {
+                    Backend::ClaudeCli => crate::backend::ask_text_only(b, "x"),
+                    Backend::CodexCli => crate::backend::ask_text_only(b, "x"),
+                    Backend::OpenclawCli => crate::backend::ask_text_only(b, "x"),
+                    Backend::HermesAgent => crate::backend::ask_text_only(b, "x"),
+                }.await;
+            };
+        }
+        // 不实际执行（spawn 真二进制非 hermetic），只验证签名 + match exhaustiveness
+        let _ = _assert_exhaustive;
     }
 }
