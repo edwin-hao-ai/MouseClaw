@@ -478,6 +478,136 @@ curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh
     </div>
   </section>
 
+  <!-- STATE 7 -->
+  <section class="state">
+    <div class="state-title">⑦ 装完瞬间 · 老鼠主动告诉你它学会了</div>
+
+    <!-- mock desktop -->
+    <div style="position:relative; height:300px; border-radius:var(--radius-xl); overflow:hidden;
+                background:linear-gradient(180deg,#2a3147 0%,#1a2138 100%);
+                border:1px solid var(--surface-border);">
+      <!-- mock app window in background -->
+      <div style="position:absolute; left:24px; top:24px; right:120px; bottom:24px;
+                  background:#f5f5f7; border-radius:8px; opacity:0.4;
+                  box-shadow:0 8px 24px rgba(0,0,0,0.3);">
+        <div style="height:22px; background:#e2e2e6; border-radius:8px 8px 0 0;
+                    display:flex; align-items:center; padding:0 8px; gap:5px;">
+          <span style="width:8px;height:8px;border-radius:50%;background:#ff5f57;"></span>
+          <span style="width:8px;height:8px;border-radius:50%;background:#ffbd2e;"></span>
+          <span style="width:8px;height:8px;border-radius:50%;background:#28c840;"></span>
+        </div>
+      </div>
+
+      <!-- mouse + bubble -->
+      <div style="position:absolute; right:24px; bottom:24px; display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
+        <!-- bubble -->
+        <div style="background:linear-gradient(135deg,#d8f8e6,#ffffff);
+                    color:var(--text-primary);
+                    border-radius:14px;
+                    padding:10px 13px;
+                    font-size:12.5px;
+                    line-height:1.45;
+                    max-width:220px;
+                    box-shadow:var(--shadow-card);
+                    border:1px solid var(--bubble-border);">
+          <div style="font-weight:600; margin-bottom:4px;">🎉 我刚学会两个新本事</div>
+          <div style="color:var(--text-bubble-dim); font-size:11.5px;">操作浏览器 · 读写 Office 文件</div>
+          <div style="margin-top:8px; display:flex; gap:6px;">
+            <button class="btn primary sm" style="padding:4px 10px; font-size:11px;">试试看 →</button>
+            <button class="btn ghost sm" style="padding:4px 8px; font-size:11px;">知道了</button>
+          </div>
+        </div>
+        <!-- mouse (ascii placeholder for prototype) -->
+        <div style="width:64px; height:48px; display:grid; place-items:center;
+                    font-size:36px; filter:drop-shadow(0 4px 8px rgba(0,0,0,0.4));">
+          🐭
+        </div>
+      </div>
+    </div>
+
+    <div class="hint" style="margin-top:14px;">
+      装完那一秒老鼠从角落小跑过来 + 头顶弹这个气泡，3 秒不点缩回去（不打扰）。
+      <br>点「试试看」→ 进 State 8 的三卡教程。
+    </div>
+  </section>
+
+  <!-- STATE 8 -->
+  <section class="state" style="grid-column: 1 / -1;">
+    <div class="state-title">⑧ Onboarding 教程 · learn-by-doing 三张卡</div>
+    <div class="card">
+      <div class="step-chip">第 3 / 3 步 · 试一条就上手了</div>
+      <h2>挑一条对老鼠喊出来 · 它现场演给你看</h2>
+      <p class="lead">三种典型用法，按了「试这条」会自动跑给你看 —— 不用真的喊。</p>
+
+      <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px;">
+
+        <!-- card a -->
+        <div style="border:1px solid var(--bubble-border); border-radius:var(--radius-xl);
+                    padding:14px; background:#fff;">
+          <div style="font-size:24px; margin-bottom:6px;">🌐</div>
+          <div style="font-size:13px; font-weight:600; color:var(--text-primary); margin-bottom:4px;">
+            浏览器自动化
+          </div>
+          <div style="font-size:12px; color:var(--text-bubble-dim); line-height:1.5; margin-bottom:10px;">
+            对老鼠说：<br>
+            <span style="color:var(--accent-primary); font-weight:500;">「搜下今天北京天气」</span>
+          </div>
+          <div style="font-size:11px; color:var(--text-dim); margin-bottom:10px; font-family:var(--font-mono);">
+            → 老鼠开浏览器 · 搜 · 念结果给你
+          </div>
+          <button class="btn primary sm" style="width:100%;">试这条</button>
+        </div>
+
+        <!-- card b -->
+        <div style="border:1px solid var(--bubble-border); border-radius:var(--radius-xl);
+                    padding:14px; background:#fff;">
+          <div style="font-size:24px; margin-bottom:6px;">📄</div>
+          <div style="font-size:13px; font-weight:600; color:var(--text-primary); margin-bottom:4px;">
+            读写 Office 文件
+          </div>
+          <div style="font-size:12px; color:var(--text-bubble-dim); line-height:1.5; margin-bottom:10px;">
+            把 Excel 拖给老鼠 · 说：<br>
+            <span style="color:var(--accent-primary); font-weight:500;">「总结这个表」</span>
+          </div>
+          <div style="font-size:11px; color:var(--text-dim); margin-bottom:10px; font-family:var(--font-mono);">
+            → officecli 读表 · 3 句摘要
+          </div>
+          <button class="btn primary sm" style="width:100%;">试这条 (用示例 xlsx)</button>
+        </div>
+
+        <!-- card c -->
+        <div style="border:1px solid var(--bubble-border); border-radius:var(--radius-xl);
+                    padding:14px; background:#fff;">
+          <div style="font-size:24px; margin-bottom:6px;">⌨️</div>
+          <div style="font-size:13px; font-weight:600; color:var(--text-primary); margin-bottom:4px;">
+            写回光标（B 模式）
+          </div>
+          <div style="font-size:12px; color:var(--text-bubble-dim); line-height:1.5; margin-bottom:10px;">
+            在编辑器里 · 对老鼠说：<br>
+            <span style="color:var(--accent-primary); font-weight:500;">「写一句产品介绍」</span>
+          </div>
+          <div style="font-size:11px; color:var(--text-dim); margin-bottom:10px; font-family:var(--font-mono);">
+            → 倒数 3s · 自动键入光标位置
+          </div>
+          <button class="btn primary sm" style="width:100%;">试这条 (开示例文本框)</button>
+        </div>
+      </div>
+
+      <div class="row-actions" style="margin-top:18px;">
+        <a class="link">看完整命令清单 →</a>
+        <div style="display:flex; gap:10px;">
+          <button class="btn ghost">跳过 · 开始用</button>
+          <button class="btn primary">完成 · 开始用 MouseClaw</button>
+        </div>
+      </div>
+
+      <div class="hint" style="margin-top:14px;">
+        每条卡都是<strong>真跑一次 pipeline</strong>（不是录像），第一次成功 = 用户留下来。
+        失败也别藏，老鼠头顶气泡告诉为啥失败 + 下一步建议。
+      </div>
+    </div>
+  </section>
+
   </div>
 
   <div style="margin-top:48px; color:var(--text-dim); font-size:12px; line-height:1.7;">
@@ -486,7 +616,10 @@ curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh
     • 没 npm 就不假装能一键装 Node，引导到 nodejs.org 比静默失败强。<br>
     • 安装失败的每条路径都给"下一步具体动作"，不甩 stack trace。<br>
     • 状态页轮询 1.5s，装完不需要重启 app。<br>
-    • 跳过永远存在 —— 不强制，但默认勾上。
+    • 跳过永远存在 —— 不强制，但默认勾上。<br>
+    • 装完<strong>主动</strong>告诉用户老鼠学会了新技能（State 7），不让用户自己摸索。<br>
+    • 教程 = learn-by-doing（State 8），<strong>真跑</strong>一次 pipeline，不是录像 / 文字说明。<br>
+    • 主动调用 = 启动时探测 CLI · 拼进 system prompt · 让 Claude 知道老鼠真有这两只手。
   </div>
 </div>
 </body>
