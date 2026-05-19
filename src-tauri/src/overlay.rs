@@ -202,6 +202,13 @@ pub fn emit_view(app: &AppHandle, view: &ViewKind) {
         // 其它 view kind 都有可见 UI（气泡 / 菜单 / 倒数 / 引导）→ 整个窗口接收点击
         let has_ui = !matches!(view, ViewKind::Idle);
         state.overlay_has_ui.store(has_ui, std::sync::atomic::Ordering::Relaxed);
+        // v0.3.12 fix3 · 同步窗口物理尺寸 —— idle 静默时缩到 100×100 不再占整个 320×320
+        // 给周围 app 让位；有 UI 时扩到 320×320 让气泡有空间。桌宠视觉位置保持不变。
+        if has_ui {
+            crate::overlay_size::expand_to_full(app);
+        } else {
+            crate::overlay_size::shrink_to_compact(app);
+        }
     }
     match app.emit(EV_VIEW_CHANGED, view) {
         Ok(()) => println!("[mouseclaw] emit_view → {kind}"),

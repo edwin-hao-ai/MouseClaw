@@ -92,10 +92,41 @@ fn update(app: &AppHandle, state: &Arc<AppState>) {
 }
 
 fn set_ignore(window: &tauri::WebviewWindow, ignore: bool) {
-    // 跟上一次相同 → skip（API 调用 + 主线程 marshal 不便宜）
+    // 跟上一次相同 → skip
     let prev = CURRENT_IGNORE.swap(ignore, Ordering::SeqCst);
     if prev == ignore { return; }
-    let _ = window.set_ignore_cursor_events(ignore);
+
+    // v0.3.12 fix2 · 双管齐下 —— 之前只调 Tauri wrapper，怀疑 transparent + alwaysOnTop
+    // 窗口上 wrapper 不生效。这里两个都调：
+    //   1. Tauri 的 wrapper（保险）
+    //   2. native NSWindow setIgnoresMouseEvents:（绕过 wrapper 直接打 AppKit）
+    match window.set_ignore_cursor_events(ignore) {
+        Ok(_) => println!("[passthrough] tauri set_ignore_cursor_events({ignore}) ok"),
+        Err(e) => eprintln!("[passthrough] tauri set_ignore_cursor_events({ignore}) FAIL: {e}"),
+    }
+    #[cfg(target_os = "macos")]
+    set_ignore_native(window, ignore);
+}
+
+/// 直接通过 ns_window() 调 NSWindow setIgnoresMouseEvents:，绕过 Tauri 抽象。
+/// 必须在主线程 —— Tauri 内部会 marshal，但 ns_window() 句柄拿到后直接 obj-c msg 也是 main thread safe。
+#[cfg(target_os = "macos")]
+fn set_ignore_native(window: &tauri::WebviewWindow, ignore: bool) {
+    use objc::{msg_send, sel, sel_impl};
+    let Ok(ns_window_ptr) = window.ns_window() else {
+        eprintln!("[passthrough] ns_window() failed");
+        return;
+    };
+    unsafe {
+        let ns_window: cocoa::base::id = ns_window_ptr as cocoa::base::id;
+        if ns_window.is_null() {
+            eprintln!("[passthrough] ns_window is null");
+            return;
+        }
+        let val: cocoa::base::BOOL = if ignore { cocoa::base::YES } else { cocoa::base::NO };
+        let _: () = msg_send![ns_window, setIgnoresMouseEvents: val];
+        println!("[passthrough] native NSWindow setIgnoresMouseEvents:{ignore} sent");
+    }
 }
 
 /// NSEvent.mouseLocation → 转为 top-left 逻辑像素坐标。

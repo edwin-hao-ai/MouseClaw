@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "MouseClaw",
-  "version": "0.3.11",
+  "version": "0.3.12",
   "identifier": "com.edwinhao.mouseclaw",
   "build": {
     "beforeDevCommand": "bun run dev",
@@ -15,8 +15,8 @@
       {
         "label": "mouse",
         "title": "MouseClaw",
-        "width": 320,
-        "height": 320,
+        "width": 80,
+        "height": 80,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,

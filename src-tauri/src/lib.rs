@@ -28,6 +28,7 @@ pub mod clipboard_crypto;
 pub mod cursor_follow;
 pub mod cursor_trail;
 pub mod pet_passthrough;
+pub mod overlay_size;
 pub mod commands;
 pub mod config;
 pub mod events;

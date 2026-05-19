@@ -9,11 +9,14 @@
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
-  padding: var(--space-3);
+  /* v0.3.12 fix4 · 用 border-box 让 padding 不再溢出窗口；padding 从 12 缩到 8 适应 80×80 compact。
+     compact 80 - 16 padding = 64 可用，刚好桌宠 idle 64 ✓。expanded 320 - 16 = 304 也够气泡用。 */
+  box-sizing: border-box;
+  padding: 8px;
   gap: var(--space-3);
   background: transparent;
-  /* v0.1.29 · 透明区域必须能穿透到底层 app，否则整个 320×320 overlay 会挡住
-     Finder / IDE 的点击。具体的可点击元素（pet / menu / bubble）单独 opt-in。 */
+  /* v0.1.29 · pointer-events:none 是事件层 fallback；
+     v0.3.12 主修复是 overlay_size.rs 动态缩窗（idle 80×80 / 有 UI 320×320）。 */
   pointer-events: none;
 }
 
