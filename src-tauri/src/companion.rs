@@ -40,6 +40,9 @@ pub struct CompanionTick {
     /// 距上次鼠标移动秒数
     #[serde(rename = "sinceMouse")]
     pub since_mouse: f64,
+    /// 距上次左键点击秒数（用户敲键盘点鼠标 → 桌宠耳朵抽一下）
+    #[serde(rename = "sinceClick")]
+    pub since_click: f64,
 }
 
 /// 后台任务 —— lib.rs setup() 调一次。
@@ -69,11 +72,12 @@ fn sample() -> CompanionTick {
             x, y,
             since_key:   mac::secs_since_event(mac::EVENT_KEY_DOWN),
             since_mouse: mac::secs_since_event(mac::EVENT_MOUSE_MOVED),
+            since_click: mac::secs_since_event(mac::EVENT_LEFT_MOUSE_DOWN),
         }
     }
     #[cfg(not(target_os = "macos"))]
     {
-        CompanionTick { x: -1.0, y: -1.0, since_key: 999.0, since_mouse: 999.0 }
+        CompanionTick { x: -1.0, y: -1.0, since_key: 999.0, since_mouse: 999.0, since_click: 999.0 }
     }
 }
 
@@ -85,6 +89,7 @@ mod mac {
 
     pub const EVENT_KEY_DOWN: u32 = 10;        // kCGEventKeyDown
     pub const EVENT_MOUSE_MOVED: u32 = 5;      // kCGEventMouseMoved
+    pub const EVENT_LEFT_MOUSE_DOWN: u32 = 1;  // kCGEventLeftMouseDown
     const CG_STATE_COMBINED: u32 = 0;          // kCGEventSourceStateCombinedSessionState
 
     pub fn secs_since_event(event_type: u32) -> f64 {
@@ -128,13 +133,14 @@ mod tests {
 
     #[test]
     fn tick_serializes_to_camelcase_keys() {
-        let t = CompanionTick { x: 1.0, y: 2.0, since_key: 0.5, since_mouse: 0.7 };
+        let t = CompanionTick { x: 1.0, y: 2.0, since_key: 0.5, since_mouse: 0.7, since_click: 0.9 };
         let j = serde_json::to_string(&t).unwrap();
         // 关键 key 名 —— 前端 hook 直接依赖
         assert!(j.contains("\"x\":1"));
         assert!(j.contains("\"y\":2"));
         assert!(j.contains("\"sinceKey\":0.5"), "got {j}");
         assert!(j.contains("\"sinceMouse\":0.7"), "got {j}");
+        assert!(j.contains("\"sinceClick\":0.9"), "got {j}");
     }
 
     #[test]

@@ -11,11 +11,12 @@
  * v0.1.26 只显示「内置」9 款（鼠 6 + 猫 1 + 狐 1 + 蛙 1）。
  * v0.1.27+ 会从 ~/.mouseclaw/skins/ 加载用户安装的 manifest，列在「社区」section。
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { PixelMouse } from "./components/PixelMouse";
 import { SKINS, type Skin, type SkinId, type Species } from "./skins";
+import { useCompanion } from "./hooks/useCompanion";
 import "./PickerView.css";
 
 type Group = { species: Species; label: string; skins: Skin[] };
@@ -40,6 +41,9 @@ export default function PickerView() {
   const [originalSkin, setOriginalSkin] = useState<SkinId>("classic");
   const [selected, setSelected] = useState<SkinId>("classic");
   const [hovered, setHovered] = useState<SkinId | null>(null);
+  // v0.4+ · 预览大老鼠接 companion — 在 picker 里移鼠标，预览的眼睛会追
+  const previewStageRef = useRef<HTMLDivElement>(null);
+  const companion = useCompanion(previewStageRef);
 
   // 拉当前 skin 作为 baseline —— 关窗时若用户没应用就回滚到这个
   useEffect(() => {
@@ -141,8 +145,12 @@ export default function PickerView() {
         </section>
 
         <aside className="picker-preview">
-          <div className="picker-preview-stage">
-            <PixelMouse state="listen" size={128} skin={previewSkin} />
+          <div className="picker-preview-stage" ref={previewStageRef}>
+            <PixelMouse
+              state="listen" size={128} skin={previewSkin}
+              companionState={companion.state}
+              eyeOffset={{ x: companion.eyeOffsetX, y: companion.eyeOffsetY }}
+            />
           </div>
           <div className="picker-preview-name">{previewMeta.name}</div>
           <div className="picker-preview-desc">{previewMeta.desc}</div>

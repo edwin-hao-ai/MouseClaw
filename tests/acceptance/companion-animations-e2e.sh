@@ -51,8 +51,12 @@ check "App.tsx wire 了 useCompanion" \
 # ── 3. 适配所有皮肤的硬规则 ──
 check "companion CSS 走整体 .mouse-svg transform（不写 palette 字面量）" \
   bash -c '! grep -E "#[0-9a-fA-F]{6}" src/components/PixelMouse.css | grep -i "companion"'
-check "companion 类名覆盖所有 5 个状态" \
-  bash -c 'for s in typing alert excited sleep; do grep -q "companion-$s" src/components/PixelMouse.css || exit 1; done'
+check "companion 类名覆盖 7 个状态（含 v0.4+ click/worried/drowsy 扩展）" \
+  bash -c 'for s in typing alert excited sleep clicked worried drowsy; do grep -q "companion-$s" src/components/PixelMouse.css || exit 1; done'
+check "Rust 端 sinceClick 字段就位（点击反应）" \
+  grep -q 'rename = "sinceClick"' src-tauri/src/companion.rs
+check "Picker 预览大老鼠也接 companion" \
+  grep -q "useCompanion" src/PickerView.tsx
 check "PixelMouse.companion.test 覆盖 9 款皮肤" \
   grep -q "for (const skin of SKINS)" src/components/__tests__/PixelMouse.companion.test.tsx
 
@@ -63,8 +67,8 @@ check "Rust cargo check 干净" \
   cargo check --manifest-path src-tauri/Cargo.toml --quiet
 
 # ── 5. 测试金字塔 ──
-check "vitest 单元/集成测试 31+ 全绿" \
-  bash -c 'bunx vitest run 2>&1 | grep -q "Tests  31 passed"'
+check "vitest 单元/集成测试 42+ 全绿" \
+  bash -c 'bunx vitest run 2>&1 | grep -qE "Tests  4[0-9] passed"'
 check "Rust 单元测试 cargo test 全绿" \
   cargo test --manifest-path src-tauri/Cargo.toml --quiet --lib
 

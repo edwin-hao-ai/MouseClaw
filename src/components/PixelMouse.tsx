@@ -45,7 +45,8 @@ interface PixelMouseProps {
    *   palette/anchor 都不变，自动适配全皮肤（见 CLAUDE.md "动画/陪伴效果必须适配
    *   所有皮肤"硬规则）。
    */
-  companionState?: "idle" | "typing" | "alert" | "excited" | "sleep";
+  companionState?: "idle" | "typing" | "alert" | "excited" | "sleep"
+                 | "clicked" | "worried" | "drowsy";
   eyeOffset?: { x: number; y: number };
 }
 
@@ -479,8 +480,8 @@ export function PixelMouse({
   const companionClass =
     state === "listen" && companionState && companionState !== "idle"
       ? ` companion-${companionState}` : "";
-  // 眼球平移 —— SVG 内单位（viewBox 16×16）。companion sleep / undefined 时不偏移。
-  const eyesTransform = (eyeOffset && companionState !== "sleep")
+  // 眼球平移 —— SVG 内单位（viewBox 16×16）。companion sleep / drowsy 时不偏移（闭眼/半垂）。
+  const eyesTransform = (eyeOffset && companionState !== "sleep" && companionState !== "drowsy")
     ? `translate(${eyeOffset.x.toFixed(3)}px, ${eyeOffset.y.toFixed(3)}px)` : undefined;
   return (
     <div className={`mouse-wrap mouse-${state} mouse-skin-${s.id}${twitching ? " mouse-twitch" : ""}${companionClass}`} style={{ width: size, height: size }}>

@@ -58,6 +58,26 @@ describe("PixelMouse · companion", () => {
     expect(style).not.toMatch(/translate\(/);
   });
 
+  // v0.4+ 扩展状态
+  it("companionState=clicked → 挂 companion-clicked class", () => {
+    const { container } = render(<PixelMouse state="listen" companionState="clicked" />);
+    expect(container.querySelector(".mouse-wrap")?.className).toContain("companion-clicked");
+  });
+
+  it("companionState=worried → 挂 companion-worried class", () => {
+    const { container } = render(<PixelMouse state="listen" companionState="worried" />);
+    expect(container.querySelector(".mouse-wrap")?.className).toContain("companion-worried");
+  });
+
+  it("companionState=drowsy → 挂 companion-drowsy class（眼睛不平移，由 CSS 接管闭眼）", () => {
+    const { container } = render(
+      <PixelMouse state="listen" companionState="drowsy" eyeOffset={{ x: 0.5, y: 0.5 }} />
+    );
+    expect(container.querySelector(".mouse-wrap")?.className).toContain("companion-drowsy");
+    const style = container.querySelector(".mc-eyes")?.getAttribute("style") || "";
+    expect(style).not.toMatch(/translate\(/);
+  });
+
   it("9 款皮肤都能渲染 companion 帧无异常", () => {
     for (const skin of SKINS) {
       const { container } = render(

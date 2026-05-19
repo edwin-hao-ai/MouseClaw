@@ -263,12 +263,60 @@
   transition: transform 600ms ease-out;
 }
 
+/* clicked —— 用户点了鼠标：左右耳同步抽一下 + 整体微缩一帧（"听到了！"） */
+.mouse-listen.companion-clicked .mc-ear-l,
+.mouse-listen.companion-clicked .mc-ear-r {
+  animation: mc-ear-perk 240ms ease-out;
+}
+.mouse-listen.companion-clicked .mouse-svg {
+  animation: mc-click-blink 240ms ease-out;
+}
+@keyframes mc-ear-perk {
+  0%   { transform: rotate(0); }
+  40%  { transform: rotate(-8deg); }
+  100% { transform: rotate(0); }
+}
+@keyframes mc-click-blink {
+  0%, 100% { transform: scale(1); }
+  40%      { transform: scale(0.96); }
+}
+
+/* worried —— 打字风暴：歪头担心 "卡住了？" */
+.mouse-listen.companion-worried .mouse-svg {
+  animation: mc-worried-tilt 1.4s ease-in-out infinite;
+}
+@keyframes mc-worried-tilt {
+  0%, 100% { transform: rotate(-3deg) translateY(0); }
+  50%      { transform: rotate(3deg)  translateY(-0.5px); }
+}
+
+/* drowsy —— 深夜模式：眼皮半垂（眼睛 scaleY 0.6）+ 整体动作更迟缓 */
+.mouse-listen.companion-drowsy .mc-eyes {
+  transform: scaleY(0.55) translateY(0.3px) !important;
+  transform-origin: center;
+  transform-box: fill-box;
+  transition: transform 600ms ease-out;
+}
+.mouse-listen.companion-drowsy .mouse-svg {
+  filter: brightness(0.92);
+  animation: mc-drowsy-sway 4s ease-in-out infinite;
+}
+@keyframes mc-drowsy-sway {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(0.8px); }
+}
+
 /* reduced-motion 一律降级为无动画（仅保留状态指示，无脉动） */
 @media (prefers-reduced-motion: reduce) {
   .mouse-listen.companion-typing .mouse-svg,
   .mouse-listen.companion-alert .mouse-svg,
   .mouse-listen.companion-excited .mouse-svg,
-  .mouse-listen.companion-sleep .mouse-svg {
+  .mouse-listen.companion-sleep .mouse-svg,
+  .mouse-listen.companion-clicked .mouse-svg,
+  .mouse-listen.companion-clicked .mc-ear-l,
+  .mouse-listen.companion-clicked .mc-ear-r,
+  .mouse-listen.companion-worried .mouse-svg,
+  .mouse-listen.companion-drowsy .mouse-svg {
     animation: none;
     transition: none;
   }
