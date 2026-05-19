@@ -90,44 +90,113 @@ pub fn is_terminal_bundle(bundle: &str) -> bool {
 /// `current_bundle` 是此刻前台 app —— 必须等于上一次写入时的 bundle 才尝试纠错。
 pub fn try_parse(transcript: &str, current_bundle: &str) -> Option<CorrectionAction> {
     let guard = LAST.lock().unwrap();
-    let last = guard.as_ref()?;
-    if last.at.elapsed() > CORRECTION_WINDOW {
+    let last = match guard.as_ref() {
+        Some(l) => l,
+        None => {
+            println!("[voice_correct] no last_written — fresh write");
+            return None;
+        }
+    };
+    let elapsed = last.at.elapsed();
+    if elapsed > CORRECTION_WINDOW {
+        println!("[voice_correct] window expired ({}ms > 3000ms)", elapsed.as_millis());
         return None;
     }
     if last.frontmost_bundle != current_bundle {
+        println!(
+            "[voice_correct] bundle mismatch: last={:?} current={:?}",
+            last.frontmost_bundle, current_bundle
+        );
         return None;
     }
     if is_terminal_bundle(current_bundle) {
+        println!("[voice_correct] disabled in terminal bundle: {}", current_bundle);
         return None;
     }
 
     let prev_char_count = last.text.chars().count();
     let cleaned = strip_terminal_punct(transcript);
+    println!(
+        "[voice_correct] trying correction: transcript={:?} cleaned={:?} last_text={:?}",
+        transcript, cleaned, last.text
+    );
 
     // 整段撤销
     if is_undo_all(&cleaned) {
+        println!("[voice_correct] → UndoAll ({} chars)", prev_char_count);
         return Some(CorrectionAction::UndoAll { prev_char_count });
     }
 
     // 替换 X→Y
     if let Some((x, y)) = parse_replace(&cleaned) {
         if !x.is_empty() && !y.is_empty() {
-            if let Some(pos) = last.text.rfind(&x) {
-                let mut new_text = String::new();
-                new_text.push_str(&last.text[..pos]);
-                new_text.push_str(&y);
-                new_text.push_str(&last.text[pos + x.len()..]);
-                return Some(CorrectionAction::Replace {
-                    old: x,
-                    new: y,
-                    full_replacement: new_text,
-                    prev_char_count,
-                });
+            // 把可能的内部空格 / 标点也尝试压缩匹配（sherpa 可能输出"张 三"）
+            let x_compact: String = x.chars().filter(|c| !c.is_whitespace()).collect();
+            let last_compact: String = last.text.chars().filter(|c| !c.is_whitespace()).collect();
+            if let Some(pos_compact) = last_compact.rfind(&x_compact) {
+                // 在 last_compact 找到，但 full_replacement 用原文还原比较安全：
+                // 用 last.text 找最接近的（去空格后 byte 对应回原 text 的 char 位置）
+                let mut byte_pos = 0;
+                let mut compact_pos = 0;
+                let mut x_compact_chars = x_compact.chars().count();
+                let _ = x_compact_chars;  // 仅作调试参考
+                for (i, ch) in last.text.char_indices() {
+                    if compact_pos == pos_compact {
+                        byte_pos = i;
+                        break;
+                    }
+                    if !ch.is_whitespace() {
+                        compact_pos += ch.len_utf8();
+                    }
+                }
+                // 直接退化到 rfind(原文 x): 多数情况一次命中
+                if let Some(pos) = last.text.rfind(&x) {
+                    let mut new_text = String::new();
+                    new_text.push_str(&last.text[..pos]);
+                    new_text.push_str(&y);
+                    new_text.push_str(&last.text[pos + x.len()..]);
+                    println!(
+                        "[voice_correct] → Replace '{}' → '{}' (direct match @ byte {})",
+                        x, y, pos
+                    );
+                    return Some(CorrectionAction::Replace {
+                        old: x,
+                        new: y,
+                        full_replacement: new_text,
+                        prev_char_count,
+                    });
+                }
+                // 直找失败但去空格能找到 → 用 compact 位置重建
+                println!(
+                    "[voice_correct] direct match failed; compact match @ {} (last_compact len {})",
+                    pos_compact, last_compact.len()
+                );
+                // 把 byte_pos 处对应的原文 x 长度估算成 x_compact 的字节数（中文等宽）
+                let approx_end = byte_pos.saturating_add(x_compact.len());
+                let safe_end = approx_end.min(last.text.len());
+                if byte_pos < safe_end {
+                    let mut new_text = String::new();
+                    new_text.push_str(&last.text[..byte_pos]);
+                    new_text.push_str(&y);
+                    new_text.push_str(&last.text[safe_end..]);
+                    println!(
+                        "[voice_correct] → Replace '{}' → '{}' (compact-match @ byte {}..{})",
+                        x, y, byte_pos, safe_end
+                    );
+                    return Some(CorrectionAction::Replace {
+                        old: x,
+                        new: y,
+                        full_replacement: new_text,
+                        prev_char_count,
+                    });
+                }
             }
+            println!("[voice_correct] → NotFound (x={:?})", x);
             return Some(CorrectionAction::NotFound { needle: x });
         }
     }
 
+    println!("[voice_correct] no pattern matched, fall through to normal write");
     None
 }
 

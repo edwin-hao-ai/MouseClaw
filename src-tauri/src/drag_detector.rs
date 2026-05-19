@@ -61,10 +61,14 @@ mod imp {
     }
 
     unsafe fn setup_window() {
+        println!("[drag-detector] setup_window starting on main thread");
         // 主屏 frame
         let screens: id = msg_send![class!(NSScreen), screens];
         let count: NSUInteger = msg_send![screens, count];
-        if count == 0 { return; }
+        if count == 0 {
+            eprintln!("[drag-detector] no NSScreens! abort");
+            return;
+        }
         let primary: id = msg_send![screens, objectAtIndex:0usize];
         let frame: NSRect = msg_send![primary, frame];
 
