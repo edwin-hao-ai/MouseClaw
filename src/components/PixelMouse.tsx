@@ -475,12 +475,22 @@ export function PixelMouse({
   companionState, eyeOffset,
 }: PixelMouseProps) {
   const s = getSkin(skin);
-  // companion class 只在 state === "listen" 默认状态时生效（按 mouseStateFor(idle)
-  // 走 listen）。任务进行中的 think/write/talk/feed-* 自己有动画 / 表情，不被陪伴层覆盖。
-  const companionClass =
-    state === "listen" && companionState && companionState !== "idle"
-      ? ` companion-${companionState}` : "";
-  // 眼球平移 —— SVG 内单位（viewBox 16×16）。companion sleep / drowsy 时不偏移（闭眼/半垂）。
+  // companion 在"非任务态"挂（idle 状态下 mouseStateFor 返回 "sleep"；onboarding/listening
+  // 返回 "listen"）。任务进行中的 think/write/talk/feed-*/jump/block/paste/type 有自己的
+  // 动画 / 表情，不被陪伴层覆盖。
+  const isDefaultState = state === "sleep" || state === "listen";
+  const companionActive = isDefaultState && companionState && companionState !== "idle";
+  const companionClass = companionActive ? ` companion-${companionState}` : "";
+  // 眼睛 anatomy 决策：
+  //   - companion=sleep / drowsy → 保持 sleep 闭眼线条（CSS 再做 scaleY 半闭效果）
+  //   - companion 是 alert/excited/clicked/worried/typing → 把 sleep 闭眼覆盖成 listen 睁眼
+  //     这样眼球追鼠标 + 点头节奏才看得见
+  //   - companion 未驱动（undefined / idle）+ state=sleep → 原样保留闭眼（向后兼容）
+  const eyesState =
+    state === "sleep" && companionActive && companionState !== "sleep" && companionState !== "drowsy"
+      ? "listen" as MouseState
+      : state;
+  // 眼球平移 —— SVG 内单位（viewBox 16×16）。sleep / drowsy 不偏移（闭眼 / 半垂由 CSS 接管）。
   const eyesTransform = (eyeOffset && companionState !== "sleep" && companionState !== "drowsy")
     ? `translate(${eyeOffset.x.toFixed(3)}px, ${eyeOffset.y.toFixed(3)}px)` : undefined;
   return (
@@ -501,7 +511,7 @@ export function PixelMouse({
           <Tail skin={s} />
         </g>
         <g className="mc-eyes" style={{ transform: eyesTransform, transition: "transform 80ms linear" }}>
-          <Eyes state={state} skin={s} />
+          <Eyes state={eyesState} skin={s} />
         </g>
         <Extras state={state} skin={s} />
         <rect x="4" y="11" width="2" height="1" fill={s.palette.paw} />

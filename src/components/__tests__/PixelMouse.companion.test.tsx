@@ -11,6 +11,42 @@ import { PixelMouse } from "../PixelMouse";
 import { SKINS } from "../../skins";
 
 describe("PixelMouse · companion", () => {
+  // v0.4+ 关键回归（2026-05-20 真 app 实测 bug 修复）:
+  // idle 视图下 mouseStateFor → "sleep"，companion 必须在 state="sleep" 也挂 class
+  // 否则用户日常静默状态下根本看不到陪伴动画
+  it("REGRESSION: state=sleep + companionState=alert → 挂 companion-alert class", () => {
+    const { container } = render(
+      <PixelMouse state="sleep" companionState="alert" eyeOffset={{ x: 0.3, y: 0.1 }} />
+    );
+    expect(container.querySelector(".mouse-wrap")?.className).toContain("companion-alert");
+  });
+
+  it("REGRESSION: state=sleep + companionState=clicked/worried/excited 都挂 class", () => {
+    for (const cs of ["clicked", "worried", "excited", "typing"] as const) {
+      const { container } = render(<PixelMouse state="sleep" companionState={cs} />);
+      expect(container.querySelector(".mouse-wrap")?.className).toContain(`companion-${cs}`);
+    }
+  });
+
+  it("REGRESSION: state=sleep + companion 非 sleep/drowsy → 眼睛用 listen anatomy（睁眼可见瞳孔）", () => {
+    const { container } = render(
+      <PixelMouse state="sleep" companionState="alert" eyeOffset={{ x: 0.3, y: 0.1 }} />
+    );
+    // listen 状态的 eye rect 是 width=1 height=2（竖立瞳孔），sleep 状态是 1×1（横线闭眼）
+    // 用 rect 数量 + 维度区分：listen=2 个 1×2 rect；sleep=2 个 1×1
+    const rects = container.querySelectorAll(".mc-eyes rect");
+    expect(rects.length).toBe(2);
+    expect(rects[0].getAttribute("height")).toBe("2"); // 睁眼竖立瞳孔
+  });
+
+  it("REGRESSION: state=sleep + companionState=sleep → 保持闭眼 anatomy（10s 真睡着）", () => {
+    const { container } = render(
+      <PixelMouse state="sleep" companionState="sleep" />
+    );
+    const rects = container.querySelectorAll(".mc-eyes rect");
+    expect(rects[0].getAttribute("height")).toBe("1"); // 闭眼横线
+  });
+
   it("state=listen + companionState=alert → 挂 companion-alert class", () => {
     const { container } = render(
       <PixelMouse state="listen" companionState="alert" eyeOffset={{ x: 0.3, y: 0.1 }} />
