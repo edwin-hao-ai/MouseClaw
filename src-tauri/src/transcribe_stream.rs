@@ -144,13 +144,45 @@ fn ensure_loaded() -> Result<()> {
     // 如果开 endpoint，sherpa 在停顿时会自动 commit 一段并 reset stream，
     // 之后 get_result 只返回新段的文字（旧段被丢掉），用户感觉"流式断了"。
     config.enable_endpoint = false;
-    config.decoding_method = Some("greedy_search".into());
+
+    // v0.4.0 P1 · 术语库（hotwords contextual biasing）
+    // 1. 重新生成 active.txt（合并内置 + 用户词表）
+    // 2. 如果非空，注入 hotwords_file 并切到 modified_beam_search
+    //    （greedy_search 不支持 hotwords — sherpa 文档明确说明）
+    // 3. 词表空 → 退回 greedy（性能更优一点点）
+    let cfg = crate::config::Config::load();
+    let active_count = crate::vocab::regenerate_active(cfg.vocab_builtin_enabled)
+        .unwrap_or(0);
+    let active_path = crate::vocab::active_file_path().ok();
+    if active_count > 0 && active_path.as_ref().map(|p| p.exists()).unwrap_or(false) {
+        config.decoding_method = Some("modified_beam_search".into());
+        config.max_active_paths = 4;
+        config.hotwords_file = active_path.map(|p| p.to_string_lossy().into_owned());
+        config.hotwords_score = crate::vocab::DEFAULT_HOTWORDS_SCORE;
+        println!(
+            "[mouseclaw] 🎤 hotwords loaded: {} entries, score={}",
+            active_count, crate::vocab::DEFAULT_HOTWORDS_SCORE
+        );
+    } else {
+        config.decoding_method = Some("greedy_search".into());
+    }
 
     let rec = OnlineRecognizer::create(&config)
         .ok_or_else(|| anyhow!("OnlineRecognizer::create returned None"))?;
     *guard = Some(rec);
     println!("[mouseclaw] 🎤 sherpa streaming recognizer loaded");
     Ok(())
+}
+
+/// v0.4.0 P1 · 强制下次 transcribe 重建 recognizer ——
+/// 用于词表/术语库改了之后让 sherpa 重读 hotwords_file。
+/// 当前正在录音的 stream 不受影响（trade-off，OK）。
+pub fn invalidate_recognizer() {
+    let mut guard = RECOGNIZER.lock().unwrap();
+    if guard.is_some() {
+        println!("[mouseclaw] 🎤 recognizer invalidated (vocab reload)");
+        *guard = None;
+    }
 }
 
 /// One streaming utterance —— created on press, fed via accept(), final on

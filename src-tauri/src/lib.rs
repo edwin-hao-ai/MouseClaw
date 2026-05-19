@@ -40,12 +40,14 @@ pub mod overlay;
 pub mod permissions;
 pub mod pipeline;
 pub mod provider_env;
+pub mod reactive;
 pub mod screenshot;
 pub mod sessions;
 pub mod skins;
 pub mod tidy_up;
 pub mod update_check;
 pub mod voice_ime;
+pub mod vocab;
 // transcribe (Whisper) deleted in v0.3 — superseded by transcribe_stream (sherpa-onnx)
 pub mod tray;
 
@@ -366,6 +368,10 @@ pub fn run() {
             commands::dismiss_nudge,
             commands::check_backend_installed,
             commands::open_picker_window,
+            commands::vocab_open_user_file,
+            commands::vocab_reload,
+            commands::vocab_get_builtin_enabled,
+            commands::vocab_set_builtin_enabled,
         ])
         .setup(move |app| {
             set_accessory_activation_policy();
@@ -392,6 +398,8 @@ pub fn run() {
             );
 
             // v0.2 启动剪贴板历史捕获 —— 500ms 轮询 changeCount
+            // v0.4 · reactive 模块挂 AppHandle，clipboard 新条目时按 tier 发 event
+            reactive::init(app.handle().clone());
             clipboard::spawn_capture_loop();
             // 用户上次会话设过暂停的话，恢复状态
             if cfg.clipboard_paused {
@@ -462,6 +470,16 @@ pub fn run() {
             if cfg.onboarded {
                 transcribe_stream::kick_off_download_if_missing(app.handle().clone());
                 punctuation::kick_off_download_if_missing(app.handle().clone());
+            }
+
+            // v0.4.0 P1 · 启动时确保术语表用户文件存在 + 重新生成 active.txt。
+            // 失败不阻塞启动，sherpa 在缺 hotwords_file 时退回 greedy decoding。
+            if let Err(e) = vocab::ensure_user_file() {
+                eprintln!("[mouseclaw] vocab init failed: {e}");
+            }
+            match vocab::regenerate_active(cfg.vocab_builtin_enabled) {
+                Ok(n) => println!("[mouseclaw] 📝 vocab active.txt regenerated: {n} entries"),
+                Err(e) => eprintln!("[mouseclaw] vocab regen failed: {e}"),
             }
 
             // v0.1.27 · 已 onboarded 的用户：启动时把桌宠送到 anchor 位置打盹。

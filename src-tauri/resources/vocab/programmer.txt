@@ -1,0 +1,87 @@
+# MouseClaw · 内置程序员词表 v1
+# Format: <word> :<score>  (one entry per line)
+# Higher score = stronger boost. 1.5-3.0 是合理区间。
+# Sherpa-onnx 双语 zh-en 模型用 BPE token；这里全是英文常见词，写原样即可。
+# 中文术语放到 ~/.mouseclaw/vocab/user.txt，每个汉字之间空格分开。
+#
+# Languages / frameworks
+TypeScript :2.0
+JavaScript :2.0
+Python :1.5
+Rust :2.0
+Tauri :2.5
+React :2.0
+Vue :1.8
+Svelte :2.0
+Next.js :2.0
+Vite :2.0
+Webpack :1.5
+ESLint :1.8
+Prettier :1.8
+#
+# React / web
+useEffect :2.5
+useState :2.5
+useMemo :2.0
+useCallback :2.0
+useRef :2.0
+useContext :2.0
+useReducer :2.0
+props :1.5
+JSX :1.8
+TSX :1.8
+hooks :1.5
+component :1.3
+#
+# Async / JS
+async :1.5
+await :1.5
+Promise :1.5
+fetch :1.3
+axios :1.8
+#
+# Backend / infra
+PostgreSQL :2.0
+SQLite :2.0
+Redis :1.8
+GraphQL :2.0
+gRPC :2.0
+WebSocket :1.8
+nginx :1.5
+Docker :1.5
+Kubernetes :1.8
+Tailwind :2.0
+#
+# AI / tools
+Claude :2.5
+GPT :1.8
+Anthropic :2.5
+OpenAI :2.0
+LLM :2.0
+embedding :1.5
+RAG :2.0
+sherpa :2.5
+sherpa-onnx :2.5
+Zipformer :2.5
+Whisper :2.0
+#
+# Dev tools
+GitHub :1.8
+GitLab :2.0
+VSCode :2.0
+Vim :1.5
+Neovim :2.0
+JetBrains :2.0
+Xcode :1.8
+homebrew :1.8
+npm :1.5
+pnpm :2.0
+bun :1.8
+cargo :1.5
+rustup :2.0
+#
+# MouseClaw-specific
+MouseClaw :3.0
+overlay :1.3
+webview :1.5
+onboarding :1.5

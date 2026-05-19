@@ -183,6 +183,26 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         app, "vime-trigger-submenu", trigger_submenu_label, true, &trigger_refs,
     )?;
 
+    // v0.4.0 P1 · 术语表子菜单（hotwords contextual biasing）
+    //   编辑 user.txt / 刷新生效 / 内置程序员词表 toggle
+    let s_vocab_root = if en { "📝 Vocabulary" } else { "📝 术语表" };
+    let s_vocab_edit = if en { "    ↳ Edit user vocabulary…" } else { "    ↳ 编辑用户词表..." };
+    let s_vocab_reload = if en { "    ↳ Reload vocabulary" } else { "    ↳ 刷新生效" };
+    let s_vocab_builtin = if en { "    ↳ Built-in programmer terms" } else { "    ↳ 内置程序员词表" };
+    let vocab_edit_item = MenuItem::with_id(app, "vocab-edit", s_vocab_edit, true, None::<&str>)?;
+    let vocab_reload_item = MenuItem::with_id(app, "vocab-reload", s_vocab_reload, true, None::<&str>)?;
+    let vocab_builtin_on = crate::config::Config::load().vocab_builtin_enabled;
+    let vocab_builtin_item = CheckMenuItem::with_id(
+        app, "toggle-vocab-builtin", s_vocab_builtin,
+        true, vocab_builtin_on, None::<&str>,
+    )?;
+    let vocab_submenu = Submenu::with_id_and_items(
+        app, "vocab-submenu", s_vocab_root, true,
+        &[&vocab_edit_item as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
+          &vocab_reload_item as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
+          &vocab_builtin_item as &dyn tauri::menu::IsMenuItem<tauri::Wry>],
+    )?;
+
     // v0.1.21 · 工作区设置（指向同一窗口的设置项；用户点 → 弹 NSOpenPanel）
     let workspace_item = MenuItem::with_id(
         app, "set-workspace", &s_workspace_label, true, None::<&str>
@@ -212,7 +232,7 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let mut items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = vec![
         &summon, &clipboard_item, &history,
         &skin_picker_item, &anchor_submenu, &lang_submenu,
-        &sep1, &vime_item, &trigger_submenu, &pause_item,
+        &sep1, &vime_item, &trigger_submenu, &vocab_submenu, &pause_item,
         &workspace_item,
     ];
     if let Some(ref clr) = clear_workspace_item {
@@ -338,6 +358,26 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
         "toggle-clipboard-pause" => { toggle_clipboard_pause(app); rebuild_tray_menu(app); }
         "toggle-autostart" => { toggle_autostart(app); rebuild_tray_menu(app); }
         "toggle-tts" => { toggle_tts(app); rebuild_tray_menu(app); }
+        // v0.4.0 P1 · 术语表
+        "vocab-edit" => {
+            if let Err(e) = crate::commands::vocab_open_user_file() {
+                eprintln!("[mouseclaw] vocab-edit: {e}");
+            }
+        }
+        "vocab-reload" => {
+            match crate::commands::vocab_reload() {
+                Ok(n) => emit_vocab_reloaded(app, n),
+                Err(e) => eprintln!("[mouseclaw] vocab-reload: {e}"),
+            }
+        }
+        "toggle-vocab-builtin" => {
+            let cur = crate::config::Config::load().vocab_builtin_enabled;
+            match crate::commands::vocab_set_builtin_enabled(!cur) {
+                Ok(n) => emit_vocab_reloaded(app, n),
+                Err(e) => eprintln!("[mouseclaw] toggle-vocab-builtin: {e}"),
+            }
+            rebuild_tray_menu(app);
+        }
         "set-workspace"   => { set_workspace_via_picker(app); rebuild_tray_menu(app); }
         "clear-workspace" => {
             let _ = crate::commands::save_workspace_path(None);
@@ -409,6 +449,23 @@ fn set_workspace_via_picker(app: &AppHandle) {
 }
 
 /// v0.4.0 · 切换 TTS（桌宠开口说话）
+/// v0.4.0 P1 · 术语表刷新后弹个气泡告诉用户「N 词生效」。
+fn emit_vocab_reloaded(app: &AppHandle, n: usize) {
+    use tauri::Emitter;
+    let lang = crate::config::Config::load().language;
+    let msg = if lang == "en" {
+        format!("📝 Vocabulary reloaded — {n} terms active")
+    } else {
+        format!("📝 术语表已刷新 — {n} 个词生效")
+    };
+    for (_, w) in app.webview_windows() {
+        let _ = w.emit(crate::events::EV_VIEW_CHANGED, serde_json::json!({
+            "kind": "reply", "transcript": "vocab reload",
+            "reply": msg, "mode": "A", "streaming": false,
+        }));
+    }
+}
+
 fn toggle_tts(app: &AppHandle) {
     let mut cfg = crate::config::Config::load();
     cfg.tts_enabled = !cfg.tts_enabled;

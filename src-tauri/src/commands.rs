@@ -75,6 +75,7 @@ pub fn save_shortcut(
         skin,
         language: prev.language,
         voice_lang: voice_lang.clone(),
+        vocab_builtin_enabled: prev.vocab_builtin_enabled,
         firstrun_tour_done: prev.firstrun_tour_done,
         voice_ime_enabled: prev.voice_ime_enabled,
         voice_ime_trigger: prev.voice_ime_trigger,
@@ -979,4 +980,48 @@ pub fn set_autostart(enable: bool, app: AppHandle) -> Result<bool, String> {
 pub fn get_autostart(app: AppHandle) -> bool {
     use tauri_plugin_autostart::ManagerExt;
     app.autolaunch().is_enabled().unwrap_or_else(|_| config::Config::load().autostart)
+}
+
+// ───────────────────── v0.4.0 P1 · 术语库 (vocab) commands ─────────────────────
+
+/// 在系统默认编辑器里打开 `~/.mouseclaw/vocab/user.txt` —— 托盘
+/// 「📝 编辑术语表...」走这条。文件不存在会先创建一份带说明的模板。
+#[tauri::command]
+pub fn vocab_open_user_file() -> Result<(), String> {
+    crate::vocab::ensure_user_file().map_err(|e| format!("ensure user file: {e}"))?;
+    let path = crate::vocab::user_file_path().map_err(|e| format!("path: {e}"))?;
+    std::process::Command::new("open")
+        .arg(&path)
+        .spawn()
+        .map_err(|e| format!("open {}: {e}", path.display()))?;
+    Ok(())
+}
+
+/// 重读用户词表 → 重新生成 active.txt → 失效 sherpa recognizer 让下次
+/// transcribe 重新 init 注入 hotwords。
+/// 托盘「🔄 刷新术语表」 + 设置 builtin enabled 时都走这条。
+#[tauri::command]
+pub fn vocab_reload() -> Result<usize, String> {
+    let cfg = config::Config::load();
+    let n = crate::vocab::regenerate_active(cfg.vocab_builtin_enabled)
+        .map_err(|e| format!("regen: {e}"))?;
+    crate::transcribe_stream::invalidate_recognizer();
+    println!("[mouseclaw] 📝 vocab reloaded: {n} entries");
+    Ok(n)
+}
+
+#[tauri::command]
+pub fn vocab_get_builtin_enabled() -> bool {
+    config::Config::load().vocab_builtin_enabled
+}
+
+#[tauri::command]
+pub fn vocab_set_builtin_enabled(enabled: bool) -> Result<usize, String> {
+    let mut cfg = config::Config::load();
+    cfg.vocab_builtin_enabled = enabled;
+    cfg.save().map_err(|e| format!("save config: {e}"))?;
+    let n = crate::vocab::regenerate_active(enabled).map_err(|e| format!("regen: {e}"))?;
+    crate::transcribe_stream::invalidate_recognizer();
+    println!("[mouseclaw] 📝 builtin vocab → {enabled}, {n} entries active");
+    Ok(n)
 }
