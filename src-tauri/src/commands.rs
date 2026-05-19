@@ -148,6 +148,15 @@ pub fn save_pet_custom_position(x: f64, y: f64) -> Result<(), String> {
     Ok(())
 }
 
+/// v0.3.12 · 前端在 idle 状态下显示 React-only UI（下载提示 / petMenu / nudge）时调它。
+/// 把 mouse overlay 窗口的 hit-box 从"右下角桌宠区"扩到"整个窗口"，避免气泡左半部分点不到。
+/// 默认 idle 静默时 = false（右下 110×110 hit-box），其余区域穿透到底层 app。
+#[tauri::command]
+pub fn set_overlay_has_ui(has_ui: bool, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.overlay_has_ui.store(has_ui, std::sync::atomic::Ordering::Relaxed);
+    Ok(())
+}
+
 /// v0.3.6 · 一键打开 macOS 系统设置 → 隐私与安全性 → 辅助功能 面板。
 /// 给 voice IME 失败气泡的"🔓 去授权"按钮用 —— 用户授权完退出 app 重启即可。
 ///

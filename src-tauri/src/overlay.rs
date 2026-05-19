@@ -198,6 +198,10 @@ pub fn emit_view(app: &AppHandle, view: &ViewKind) {
         } else {
             crate::cursor_follow::disable(state.inner());
         }
+        // v0.3.12 · 同步 overlay_has_ui —— idle 表示静默（仅桌宠睡觉，无气泡）。
+        // 其它 view kind 都有可见 UI（气泡 / 菜单 / 倒数 / 引导）→ 整个窗口接收点击
+        let has_ui = !matches!(view, ViewKind::Idle);
+        state.overlay_has_ui.store(has_ui, std::sync::atomic::Ordering::Relaxed);
     }
     match app.emit(EV_VIEW_CHANGED, view) {
         Ok(()) => println!("[mouseclaw] emit_view → {kind}"),

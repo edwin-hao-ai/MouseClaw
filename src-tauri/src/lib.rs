@@ -27,6 +27,7 @@ pub mod clipboard;
 pub mod clipboard_crypto;
 pub mod cursor_follow;
 pub mod cursor_trail;
+pub mod pet_passthrough;
 pub mod commands;
 pub mod config;
 pub mod events;
@@ -116,6 +117,11 @@ pub struct AppState {
     /// v0.4 · drag-leave 防抖：记最后一次"打算 leave"的时刻，
     /// 200ms 内 re-enter 就 cancel 这次 leave（避免动画闪烁）。
     pub feed_last_leave: StdMutex<Option<std::time::Instant>>,
+    /// v0.3.12 · overlay 是否处于"有 UI 显示"状态 —— pet_passthrough 用它决定 hit-box：
+    ///   false (idle 静默) → 只有右下桌宠区接收点击（其余区域穿透到底层 app）
+    ///   true (任何气泡/菜单/下载提示) → 整个窗口接收点击
+    /// emit_view 时同步更新；下载中显示迷你气泡时由 commands 单独设 true。
+    pub overlay_has_ui: AtomicBool,
     /// v0.4.0 · 语音确认状态 —— 转写完进 3 秒倒数，用户可 Esc 取消 / Enter 立即发 /
     /// 编辑后发。`None` = 没在等用户操作；`Some(action)` = 用户已经做了选择，
     /// 倒数 task 读到立即 break。简化版用 AtomicU8 表示三种状态。
@@ -149,6 +155,7 @@ impl AppState {
             nudge_state: Arc::new(StdRwLock::new(crate::nudge::NudgeState::new())),
             fed_docs: Mutex::new(None),
             feed_drag_active: AtomicBool::new(false),
+            overlay_has_ui: AtomicBool::new(false),
             feed_last_leave: StdMutex::new(None),
             voice_confirm_action: std::sync::atomic::AtomicU8::new(VC_PENDING),
             voice_confirm_text: Mutex::new(None),
@@ -352,6 +359,7 @@ pub fn run() {
             commands::save_pet_anchor,
             commands::get_pet_anchor,
             commands::open_accessibility_settings,
+            commands::set_overlay_has_ui,
             commands::save_pet_custom_position,
             commands::set_nap_until,
             commands::dismiss_nudge,
@@ -367,6 +375,10 @@ pub fn run() {
             // Tray always available (escape valve before/during onboarding)
             // v0.1.8 启动 cursor-follow 后台任务（30fps；由 AtomicBool 控制开 / 关）
             cursor_follow::spawn_follow_loop(app.handle().clone(), app_state.clone());
+
+            // v0.3.12 · 启动 overlay 穿透 hit-test —— 让透明区域真的不挡底层 app 点击。
+            // 20fps 后台 task：光标在桌宠 hit-box 内 = 接收事件；在透明区 = 穿透。
+            pet_passthrough::spawn_loop(app.handle().clone(), app_state.clone());
 
             // v0.1.27 P3 · 启动环境感知 + 主动提醒
             // presence 每 30s 采样到 30min ring buffer；nudge 每 60s 评估规则

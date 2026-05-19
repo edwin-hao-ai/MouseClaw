@@ -69,6 +69,15 @@ export default function App() {
   // v0.1.27 P3 · 主动提醒（presence + nudge 引擎触发）
   const [nudge, setNudge] = useState<NudgePayload | null>(null);
 
+  // v0.3.12 · 在 idle 状态下显示 React-only UI（下载提示气泡 / petMenu / nudge / ack）
+  // 时主动通知 Rust 把窗口 hit-box 扩到全窗口；其余时间 Rust 自动按 view.kind 处理。
+  // 这是为了让 idle 静默时透明区域真的穿透到底层 app，但 React 临时弹的气泡也可点。
+  useEffect(() => {
+    const hasReactUi = !!modelProgress || petMenuOpen || !!nudge || !!transientAck;
+    if (view.kind !== "idle") return; // 非 idle 由 Rust emit_view 那侧管，前端不要干扰
+    invoke("set_overlay_has_ui", { hasUi: hasReactUi }).catch(() => {});
+  }, [view.kind, modelProgress, petMenuOpen, nudge, transientAck]);
+
   // 启动时从 Rust 读当前皮肤（避免闪一下默认 classic 再切换）
   useEffect(() => {
     invoke<string>("get_skin")
@@ -309,6 +318,9 @@ export default function App() {
     // v0.3.11 · 拖动不再 gate 在 idle —— 回复 / thinking / 录音 状态下用户也常需要把桌宠
     // 挪开（比如挡住下面要看的内容）。只挡住非左键。
     if (e.button !== 0) return;
+    // v0.3.12 · 拖动期间锁定 has_ui=true（全窗口接收事件）。否则 pet_passthrough 在光标
+    // 移出 hit-box 时会切到穿透 → 拖动断裂、桌宠定在半路不动。
+    invoke("set_overlay_has_ui", { hasUi: true }).catch(() => {});
     try {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
       const pos = await getCurrentWindow().outerPosition();
@@ -356,6 +368,12 @@ export default function App() {
     const wasDragged = draggingRef.current;
     dragStartRef.current = null;
     draggingRef.current = false;
+    // v0.3.12 · 拖动结束 —— 放开 has_ui 锁定。下一帧 useEffect 会按 idle 状态自动恢复
+    // 正确值（idle 静默 = false / 有气泡 = true）。
+    if (view.kind === "idle") {
+      const hasReactUi = !!modelProgress || petMenuOpen || !!nudge || !!transientAck;
+      invoke("set_overlay_has_ui", { hasUi: hasReactUi }).catch(() => {});
+    }
     if (!wasDragged) return; // 轻点 → onClick 负责开菜单
     // 拖完了 → 持久化新位置
     try {
@@ -367,7 +385,7 @@ export default function App() {
     } catch (err) {
       console.debug("save_pet_custom_position skipped:", err);
     }
-  }, []);
+  }, [view.kind, modelProgress, petMenuOpen, nudge, transientAck]);
 
   const handleMouseClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();

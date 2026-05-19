@@ -13,6 +13,7 @@ import { useEffect, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Panel, type Turn } from "./components/Panel";
+import { EV_VIEW_CHANGED, type ViewKind } from "./types";
 import { useT } from "./i18n";
 
 interface PanelContext {
@@ -61,15 +62,60 @@ export default function PanelView() {
     return () => { if (unlisten) unlisten(); };
   }, [loadContext]);
 
+  // v0.3.12 · 监听 pipeline 流式回复 —— 之前 Panel 完全没接 view-changed 事件，
+  // follow_up 发出去后 streaming reply 不更新 UI，用户要关闭重开窗口才能看到结果。
+  // 现在每收到一次 Reply，就把最后一个 assistant turn 的 text 替换成最新 accumulated reply。
+  // streaming=true 期间保留 streaming 标记（气泡上的闪烁光标），streaming=false 时去掉。
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    try {
+      const p = listen<ViewKind>(EV_VIEW_CHANGED, (e) => {
+        const v = e.payload;
+        if (v.kind !== "reply") return;
+        setTurns(prev => {
+          // 找最后一个 assistant turn 替换内容；如果没有就追加一个
+          const lastIdx = (() => {
+            for (let i = prev.length - 1; i >= 0; i--) {
+              if (prev[i].role === "assistant") return i;
+            }
+            return -1;
+          })();
+          if (lastIdx === -1) {
+            return [...prev, { role: "assistant", text: v.reply, streaming: v.streaming }];
+          }
+          const next = prev.slice();
+          next[lastIdx] = {
+            role: "assistant",
+            text: v.reply,
+            streaming: v.streaming ?? false,
+          };
+          return next;
+        });
+      });
+      p.then(fn => { unlisten = fn; }).catch(() => {});
+    } catch {/* browser-only dev */}
+    return () => { if (unlisten) unlisten(); };
+  }, []);
+
   const handleSend = useCallback(async (text: string) => {
-    // 立即把用户输入加进 turns 给视觉反馈
+    // 立即把用户输入加进 turns 给视觉反馈（再加一个 streaming 占位 assistant turn）
     setTurns(prev => [...prev, { role: "user", text }, { role: "assistant", text: "", streaming: true }]);
     try {
       await invoke("follow_up", { text });
-      // pipeline 的进度通过 view-changed 事件回来。这里也监听一下取最新 reply。
-      // TODO: 后续接 streaming 事件流真的更新
+      // 之后由上面 view-changed listener 持续更新最后一个 assistant turn
     } catch (e) {
       console.warn("follow_up failed:", e);
+      // 失败也要把 streaming flag 关掉，否则气泡一直闪烁
+      setTurns(prev => {
+        const next = prev.slice();
+        if (next.length > 0) {
+          const last = next[next.length - 1];
+          if (last.role === "assistant") {
+            next[next.length - 1] = { ...last, text: `⛔ 发送失败：${String(e)}`, streaming: false };
+          }
+        }
+        return next;
+      });
     }
   }, []);
 
