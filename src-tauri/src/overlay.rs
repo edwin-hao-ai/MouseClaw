@@ -234,11 +234,17 @@ pub fn emit_view(app: &AppHandle, view: &ViewKind) {
 /// 避免 AppKit 跨线程崩溃。
 pub fn hide_overlay(app: &AppHandle) {
     let anchor = crate::config::Config::load().pet_anchor;
+    // v0.4 fix (2026-05-20): 顺序很关键 ——
+    // 1. 先 emit_view(Idle) 触发 shrink_to_compact (320→80)，窗口尺寸先正确
+    // 2. 再 apply_idle_anchor 读 80 尺寸计算右下角位置，准确停到角落
+    // 之前顺序反了：apply_idle_anchor 用 320 算出来的"右下角"实际离边 320+24px，
+    // 再 shrink 保持 pet 视觉位置 → pet 偏离真正右下角 ~120px。用户反馈
+    // 「输入完之后桌宠不会再回去右下角」就是这个 bug。
+    emit_view(app, &ViewKind::Idle);
     if anchor.pin_visible_when_idle() {
-        // 送回 anchor 打盹 —— overlay 保持可见但落到角落
         crate::anchor::apply_idle_anchor(app, anchor);
     } else {
-        // Follow 模式：彻底隐藏（旧行为）
+        // Follow / Hidden 模式：彻底隐藏（旧行为）
         let app2 = app.clone();
         let _ = app.run_on_main_thread(move || {
             if let Some(w) = app2.get_webview_window("mouse") {
@@ -246,7 +252,6 @@ pub fn hide_overlay(app: &AppHandle) {
             }
         });
     }
-    emit_view(app, &ViewKind::Idle); // emit 是发事件，跨线程安全
 }
 
 /// Schedule `hide_overlay` after `after_ms` ms — but only fire if the app's

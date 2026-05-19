@@ -1,241 +1,141 @@
-//! v0.4.x · Drag-detector full-screen invisible overlay (macOS only).
+//! v0.4.x · 系统级 file-drag 探测（macOS only）。
 //!
 //! 让桌宠在用户从屏幕**任意位置**开始拖文件时立刻"小狗式跑去迎接"。
-//! 实现：新增一个**没有 webview** 的纯原生 NSWindow，全屏 transparent +
-//! always-on-top + `setIgnoresMouseEvents:YES`。
 //!
-//! ## 为什么不简单扩大现有 mouse overlay？
-//! v0.3.12 (f253762) 把 mouse overlay 从 320×320 缩到 80×80 的原因正是：
-//! WebKit 在大的 transparent NSWindow 上会渲染半透明 backing layer，遮挡
-//! Mission Control / Stage Manager / 桌面图标。新增窗口必须 **跳过 WebKit**
-//! —— 纯 NSWindow + NSView 子类，无任何渲染负担。
+//! ## 方案演进
+//! v1（已废弃）：全屏隐形 NSWindow + NSView 子类 + NSDraggingDestination 协议。
+//! 问题：用户硬约束「别影响到使用别的应用」意味着窗口必须
+//! `setIgnoresMouseEvents:YES`，但这会**同时屏蔽 NSDragging 事件**（macOS 上
+//! 所有 mouse-derived 事件都受此 flag 影响 —— Apple 文档没写但社区实测验证）。
+//! → 协议方法永远不被调用，桌宠永远不知道有 drag。
 //!
-//! ## macOS NSDragging vs setIgnoresMouseEvents
-//! macOS 上 click / drag 走两条不同的 event path。`setIgnoresMouseEvents:YES`
-//! 只阻止 mouseDown/mouseUp/mouseMoved/mouseDragged，**不阻止** NSDragging
-//! protocol 上的 draggingEntered/Updated/Exited/performDrag。所以这个窗口
-//! 对用户来说"不存在"（点不到），但 file drag 一进入屏幕系统就路由到它。
+//! v2（当前）：后台轮询 NSPasteboard "Apple CFPasteboard drag" 的 changeCount +
+//! NSEvent.pressedMouseButtons。完全 read-only，不创建任何窗口，零视觉占用，
+//! 不影响其他 app 的鼠标/拖拽行为。
 //!
-//! ## 单一信源
-//! 同时存在 mouse overlay 的 Tauri DragDrop handler 和这个 detector：
-//! 两者都走 `feed_flow::on_drag_enter`，里面 `feed_drag_active.swap(true)`
-//! 提供幂等 dedup —— 第二次触发是 no-op。drop 由先 fire 的那个处理（通常是
-//! 这个 detector，因为它先收到 cursor + file 的 enter 事件）。
+//! ## 工作流
+//! 100ms 一次轮询主线程上：
+//!   1. 读 drag pasteboard changeCount —— 增加 = 新 drag session 开始
+//!   2. 同时读鼠标左键状态 —— 按下 + drag pb 增 = 用户正在拖
+//!   3. 如果 drag pb 包含 `public.file-url` → 调 feed_flow::on_drag_enter
+//!      桌宠从 anchor 跑去光标
+//!   4. 鼠标键松开 → 调 feed_flow::on_drag_leave 让桌宠 200ms 内回 anchor
+//!      （如果 drop 在 pet 上，mouse window 的 Tauri DragDrop handler 会先 fire
+//!      on_files_dropped，pet 把 leave 撤回）
+//!
+//! ## 失败模式 / 边界
+//!   - 文本选区拖动：drag pb 也会更新但不含 file-url → 不触发，正确
+//!   - Finder 内部拖动重排：同 app 的 drag pb 不一定走 system pasteboard，
+//!     可能不触发（可接受 —— 用户在 Finder 内部排序时不想看到老鼠跑出来）
+//!   - 用户拖到第三方 app（非 mouse overlay 窗口）：on_drag_leave 触发 pet 回家
+//!   - 没装 Accessibility 权限：本模块不需要 AX，纯 pasteboard 读取，always works
 
 #[cfg(target_os = "macos")]
 mod imp {
     use std::sync::{Arc, Mutex};
-    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+    use std::time::Duration;
     use once_cell::sync::Lazy;
     use objc::{class, msg_send, sel, sel_impl};
-    use objc::runtime::{Class, Object, Sel, BOOL, NO, YES};
-    use objc::declare::ClassDecl;
     use cocoa::base::{id, nil};
-    use cocoa::foundation::{NSRect, NSString, NSUInteger};
+    use cocoa::foundation::{NSAutoreleasePool, NSString, NSUInteger};
     use tauri::AppHandle;
     use crate::AppState;
 
-    /// NSDragOperationCopy = 1 —— 给 drag source 反馈"会复制接收"
-    const NS_DRAG_OPERATION_COPY: NSUInteger = 1;
-    /// NSDragOperationNone = 0 —— 不接收（如 pasteboard 里没文件）
-    const NS_DRAG_OPERATION_NONE: NSUInteger = 0;
+    /// 拖拽 pasteboard 的官方名字 —— macOS NSPasteboardNameDrag 常量值。
+    /// 直接用字符串，省去 link 一堆 cocoa-foundation 常量。
+    const PASTEBOARD_NAME_DRAG: &str = "Apple CFPasteboard drag";
+    /// 文件 URL UTI —— 文本 / 网址等其它 drag 不会触发我们
+    const FILE_URL_UTI: &str = "public.file-url";
 
-    /// 全局 AppHandle + AppState —— callbacks 是 extern "C" fn，没法直接拿
-    /// Rust 上下文，靠这个 Mutex<Option<...>> 在 install 时灌入。
     static APP_REF: Lazy<Mutex<Option<(AppHandle, Arc<AppState>)>>> = Lazy::new(|| Mutex::new(None));
+    static INSTALLED: AtomicBool = AtomicBool::new(false);
 
-    /// 创建过的 detector NSWindow —— 重启 / 重新装系统时 install 可能被调多次，
-    /// 第二次起跳过（避免叠两个 detector 窗口）。
-    static INSTALLED: std::sync::atomic::AtomicBool =
-        std::sync::atomic::AtomicBool::new(false);
+    /// 上次看到的 drag pasteboard changeCount —— 增加 = 新 drag session
+    static LAST_CHANGE_COUNT: AtomicI64 = AtomicI64::new(-1);
+    /// 我们已通知 feed_flow 进入 drag 态（dedup 防止 100ms 轮询期间重复触发）
+    static DRAG_ENTER_SENT: AtomicBool = AtomicBool::new(false);
 
     pub fn install(app: AppHandle, state: Arc<AppState>) {
-        *APP_REF.lock().unwrap() = Some((app.clone(), state));
-        if INSTALLED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        *APP_REF.lock().unwrap() = Some((app, state));
+        if INSTALLED.swap(true, Ordering::SeqCst) {
             return;
         }
-        // NSWindow 创建 + show 必须在主线程
-        let _ = app.run_on_main_thread(|| {
-            unsafe { setup_window(); }
-        });
+        // 后台 std::thread —— 不需要异步，NSPasteboard / NSEvent 类方法都是
+        // 线程安全的（按 Apple 文档 + 实测，read-only 访问从任意线程都 OK）。
+        std::thread::Builder::new()
+            .name("mouseclaw-drag-poll".into())
+            .spawn(poll_loop)
+            .expect("spawn drag-poll thread");
+        println!("[drag-detector] v2 NSPasteboard polling installed (100ms)");
     }
 
-    unsafe fn setup_window() {
-        println!("[drag-detector] setup_window starting on main thread");
-        // 主屏 frame
-        let screens: id = msg_send![class!(NSScreen), screens];
-        let count: NSUInteger = msg_send![screens, count];
-        if count == 0 {
-            eprintln!("[drag-detector] no NSScreens! abort");
+    fn poll_loop() {
+        loop {
+            std::thread::sleep(Duration::from_millis(100));
+            unsafe { tick(); }
+        }
+    }
+
+    unsafe fn tick() {
+        // Autorelease pool 包一下 —— 每次 tick 产生的临时 NSString / NSArray 都释放掉
+        let pool: id = msg_send![class!(NSAutoreleasePool), new];
+
+        let pb_name = NSString::alloc(nil).init_str(PASTEBOARD_NAME_DRAG);
+        let pb: id = msg_send![class!(NSPasteboard), pasteboardWithName: pb_name];
+        if pb == nil {
+            let _: () = msg_send![pool, drain];
             return;
         }
-        let primary: id = msg_send![screens, objectAtIndex:0usize];
-        let frame: NSRect = msg_send![primary, frame];
 
-        let view_class = register_drag_view_class();
+        let count: i64 = msg_send![pb, changeCount];
+        let prev = LAST_CHANGE_COUNT.swap(count, Ordering::Relaxed);
 
-        // NSWindowStyleMaskBorderless = 0；NSBackingStoreBuffered = 2
-        let window: id = msg_send![class!(NSWindow), alloc];
-        let window: id = msg_send![window,
-            initWithContentRect:frame
-                      styleMask:0u64
-                        backing:2u64
-                          defer:NO];
+        // 鼠标左键当前状态 —— NSEvent class method，跨线程读取安全
+        let mouse_mask: NSUInteger = msg_send![class!(NSEvent), pressedMouseButtons];
+        let left_down = (mouse_mask & 1) != 0;
 
-        // 视觉：透明 / 无阴影 / clearColor
-        let _: () = msg_send![window, setOpaque:NO];
-        let clear: id = msg_send![class!(NSColor), clearColor];
-        let _: () = msg_send![window, setBackgroundColor:clear];
-        let _: () = msg_send![window, setHasShadow:NO];
-        // 交互：穿透点击
-        let _: () = msg_send![window, setIgnoresMouseEvents:YES];
-        // 层级：NSPopUpMenuWindowLevel = 101，在 floating 之上，statusbar 之下
-        let _: () = msg_send![window, setLevel:101isize];
-        // collection behavior 位标志（NSWindowCollectionBehavior*）：
-        //   CanJoinAllSpaces(1<<0) | Stationary(1<<4) |
-        //   IgnoresCycle(1<<6) | FullScreenAuxiliary(1<<8)
-        let behavior: NSUInteger = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 8);
-        let _: () = msg_send![window, setCollectionBehavior:behavior];
-        let _: () = msg_send![window, setReleasedWhenClosed:NO];
-        let _: () = msg_send![window, setHidesOnDeactivate:NO];
+        let pb_has_file = has_file_url(pb);
 
-        // contentView = MCDragView 实例
-        let view: id = msg_send![view_class, alloc];
-        let view: id = msg_send![view, initWithFrame:frame];
-        let _: () = msg_send![window, setContentView:view];
-
-        // 只接收文件 URL —— "public.file-url" UTI，文本 drag 不会触发
-        let file_url_uti = NSString::alloc(nil).init_str("public.file-url");
-        let types: id = msg_send![class!(NSArray), arrayWithObject:file_url_uti];
-        let _: () = msg_send![view, registerForDraggedTypes:types];
-
-        // orderFront 不抢焦点（关键 —— LSUIElement app 不能 activate）
-        let _: () = msg_send![window, orderFrontRegardless];
-
-        println!(
-            "[mouseclaw] 🐕 drag-detector installed: {}x{} at ({}, {})",
-            frame.size.width as i32, frame.size.height as i32,
-            frame.origin.x as i32, frame.origin.y as i32,
-        );
-    }
-
-    /// 注册 NSView 子类 MCDragView —— 用 once_cell 保证只注册一次。
-    fn register_drag_view_class() -> &'static Class {
-        static REGISTERED: std::sync::Once = std::sync::Once::new();
-        static mut CLASS: *const Class = std::ptr::null();
-        unsafe {
-            REGISTERED.call_once(|| {
-                let superclass = class!(NSView);
-                let mut decl = ClassDecl::new("MCDragView", superclass)
-                    .expect("MCDragView ClassDecl failed (class name collision?)");
-                decl.add_method(
-                    sel!(draggingEntered:),
-                    drag_entered as extern "C" fn(&mut Object, Sel, id) -> NSUInteger,
+        if count != prev && left_down && pb_has_file {
+            // 新 drag session，是文件 drag，鼠标还按着 → drag started
+            if !DRAG_ENTER_SENT.swap(true, Ordering::SeqCst) {
+                println!(
+                    "[drag-detector] 🐕 file drag started (pb changeCount {prev} → {count}) → run to greet"
                 );
-                decl.add_method(
-                    sel!(draggingUpdated:),
-                    drag_updated as extern "C" fn(&mut Object, Sel, id) -> NSUInteger,
-                );
-                decl.add_method(
-                    sel!(draggingExited:),
-                    drag_exited as extern "C" fn(&mut Object, Sel, id),
-                );
-                decl.add_method(
-                    sel!(prepareForDragOperation:),
-                    prepare_for_drag as extern "C" fn(&mut Object, Sel, id) -> BOOL,
-                );
-                decl.add_method(
-                    sel!(performDragOperation:),
-                    perform_drag as extern "C" fn(&mut Object, Sel, id) -> BOOL,
-                );
-                CLASS = decl.register();
-            });
-            &*CLASS
-        }
-    }
-
-    // ─────────────── NSDraggingDestination callbacks ───────────────
-
-    extern "C" fn drag_entered(_this: &mut Object, _sel: Sel, sender: id) -> NSUInteger {
-        unsafe {
-            if !pasteboard_has_files(sender) {
-                return NS_DRAG_OPERATION_NONE;
+                if let Some((app, state)) = APP_REF.lock().unwrap().clone() {
+                    crate::feed_flow::on_drag_enter(&app, &state);
+                }
             }
         }
-        if let Some((app, state)) = APP_REF.lock().unwrap().clone() {
-            println!("[mouseclaw] 🐕 drag entered screen → run to greet");
-            crate::feed_flow::on_drag_enter(&app, &state);
-        }
-        NS_DRAG_OPERATION_COPY
-    }
 
-    extern "C" fn drag_updated(_this: &mut Object, _sel: Sel, sender: id) -> NSUInteger {
-        unsafe {
-            if pasteboard_has_files(sender) {
-                NS_DRAG_OPERATION_COPY
-            } else {
-                NS_DRAG_OPERATION_NONE
+        // drag 结束：鼠标松开。LEAVE 不挑剔 pasteboard 类型 —— 一旦松开就退场。
+        // 如果 drop 落在 pet 上，mouse window 的 Tauri DragDrop handler 会先收到
+        // Drop 事件触发 on_files_dropped，feed_flow 的 200ms leave debounce 会把
+        // 我们这次 leave 撤回。
+        if !left_down && DRAG_ENTER_SENT.swap(false, Ordering::SeqCst) {
+            println!("[drag-detector] 🐕 mouse released → notify leave");
+            if let Some((app, state)) = APP_REF.lock().unwrap().clone() {
+                crate::feed_flow::on_drag_leave(&app, &state);
             }
         }
+
+        let _: () = msg_send![pool, drain];
     }
 
-    extern "C" fn drag_exited(_this: &mut Object, _sel: Sel, _sender: id) {
-        if let Some((app, state)) = APP_REF.lock().unwrap().clone() {
-            println!("[mouseclaw] 🐕 drag exited screen → return to anchor");
-            crate::feed_flow::on_drag_leave(&app, &state);
-        }
-    }
-
-    extern "C" fn prepare_for_drag(_this: &mut Object, _sel: Sel, _sender: id) -> BOOL {
-        YES
-    }
-
-    extern "C" fn perform_drag(_this: &mut Object, _sel: Sel, sender: id) -> BOOL {
-        let files = unsafe { extract_file_paths(sender) };
-        if files.is_empty() {
-            return NO;
-        }
-        if let Some((app, state)) = APP_REF.lock().unwrap().clone() {
-            println!("[mouseclaw] 🐕 dropped {} file(s)", files.len());
-            crate::feed_flow::on_files_dropped(app, state, files);
-        }
-        YES
-    }
-
-    // ────────────────── helpers ──────────────────
-
-    unsafe fn pasteboard_has_files(sender: id) -> bool {
-        let pb: id = msg_send![sender, draggingPasteboard];
-        if pb == nil { return false; }
-        let file_url_uti = NSString::alloc(nil).init_str("public.file-url");
-        let types: id = msg_send![class!(NSArray), arrayWithObject:file_url_uti];
-        let can: BOOL = msg_send![pb, canReadItemWithDataConformingToTypes:types];
-        can != NO
-    }
-
-    unsafe fn extract_file_paths(sender: id) -> Vec<PathBuf> {
-        let pb: id = msg_send![sender, draggingPasteboard];
-        if pb == nil { return Vec::new(); }
-
-        // readObjectsForClasses:[NSURL] options:nil → NSArray<NSURL>
-        let nsurl_class: id = msg_send![class!(NSURL), class];
-        let classes: id = msg_send![class!(NSArray), arrayWithObject:nsurl_class];
-        let urls: id = msg_send![pb, readObjectsForClasses:classes options:nil];
-        if urls == nil { return Vec::new(); }
-
-        let count: NSUInteger = msg_send![urls, count];
-        let mut out = Vec::with_capacity(count as usize);
+    /// drag pasteboard 是否包含 file URL UTI
+    unsafe fn has_file_url(pb: id) -> bool {
+        let types: id = msg_send![pb, types];
+        if types == nil { return false; }
+        let count: NSUInteger = msg_send![types, count];
+        let needle = NSString::alloc(nil).init_str(FILE_URL_UTI);
         for i in 0..count {
-            let url: id = msg_send![urls, objectAtIndex:i];
-            if url == nil { continue; }
-            let path_id: id = msg_send![url, path];
-            if path_id == nil { continue; }
-            let cstr: *const std::os::raw::c_char = msg_send![path_id, UTF8String];
-            if cstr.is_null() { continue; }
-            let s = std::ffi::CStr::from_ptr(cstr).to_string_lossy().into_owned();
-            out.push(PathBuf::from(s));
+            let t: id = msg_send![types, objectAtIndex: i];
+            if t == nil { continue; }
+            let equal: bool = msg_send![t, isEqualToString: needle];
+            if equal { return true; }
         }
-        out
+        false
     }
 }
 
