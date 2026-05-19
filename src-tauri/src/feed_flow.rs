@@ -269,12 +269,15 @@ pub fn on_drag_leave(app: &AppHandle, state: &Arc<AppState>) {
             println!("[mouseclaw] 🍽️ drag leave confirmed (200ms debounce)");
             state_clone.feed_drag_active.store(false, Ordering::SeqCst);
             crate::cursor_follow::disable(&state_clone);
-            // 滑回 anchor（不是 hide —— 让用户知道桌宠还在）
+            // v0.4 fix (2026-05-20)：跟 hide_overlay 同一个顺序坑 ——
+            // 先 emit_view(Idle) 触发 shrink 320→80，再 apply_idle_anchor 用 80 尺寸
+            // 算右下角位置，pet 才会真正停到角落。反过来的话桌宠停在离边 120px 的
+            // "假右下角"，用户反馈"取消喂食后桌宠没回到最初的地方"就是这个。
+            emit_view(&app_clone, &ViewKind::Idle);
             let cfg = crate::config::Config::load();
             if cfg.pet_anchor.pin_visible_when_idle() {
                 crate::anchor::apply_idle_anchor(&app_clone, cfg.pet_anchor);
             }
-            emit_view(&app_clone, &ViewKind::Idle);
         }
     });
 }
@@ -399,10 +402,11 @@ pub async fn cancel(app: AppHandle, state: Arc<AppState>) {
     let _ = state.recorder.lock().unwrap().take();
     let _ = state.stream_session.lock().unwrap().take();
     crate::cursor_follow::disable(&state);
-    // 回 anchor
+    // v0.4 fix (2026-05-20)：同 hide_overlay / on_drag_leave —— 先 emit_view(Idle)
+    // 让 shrink 320→80 跑完，再 apply_idle_anchor 用正确尺寸算角落。
+    emit_view(&app, &ViewKind::Idle);
     let cfg = crate::config::Config::load();
     if cfg.pet_anchor.pin_visible_when_idle() {
         crate::anchor::apply_idle_anchor(&app, cfg.pet_anchor);
     }
-    emit_view(&app, &ViewKind::Idle);
 }
