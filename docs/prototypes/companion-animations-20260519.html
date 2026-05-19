@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>MouseClaw · 陪伴向动画 prototype (2026-05-19)</title>
+<style>
+  :root {
+    --bg: #1a1d24;
+    --panel: #242833;
+    --panel2: #2d3240;
+    --ink: #e8ecf2;
+    --ink-dim: #8b94a8;
+    --accent: #7ab8ff;
+    --good: #6dd58c;
+    --warn: #ffc857;
+    --radius-md: 10px;
+    --radius-lg: 16px;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    font-size: 14px;
+    overflow-x: hidden;
+  }
+  header {
+    padding: 20px 32px 12px;
+    border-bottom: 1px solid #2d3240;
+  }
+  header h1 { margin: 0 0 6px; font-size: 18px; font-weight: 600; }
+  header p { margin: 0; color: var(--ink-dim); font-size: 13px; }
+  .legend {
+    margin-top: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .chip {
+    background: var(--panel2);
+    border: 1px solid #3a4050;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    color: var(--ink-dim);
+  }
+  .chip.active { color: var(--accent); border-color: var(--accent); }
+
+  /* === mock desktop scene ============================================ */
+  .stage {
+    position: relative;
+    margin: 24px 32px;
+    background: linear-gradient(135deg, #2a3550 0%, #1c2236 100%);
+    border-radius: var(--radius-lg);
+    min-height: 520px;
+    padding: 24px;
+    overflow: hidden;
+  }
+  /* mock IDE underneath */
+  .mock-ide {
+    background: #1e1e2e;
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: #c7cad1;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    min-height: 220px;
+  }
+  .mock-ide .tab {
+    color: var(--ink-dim);
+    border-bottom: 1px solid #2d3240;
+    padding-bottom: 8px;
+    margin-bottom: 10px;
+    font-size: 11px;
+  }
+  .mock-ide .kw { color: #c678dd; }
+  .mock-ide .fn { color: #61afef; }
+  .mock-ide .str { color: #98c379; }
+  .mock-ide .com { color: #5c6370; font-style: italic; }
+  .mock-ide .caret {
+    display: inline-block; width: 2px; height: 1em;
+    background: var(--accent); vertical-align: -2px;
+    animation: blink 1s steps(2) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  textarea.typing {
+    width: 100%;
+    background: #2a2f3c;
+    border: 1px solid #3a4050;
+    border-radius: 8px;
+    color: var(--ink);
+    font-family: "SF Mono", Menlo, monospace;
+    padding: 10px 12px;
+    margin-top: 12px;
+    resize: none;
+    height: 70px;
+    font-size: 13px;
+  }
+  textarea.typing:focus { outline: 2px solid var(--accent); }
+
+  /* === pet grid ====================================================== */
+  .pet-row {
+    margin-top: 28px;
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    gap: 10px;
+  }
+  .pet-cell {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: var(--radius-md);
+    padding: 10px 6px 6px;
+    text-align: center;
+    position: relative;
+    aspect-ratio: 1 / 1.15;
+  }
+  .pet-cell .name {
+    font-size: 10.5px;
+    color: var(--ink-dim);
+    margin-top: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .pet-cell .state-tag {
+    position: absolute;
+    top: 4px; right: 6px;
+    font-size: 9px;
+    color: var(--ink-dim);
+    opacity: 0.7;
+  }
+  .pet-svg {
+    display: block;
+    margin: 0 auto;
+    width: 72px; height: 72px;
+    image-rendering: pixelated;
+    transform-origin: center bottom;
+    transition: transform 200ms cubic-bezier(.34,1.56,.64,1);
+  }
+
+  /* idle breathing */
+  @keyframes breathe {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-1.2px); }
+  }
+  .pet-svg.idle { animation: breathe 2.6s ease-in-out infinite; }
+
+  /* typing nod — body slight bob */
+  @keyframes nod {
+    0%, 100% { transform: translateY(0) rotate(0); }
+    50% { transform: translateY(2px) rotate(-1deg); }
+  }
+  .pet-svg.typing { animation: nod 220ms ease-in-out infinite; }
+
+  /* alert — perk up */
+  .pet-svg.alert { transform: translateY(-3px) scale(1.06); }
+
+  /* sleep — slumped */
+  .pet-svg.sleep { transform: translateY(4px) scaleY(0.85); filter: brightness(0.85); }
+
+  /* focus — locked in, slight squint via class on eyes */
+  .pet-svg.focus { transform: translateY(1px); }
+
+  /* ear twitch random */
+  @keyframes ear-twitch {
+    0%, 90%, 100% { transform: rotate(0); }
+    93%, 97% { transform: rotate(-12deg); }
+  }
+  .ear-l { transform-origin: 6px 5px; animation: ear-twitch 6s ease-in-out infinite; }
+  .ear-r { transform-origin: 10px 5px; animation: ear-twitch 7.3s ease-in-out infinite; }
+
+  /* ZZZ */
+  .zzz {
+    position: absolute;
+    top: 6px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: var(--ink-dim);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .pet-cell.is-sleep .zzz { animation: zzz-float 2.4s ease-in-out infinite; }
+  @keyframes zzz-float {
+    0%   { opacity: 0; transform: translate(-50%, 6px); }
+    30%  { opacity: 1; }
+    100% { opacity: 0; transform: translate(-50%, -16px); }
+  }
+
+  /* heart on click */
+  .heart {
+    position: absolute;
+    left: 50%; top: 30%;
+    transform: translate(-50%, 0);
+    font-size: 14px;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .heart.pop { animation: heart-pop 600ms ease-out forwards; }
+  @keyframes heart-pop {
+    0%   { opacity: 0; transform: translate(-50%, 0) scale(0.4); }
+    30%  { opacity: 1; transform: translate(-50%, -8px) scale(1.1); }
+    100% { opacity: 0; transform: translate(-50%, -28px) scale(0.9); }
+  }
+
+  /* controls */
+  .controls {
+    margin: 20px 32px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .controls button {
+    background: var(--panel2);
+    border: 1px solid #3a4050;
+    color: var(--ink);
+    padding: 8px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .controls button:hover { border-color: var(--accent); }
+  .controls .hint {
+    color: var(--ink-dim);
+    font-size: 12px;
+    align-self: center;
+  }
+  .status {
+    margin: 4px 32px 24px;
+    color: var(--ink-dim);
+    font-size: 12px;
+    font-family: "SF Mono", Menlo, monospace;
+  }
+  .status b { color: var(--accent); font-weight: 500; }
+
+  /* "cursor near pet" visual hint — drawn via JS */
+</style>
+</head>
+<body>
+
+<header>
+  <h1>桌宠陪伴向动画 prototype · v0.4 候选</h1>
+  <p>4 个核心动画 × 9 款皮肤全员同屏。鼠标在页面任意位置移动 / 在下方代码框打字 / 点桌宠头试试。</p>
+  <div class="legend">
+    <span class="chip" id="chip-eye">👀 眼球追鼠标</span>
+    <span class="chip" id="chip-type">⌨️ 打字陪伴（点头）</span>
+    <span class="chip" id="chip-prox">🖱️ 贴近反应</span>
+    <span class="chip" id="chip-idle">💤 闲置渐睡（10s）</span>
+    <span class="chip" id="chip-click">❤️ 摸头 → 爱心</span>
+  </div>
+</header>
+
+<div class="stage" id="stage">
+  <div class="mock-ide">
+    <div class="tab">App.tsx · ⌘S 保存</div>
+    <span class="com">// 在下面打字，看 9 只桌宠跟着点头</span><br/>
+    <span class="kw">function</span> <span class="fn">Companion</span>() {<br/>
+    &nbsp;&nbsp;<span class="kw">return</span> <span class="str">"hello"</span>;<br/>
+    }<span class="caret"></span>
+    <textarea class="typing" id="typingArea" placeholder="在这里打字 — 桌宠会跟着节奏点头…"></textarea>
+  </div>
+
+  <div class="pet-row" id="petRow"></div>
+</div>
+
+<div class="controls">
+  <button id="btnSleep">强制全员入睡</button>
+  <button id="btnWake">叫醒全员</button>
+  <button id="btnAlert">围观（贴近反应）</button>
+  <button id="btnReset">重置</button>
+  <span class="hint">把鼠标移到桌宠上 → 距离 &lt;80px 抬头 · &lt;30px 兴奋。10s 不动会全员入睡。</span>
+</div>
+
+<div class="status" id="status">state: <b>idle</b> · last input: <b>—</b> · cursor: <b>(–, –)</b></div>
+
+<script>
+// ============================================================
+// 皮肤定义（与 src/skins.ts 同步） — palette token 驱动
+// ============================================================
+const SKINS = [
+  { id:"classic",  name:"经典灰",    body:"standard", palette:{body:"#cfcfcf",belly:"#ffffff",earIn:"#ff9bb8",earOut:"#cfcfcf",eye:"#1a1a1a",nose:"#d63d6a",tail:"#8a8a8a",paw:"#ffffff"}},
+  { id:"lab",      name:"小白鼠",    body:"slim",     palette:{body:"#fafafa",belly:"#ffffff",earIn:"#ffb3c8",earOut:"#e8e3dc",eye:"#ff5f57",nose:"#ff6b9d",tail:"#ffb3c8",paw:"#ffffff"}},
+  { id:"field",    name:"田鼠",      body:"chubby",   palette:{body:"#a47148",belly:"#e8d5b0",earIn:"#d6a07a",earOut:"#7a4e2e",eye:"#1a1a1a",nose:"#5a2e10",tail:"#7a4e2e",paw:"#d6a07a"}},
+  { id:"ninja",    name:"忍者鼠",    body:"ninja",    palette:{body:"#3a3a42",belly:"#5a5a64",earIn:"#1a1a1a",earOut:"#2a2a30",eye:"#ffd166",nose:"#1a1a1a",tail:"#2a2a30",paw:"#1a1a1a"}},
+  { id:"cyber",    name:"机械鼠",    body:"robot",    palette:{body:"#c0c8d0",belly:"#e8eef4",earIn:"#00e5ff",earOut:"#7a8290",eye:"#00e5ff",nose:"#00e5ff",tail:"#7a8290",paw:"#5a6270"}},
+  { id:"golden",   name:"金鼠",      body:"round",    palette:{body:"#e8c87a",belly:"#fff4d6",earIn:"#d68a40",earOut:"#c8a050",eye:"#3a2818",nose:"#a06028",tail:"#c8a050",paw:"#fff4d6"}},
+  { id:"cat-gray", name:"小灰猫",    body:"cat",      palette:{body:"#a8a8a8",belly:"#f4f4f4",earIn:"#ff9bb8",earOut:"#7a7a7a",eye:"#3fa66a",nose:"#d63d6a",tail:"#7a7a7a",paw:"#a8a8a8"}},
+  { id:"fox-red",  name:"赤狐",      body:"fox",      palette:{body:"#d96e2c",belly:"#fff4ec",earIn:"#1a1a1a",earOut:"#a04a18",eye:"#1a1a1a",nose:"#1a1a1a",tail:"#fff4ec",paw:"#1a1a1a"}},
+  { id:"frog-tree",name:"树蛙",      body:"frog",     palette:{body:"#7ab84a",belly:"#f4e890",earIn:"#ffffff",earOut:"#5a8a30",eye:"#d63d6a",nose:"#5a8a30",tail:"#5a8a30",paw:"#f4e890"}},
+];
+
+// ============================================================
+// SVG 渲染（16×16 viewBox，按 body variant 走不同 anatomy）
+// 关键：眼睛位置 + 大小作为 anchor 暴露出来，让"眼球追鼠标"动画
+//       能对每个 body 单独计算偏移
+// ============================================================
+function eyeAnchors(body) {
+  // returns [{cx, cy, r}, {cx, cy, r}] in 16×16 grid
+  switch(body) {
+    case "robot": return [{cx:6.5,cy:7,r:1.6,square:true},{cx:10.5,cy:7,r:1.6,square:true}];
+    case "frog":  return [{cx:5,cy:5,r:2.2},{cx:11,cy:5,r:2.2}];   // 突眼
+    case "cat":   return [{cx:6,cy:8,r:1.3},{cx:10,cy:8,r:1.3}];
+    case "fox":   return [{cx:6,cy:8,r:1.2},{cx:10,cy:8,r:1.2}];
+    case "slim":  return [{cx:6,cy:7,r:1.1},{cx:10,cy:7,r:1.1}];
+    case "chubby":return [{cx:5.5,cy:8,r:1.4},{cx:10.5,cy:8,r:1.4}];
+    case "ninja": return [{cx:6,cy:7,r:1.0,sharp:true},{cx:10,cy:7,r:1.0,sharp:true}];
+    case "round": return [{cx:6,cy:8,r:1.2},{cx:10,cy:8,r:1.2}];
+    default:      return [{cx:6,cy:7,r:1.2},{cx:10,cy:7,r:1.2}]; // standard
+  }
+}
+
+function petSVG(skin) {
+  const p = skin.palette;
+  const b = skin.body;
+
+  // 耳/头/身/尾 各 body variant 不同形状 —— 用 SVG path 简化版
+  let ears = "", head = "", body = "", tail = "", extras = "";
+
+  // head/body 默认：圆头 + 椭圆身
+  head = `<ellipse cx="8" cy="8.5" rx="5" ry="4.5" fill="${p.body}"/>
+          <ellipse cx="8" cy="10" rx="3.6" ry="2.8" fill="${p.belly}"/>`;
+
+  // ears (per variant)
+  if (b === "robot") {
+    // 天线
+    ears = `<line x1="5" y1="4" x2="5" y2="1.5" stroke="${p.earOut}" stroke-width="0.6"/>
+            <circle cx="5" cy="1.3" r="0.7" fill="${p.earIn}"/>
+            <line x1="11" y1="4" x2="11" y2="1.5" stroke="${p.earOut}" stroke-width="0.6"/>
+            <circle cx="11" cy="1.3" r="0.7" fill="${p.earIn}"/>`;
+  } else if (b === "cat") {
+    // 尖耳三角
+    ears = `<polygon class="ear-l" points="3,5 5,1 7,5" fill="${p.earOut}"/>
+            <polygon points="4,4.5 5,2 6,4.5" fill="${p.earIn}"/>
+            <polygon class="ear-r" points="9,5 11,1 13,5" fill="${p.earOut}"/>
+            <polygon points="10,4.5 11,2 12,4.5" fill="${p.earIn}"/>`;
+    head = `<ellipse cx="8" cy="9" rx="5" ry="4.2" fill="${p.body}"/>
+            <ellipse cx="8" cy="10.5" rx="3.4" ry="2.4" fill="${p.belly}"/>`;
+  } else if (b === "fox") {
+    ears = `<polygon class="ear-l" points="3,5 5,1.5 6.5,5" fill="${p.earOut}"/>
+            <polygon class="ear-r" points="9.5,5 11,1.5 13,5" fill="${p.earOut}"/>
+            <polygon points="4,4.5 5,2.5 6,4.5" fill="${p.earIn}"/>
+            <polygon points="10,4.5 11,2.5 12,4.5" fill="${p.earIn}"/>`;
+    head = `<polygon points="8,4 3.5,9 12.5,9" fill="${p.body}"/>
+            <ellipse cx="8" cy="10" rx="4.5" ry="3.6" fill="${p.body}"/>
+            <ellipse cx="8" cy="11" rx="3.2" ry="2.2" fill="${p.belly}"/>`;
+  } else if (b === "frog") {
+    // 蛙没有外耳 — 用腮鼓动占位（圆点）
+    ears = `<circle class="ear-l" cx="3.5" cy="9" r="1" fill="${p.earOut}" opacity="0.7"/>
+            <circle class="ear-r" cx="12.5" cy="9" r="1" fill="${p.earOut}" opacity="0.7"/>`;
+    head = `<ellipse cx="8" cy="9" rx="5.5" ry="4" fill="${p.body}"/>
+            <ellipse cx="8" cy="11" rx="4" ry="2.4" fill="${p.belly}"/>`;
+  } else if (b === "ninja") {
+    ears = `<ellipse class="ear-l" cx="5" cy="4" rx="1.4" ry="1.6" fill="${p.earOut}"/>
+            <ellipse class="ear-r" cx="11" cy="4" rx="1.4" ry="1.6" fill="${p.earOut}"/>`;
+    // 蒙面带
+    extras = `<rect x="2.5" y="6.2" width="11" height="1.8" fill="#1a1a1a"/>`;
+  } else if (b === "slim") {
+    ears = `<ellipse class="ear-l" cx="5" cy="4" rx="1.3" ry="1.5" fill="${p.earOut}"/>
+            <circle cx="5" cy="4.2" r="0.8" fill="${p.earIn}"/>
+            <ellipse class="ear-r" cx="11" cy="4" rx="1.3" ry="1.5" fill="${p.earOut}"/>
+            <circle cx="11" cy="4.2" r="0.8" fill="${p.earIn}"/>`;
+    head = `<ellipse cx="8" cy="8.5" rx="4.4" ry="4.2" fill="${p.body}"/>
+            <ellipse cx="8" cy="10" rx="3" ry="2.4" fill="${p.belly}"/>`;
+  } else if (b === "chubby") {
+    ears = `<ellipse class="ear-l" cx="4.5" cy="4" rx="1.8" ry="2" fill="${p.earOut}"/>
+            <circle cx="4.5" cy="4.2" r="1.1" fill="${p.earIn}"/>
+            <ellipse class="ear-r" cx="11.5" cy="4" rx="1.8" ry="2" fill="${p.earOut}"/>
+            <circle cx="11.5" cy="4.2" r="1.1" fill="${p.earIn}"/>`;
+    head = `<ellipse cx="8" cy="9" rx="5.6" ry="5" fill="${p.body}"/>
+            <ellipse cx="8" cy="10.5" rx="4" ry="3" fill="${p.belly}"/>`;
+  } else if (b === "round") {
+    ears = `<ellipse class="ear-l" cx="5" cy="4" rx="1.5" ry="1.6" fill="${p.earOut}"/>
+            <circle cx="5" cy="4.2" r="0.9" fill="${p.earIn}"/>
+            <ellipse class="ear-r" cx="11" cy="4" rx="1.5" ry="1.6" fill="${p.earOut}"/>
+            <circle cx="11" cy="4.2" r="0.9" fill="${p.earIn}"/>`;
+    head = `<circle cx="8" cy="9" r="5" fill="${p.body}"/>
+            <ellipse cx="8" cy="10.5" rx="3.6" ry="2.6" fill="${p.belly}"/>`;
+  } else {
+    // standard
+    ears = `<ellipse class="ear-l" cx="5" cy="4" rx="1.4" ry="1.6" fill="${p.earOut}"/>
+            <circle cx="5" cy="4.2" r="0.9" fill="${p.earIn}"/>
+            <ellipse class="ear-r" cx="11" cy="4" rx="1.4" ry="1.6" fill="${p.earOut}"/>
+            <circle cx="11" cy="4.2" r="0.9" fill="${p.earIn}"/>`;
+  }
+
+  // tail
+  if (b === "cat") {
+    tail = `<path class="tail" d="M13,11 Q15,9 14,7" stroke="${p.tail}" stroke-width="1.2" fill="none" stroke-linecap="round"/>`;
+  } else if (b === "fox") {
+    tail = `<ellipse class="tail" cx="14" cy="11" rx="2.2" ry="1.4" fill="${p.tail}"/>`;
+  } else if (b === "frog") {
+    tail = ``; // 没尾巴
+  } else if (b === "round") {
+    tail = `<path class="tail" d="M13.5,11 Q15,10 14.5,12 Q14,13.5 13,12.5" stroke="${p.tail}" stroke-width="0.8" fill="none"/>`;
+  } else {
+    tail = `<path class="tail" d="M13,11 Q15.5,11 15,8" stroke="${p.tail}" stroke-width="0.8" fill="none"/>`;
+  }
+
+  // nose
+  const nose = (b === "frog")
+    ? `<ellipse cx="8" cy="9" rx="0.8" ry="0.5" fill="${p.nose}"/>`
+    : (b === "fox" || b === "cat")
+      ? `<polygon points="8,8.6 7.4,9.4 8.6,9.4" fill="${p.nose}"/>`
+      : `<circle cx="8" cy="9.2" r="0.6" fill="${p.nose}"/>`;
+
+  // eyes 在 JS 端动态绘制（追鼠标） — 留 group 给 update 用
+  const eyes = `<g class="eyes" data-body="${b}"></g>`;
+
+  // whiskers (cat/standard/slim/field/golden)
+  let whiskers = "";
+  if (["cat","standard","slim","chubby","round"].includes(b)) {
+    whiskers = `<line x1="3" y1="9.5" x2="6" y2="9.4" stroke="${p.eye}" stroke-width="0.2" opacity="0.5"/>
+                <line x1="13" y1="9.5" x2="10" y2="9.4" stroke="${p.eye}" stroke-width="0.2" opacity="0.5"/>`;
+  }
+
+  return `<svg class="pet-svg idle" viewBox="0 0 16 16" shape-rendering="geometricPrecision" xmlns="http://www.w3.org/2000/svg" data-skin="${skin.id}" data-body="${b}">
+    ${tail}
+    ${ears}
+    ${head}
+    ${extras}
+    ${nose}
+    ${whiskers}
+    ${eyes}
+  </svg>`;
+}
+
+// ============================================================
+// 渲染 9 只
+// ============================================================
+const petRow = document.getElementById("petRow");
+SKINS.forEach((skin, i) => {
+  const cell = document.createElement("div");
+  cell.className = "pet-cell";
+  cell.dataset.skinId = skin.id;
+  cell.innerHTML = `
+    <span class="zzz">💤</span>
+    <span class="heart">❤️</span>
+    ${petSVG(skin)}
+    <div class="name">${skin.name}</div>
+    <div class="state-tag" data-tag>idle</div>
+  `;
+  petRow.appendChild(cell);
+});
+
+// ============================================================
+// 4 个核心动画的状态机
+// ============================================================
+const cells = [...document.querySelectorAll(".pet-cell")];
+let mouse = { x: -9999, y: -9999 };
+let lastInputAt = Date.now();
+let typingPulse = 0;
+let typingTimer = null;
+let forceSleep = false;
+let forceAlert = false;
+
+const statusEl = document.getElementById("status");
+const chips = {
+  eye: document.getElementById("chip-eye"),
+  type: document.getElementById("chip-type"),
+  prox: document.getElementById("chip-prox"),
+  idle: document.getElementById("chip-idle"),
+  click: document.getElementById("chip-click"),
+};
+
+document.addEventListener("mousemove", (e) => {
+  mouse.x = e.clientX; mouse.y = e.clientY;
+  lastInputAt = Date.now();
+  chips.eye.classList.add("active");
+  setTimeout(() => chips.eye.classList.remove("active"), 200);
+});
+
+const typingArea = document.getElementById("typingArea");
+typingArea.addEventListener("input", () => {
+  lastInputAt = Date.now();
+  typingPulse = Date.now();
+  chips.type.classList.add("active");
+});
+
+document.addEventListener("click", (e) => {
+  // click on a pet → heart
+  const cell = e.target.closest(".pet-cell");
+  if (cell) {
+    const heart = cell.querySelector(".heart");
+    heart.classList.remove("pop");
+    void heart.offsetWidth; // restart
+    heart.classList.add("pop");
+    chips.click.classList.add("active");
+    setTimeout(() => chips.click.classList.remove("active"), 400);
+  }
+});
+
+document.getElementById("btnSleep").onclick = () => { forceSleep = true; forceAlert = false; };
+document.getElementById("btnWake").onclick  = () => { forceSleep = false; lastInputAt = Date.now(); };
+document.getElementById("btnAlert").onclick = () => { forceAlert = true; setTimeout(()=>forceAlert=false, 2500); };
+document.getElementById("btnReset").onclick = () => { forceSleep=false; forceAlert=false; lastInputAt=Date.now(); };
+
+// ============================================================
+// 主循环 (60fps) — 更新每只桌宠的眼睛 + 状态 class
+// ============================================================
+function updatePet(cell) {
+  const svg = cell.querySelector(".pet-svg");
+  const rect = svg.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const dx = mouse.x - cx;
+  const dy = mouse.y - cy;
+  const dist = Math.hypot(dx, dy);
+
+  // 1) 眼球追鼠标
+  const eyesG = svg.querySelector(".eyes");
+  const body = svg.dataset.body;
+  const anchors = eyeAnchors(body);
+  const skinId = svg.dataset.skin;
+  const skin = SKINS.find(s => s.id === skinId);
+  const p = skin.palette;
+
+  // 偏移量：归一化方向 × 最大 0.6（眼眶内）
+  const norm = dist > 0 ? Math.min(1, dist / 200) : 0;
+  const ang = Math.atan2(dy, dx);
+  const sleepy = forceSleep || (Date.now() - lastInputAt > 10000);
+  const eyeOffsetX = sleepy ? 0 : Math.cos(ang) * norm * 0.6;
+  const eyeOffsetY = sleepy ? 0 : Math.sin(ang) * norm * 0.5;
+
+  let eyesSVG = "";
+  for (const a of anchors) {
+    // 眼白 / 眼眶
+    const whiteR = a.r * 1.1;
+    if (sleepy) {
+      // 闭眼：横线
+      eyesSVG += `<line x1="${a.cx-a.r}" y1="${a.cy}" x2="${a.cx+a.r}" y2="${a.cy}" stroke="${p.eye}" stroke-width="0.5"/>`;
+      continue;
+    }
+    // 蛙/猫/金鼠 等带"眼白"的物种
+    const hasWhite = ["frog","cat","fox","round","chubby"].includes(body);
+    if (hasWhite) {
+      eyesSVG += `<ellipse cx="${a.cx}" cy="${a.cy}" rx="${whiteR}" ry="${whiteR*0.95}" fill="#ffffff"/>`;
+    }
+    // 瞳孔
+    const pupilR = a.r * (forceAlert || dist < 80 ? 0.85 : 0.7);
+    const px = a.cx + eyeOffsetX;
+    const py = a.cy + eyeOffsetY;
+    if (a.square) {
+      eyesSVG += `<rect x="${px - pupilR}" y="${py - pupilR}" width="${pupilR*2}" height="${pupilR*2}" fill="${p.eye}"/>`;
+      // 高光
+      eyesSVG += `<rect x="${px - pupilR*0.3}" y="${py - pupilR*0.5}" width="${pupilR*0.4}" height="${pupilR*0.4}" fill="#ffffff" opacity="0.9"/>`;
+    } else {
+      eyesSVG += `<circle cx="${px}" cy="${py}" r="${pupilR}" fill="${p.eye}"/>`;
+      eyesSVG += `<circle cx="${px - pupilR*0.3}" cy="${py - pupilR*0.3}" r="${pupilR*0.25}" fill="#ffffff" opacity="0.9"/>`;
+    }
+  }
+  eyesG.innerHTML = eyesSVG;
+
+  // 2) 状态 class
+  svg.classList.remove("idle","typing","alert","sleep","focus");
+  cell.classList.remove("is-sleep","is-alert","is-typing");
+  let tag = "idle";
+
+  if (sleepy) {
+    svg.classList.add("sleep");
+    cell.classList.add("is-sleep");
+    tag = "sleep 💤";
+    if (dist < 80 && !forceSleep) {
+      // 一被鼠标贴近就醒
+      lastInputAt = Date.now();
+    }
+  } else if (forceAlert || dist < 30) {
+    svg.classList.add("alert");
+    cell.classList.add("is-alert");
+    tag = "兴奋！";
+    chips.prox.classList.add("active");
+  } else if (dist < 80) {
+    svg.classList.add("alert");
+    tag = "抬头看你";
+    chips.prox.classList.add("active");
+  } else if (Date.now() - typingPulse < 500) {
+    svg.classList.add("typing");
+    cell.classList.add("is-typing");
+    tag = "陪你打字";
+  } else {
+    svg.classList.add("idle");
+    tag = "idle";
+  }
+
+  cell.querySelector("[data-tag]").textContent = tag;
+}
+
+function tick() {
+  cells.forEach(updatePet);
+
+  // chip 状态
+  const sleepy = forceSleep || (Date.now() - lastInputAt > 10000);
+  chips.idle.classList.toggle("active", sleepy);
+  if (Date.now() - typingPulse > 800) chips.type.classList.remove("active");
+  if (Date.now() - lastInputAt > 200)  chips.prox.classList.remove("active");
+
+  statusEl.innerHTML = `state: <b>${sleepy ? "sleep" : "awake"}</b> · 距上次输入: <b>${((Date.now()-lastInputAt)/1000).toFixed(1)}s</b> · cursor: <b>(${mouse.x|0}, ${mouse.y|0})</b>`;
+
+  requestAnimationFrame(tick);
+}
+tick();
+</script>
+
+</body>
+</html>

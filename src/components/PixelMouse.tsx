@@ -34,6 +34,19 @@ interface PixelMouseProps {
   continuing?: boolean;
   /** v0.4 · Reactive T1：剪贴板触发的一次性抖耳，由 CSS 动画自动消失。 */
   twitching?: boolean;
+  /**
+   * v0.4+ · 陪伴向动画 —— 来自 useCompanion hook 的当前帧。
+   *
+   * - companionState 控制 mouse-wrap 上的额外 class（typing 节奏点头 / alert 抬头 /
+   *   excited 兴奋 / sleep 趴下闭眼）—— 与现有 MouseState 解耦：
+   *   companion 是"环境感知"层，state 是"任务进行中"层。
+   *   任何 state 非 idle 时（listening / thinking / write / …）忽略 companion class。
+   * - eyeOffset 平移整个 `<g.mc-eyes>` 组，让 9 款皮肤的眼睛 rect 一起朝光标偏 ——
+   *   palette/anchor 都不变，自动适配全皮肤（见 CLAUDE.md "动画/陪伴效果必须适配
+   *   所有皮肤"硬规则）。
+   */
+  companionState?: "idle" | "typing" | "alert" | "excited" | "sleep";
+  eyeOffset?: { x: number; y: number };
 }
 
 // ── Body parts (按 body variant 决定形状) ───────────────────────────
@@ -456,10 +469,21 @@ function Extras({ state, skin }: { state: MouseState; skin: Skin }) {
   return null;
 }
 
-export function PixelMouse({ state, size = 96, skin = "classic", continuing = false, twitching = false }: PixelMouseProps) {
+export function PixelMouse({
+  state, size = 96, skin = "classic", continuing = false, twitching = false,
+  companionState, eyeOffset,
+}: PixelMouseProps) {
   const s = getSkin(skin);
+  // companion class 只在 state === "listen" 默认状态时生效（按 mouseStateFor(idle)
+  // 走 listen）。任务进行中的 think/write/talk/feed-* 自己有动画 / 表情，不被陪伴层覆盖。
+  const companionClass =
+    state === "listen" && companionState && companionState !== "idle"
+      ? ` companion-${companionState}` : "";
+  // 眼球平移 —— SVG 内单位（viewBox 16×16）。companion sleep / undefined 时不偏移。
+  const eyesTransform = (eyeOffset && companionState !== "sleep")
+    ? `translate(${eyeOffset.x.toFixed(3)}px, ${eyeOffset.y.toFixed(3)}px)` : undefined;
   return (
-    <div className={`mouse-wrap mouse-${state} mouse-skin-${s.id}${twitching ? " mouse-twitch" : ""}`} style={{ width: size, height: size }}>
+    <div className={`mouse-wrap mouse-${state} mouse-skin-${s.id}${twitching ? " mouse-twitch" : ""}${companionClass}`} style={{ width: size, height: size }}>
       {continuing && <div className="mouse-chain" aria-hidden />}
       <svg
         viewBox="-1 -3 18 18"
@@ -475,7 +499,7 @@ export function PixelMouse({ state, size = 96, skin = "classic", continuing = fa
         <g className="mc-tail" style={{ transformOrigin: "13px 9px" }}>
           <Tail skin={s} />
         </g>
-        <g className="mc-eyes">
+        <g className="mc-eyes" style={{ transform: eyesTransform, transition: "transform 80ms linear" }}>
           <Eyes state={state} skin={s} />
         </g>
         <Extras state={state} skin={s} />

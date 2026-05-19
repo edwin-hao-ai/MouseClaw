@@ -29,6 +29,7 @@ pub mod clipboard_crypto;
 pub mod cursor_follow;
 pub mod cursor_trail;
 pub mod drag_detector;
+pub mod companion;
 pub mod pet_passthrough;
 pub mod overlay_size;
 pub mod commands;
@@ -397,6 +398,10 @@ pub fn run() {
             //   桌宠跑过去迎接（puppy greets drag）。
             //   纯 NSWindow + NSView 子类，无 WebKit backing，零视觉遮挡。
             drag_detector::install(app.handle().clone(), app_state.clone());
+
+            // v0.4+ · 陪伴向动画 tick —— 30 FPS 推 mouse 窗口全局光标 + idle 秒数
+            // 隐私同 presence：只读 CGEventSourceSecondsSince… 和 NSEvent.mouseLocation
+            companion::spawn(app.handle().clone());
 
             // v0.1.27 P3 · 启动环境感知 + 主动提醒
             // presence 每 30s 采样到 30min ring buffer；nudge 每 60s 评估规则

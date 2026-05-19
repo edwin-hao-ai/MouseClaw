@@ -215,6 +215,65 @@
   .mouse-talk .mouse-svg > rect:last-of-type { animation: none; }
 }
 
+/* ───────── v0.4+ · 陪伴向动画 (companion-*) ─────────
+ *
+ * 设计原型：docs/prototypes/companion-animations-20260519.html
+ * Hook：src/hooks/useCompanion.ts
+ *
+ * 适用范围：state="listen"（默认 idle 状态）时被 useCompanion 推上来的状态层。
+ * 任何"任务态"（think / write / talk / feed-*）有自己的动画，companion class
+ * 在 PixelMouse.tsx 里就不挂 —— CSS 里 .mouse-listen.companion-* 是唯一入口。
+ *
+ * 适配所有 9 款皮肤：只动 .mouse-svg 整体 transform / scale / filter，
+ * 不碰任何 palette 颜色或 anatomy rect，所有皮肤自动获得相同动画。
+ */
+
+/* typing —— 跟随节奏轻轻点头（220ms 一次，与 prototype 同节奏） */
+.mouse-listen.companion-typing .mouse-svg {
+  animation: mc-nod 220ms ease-in-out infinite;
+}
+@keyframes mc-nod {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  50%      { transform: translateY(1.5px) rotate(-1deg); }
+}
+
+/* alert —— 鼠标在 ALERT_PX 内：抬头一点点 + 微放大 */
+.mouse-listen.companion-alert .mouse-svg {
+  transform: translateY(-2px) scale(1.04);
+  transition: transform 180ms cubic-bezier(.34, 1.56, .64, 1);
+}
+
+/* excited —— 鼠标进入 EXCITED_PX：上抬更多 + scale 更大（兴奋脸） */
+.mouse-listen.companion-excited .mouse-svg {
+  transform: translateY(-3px) scale(1.08);
+  transition: transform 160ms cubic-bezier(.34, 1.56, .64, 1);
+}
+
+/* sleep —— 10s 无操作：瘫坐 + 略压扁 + 降低亮度 */
+.mouse-listen.companion-sleep .mouse-svg {
+  transform: translateY(3px) scaleY(0.88);
+  filter: brightness(0.85);
+  transition: transform 600ms ease-out, filter 600ms ease-out;
+}
+/* 闭眼覆盖：sleep 时把 .mc-eyes 里的 rect 压成一字（用 scaleY 0 → 视觉上的眯缝眼） */
+.mouse-listen.companion-sleep .mc-eyes {
+  transform: scaleY(0.25) translateY(0.4px) !important;
+  transform-origin: center;
+  transform-box: fill-box;
+  transition: transform 600ms ease-out;
+}
+
+/* reduced-motion 一律降级为无动画（仅保留状态指示，无脉动） */
+@media (prefers-reduced-motion: reduce) {
+  .mouse-listen.companion-typing .mouse-svg,
+  .mouse-listen.companion-alert .mouse-svg,
+  .mouse-listen.companion-excited .mouse-svg,
+  .mouse-listen.companion-sleep .mouse-svg {
+    animation: none;
+    transition: none;
+  }
+}
+
 /* Continuing session chain indicator — 3-pixel green block above head */
 .mouse-chain {
   position: absolute;

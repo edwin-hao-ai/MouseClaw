@@ -61,7 +61,40 @@ PR / 提交前 review 也要拿这个对照）：
 - [ ] 中英文混排测过（用 "🦞 Hello 你好 ABC 中文 World" 这种 string 试一下）
 - [ ] 如果改了 token 或加了新组件，DESIGN.md 同 PR 更新
 
-## UI/UX 工作流：先 HTML prototype，再写代码
+## 动画/陪伴效果必须适配所有皮肤（硬规则 · v0.4+）
+
+桌宠的任何**动画 / 情感反应 / 交互动效**（眼球追鼠标、打字陪伴、闲置渐睡、贴近反应、情绪
+表情、彩蛋动画等等）必须**对 `src/skins.ts` 里列出的所有皮肤一视同仁地工作**，不允许只在
+classic 上做完就交差。
+
+### 强制 checklist（任何新增动画 PR 必过）
+- [ ] 在 prototype HTML 里用 9 款皮肤（classic / lab / field / ninja / cyber / golden /
+      cat-gray / fox-red / frog-tree）全部同屏跑一遍同一个动画，截图证明各皮肤都正常
+- [ ] 动画逻辑用 **palette token** 驱动颜色（眼/耳/身/尾），不允许 hardcode `#1a1a1a`
+      之类的字面量 —— 否则换皮肤就穿帮
+- [ ] 涉及"眼睛"的动画必须对所有 body variant 都成立（standard / slim / chubby / ninja /
+      robot / round / cat / fox / frog 共 9 种骨架）。某皮肤眼睛位置/大小不同 → 动画偏移
+      参数用 skin 定义里的 anchor，不写绝对坐标
+- [ ] 涉及"耳朵抽动 / 尾巴摆"的动画对**非鼠类**（猫/狐/蛙）也得有等价表达 —— 蛙没有外耳
+      就改成腮鼓动，狐尾大就让尾摆幅度更大等等。同一种"情绪"在每款皮肤上都得有视觉答复
+- [ ] 闲置 / 睡眠动画的 ZZZ 颜色 / 表情符号统一（不跟皮肤），但身体姿态用各 body variant
+      自己的"趴下"姿势
+- [ ] React 实现里 `PixelMouse` 接收 `skin` prop 后，动画 hook 必须读 `getSkin(skin).palette`
+      取色，不允许在动画组件里 `import skinClassic from ...` 这种死写
+
+### 反例 ❌
+- 只在 classic 灰鼠上做了眼球追鼠标，cyber 机器人眼睛是方框就直接坏掉 —— 必须按 body
+  variant 给方眼/圆眼分别写动画路径
+- 给打字陪伴写了一个"点头"动画但只对 `body=standard` 的皮肤生效 —— 猫/狐/蛙也得点头
+- 在 prototype 里只画 classic 一只，说"其他皮肤实现时再适配" —— prototype 阶段就必须
+  覆盖全皮肤，发现某皮肤上动画穿帮**现在就改设计**，不能拖到 Rust 阶段
+
+### 工作流锚点
+- 写 prototype HTML 时第一件事：把 9 款皮肤的 SVG 都搭起来排一行，所有动画 demo 都同时
+  作用于这 9 只，眼见为实
+- code review 时如果只看到 classic 的截图 / 视频 → 直接打回
+
+
 
 **硬规则**：任何涉及视觉/交互的功能，**先用单文件 HTML prototype 让用户看到效果**（prototype 也必须用 DESIGN.md 的 token），用户拍板之后才进入 Rust/Tauri 实现。
 

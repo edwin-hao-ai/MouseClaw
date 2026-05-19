@@ -23,6 +23,7 @@ import {
 import { DEFAULT_SKIN } from "./skins";
 import { useT, getCurrentLang } from "./i18n";
 import { ReactiveOverlay, type ReactivePayload } from "./components/ReactiveOverlay";
+import { useCompanion } from "./hooks/useCompanion";
 
 const PREVIEW_LONG = "这篇 Nature 文章讨论 2026 年 AI 加速材料发现的三个突破：室温超导候选材料、新型电池电解液、碳捕获催化剂。核心机制是自动化实验室加大模型生成假设的迭代闭环。";
 
@@ -74,6 +75,9 @@ export default function App() {
   // - reactive：T2 payload —— ribbon 在桌宠头顶弹一组按钮，5s 自动消失（或点了 action）
   const [twitching, setTwitching] = useState(false);
   const [reactive, setReactive] = useState<ReactivePayload | null>(null);
+  // v0.4+ · 陪伴向动画 —— hook 订阅 Rust companion-tick + 算桌宠当前帧
+  const petStageRef = useRef<HTMLDivElement>(null);
+  const companion = useCompanion(petStageRef);
 
   // v0.3.12 · 在 idle 状态下显示 React-only UI（下载提示气泡 / petMenu / nudge / ack
   //   / v0.4 reactive ribbon）时主动通知 Rust 把窗口 hit-box 扩到全窗口；
@@ -451,6 +455,7 @@ export default function App() {
         </div>
       )}
       <div
+        ref={petStageRef}
         className="stage-mouse"
         onClick={handleMouseClick}
         onPointerDown={handlePetPointerDown}
@@ -464,6 +469,8 @@ export default function App() {
           size={view.kind === "idle" ? 64 : 96}
           continuing={continuing}
           twitching={twitching}
+          companionState={companion.state}
+          eyeOffset={{ x: companion.eyeOffsetX, y: companion.eyeOffsetY }}
         />
         <PetMenu
           open={petMenuOpen}
