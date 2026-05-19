@@ -201,6 +201,9 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let sep1    = PredefinedMenuItem::separator(app)?;
     let sep2    = PredefinedMenuItem::separator(app)?;
     let quit    = MenuItem::with_id(app, "quit",    s_quit,  true, Some("CmdOrCtrl+Q"))?;
+    // v0.4.0 · 模型下载窗口入口
+    let downloader_label = if en { "📥 Model download" } else { "📥 模型下载进度" };
+    let downloader_item = MenuItem::with_id(app, "open-downloader", downloader_label, true, None::<&str>)?;
 
     // v0.1.27 · 📍 桌宠位置 ▸ 子菜单（4 角 + 跟随光标）
     let anchor_submenu = crate::anchor::build_tray_submenu(app, en)?;
@@ -219,6 +222,7 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         &browser_item as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
         &autostart_item as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
         &tts_item as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
+        &downloader_item as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
         &status as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
         &sep2,
         &about,
@@ -316,6 +320,11 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
             }
         }
         "history"         => open_history_window(app),
+        "open-downloader" => {
+            if let Err(e) = crate::commands::open_downloader_window(app.clone()) {
+                eprintln!("[mouseclaw] open-downloader: {e}");
+            }
+        }
         "about"           => open_about_dialog(app),
         "enable-browser"  => enable_browser_automation(app),
         "open-picker"     => {

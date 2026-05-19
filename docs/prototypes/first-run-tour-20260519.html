@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MouseClaw · 首次引导 prototype（2026-05-19）</title>
+<style>
+:root {
+  --bg: #faf7f2; --card: #fff; --ink: #2b2622; --muted: #8a8178;
+  --pink: #e8638c; --pink-soft: #fce4ec; --pink-deep: #d63d6a;
+  --green: #3fa66a; --green-soft: #e6f4ec;
+  --amber: #d9952b; --amber-soft: #fdf3e0;
+  --blue: #5b8def; --blue-soft: #e8f0fe;
+  --line: #ece6dd;
+  --shadow-card: 0 1px 2px rgba(43,38,34,.06), 0 8px 24px rgba(43,38,34,.06);
+  --shadow-bubble: 0 8px 32px rgba(43,38,34,.12);
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font: -apple-system, "PingFang SC", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.65 var(--font); -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 40px 24px 80px; }
+h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -.02em; }
+.subtitle { color: var(--muted); margin: 0 0 32px; font-size: 14px; }
+h2 { font-size: 22px; margin: 48px 0 12px; padding-bottom: 10px; border-bottom: 2px solid var(--line); }
+h3 { font-size: 17px; margin: 24px 0 8px; }
+code { background: rgba(0,0,0,.06); padding: 1px 6px; border-radius: 4px; font-family: var(--mono); font-size: 13px; }
+.callout { padding: 14px 18px; border-radius: 0 14px 14px 0; margin: 16px 0; font-size: 14px; border-left: 4px solid; }
+.callout.b { background: var(--blue-soft); border-color: var(--blue); }
+.callout.p { background: var(--pink-soft); border-color: var(--pink); }
+.callout.g { background: var(--green-soft); border-color: var(--green); }
+ul li, ol li { margin: 4px 0; }
+
+/* 桌宠演示舞台 */
+.stage {
+  position: relative;
+  background: linear-gradient(180deg, #e8f0fe 0%, #faf7f2 100%);
+  border-radius: 14px;
+  padding: 60px 0 100px;
+  margin: 16px 0 24px;
+  min-height: 360px;
+  border: 1px solid var(--line);
+}
+.bubble {
+  position: relative;
+  display: inline-block;
+  background: #fff;
+  border: 1px solid #e8d8dc;
+  border-radius: 22px;
+  padding: 16px 22px;
+  font-size: 16px;
+  max-width: 360px;
+  box-shadow: var(--shadow-bubble);
+  line-height: 1.5;
+}
+.bubble::after {
+  content: ""; position: absolute; bottom: -8px; left: 30px;
+  width: 14px; height: 14px; background: inherit;
+  transform: rotate(45deg); border-right: 1px solid #e8d8dc; border-bottom: 1px solid #e8d8dc;
+}
+.bubble .actions { margin-top: 12px; display: flex; gap: 10px; }
+.bubble button {
+  font: inherit; font-size: 13px; padding: 6px 14px;
+  border-radius: 999px; cursor: pointer; border: 0;
+}
+.bubble button.primary { background: var(--pink); color: #fff; }
+.bubble button.primary:hover { background: var(--pink-deep); }
+.bubble button.secondary { background: #f0eae0; color: var(--ink); border: 1px solid var(--line); }
+.bubble .chip {
+  display: inline-block; background: #f3eee5; color: var(--muted);
+  font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  margin-bottom: 6px; letter-spacing: .03em;
+}
+.bubble strong { color: var(--pink-deep); }
+.bubble kbd {
+  background: #f0eae0; border: 1px solid #ddd; border-bottom-width: 2px;
+  padding: 1px 6px; border-radius: 4px; font-family: var(--mono); font-size: 12px;
+}
+
+/* 像素老鼠 simplified */
+.pet {
+  width: 64px; height: 64px;
+  background: #cfcfcf;
+  border-radius: 8px 8px 6px 6px;
+  position: relative;
+  margin: 16px 0 0 30px;
+}
+.pet::before {
+  content: ""; position: absolute; top: -6px; left: 10px;
+  width: 8px; height: 8px; background: #6cd4ff; border-radius: 2px;
+  box-shadow: 26px 0 0 #6cd4ff;
+}
+.pet::after {
+  content: ""; position: absolute; top: 24px; left: 14px;
+  width: 6px; height: 4px; background: #6cd4ff;
+  box-shadow: 22px 0 0 #6cd4ff, 11px 10px 0 -1px #6cd4ff;
+}
+
+.flow {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 14px;
+  margin: 16px 0;
+}
+.flow > div {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px 14px; font-size: 13px;
+}
+.flow h4 { margin: 0 0 6px; font-size: 13px; color: var(--pink-deep); }
+.flow .arrow {
+  border: 0; background: transparent; padding: 4px 0;
+  text-align: center; color: var(--muted);
+}
+
+table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); }
+th { background: #f3eee5; font-weight: 600; font-size: 13px; }
+td.k { font-weight: 600; white-space: nowrap; }
+
+.menu {
+  background: rgba(255,255,255,.95);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+  padding: 6px 0;
+  font-size: 14px;
+  max-width: 260px;
+  margin: 16px 0;
+}
+.menu-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px;
+}
+.menu-item.new { background: var(--green-soft); color: #1a6b3a; font-weight: 600; }
+.menu-item .ico { width: 18px; text-align: center; }
+.menu-divider { height: 1px; background: var(--line); margin: 6px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎓 首次使用引导 · prototype</h1>
+  <p class="subtitle">2026-05-19 · 用户拍板：X + Y 合并 = 一次过 + PetMenu 留入口</p>
+
+  <div class="callout b">
+    <strong>设计核心</strong>：
+    <ul style="margin: 8px 0 0;">
+      <li><strong>默认行为</strong>：模型下完 → 桌宠主动跳出 1 次引导（教 AI 召唤 + 让用户总结一个页面），跳过就跳过</li>
+      <li><strong>后悔药</strong>：PetMenu 加一项 <code>📖 教我用 MouseClaw</code>，随时召唤回来</li>
+      <li><strong>不打扰</strong>：跳过后 5 分钟内不再自动弹，用户必须主动从菜单触发</li>
+    </ul>
+  </div>
+
+  <h2>① 完整流程（4 个 step）</h2>
+
+  <h3>Step 0 · 触发时机</h3>
+  <p>下载完成 (DownloaderView 显示「全部就绪」) → 后台等 2 秒（让用户合上下载窗口）→ 桌宠从角落走到屏幕中央偏下，开始 Step 1。</p>
+
+  <h3>Step 1 · 欢迎气泡（用户选 [好啊] 或 [下次再说]）</h3>
+  <div class="stage">
+    <div style="position: absolute; top: 60px; left: 50%; transform: translateX(-50%);">
+      <div class="bubble">
+        <div class="chip">🎓 第 1 步 / 共 3 步</div>
+        <strong>下载完啦！</strong> 我能听见你说话，帮你召唤本地 AI。<br>
+        花 30 秒教你怎么用？
+        <div class="actions">
+          <button class="primary">✨ 好啊（30 秒）</button>
+          <button class="secondary">下次再说</button>
+        </div>
+      </div>
+      <div class="pet"></div>
+    </div>
+  </div>
+
+  <p><strong>用户点 [下次再说]</strong> → 桌宠回角落睡觉，<code>firstrun_tour_done = true</code>。要继续引导只能从 PetMenu 主动召唤。</p>
+
+  <h3>Step 2 · 准备一个网页</h3>
+  <div class="stage">
+    <div style="position: absolute; top: 60px; left: 50%; transform: translateX(-50%);">
+      <div class="bubble">
+        <div class="chip">🎓 第 2 步 / 共 3 步 · 准备工作</div>
+        随便<strong>打开一个网页</strong>，比如新闻 / 公众号文章 / Wikipedia。<br>
+        <span style="font-size: 13px; color: var(--muted); margin-top: 6px; display: block;">
+          打开后回来这里，我们继续 ↓
+        </span>
+        <div class="actions">
+          <button class="primary">✓ 已经打开了</button>
+          <button class="secondary">退出引导</button>
+        </div>
+      </div>
+      <div class="pet"></div>
+    </div>
+  </div>
+
+  <p><strong>设计意图</strong>：先让用户准备好"目标"，再教快捷键，比"先讲快捷键，再让用户找目标"成功率高。</p>
+
+  <h3>Step 3 · 召唤 AI + 让 AI 帮忙</h3>
+  <div class="stage">
+    <div style="position: absolute; top: 30px; left: 50%; transform: translateX(-50%);">
+      <div class="bubble">
+        <div class="chip">🎓 第 3 步 / 共 3 步 · 召唤 AI</div>
+        <strong>按住 <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>Space</kbd></strong>，然后对我说：<br>
+        <em style="background: var(--green-soft); padding: 4px 10px; border-radius: 6px; display: inline-block; margin-top: 6px;">
+          "用三句话总结这个页面"
+        </em><br>
+        <span style="font-size: 13px; color: var(--muted); display: block; margin-top: 8px;">
+          松开快捷键 = 我就开始干活
+        </span>
+        <div class="actions">
+          <button class="secondary">退出引导</button>
+        </div>
+      </div>
+      <div class="pet"></div>
+    </div>
+  </div>
+
+  <p><strong>检测完成</strong>：监听用户实际按下了召唤快捷键 + AI 回了一条 reply → 视为引导成功。如果用户 60 秒没动作 → 自动收起气泡 + 标记完成（不烦人）。</p>
+
+  <h3>Step 4 · 完成 · 庆祝</h3>
+  <div class="stage">
+    <div style="position: absolute; top: 60px; left: 50%; transform: translateX(-50%);">
+      <div class="bubble" style="background: var(--green-soft); border-color: #b8e8c3;">
+        <strong>🎉 你学会了！</strong><br>
+        以后任何时候按 <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>Space</kbd> 就能召唤我。<br>
+        <span style="font-size: 13px; color: var(--muted); margin-top: 8px; display: block;">
+          🍽 拖文件到我嘴里 = 喂我读 · ⌨️ 长按 fn = 语音打字到光标
+        </span>
+        <div class="actions">
+          <button class="primary">知道了 ✓</button>
+        </div>
+      </div>
+      <div class="pet"></div>
+    </div>
+  </div>
+
+  <p>气泡 5 秒后自动消失，桌宠回角落睡觉。<code>firstrun_tour_done = true</code>。</p>
+
+  <h2>② PetMenu 加「📖 教我用」入口</h2>
+  <p>用户点桌宠 → 现有菜单加新项：</p>
+
+  <div class="menu">
+    <div class="menu-item"><span class="ico">🎤</span> <span>召唤 AI</span> <span style="margin-left: auto; font-size: 11px; color: var(--muted);">⌘⇧Space</span></div>
+    <div class="menu-item"><span class="ico">📜</span> <span>历史记录</span></div>
+    <div class="menu-divider"></div>
+    <div class="menu-item new"><span class="ico">📖</span> <span>教我用 MouseClaw</span></div>
+    <div class="menu-divider"></div>
+    <div class="menu-item"><span class="ico">🍖</span> <span>喂奶酪</span></div>
+    <div class="menu-item"><span class="ico">💤</span> <span>休息一下</span></div>
+    <div class="menu-item"><span class="ico">🎨</span> <span>换皮肤</span></div>
+    <div class="menu-item"><span class="ico">⚙️</span> <span>设置</span></div>
+  </div>
+
+  <p>点击 <code>📖 教我用 MouseClaw</code> → 不管 <code>firstrun_tour_done</code> 是 true 还是 false，强制重启 Step 1。</p>
+
+  <h2>③ 状态机</h2>
+
+  <table>
+    <thead><tr><th>触发</th><th>当前状态</th><th>动作</th></tr></thead>
+    <tbody>
+      <tr><td class="k">模型下完 emit ok</td><td>firstrun_tour_done=false</td><td>2 秒后 Step 1</td></tr>
+      <tr><td class="k">模型下完 emit ok</td><td>firstrun_tour_done=true</td><td>无（不再自动弹）</td></tr>
+      <tr><td class="k">用户点 PetMenu 「📖 教我用」</td><td>任意</td><td>强制 Step 1</td></tr>
+      <tr><td class="k">用户点 [好啊]</td><td>Step 1</td><td>进入 Step 2</td></tr>
+      <tr><td class="k">用户点 [下次再说] / 退出引导 / Esc</td><td>Step 1-3</td><td>气泡收起，桌宠回角落，标记 done=true</td></tr>
+      <tr><td class="k">用户点 [已经打开了]</td><td>Step 2</td><td>进入 Step 3</td></tr>
+      <tr><td class="k">用户按召唤快捷键 + 完成一次对话</td><td>Step 3</td><td>进入 Step 4 庆祝</td></tr>
+      <tr><td class="k">Step 3 等待 60 秒</td><td>Step 3</td><td>气泡收起，标记 done=true（友好兜底，不强制留住）</td></tr>
+    </tbody>
+  </table>
+
+  <h2>④ 工程改动清单</h2>
+  <ul>
+    <li><strong>config.rs</strong>：新字段 <code>firstrun_tour_done: bool</code>（默认 false）+ bump version 到 v19</li>
+    <li><strong>新命令</strong>：
+      <ul>
+        <li><code>start_first_run_tour()</code> — 设置 view 进 tour-step1</li>
+        <li><code>mark_tour_done()</code> — 持久化 done=true</li>
+        <li><code>get_tour_done()</code> — 给前端查询</li>
+      </ul>
+    </li>
+    <li><strong>views.rs</strong>：新增 ViewKind <code>TourStep { step: 1/2/3/4 }</code></li>
+    <li><strong>App.tsx</strong>：监听 model-progress phase=ok → 检查 get_tour_done → 没做过就 invoke start_first_run_tour</li>
+    <li><strong>BubbleFor</strong>：新增 tour-step 渲染（4 个 step 的气泡 + 按钮 action）</li>
+    <li><strong>PetMenu</strong>：加「📖 教我用 MouseClaw」item，onClick → invoke start_first_run_tour</li>
+    <li><strong>pipeline.rs</strong>：用户在 tour Step 3 期间按快捷键 + 完成 reply → emit tour-complete 事件 → 进 Step 4</li>
+  </ul>
+
+  <h3>估时</h3>
+  <ul>
+    <li>Rust 改 config + 命令 + view + 完成检测：1.5h</li>
+    <li>React: Bubble 加 actions slot + BubbleFor 加 4 个 tour case + state 机：1.5h</li>
+    <li>PetMenu 加项 + i18n：0.5h</li>
+    <li>自测 + 边界（用户中间退出 / 60s 超时 / 点 PetMenu 重启）：1h</li>
+    <li><strong>总计 ~4-5h</strong></li>
+  </ul>
+
+  <h2>⑤ 几个细节问你拍板</h2>
+
+  <h3>① 是不是只教 AI 召唤（⌘⇧Space）？还是也教 fn 语音输入？</h3>
+  <p>我倾向<strong>只教 AI 召唤（一件事）</strong>。fn 语音输入留给用户在「📖 教我用」菜单里如果他想学第二遍时再教。<br>
+  理由：第一次引导必须短，30 秒内完成。教两个动作 = 1 分钟，用户耐心耗光率高。</p>
+
+  <h3>② Step 3 让用户做什么？</h3>
+  <ul>
+    <li><strong>(i) 总结一个网页</strong> — 通用 · 所有人能完成（我推这个）</li>
+    <li>(ii) 改一句话更好 — 文案向</li>
+    <li>(iii) 写一行代码 — 开发者向</li>
+  </ul>
+
+  <h3>③ Step 3 的话术「用三句话总结这个页面」要不要可点击复制？</h3>
+  <p>如果用户嫌语音麻烦，<strong>显示一个 [复制这句话] 按钮</strong>，他可以复制然后召唤 AI 后粘贴说出来。<br>
+  但其实直接念出来更符合产品调性（语音召唤），先不加。</p>
+
+  <div class="callout p">
+    <strong>给我两个字母 + 一个 yes/no 就开干</strong>：
+    <ol style="margin: 8px 0 0; padding-left: 22px;">
+      <li>只教 AI 召唤 = <code>yes</code> 还是 <code>no（两个都教）</code>？</li>
+      <li>Step 3 任务 = <code>i / ii / iii</code> 选哪个？</li>
+      <li>Step 3 加 [复制话术] 按钮 = <code>yes / no</code>？</li>
+    </ol>
+    我推荐：<code>yes · i · no</code>
+  </div>
+
+  <h2>⑥ 同样要你拍板的其他几个 prototype（一起回更高效）</h2>
+  <table>
+    <thead><tr><th>Prototype</th><th>状态</th><th>等你回</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>视频实施（<code>video-implementation-20260519.html</code>）</td>
+        <td>已 preview</td>
+        <td>配音(A/B/C) · 范围 · 录屏 · BGM</td>
+      </tr>
+      <tr>
+        <td>语音转文字后确认编辑</td>
+        <td>等你选交互方向</td>
+        <td>A 倒数 / B 必须确认 / C 短按 vs 长按</td>
+      </tr>
+      <tr>
+        <td>首次引导（本文档）</td>
+        <td>已 preview</td>
+        <td>yes · i · no（上面问题）</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+</body>
+</html>

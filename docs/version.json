@@ -1,11 +1,11 @@
 {
   "$comment": "MouseClaw 版本元信息 · App 启动时拉取此 URL 检查新版本。任何 release 后更新这里。",
-  "latest": "0.3.9",
+  "latest": "0.3.11",
   "min_supported": "0.1.0",
   "released_at": "2026-05-19",
-  "size_mb": 238,
-  "dmg_url": "https://github.com/edwin-hao-ai/releases/latest/download/MouseClaw_0.3.9_aarch64.dmg",
+  "size_mb": 12,
+  "dmg_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/latest/download/MouseClaw_0.3.11_aarch64.dmg",
   "release_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/latest",
-  "notes_zh": "✍️ 语音输入终于真进输入框了！修 macOS fn 键焦点抢盗（之前字静默丢失）。Plan B：fn 按住时桌宠气泡实时显示流式 partial，松开后 ~250ms 一次性写入光标。+ 中英文标点 + Accessibility 一键授权 + 拖动桌宠 + 桌宠 bbox 收紧（之前点击区域太大挡住底层 app）+ 去掉桌宠选中高亮",
-  "notes_en": "✍️ Voice typing actually reaches the input field now! Fixed macOS fn key focus theft. Plan B: bubble shows live partial while fn is held, paste once ~250ms after release. + Chinese/English punctuation + one-click Accessibility settings + drag-to-move pet + tight click region (no longer blocks clicks behind it) + no more selection halo."
+  "notes_zh": "🎙 语音确认大改：进确认就是输入框，光标在末尾可以直接接着说补充；倒数 3→6 秒，一打字自动暂停等你改完。+ 流式回答现在跟随最新内容自动滚到底（手动上滚暂停跟随）+ 桌宠 AI 流式时嘴一直在动 talk 动画 + markdown 风格收紧统一",
+  "notes_en": "🎙 Voice confirm reworked: textbox is the bubble — cursor at end, just keep typing to refine. Countdown 3→6s; typing pauses the countdown until you press Enter/Esc. + Streaming replies auto-follow latest tokens to the bottom + new talk sprite with moving mouth during AI streaming + tighter markdown styling."
 }

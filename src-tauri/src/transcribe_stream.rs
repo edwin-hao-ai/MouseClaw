@@ -25,19 +25,41 @@ use std::sync::Mutex;
 use anyhow::{anyhow, Context, Result};
 use once_cell::sync::Lazy;
 use sherpa_onnx::{OnlineRecognizer, OnlineRecognizerConfig, OnlineStream};
+use tauri::AppHandle;
 
-/// Model relative dir under ~/.mouseclaw/models/
+/// Model relative dir under ~/.mouseclaw/models/ —— **中文模型**
 pub const MODEL_DIR: &str = "sherpa-zh-en";
-/// HuggingFace download URL base
-const MODEL_HF_BASE: &str =
-    "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20/resolve/main";
-/// Files we need from the HF repo
+/// 中文模型文件名（4 个）—— 用于 ensure_loaded / bundle seed 拼路径
 pub const MODEL_FILES: &[&str] = &[
     "encoder-epoch-99-avg-1.int8.onnx",
     "decoder-epoch-99-avg-1.onnx",
     "joiner-epoch-99-avg-1.int8.onnx",
     "tokens.txt",
 ];
+
+/// v0.4.0 · 英文模型 (sherpa-onnx-streaming-zipformer-en-2023-06-26)
+pub const EN_MODEL_DIR: &str = "sherpa-en";
+pub const EN_MODEL_FILES: &[&str] = &[
+    "encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx",
+    "decoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx",
+    "joiner-epoch-99-avg-1-chunk-16-left-128.int8.onnx",
+    "tokens.txt",
+];
+
+/// 当前选用的 ASR 语言 —— 读 config.voice_lang，决定 active model dir + files
+pub fn active_lang() -> String {
+    crate::config::Config::load().voice_lang
+}
+fn is_en() -> bool { active_lang() == "en" }
+pub fn active_model_dir() -> &'static str {
+    if is_en() { EN_MODEL_DIR } else { MODEL_DIR }
+}
+pub fn active_model_files() -> &'static [&'static str] {
+    if is_en() { EN_MODEL_FILES } else { MODEL_FILES }
+}
+pub fn active_spec() -> crate::model_downloader::ModelSpec {
+    if is_en() { crate::model_downloader::en_spec() } else { crate::model_downloader::zh_en_spec() }
+}
 
 /// Cached recognizer —— first transcribe loads it, subsequent ones reuse.
 static RECOGNIZER: Lazy<Mutex<Option<OnlineRecognizer>>> = Lazy::new(|| Mutex::new(None));
@@ -57,80 +79,49 @@ pub fn current_state() -> Option<ModelState> {
 
 fn models_dir() -> Result<PathBuf> {
     let home = std::env::var_os("HOME").ok_or_else(|| anyhow!("HOME not set"))?;
-    Ok(PathBuf::from(home).join(".mouseclaw/models").join(MODEL_DIR))
+    Ok(PathBuf::from(home).join(".mouseclaw/models").join(active_model_dir()))
 }
 
-/// True iff all 4 required files exist under ~/.mouseclaw/models/sherpa-zh-en/
-pub fn is_ready() -> bool {
-    let dir = match models_dir() { Ok(d) => d, Err(_) => return false };
-    MODEL_FILES.iter().all(|f| dir.join(f).exists())
-}
+/// True iff active 语言模型的所有文件齐了（字节校验由 ModelSpec::is_ready 做）
+pub fn is_ready() -> bool { active_spec().is_ready() }
 
-/// 启动时调一次：
-///   1. 已就绪 → 直接 Ready
-///   2. App bundle 里有打包模型 → 同步拷贝到 ~/.mouseclaw/models/sherpa-zh-en/
-///      ≈ 几百 ms 文件复制，instant Ready，**用户首启就能说话**
-///   3. 都没有（dev `cargo run` 或第一次升级）→ 后台 curl 下载（180MB · 几分钟）
-pub fn kick_off_download_if_missing() {
-    if is_ready() {
+/// 启动时调一次 (v0.4.0)：
+///   1. active 语言模型已就绪 → Ready，跳过
+///   2. App bundle 里仍有打包中文模型（dev / 老 DMG）→ seed 兜底
+///   3. 都没有 → 后台 `model_downloader::download(active_spec())`
+pub fn kick_off_download_if_missing(app: AppHandle) {
+    let spec = active_spec();
+    let was_ready = spec.is_ready();
+    if was_ready {
         *DOWNLOAD_STATE.lock().unwrap() = Some(ModelState::Ready);
-        return;
+    } else {
+        // dev / 老 DMG bundle 兜底（仅中文 —— 英文模型从来没塞过 bundle）
+        if !is_en() && try_seed_from_bundle().unwrap_or(false) && spec.is_ready() {
+            *DOWNLOAD_STATE.lock().unwrap() = Some(ModelState::Ready);
+            println!("[mouseclaw] 🎤 sherpa zh-en 从 bundle seed");
+        } else {
+            *DOWNLOAD_STATE.lock().unwrap() = Some(ModelState::Downloading);
+            println!("[mouseclaw] 🎤 {} 后台下载", spec.display);
+        }
     }
-    // v0.3 · App bundle 兜底 —— DMG 里打包了完整模型，第一次启动直接拷贝
-    if try_seed_from_bundle().unwrap_or(false) {
-        *DOWNLOAD_STATE.lock().unwrap() = Some(ModelState::Ready);
-        println!("[mouseclaw] 🎤 sherpa zh-en 从 bundle seed 到 ~/.mouseclaw/models/sherpa-zh-en/");
-        return;
-    }
-    *DOWNLOAD_STATE.lock().unwrap() = Some(ModelState::Downloading);
-    println!("[mouseclaw] 🎤 sherpa zh-en 模型缺失（dev 模式？），后台下载 (~180MB total)");
 
-    std::thread::spawn(|| {
-        let dir = match models_dir() {
-            Ok(d) => d,
+    // 永远走一遍 download() —— ready 时它会立即 emit "ok"（给 DownloaderView），
+    // 不 ready 时正常跑下载链路。两路统一减少 bug。
+    let display = spec.display.to_string();
+    tauri::async_runtime::spawn(async move {
+        match crate::model_downloader::download(app, spec).await {
+            Ok(()) => {
+                *DOWNLOAD_STATE.lock().unwrap() = Some(ModelState::Ready);
+                if !was_ready {
+                    println!("[mouseclaw] 🎤 {display} 下载完成");
+                }
+            }
             Err(e) => {
-                *DOWNLOAD_STATE.lock().unwrap() = Some(ModelState::Failed(e.to_string()));
-                return;
-            }
-        };
-        if let Err(e) = std::fs::create_dir_all(&dir) {
-            *DOWNLOAD_STATE.lock().unwrap() =
-                Some(ModelState::Failed(format!("mkdir: {e}")));
-            return;
-        }
-        for file in MODEL_FILES {
-            let dest = dir.join(file);
-            if dest.exists() { continue; }
-            let tmp  = dest.with_extension("part");
-            let url  = format!("{MODEL_HF_BASE}/{file}");
-            println!("[mouseclaw] curl {url}");
-            let status = std::process::Command::new("curl")
-                .args(["-fL", "--progress-bar", "-o"])
-                .arg(&tmp)
-                .arg(&url)
-                .status();
-            match status {
-                Ok(s) if s.success() => {
-                    if let Err(e) = std::fs::rename(&tmp, &dest) {
-                        *DOWNLOAD_STATE.lock().unwrap() =
-                            Some(ModelState::Failed(format!("rename {file}: {e}")));
-                        return;
-                    }
-                }
-                Ok(s) => {
-                    *DOWNLOAD_STATE.lock().unwrap() =
-                        Some(ModelState::Failed(format!("curl {file} exited {s}")));
-                    return;
-                }
-                Err(e) => {
-                    *DOWNLOAD_STATE.lock().unwrap() =
-                        Some(ModelState::Failed(format!("curl {file} spawn: {e}")));
-                    return;
-                }
+                *DOWNLOAD_STATE.lock().unwrap() =
+                    Some(ModelState::Failed(e.to_string()));
+                eprintln!("[mouseclaw] 🎤 {display} 下载失败: {e:#}");
             }
         }
-        println!("[mouseclaw] 🎤 sherpa zh-en download complete → {}", dir.display());
-        *DOWNLOAD_STATE.lock().unwrap() = Some(ModelState::Ready);
     });
 }
 
@@ -142,23 +133,24 @@ fn ensure_loaded() -> Result<()> {
     let dir = models_dir()?;
     if !is_ready() {
         return Err(anyhow!(
-            "sherpa zh-en model not ready under {} — wait for download",
+            "sherpa model not ready under {} — wait for download",
             dir.display()
         ));
     }
 
+    let files = active_model_files();
     let mut config = OnlineRecognizerConfig::default();
     config.model_config.transducer.encoder = Some(
-        dir.join(MODEL_FILES[0]).to_string_lossy().into_owned(),
+        dir.join(files[0]).to_string_lossy().into_owned(),
     );
     config.model_config.transducer.decoder = Some(
-        dir.join(MODEL_FILES[1]).to_string_lossy().into_owned(),
+        dir.join(files[1]).to_string_lossy().into_owned(),
     );
     config.model_config.transducer.joiner = Some(
-        dir.join(MODEL_FILES[2]).to_string_lossy().into_owned(),
+        dir.join(files[2]).to_string_lossy().into_owned(),
     );
     config.model_config.tokens = Some(
-        dir.join(MODEL_FILES[3]).to_string_lossy().into_owned(),
+        dir.join(files[3]).to_string_lossy().into_owned(),
     );
     // v0.3.1 · push-to-talk 模式不要 endpoint 自动切段 —— 用户主动控制开始/结束
     // 如果开 endpoint，sherpa 在停顿时会自动 commit 一段并 reset stream，
@@ -239,12 +231,17 @@ fn bundle_resource_dir() -> Option<PathBuf> {
     if MODEL_FILES.iter().all(|f| bundled.join(f).exists()) {
         return Some(bundled);
     }
-    // dev fallback —— 仓库里 src-tauri/resources/sherpa-zh-en/
-    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("resources")
-        .join(MODEL_DIR);
-    if MODEL_FILES.iter().all(|f| dev.join(f).exists()) {
-        return Some(dev);
+    // dev fallback —— 仅 debug build。release 二进制不走，否则开发机上 release
+    // DMG 会读到 CARGO_MANIFEST_DIR/resources/ 里残留的开发期模型，导致下载链路
+    // 永远不被触发（用户实测 2026-05-19）
+    #[cfg(debug_assertions)]
+    {
+        let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join(MODEL_DIR);
+        if MODEL_FILES.iter().all(|f| dev.join(f).exists()) {
+            return Some(dev);
+        }
     }
     None
 }

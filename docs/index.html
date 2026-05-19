@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>MouseClaw 🦞 — A pixel-art desktop AI that lives where your cursor is</title>
-<meta name="description" content="Hold a shortcut, speak, release. MouseClaw screenshots + transcribes + asks your favorite AI CLI. Voice IME, clipboard history, computer use — all in 5MB." />
+<meta name="description" content="A pixel-art pet that lives in your screen corner. Hold a shortcut, speak, and it screenshots + asks your favorite AI to do the thing. Voice typing in any input box. 100% local. Open source." />
 <meta property="og:title" content="MouseClaw 🦞" />
 <meta property="og:description" content="A pixel-art desktop AI that lives where your cursor is." />
 <meta property="og:image" content="https://edwin-hao-ai.github.io/MouseClaw/assets/hero.png" />
@@ -179,8 +179,8 @@
 
 <!-- ───────── Hero ───────── -->
 <section class="hero">
-  <span class="badge" data-lang="en">v0.1.23 · macOS · pre-1.0</span>
-  <span class="badge" data-lang="zh">v0.1.23 · macOS · 内测中</span>
+  <span class="badge" data-lang="en">✨ 100% local · open source · free forever</span>
+  <span class="badge" data-lang="zh">✨ 100% 本地 · 开源 · 永久免费</span>
 
   <h1 data-lang="en">
     A pixel pet AI<br/>that lives where<br/>your <span class="pink">cursor is</span>.
@@ -207,7 +207,7 @@
       <span>★ GitHub</span>
     </a>
   </div>
-  <p class="version" id="version-line">v0.1.25 · Apple Silicon · ~60 MB · notarized</p>
+  <p class="version" id="version-line"><span data-lang="en">v0.4 · macOS · Apple Silicon · Developer-ID signed</span><span data-lang="zh">v0.4 · macOS · Apple Silicon · 开发者签名</span></p>
 
   <video id="demo-video" src="assets/demo-en.mp4" autoplay muted loop playsinline poster="assets/hero.png"></video>
 </section>
@@ -230,8 +230,8 @@
       <h3 data-lang="en">Voice IME</h3>
       <h3 data-lang="zh">语音输入法</h3>
       <kbd>hold fn</kbd>
-      <p data-lang="en">Whisper transcription typed directly at your cursor. No AI call, no latency. Configurable trigger key.</p>
-      <p data-lang="zh">Whisper 转写 → 直接写到你光标位置。不调 AI，不延迟。触发键可改。</p>
+      <p data-lang="en">100% local sherpa-onnx transcription typed at your cursor. Chinese + English, no IME switching, no cloud.</p>
+      <p data-lang="zh">本地 sherpa-onnx 流式识别 → 直接打到光标。中英文混合，不切输入法，不上云。</p>
     </div>
     <div class="mode-card">
       <div class="ico">📋</div>
@@ -241,6 +241,102 @@
       <p data-lang="en">Everything you copied — searchable, pin-able, encrypted. Drag out, paste back, or right-click for more.</p>
       <p data-lang="zh">所有复制过的内容 — 可搜、可标星、加密保存。拖出、粘回、右键更多。</p>
     </div>
+  </div>
+</section>
+
+<!-- ───────── 6 款桌宠 ───────── -->
+<section style="padding: 60px 0;">
+  <h2 class="section-title" data-lang="en">Pick your mouse 🐭</h2>
+  <h2 class="section-title" data-lang="zh">挑一只老鼠陪你🐭</h2>
+  <p style="text-align:center; color: var(--muted); max-width: 640px; margin: 0 auto 36px; font-size: 16px;">
+    <span data-lang="en">6 pixel-art skins. Switch anytime from the pet menu.</span>
+    <span data-lang="zh">6 款像素风皮肤。点桌宠菜单随时换。</span>
+  </p>
+  <div id="skin-lineup" style="display:grid; grid-template-columns: repeat(6, 1fr); gap: 18px; max-width: 1100px; margin: 0 auto; padding: 0 24px;"></div>
+</section>
+
+<!-- ───────── 三个功能详细教程 ───────── -->
+<section style="background: linear-gradient(180deg, var(--bg) 0%, #f3eee5 100%); padding: 60px 0 80px;">
+  <h2 class="section-title" data-lang="en">How to actually use it</h2>
+  <h2 class="section-title" data-lang="zh">具体怎么用</h2>
+
+  <!-- 用法 1 · AI 召唤 -->
+  <div style="max-width: 920px; margin: 0 auto 48px; padding: 0 24px;">
+    <h3 style="font-size: 28px; margin: 0 0 14px;"><span style="font-size: 32px;">🦞</span> <span data-lang="en">Summon the AI</span><span data-lang="zh">召唤 AI</span></h3>
+    <ol style="font-size: 17px; line-height: 1.8; padding-left: 24px;">
+      <li data-lang="en">Press and hold <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>Space</kbd> (you can change it during setup)</li>
+      <li data-lang="en">Speak naturally — "summarize this page in three sentences", "draft a reply to my boss about taking the weekend off", "explain this error message"</li>
+      <li data-lang="en">Let go. Your speech is recognized locally, your screen is captured, and the AI streams its reply into a speech bubble next to the pet</li>
+      <li data-lang="en">If the AI suggests a piece of text, you can tell it to type that into your current cursor position — no copy-paste needed</li>
+      <li data-lang="zh">按住 <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>空格</kbd>（首次启动时可以改）</li>
+      <li data-lang="zh">说话就行 —— "三句话总结这个页面"、"帮我婉拒老板加班"、"这个报错什么意思"</li>
+      <li data-lang="zh">松开。你说的话在本地识别完，AI 看到你屏幕上的内容，回复就流到桌宠头顶的气泡里</li>
+      <li data-lang="zh">如果你觉得 AI 的回答可以直接用，让它帮你打到光标位置 —— 不用复制粘贴</li>
+    </ol>
+    <p style="background: var(--pink-soft); padding: 12px 16px; border-left: 3px solid var(--pink); border-radius: 0 8px 8px 0; margin-top: 14px; font-size: 14px;">
+      <span data-lang="en">💡 Tip: hold the shortcut + drag left mouse to draw a circle on screen. The AI sees your highlight baked into the screenshot.</span>
+      <span data-lang="zh">💡 小技巧：按住快捷键时按左键拖动 → 屏幕上画粉红圈圈 → AI 看到的截图带你的高亮。圈个报错让它解释，圈个网页区域让它总结。</span>
+    </p>
+  </div>
+
+  <!-- 用法 2 · 语音输入法 -->
+  <div style="max-width: 920px; margin: 0 auto 48px; padding: 0 24px;">
+    <h3 style="font-size: 28px; margin: 0 0 14px;"><span style="font-size: 32px;">🎙</span> <span data-lang="en">Type with your voice</span><span data-lang="zh">用嘴打字</span></h3>
+    <ol style="font-size: 17px; line-height: 1.8; padding-left: 24px;">
+      <li data-lang="en">Click into any input box (a Slack message, a search bar, a code editor, an email reply)</li>
+      <li data-lang="en">Press and hold <kbd>fn</kbd> (the function key, bottom-left of most Mac keyboards) — you can switch this to ⌥ / ⌃ / right-shift if you don't have <kbd>fn</kbd></li>
+      <li data-lang="en">Speak. Characters appear in the input box in real-time as you talk. Punctuation gets added automatically</li>
+      <li data-lang="en">Let go of <kbd>fn</kbd>. The text stays. Use it like any other typed text — backspace, copy, send</li>
+      <li data-lang="zh">把光标放到任何输入框里（微信、搜索、邮件、代码编辑器都行）</li>
+      <li data-lang="zh">按住 <kbd>fn</kbd> 键（Mac 键盘左下角那个）—— 没 <kbd>fn</kbd> 键可以改成 ⌥/⌃/右 shift</li>
+      <li data-lang="zh">说话。字一边说一边出现在光标位置。中英文混合可以、标点自动加</li>
+      <li data-lang="zh">松开 <kbd>fn</kbd>。字就留在那。和你手打的字一样，可以删、可以发</li>
+    </ol>
+    <p style="background: #e8f4fe; padding: 12px 16px; border-left: 3px solid #5b8def; border-radius: 0 8px 8px 0; margin-top: 14px; font-size: 14px;">
+      <span data-lang="en">💡 Tip: works in Chinese, English, or mixed. Try saying "今晚 6 点半 dinner together?" — both languages come out right.</span>
+      <span data-lang="zh">💡 小技巧：中英文混合识别。试试说"今晚 6 点半 dinner 吗"—— 中英文都出来对的。不用切输入法。</span>
+    </p>
+  </div>
+
+  <!-- 用法 3 · 喂桌宠 -->
+  <div style="max-width: 920px; margin: 0 auto 48px; padding: 0 24px;">
+    <h3 style="font-size: 28px; margin: 0 0 14px;"><span style="font-size: 32px;">🍽</span> <span data-lang="en">Feed it a file</span><span data-lang="zh">喂它一份文件</span></h3>
+    <ol style="font-size: 17px; line-height: 1.8; padding-left: 24px;">
+      <li data-lang="en">Find a file in Finder — a PDF, a screenshot, a web page saved as HTML, a code file, even a Word doc</li>
+      <li data-lang="en">Drag it onto the pet (the pet's mouth opens to "eat" it). You'll see "🍽 Eaten: filename.pdf" appear above the pet</li>
+      <li data-lang="en">Now talk to the pet — "summarize in three sentences", "what's the conclusion?", "is there anything I missed?". The AI reads the file and answers</li>
+      <li data-lang="zh">在 Finder 找一份文件 —— PDF / 截图 / 网页 / 代码 / Word 文档都行</li>
+      <li data-lang="zh">拖到桌宠身上（老鼠会张嘴吞下）。桌宠头顶气泡显示 "🍽 已吃下：文件名.pdf"</li>
+      <li data-lang="zh">然后就跟它说话 —— "三句话总结"、"重点是什么"、"我漏看了什么"。AI 读完文件再回你</li>
+    </ol>
+    <p style="background: var(--green-soft); padding: 12px 16px; border-left: 3px solid var(--green); border-radius: 0 8px 8px 0; margin-top: 14px; font-size: 14px;">
+      <span data-lang="en">💡 Tip: drop multiple files at once. The pet eats them all and answers based on everything.</span>
+      <span data-lang="zh">💡 小技巧：一次拖多个文件也行，老鼠全吃下，AI 综合所有文件回答你。</span>
+    </p>
+  </div>
+
+  <!-- 用法 4 · 历史会话 -->
+  <div style="max-width: 920px; margin: 0 auto 48px; padding: 0 24px;">
+    <h3 style="font-size: 28px; margin: 0 0 14px;"><span style="font-size: 32px;">📜</span> <span data-lang="en">Continue a past chat</span><span data-lang="zh">接着上次的话题聊</span></h3>
+    <ol style="font-size: 17px; line-height: 1.8; padding-left: 24px;">
+      <li data-lang="en">Click the menu bar mouse icon → "View history". Or click the pet → "History"</li>
+      <li data-lang="en">Browse past conversations — they're searchable by what you asked</li>
+      <li data-lang="en">Found the one you want to revive? Click "💬 Continue this topic". A panel opens with the conversation context already loaded</li>
+      <li data-lang="en">Type or speak your follow-up. The AI remembers everything from before</li>
+      <li data-lang="zh">点菜单栏的老鼠图标 → "查看历史记录"。也可以点桌宠 → "历史记录"</li>
+      <li data-lang="zh">翻找以前的对话 —— 都记着，可以搜索</li>
+      <li data-lang="zh">找到想接着聊的那条？点 "💬 继续这个话题"。会开一个新窗口，AI 已经知道你们之前聊了啥</li>
+      <li data-lang="zh">用嘴或者打字接着问。它记得所有上下文，不用重复说</li>
+    </ol>
+  </div>
+
+  <!-- 用法 5 · 桌宠跟随光标 -->
+  <div style="max-width: 920px; margin: 0 auto; padding: 0 24px;">
+    <h3 style="font-size: 28px; margin: 0 0 14px;"><span style="font-size: 32px;">🦞</span> <span data-lang="en">Pet follows your cursor</span><span data-lang="zh">桌宠跟着光标走</span></h3>
+    <p style="font-size: 17px; line-height: 1.8;">
+      <span data-lang="en">By default the pet sleeps in the corner. But during AI summon (only AI summon — not voice typing), the pet follows your mouse around. You see it land on whatever you're pointing at while you talk. It looks alive. Toggle in the tray menu.</span>
+      <span data-lang="zh">默认情况下老鼠在屏幕角落睡觉。但当你召唤 AI 时（只有 AI 召唤、不是语音输入），老鼠会跟着你鼠标走 —— 你指哪它就过去哪。看起来像活的。托盘菜单里可以开关。</span>
+    </p>
   </div>
 </section>
 
@@ -282,6 +378,44 @@
   </div>
 </section>
 
+<!-- ───────── v0.4 新功能 ───────── -->
+<section>
+  <h2 class="section-title" data-lang="en">What's new in v0.4</h2>
+  <h2 class="section-title" data-lang="zh">v0.4 新功能（2026-05）</h2>
+  <div class="feat">
+    <div class="feat-card">
+      <span class="ico">⚡</span><b data-lang="en">Install in 30 seconds.</b><b data-lang="zh">30 秒装好。</b>
+      <p data-lang="en">Tiny installer, one drag to Applications. First-time onboarding walks you through everything — pick a shortcut, an AI, and a pet skin.</p>
+      <p data-lang="zh">超小安装包，拖一下到应用程序就完事。首次启动桌宠带你 30 秒搞定快捷键、AI 后端、皮肤选择。</p>
+    </div>
+    <div class="feat-card">
+      <span class="ico">🌐</span><b data-lang="en">Mandarin + English.</b><b data-lang="zh">中文 · 英文 · 都能听。</b>
+      <p data-lang="en">Onboarding asks which language you mostly speak. The pet learns to listen in your language. Mix Chinese and English in one sentence — it gets it right.</p>
+      <p data-lang="zh">首次启动选你的常用语言。老鼠就听这种语言。一句话里中英混着说也行 —— 它都能识别对。</p>
+    </div>
+    <div class="feat-card">
+      <span class="ico">🇨🇳</span><b data-lang="en">No VPN. No subscription.</b><b data-lang="zh">不用 VPN · 不用订阅。</b>
+      <p data-lang="en">Auto-routes to the fastest source for your location. Crash, sleep, or disconnect mid-setup — it just picks up where it left off.</p>
+      <p data-lang="zh">自动走最快的下载源 —— 国内用户开箱即用。中途睡机器、断网、关电脑都没事，下次启动接着来。</p>
+    </div>
+    <div class="feat-card">
+      <span class="ico">🎓</span><b data-lang="en">First-run tour.</b><b data-lang="zh">首次使用引导。</b>
+      <p data-lang="en">After models download, pet pops up with a 5-step walkthrough. "📖 Teach me" in pet menu to redo anytime.</p>
+      <p data-lang="zh">模型下完桌宠主动 5 步教学。PetMenu「📖 教我用」可重看。</p>
+    </div>
+    <div class="feat-card">
+      <span class="ico">✏️</span><b data-lang="en">Voice confirmation.</b><b data-lang="zh">语音确认编辑。</b>
+      <p data-lang="en">3-second countdown after transcription. <kbd>Esc</kbd> cancel · <kbd>↵</kbd> send · click to edit. Stops misrecognized voice burning tokens.</p>
+      <p data-lang="zh">转写完 3 秒倒数确认。<kbd>Esc</kbd> 取消 · <kbd>↵</kbd> 立即 · 点气泡编辑。防止误识别浪费 token。</p>
+    </div>
+    <div class="feat-card">
+      <span class="ico">🍽</span><b data-lang="en">Feed files.</b><b data-lang="zh">拖文件喂桌宠。</b>
+      <p data-lang="en">Drag PDF / web page / screenshot / code onto the pet. AI reads the file with your follow-up question.</p>
+      <p data-lang="zh">PDF / 网页 / 截图 / 代码拖到老鼠嘴里 → AI 读懂文件 + 听你的提问。</p>
+    </div>
+  </div>
+</section>
+
 <!-- ───────── Privacy ───────── -->
 <section>
   <h2 class="section-title" data-lang="en">Privacy by default.</h2>
@@ -318,14 +452,14 @@
   <ol data-lang="en" style="font-size:15px; line-height:1.8;">
     <li>Click the big <b>Download</b> button above</li>
     <li>Open the <code>.dmg</code>, drag MouseClaw to Applications</li>
-    <li>First launch: <i>right-click</i> → "Open" → "Open" again (Gatekeeper, since not notarized yet)</li>
+    <li>First launch: <i>right-click</i> → "Open" → "Open" again (one-time macOS check)</li>
     <li>Walk through 5-step onboarding (pick shortcut, AI backend, skin, voice key, grant permissions)</li>
     <li>Hold <code>⌘⇧Space</code> anywhere and speak — try "what's on my screen"</li>
   </ol>
   <ol data-lang="zh" style="font-size:15px; line-height:1.8;">
     <li>点上面那个大大的 <b>下载</b> 按钮</li>
     <li>打开 <code>.dmg</code>，把 MouseClaw 拖到 Applications</li>
-    <li>第一次启动：<i>右键</i> → 「打开」→ 再点「打开」（公证还没做，先过 Gatekeeper）</li>
+    <li>第一次启动：<i>右键</i> → 「打开」→ 再点「打开」（macOS 一次性检查）</li>
     <li>走 5 步 Onboarding（选快捷键、AI 后端、皮肤、语音键、给权限）</li>
     <li>在任意 app 按住 <code>⌘⇧Space</code> 说话 — 试一句「看下我屏幕上有啥」</li>
   </ol>
@@ -358,6 +492,70 @@ curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scri
 </footer>
 
 <script>
+  // ===== 6 款桌宠 SVG 渲染 =====
+  function petSVG(skin, size) {
+    const palettes = {
+      classic: { body: "#cfcfcf", shadow: "#8a8a8a", ear: "#ff9bb8" },
+      white:   { body: "#fafafa", shadow: "#c0c0c0", ear: "#ffbcd1" },
+      brown:   { body: "#a87447", shadow: "#6e4a2b", ear: "#e0a585" },
+      ninja:   { body: "#3a3a44", shadow: "#15151c", ear: "#8a8a96", mask: "#0a0a10" },
+      robot:   { body: "#b3c0d4", shadow: "#5a6577", ear: "#7794b8", antenna: "#ff6a6a" },
+      gold:    { body: "#f4c95d", shadow: "#b07e1a", ear: "#ffe28e" }
+    };
+    const p = palettes[skin] || palettes.classic;
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("width", size); svg.setAttribute("height", size);
+    svg.setAttribute("viewBox", "-2 -4 19 18");
+    svg.style.imageRendering = "pixelated"; svg.style.shapeRendering = "crispEdges";
+    function rect(x, y, w, h, fill) {
+      const r = document.createElementNS(ns, "rect");
+      r.setAttribute("x", x); r.setAttribute("y", y);
+      r.setAttribute("width", w); r.setAttribute("height", h);
+      r.setAttribute("fill", fill); svg.appendChild(r);
+    }
+    rect(3, 1, 2, 2, p.body); rect(2, 2, 3, 2, p.body);
+    rect(11, 1, 2, 2, p.body); rect(11, 2, 3, 2, p.body);
+    rect(3, 2, 1, 1, p.ear); rect(12, 2, 1, 1, p.ear);
+    rect(3, 3, 10, 1, p.body); rect(2, 4, 12, 3, p.body);
+    rect(3, 7, 10, 1, p.body); rect(5, 8, 6, 2, "#fff");
+    rect(3, 8, 2, 2, p.body); rect(11, 8, 2, 2, p.body);
+    rect(4, 10, 8, 1, p.body);
+    rect(13, 9, 1, 1, p.shadow); rect(14, 7, 1, 3, p.shadow);
+    rect(5, 5, 1, 2, "#1a1a1a"); rect(10, 5, 1, 2, "#1a1a1a");
+    rect(7, 7, 2, 1, "#d63d6a");
+    rect(4, 11, 2, 1, "#fff"); rect(10, 11, 2, 1, "#fff");
+    if (skin === "ninja") {
+      rect(2, 5, 12, 1, p.mask);
+    } else if (skin === "robot") {
+      rect(8, -1, 1, 2, p.shadow);
+      rect(7, -2, 3, 1, p.antenna);
+    }
+    return svg;
+  }
+  (function() {
+    const lineup = document.getElementById("skin-lineup");
+    if (!lineup) return;
+    const skins = [
+      ["classic", { en: "Classic", zh: "经典灰" }],
+      ["white",   { en: "Snow",    zh: "小白鼠" }],
+      ["brown",   { en: "Field",   zh: "田鼠"   }],
+      ["ninja",   { en: "Ninja",   zh: "忍者"   }],
+      ["robot",   { en: "Robot",   zh: "机械"   }],
+      ["gold",    { en: "Gold",    zh: "金鼠"   }]
+    ];
+    for (const [id, name] of skins) {
+      const card = document.createElement("div");
+      card.style.cssText = "background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px 12px;text-align:center;box-shadow:0 1px 2px rgba(43,38,34,.04);";
+      card.appendChild(petSVG(id, 110));
+      const lbl = document.createElement("div");
+      lbl.style.cssText = "margin-top:10px;font-size:13px;font-weight:600;color:var(--ink);";
+      lbl.innerHTML = '<span data-lang="en">' + name.en + '</span><span data-lang="zh">' + name.zh + '</span>';
+      card.appendChild(lbl);
+      lineup.appendChild(card);
+    }
+  })();
+
   // 语言切换 —— 不刷新页面
   function setLang(lang) {
     document.body.classList.toggle("zh", lang === "zh");
@@ -390,7 +588,13 @@ curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scri
       if (!v) return;
       const line = document.getElementById("version-line");
       const cta  = document.getElementById("download-cta");
-      if (v.latest) line.textContent = `${v.latest} · Apple Silicon · ${v.size_mb ?? "~5"} MB`;
+      // 只显示版本号 + 平台，不显示 MB 数字（避免劣势词）
+      const isZh = document.body.classList.contains("zh");
+      if (v.latest) {
+        line.textContent = isZh
+          ? `${v.latest} · macOS · Apple Silicon · 开发者签名`
+          : `${v.latest} · macOS · Apple Silicon · Developer-ID signed`;
+      }
       if (v.dmg_url) cta.href = v.dmg_url;
     }).catch(() => {});
 </script>

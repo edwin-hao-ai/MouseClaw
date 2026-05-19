@@ -47,6 +47,16 @@ pub enum ViewKind {
         /// false = 最终回复（已确定 mode、可存 history）。
         streaming: bool,
     },
+    /// v0.4.0 · 语音转写完成后的确认阶段 —— 防止误识别浪费 token。
+    /// 3 秒倒数自动发；Esc 取消；Enter 立即发；点击气泡进入编辑模式。
+    #[serde(rename = "voice-confirm")]
+    VoiceConfirm {
+        transcript: String,
+        remaining: u32,
+    },
+    /// v0.4.0 · 首次使用引导 · 5 步流程（欢迎 → 准备网页 → 教召唤 → 教 fn → 庆祝）
+    #[serde(rename = "tour-step")]
+    TourStep { step: u32 },
     Panel {
         #[serde(rename = "sessionId")]
         session_id: u64,

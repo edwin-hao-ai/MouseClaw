@@ -5,7 +5,7 @@
  * a hidden keyboard shortcut (?) to cycle states locally so the UI can be
  * inspected without firing the pipeline.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -38,11 +38,13 @@ function mouseStateFor(view: ViewKind): MouseState {
     case "feed-waiting":     return "feed-wait";    // v0.4 · 文件 hover 在桌宠上：张嘴
     case "feed-listening":   return "feed-digest";  // v0.4 · 已吞文件：消化 + 听问题
     case "thinking":         return "think";
-    case "reply":            return view.streaming ? "think"
+    case "reply":            return view.streaming ? "talk"
                                   : view.mode === "B" ? "write" : "jump";
-    case "panel":            return "think";
+    case "panel":            return "think"; // panel 默认沉默；流式由内部组件单独驱动
     case "mode-b-countdown": return "write";
     case "mode-b-inserting": return "paste"; // v0.1.14: 拎剪贴板 sprite
+    case "voice-confirm":    return "think"; // v0.4.0 转写完确认中
+    case "tour-step":        return "listen"; // v0.4.0 引导桌宠 = 听 sprite，活泼
     case "blocked":          return "block";
   }
 }
@@ -52,6 +54,12 @@ export default function App() {
   const [view, setView] = useState<ViewKind>({ kind: "idle" });
   // session continuation chip — true when current view is part of an ongoing session
   const [continuing, setContinuing] = useState(false);
+  // v0.4.0 · 模型下载状态 —— idle 时模型未就绪自动显示常驻迷你气泡，
+  //   让用户即使没按快捷键也能看到「在下载 / 完成 / 失败」。
+  //   下完后这个气泡自动消失，桌宠回到正常 sleep 状态。
+  const [modelProgress, setModelProgress] = useState<{
+    pct: number; mb_done: number; mb_total: number; phase: string;
+  } | null>(null);
   // 当前桌宠皮肤 —— 启动读 config，运行期托盘换皮可热切换（不重启）
   const [skin, setSkin] = useState<SkinId>(DEFAULT_SKIN);
   // v0.1.27 P2 · 点击桌宠 → 弹出菜单（只在 idle 状态触发）
@@ -66,6 +74,49 @@ export default function App() {
     invoke<string>("get_skin")
       .then((s) => setSkin((s as SkinId) ?? DEFAULT_SKIN))
       .catch(() => { /* 浏览器 dev 模式 invoke 不可用 */ });
+  }, []);
+
+  // v0.4.0 · 监听模型下载进度 —— 聚合 ASR + 标点两条，算总 % 给桌宠 idle 气泡用
+  useEffect(() => {
+    interface PEvent {
+      model_id: string; phase: string;
+      total_done: number; total_expected: number;
+    }
+    const progressMap: Record<string, PEvent> = {};
+    const recompute = () => {
+      const vals = Object.values(progressMap);
+      if (vals.length === 0) { setModelProgress(null); return; }
+      // 任一 phase=error → 显示错误状态
+      // 全部 ok → 隐藏（null）
+      // 否则取最小 % 显示（最慢的那个）
+      const anyErr = vals.some(v => v.phase === "error");
+      const allOk = vals.every(v => v.phase === "ok");
+      if (allOk && !anyErr) { setModelProgress(null); return; }
+      const totalDone = vals.reduce((s, v) => s + v.total_done, 0);
+      const totalExpected = vals.reduce((s, v) => s + v.total_expected, 0);
+      const pct = totalExpected > 0 ? (totalDone / totalExpected * 100) : 0;
+      setModelProgress({
+        pct,
+        mb_done: totalDone / 1024 / 1024,
+        mb_total: totalExpected / 1024 / 1024,
+        phase: anyErr ? "error" : "downloading",
+      });
+    };
+    // 初次拉一次（catch 模型已就绪 / 没事件可听的场景）
+    invoke<PEvent[]>("get_model_status").then(list => {
+      for (const e of list || []) progressMap[e.model_id] = e;
+      recompute();
+    }).catch(() => {});
+
+    let unlisten: (() => void) | null = null;
+    try {
+      const p = listen<PEvent>("model-progress", (e) => {
+        progressMap[e.payload.model_id] = e.payload;
+        recompute();
+      });
+      p.then(fn => { unlisten = fn; }).catch(() => {});
+    } catch {/* dev mode */}
+    return () => { if (unlisten) unlisten(); };
   }, []);
 
 
@@ -109,16 +160,28 @@ export default function App() {
 
   // Global Esc → dismiss immediately (hide window, cancel pending pipeline timers).
   // Skip when typing inside the Panel input (Panel handles its own Esc).
+  // v0.4.0 · voice-confirm 状态下：Esc → voice_confirm_cancel; Enter → voice_confirm_send。
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+      const inInput = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA");
+      if (inInput) return;
+      if (view.kind === "voice-confirm") {
+        if (e.key === "Escape") {
+          invoke("voice_confirm_cancel").catch(() => {});
+          e.preventDefault();
+        } else if (e.key === "Enter") {
+          invoke("voice_confirm_send").catch(() => {});
+          e.preventDefault();
+        }
+        return;
+      }
+      if (e.key !== "Escape") return;
       invoke("dismiss").catch(() => {});
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [view.kind]);
 
   // When view transitions to Panel, tell Rust to pin (cancel pending auto-hide).
   useEffect(() => {
@@ -324,7 +387,7 @@ export default function App() {
 
   return (
     <div className="stage stage-mouse-bubble">
-      <BubbleFor view={view} continuing={continuing} onExpand={handleExpand} onNewSession={handleNewSession} />
+      <BubbleFor view={view} continuing={continuing} onExpand={handleExpand} onNewSession={handleNewSession} modelProgress={modelProgress} />
       {/* Local ack bubble — visible above the pet without going through Rust */}
       {transientAck && (
         <div className="stage-bubble">
@@ -359,10 +422,27 @@ export default function App() {
   );
 }
 
-interface BubbleForProps { view: ViewKind; continuing: boolean; onExpand: () => void; onNewSession: () => void; }
-function BubbleFor({ view, continuing, onExpand, onNewSession }: BubbleForProps) {
+interface BubbleForProps {
+  view: ViewKind; continuing: boolean;
+  onExpand: () => void; onNewSession: () => void;
+  modelProgress: { pct: number; mb_done: number; mb_total: number; phase: string } | null;
+}
+function BubbleFor({ view, continuing, onExpand, onNewSession, modelProgress }: BubbleForProps) {
   switch (view.kind) {
     case "idle":
+      // v0.4.0 · idle 时模型未就绪 → 显示常驻迷你气泡 + 打开下载窗口入口
+      if (modelProgress) {
+        const isErr = modelProgress.phase === "error";
+        const text = isErr
+          ? `🦞 模型下载失败\n点击重试`
+          : `🦞 下载语音模型…\n${modelProgress.mb_done.toFixed(0)}/${modelProgress.mb_total.toFixed(0)} MB · ${modelProgress.pct.toFixed(0)}%`;
+        return (
+          <div onClick={() => invoke("open_downloader_window").catch(() => {})}
+               style={{ cursor: "pointer", pointerEvents: "auto" }}>
+            <Bubble text={text} variant={isErr ? "danger" : "default"} />
+          </div>
+        );
+      }
       return null;
     case "listening":
       // v0.2 · sherpa streaming —— partial transcript flows in as user speaks
@@ -414,6 +494,12 @@ function BubbleFor({ view, continuing, onExpand, onNewSession }: BubbleForProps)
           variant="warn"
         />
       );
+    case "voice-confirm":
+      // v0.4.0 · 转写完 3 秒倒数确认。点气泡 = 进入编辑模式。
+      return <VoiceConfirmBubble transcript={view.transcript} remaining={view.remaining} />;
+    case "tour-step":
+      // v0.4.0 · 首次使用引导 5 步流程
+      return <TourBubble step={view.step} />;
     case "mode-b-inserting":
       return <Bubble text={`正在写入「${view.insertText}」`} variant="warn" />;
     case "blocked": {
@@ -441,4 +527,261 @@ function BubbleFor({ view, continuing, onExpand, onNewSession }: BubbleForProps)
     default:
       return null;
   }
+}
+
+
+// v0.4.0 → v0.3.11 重构 · 语音转写确认气泡
+//   单一形态：转写文本一上来就装进可编辑 textarea，用户直接 ↵ 发 / Esc 取消 / 改字。
+//   倒数 N 秒到了自动发送（Rust 端管，前端只显示数字）。
+//   之前"先气泡 → 点一下进编辑"两段式被用户反馈"修改框很乱" → 砍掉。
+interface VoiceConfirmBubbleProps { transcript: string; remaining: number; }
+function VoiceConfirmBubble({ transcript, remaining }: VoiceConfirmBubbleProps) {
+  const [text, setText] = useState(transcript);
+  const dirtyRef = useRef(false); // 用户改过 → 不再被 Rust 周期 emit 覆盖
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  // remaining === 99 是 Rust 端 HOLD 状态的哨兵 —— 显示"编辑中"，不再倒数
+  const holding = remaining >= 99;
+
+  useEffect(() => {
+    if (!dirtyRef.current) setText(transcript);
+  }, [transcript]);
+
+  // mount 后自动 focus + 光标移到末尾（让用户能直接接着说补充）
+  useEffect(() => {
+    const el = taRef.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, []);
+
+  const cancel = () => invoke("voice_confirm_cancel").catch(() => {});
+  const sendNow = () => {
+    const trimmed = text.trim();
+    if (dirtyRef.current && trimmed.length > 0) {
+      invoke("voice_confirm_edit", { text: trimmed }).catch(() => {});
+    } else {
+      invoke("voice_confirm_send").catch(() => {});
+    }
+  };
+  const onChange = (val: string) => {
+    if (!dirtyRef.current) {
+      dirtyRef.current = true;
+      // 第一次按键 → 通知 Rust 暂停倒数（HOLD），无限等用户改完
+      invoke("voice_confirm_hold", { text: val }).catch(() => {});
+    }
+    setText(val);
+  };
+
+  return (
+    <div
+      style={{
+        background: "#fff",
+        border: "1px solid #e8d8dc",
+        borderRadius: 18,
+        padding: "10px 12px 8px",
+        boxShadow: "0 8px 32px rgba(43,38,34,.18)",
+        width: 282, // overlay 是 320 宽，留 ~38 边距给阴影 + 安全区
+        boxSizing: "border-box",
+        pointerEvents: "auto",
+        fontFamily: "-apple-system, 'PingFang SC', system-ui, sans-serif",
+      }}
+    >
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        fontSize: 11, color: "#8a8178", marginBottom: 6, gap: 8,
+      }}>
+        <span style={{ whiteSpace: "nowrap" }}>🎙 听到（可改）</span>
+        <span style={{
+          color: holding ? "#1a6b3a" : "#d63d6a", fontWeight: 600,
+          whiteSpace: "nowrap",
+        }}>
+          {holding ? "✏️ 编辑中…" : `${remaining}s 自动发`}
+        </span>
+      </div>
+      <textarea
+        ref={taRef}
+        value={text}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            sendNow();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            cancel();
+          }
+        }}
+        rows={Math.min(5, Math.max(2, text.split("\n").length + 1))}
+        style={{
+          width: "100%",
+          boxSizing: "border-box",
+          border: "1px solid #ece6dd",
+          borderRadius: 8,
+          padding: "6px 8px",
+          font: "inherit",
+          fontSize: 13,
+          lineHeight: 1.5,
+          resize: "none",
+          outline: "none",
+          background: "#fafaf7",
+          color: "#2b2622",
+        }}
+      />
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        marginTop: 6, gap: 6,
+      }}>
+        <span style={{ fontSize: 10, color: "#a8a098" }}>↵ 发 · Esc 取消</span>
+        <div style={{ display: "flex", gap: 6 }}>
+          <button
+            type="button"
+            onClick={cancel}
+            style={{
+              border: "1px solid #ece6dd", background: "#f7f2e8", color: "#5a5249",
+              padding: "3px 10px", borderRadius: 999, fontSize: 11, cursor: "pointer",
+            }}
+          >取消</button>
+          <button
+            type="button"
+            onClick={sendNow}
+            style={{
+              border: 0, background: "#e8638c", color: "#fff",
+              padding: "3px 12px", borderRadius: 999, fontSize: 11, fontWeight: 600, cursor: "pointer",
+            }}
+          >发送 ↵</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// v0.4.0 · 首次使用引导气泡 · 5 步流程
+//   1 欢迎 · 2 准备网页 · 3 教 ⌘⇧Space · 4 教 fn · 5 庆祝
+//   每步用户可以按按钮 advance 或 退出引导。Step 3/4 监听用户实际完成对话自动 advance。
+interface TourBubbleProps { step: number; }
+function TourBubble({ step }: TourBubbleProps) {
+  const advance = (next: number) => invoke("tour_advance", { step: next }).catch(() => {});
+  const skip = () => invoke("tour_skip").catch(() => {});
+
+  const ChipHeader = ({ children }: { children: React.ReactNode }) => (
+    <div style={{
+      display: "inline-block",
+      background: "#f3eee5", color: "#8a8178",
+      fontSize: 11, padding: "2px 10px", borderRadius: 999,
+      marginBottom: 8, letterSpacing: "0.03em",
+    }}>{children}</div>
+  );
+  const Btn = ({ primary, onClick, children }: { primary?: boolean; onClick: () => void; children: React.ReactNode }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        font: "inherit", fontSize: 13, padding: "6px 14px",
+        borderRadius: 999, cursor: "pointer",
+        border: primary ? 0 : "1px solid #ece6dd",
+        background: primary ? "#e8638c" : "#f0eae0",
+        color: primary ? "#fff" : "#2b2622",
+        fontWeight: primary ? 600 : 500,
+      }}
+    >{children}</button>
+  );
+
+  const wrapStyle = {
+    background: "#fff", border: "2px solid #e8d8dc",
+    borderRadius: 22, padding: "16px 22px",
+    fontSize: 14, maxWidth: 360, lineHeight: 1.5,
+    boxShadow: "0 8px 32px rgba(43,38,34,.18)",
+    pointerEvents: "auto" as const,
+    fontFamily: "-apple-system, 'PingFang SC', system-ui, sans-serif",
+    color: "#2b2622",
+  };
+  const kbd = (k: string) => (
+    <kbd style={{
+      background: "#f0eae0", border: "1px solid #ddd", borderBottomWidth: 2,
+      padding: "1px 6px", borderRadius: 4,
+      fontFamily: "ui-monospace, Menlo, monospace", fontSize: 12,
+    }}>{k}</kbd>
+  );
+
+  if (step === 1) {
+    return (
+      <div style={wrapStyle}>
+        <ChipHeader>🎓 第 1 步 / 共 5 步</ChipHeader>
+        <strong style={{ color: "#d63d6a" }}>下载完啦！</strong> 我能听见你说话，<br />
+        帮你召唤本地 AI、做语音输入。<br />
+        <span style={{ fontSize: 13, color: "#8a8178", display: "block", marginTop: 6 }}>
+          花 60 秒教你怎么用？
+        </span>
+        <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
+          <Btn primary onClick={() => advance(2)}>✨ 好啊</Btn>
+          <Btn onClick={skip}>下次再说</Btn>
+        </div>
+      </div>
+    );
+  }
+  if (step === 2) {
+    return (
+      <div style={wrapStyle}>
+        <ChipHeader>🎓 第 2 步 / 5 · 准备目标</ChipHeader>
+        随便<strong style={{ color: "#d63d6a" }}>打开一个网页</strong>，比如<br />
+        公众号文章 / 维基 / 新闻。<br />
+        <span style={{ fontSize: 13, color: "#8a8178", display: "block", marginTop: 6 }}>
+          打开后回来这里继续 ↓
+        </span>
+        <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
+          <Btn primary onClick={() => advance(3)}>✓ 已经打开了</Btn>
+          <Btn onClick={skip}>退出引导</Btn>
+        </div>
+      </div>
+    );
+  }
+  if (step === 3) {
+    return (
+      <div style={wrapStyle}>
+        <ChipHeader>🎓 第 3 步 / 5 · 召唤 AI</ChipHeader>
+        按住 {kbd("⌘")} {kbd("⇧")} {kbd("Space")} 然后说：<br />
+        <em style={{
+          background: "#e6f4ec", padding: "4px 10px", borderRadius: 6,
+          display: "inline-block", margin: "6px 0",
+        }}>"用三句话总结这个页面"</em><br />
+        <span style={{ fontSize: 12, color: "#8a8178", display: "block", marginTop: 4 }}>
+          松开快捷键 = 我开始干活
+        </span>
+        <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
+          <Btn primary onClick={() => advance(4)}>✓ 我学会了 → 下一步</Btn>
+          <Btn onClick={skip}>退出</Btn>
+        </div>
+      </div>
+    );
+  }
+  if (step === 4) {
+    return (
+      <div style={wrapStyle}>
+        <ChipHeader>🎓 第 4 步 / 5 · 语音打字</ChipHeader>
+        再教你<strong style={{ color: "#d63d6a" }}>一招</strong> —— 任何输入框里<br />
+        长按 {kbd("fn")} 说话，字会打到光标位置。<br />
+        <span style={{ fontSize: 12, color: "#8a8178", display: "block", marginTop: 6 }}>
+          试试在 Spotlight ({kbd("⌘")}Space) 或微信里<br />
+          长按 fn 说"今天天气真好"
+        </span>
+        <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
+          <Btn primary onClick={() => advance(5)}>✓ 学会了 → 完成</Btn>
+          <Btn onClick={skip}>退出</Btn>
+        </div>
+      </div>
+    );
+  }
+  // step >= 5 庆祝
+  return (
+    <div style={{ ...wrapStyle, background: "#e6f4ec", borderColor: "#b8e8c3" }}>
+      <strong style={{ color: "#1a6b3a", fontSize: 16 }}>🎉 你学会了！</strong><br />
+      以后任何时候按 {kbd("⌘")} {kbd("⇧")} {kbd("Space")} 就能召唤我。<br />
+      <span style={{ fontSize: 12, color: "#5a5249", marginTop: 8, display: "block" }}>
+        🍽 拖文件给我 = 喂我读 · 🦞 点我头开菜单
+      </span>
+      <span style={{ fontSize: 11, color: "#7a7167", marginTop: 6, display: "block" }}>
+        （5 秒后自动消失 · 点桌宠菜单「📖 教我用」可重看）
+      </span>
+    </div>
+  );
 }

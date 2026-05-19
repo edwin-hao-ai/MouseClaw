@@ -115,6 +115,14 @@ export function PetMenu({ open, onClose, onFeed, onNap }: PetMenuProps) {
         <span className="pet-menu-ico">📜</span>
         <span className="pet-menu-label">{t("petmenu.history")}</span>
       </button>
+      {/* v0.4.0 · 「📖 教我用」 —— 用户忘了功能可以随时重看引导 */}
+      <button
+        className="pet-menu-item" role="menuitem" type="button"
+        onClick={() => { invoke("tour_start").catch(() => {}); onClose(); }}
+      >
+        <span className="pet-menu-ico">📖</span>
+        <span className="pet-menu-label">教我用 MouseClaw</span>
+      </button>
 
       <div className="pet-menu-divider" />
 

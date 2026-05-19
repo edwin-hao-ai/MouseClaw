@@ -61,16 +61,36 @@ pub fn try_seed_from_bundle() -> Result<bool> {
     Ok(true)
 }
 
+/// v0.4.0 · 标点模型按需下载 —— 启动时调一次。
+/// 优先 bundle seed（dev / 老 DMG），缺失则走 model_downloader（GitHub 国内代理 →
+/// ghfast → github）。失败不阻塞主流程（add_punctuation 自带 fallback 返回原文）。
+pub fn kick_off_download_if_missing(app: tauri::AppHandle) {
+    // bundle seed 兜底（dev / 老 DMG）—— 但永远走一遍 download()，让 DownloaderView 能拿到 "ok"
+    let _ = try_seed_from_bundle();
+    if !is_ready() {
+        println!("[mouseclaw] 🎯 sherpa-punct 后台下载 (~62MB tarball)");
+    }
+    tauri::async_runtime::spawn(async move {
+        let spec = crate::model_downloader::punct_spec();
+        if let Err(e) = crate::model_downloader::download(app, spec).await {
+            eprintln!("[mouseclaw] 🎯 sherpa-punct 下载失败: {e:#}（add_punctuation 会 fallback 到原文）");
+        }
+    });
+}
+
 /// app bundle 里的资源路径：`<App.app>/Contents/Resources/models/sherpa-punct/`
 fn bundle_resource_path() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let bundled = exe.parent()?.parent()?
         .join("Resources").join("models").join(MODEL_DIR).join(MODEL_FILE);
     if bundled.exists() { return Some(bundled); }
-    // dev fallback
-    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("resources").join(MODEL_DIR).join(MODEL_FILE);
-    if dev.exists() { return Some(dev); }
+    // dev fallback —— 仅 debug build（参考 transcribe_stream 同名注释）
+    #[cfg(debug_assertions)]
+    {
+        let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources").join(MODEL_DIR).join(MODEL_FILE);
+        if dev.exists() { return Some(dev); }
+    }
     None
 }
 

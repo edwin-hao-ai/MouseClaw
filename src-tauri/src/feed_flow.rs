@@ -50,8 +50,9 @@ pub fn on_files_dropped(app: AppHandle, state: Arc<AppState>, paths: Vec<PathBuf
         return;
     }
     if !transcribe_stream::is_ready() {
+        // v0.4.0 · 显示实时下载进度，复用 pipeline 的组装函数
         emit_view(&app, &ViewKind::Blocked {
-            reason: "语音模型未就绪 — 等几秒再喂".into(),
+            reason: crate::pipeline::build_model_blocked_msg(),
         });
         return;
     }
@@ -237,8 +238,18 @@ async fn record_until_silent(app: AppHandle, state: Arc<AppState>, files: Vec<St
         return;
     }
 
-    // 5. 跑 pipeline —— 它会从 state.fed_docs 取走 bundle，注入 prompt 前置
-    crate::pipeline::run_pipeline(transcript, app, state).await;
+    // v0.4.0 · 5. 跑 confirm 倒数（A 方案） —— 喂文件场景也容易语音误识别，
+    // 给用户 3 秒 Esc 取消 / Enter 立即 / 点击编辑的机会。
+    let final_text = match crate::pipeline::voice_confirm_countdown(&app, &state, &transcript).await {
+        Some(t) => t,
+        None => {
+            state.fed_docs.lock().await.take();  // 取消了也清掉 fed_docs 不污染下次
+            crate::overlay::hide_overlay(&app);
+            return;
+        }
+    };
+    // 6. 跑 pipeline —— 它会从 state.fed_docs 取走 bundle，注入 prompt 前置
+    crate::pipeline::run_pipeline(final_text, app, state).await;
 }
 
 /// 用户在拖动期间把光标离开桌宠窗口 —— 重置等待态，停跑步动画。

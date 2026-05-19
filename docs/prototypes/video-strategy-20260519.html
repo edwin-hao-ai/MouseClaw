@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MouseClaw · 视频病毒化策略 v1（2026-05-19）</title>
+<style>
+:root {
+  --bg: #faf7f2; --card: #ffffff; --ink: #2b2622; --muted: #8a8178;
+  --pink: #e8638c; --pink-soft: #fce4ec; --pink-deep: #d63d6a;
+  --green: #3fa66a; --green-soft: #e6f4ec;
+  --amber: #d9952b; --amber-soft: #fdf3e0;
+  --blue: #5b8def; --blue-soft: #e8f0fe;
+  --line: #ece6dd; --line-strong: #d8d0c4;
+  --radius-s: 8px; --radius-m: 14px; --radius-l: 22px;
+  --shadow-card: 0 1px 2px rgba(43,38,34,.06), 0 8px 24px rgba(43,38,34,.06);
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font: -apple-system, "PingFang SC", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.65 var(--font); -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 40px 24px 80px; }
+h1 { font-size: 32px; margin: 0 0 6px; letter-spacing: -.02em; }
+.subtitle { color: var(--muted); margin: 0 0 32px; font-size: 14px; }
+h2 { font-size: 22px; margin: 48px 0 12px; padding-bottom: 10px; border-bottom: 2px solid var(--line); }
+h3 { font-size: 17px; margin: 28px 0 8px; }
+h4 { font-size: 14px; margin: 16px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+p { margin: 8px 0; }
+.callout { background: var(--blue-soft); border-left: 4px solid var(--blue); padding: 14px 18px; border-radius: 0 var(--radius-m) var(--radius-m) 0; margin: 16px 0; font-size: 14px; }
+.callout.warn { background: var(--amber-soft); border-left-color: var(--amber); }
+.callout.good { background: var(--green-soft); border-left-color: var(--green); }
+.callout.pink { background: var(--pink-soft); border-left-color: var(--pink); }
+table { width: 100%; border-collapse: collapse; margin: 12px 0 24px; font-size: 14px; }
+th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { background: #f3eee5; font-weight: 600; font-size: 13px; color: var(--ink); }
+td.k { font-weight: 600; color: var(--ink); white-space: nowrap; }
+td.muted { color: var(--muted); }
+code { background: rgba(0,0,0,.06); padding: 1px 6px; border-radius: 4px; font-family: var(--mono); font-size: 13px; }
+.script {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-m);
+  padding: 18px 20px; margin: 14px 0; box-shadow: var(--shadow-card);
+}
+.script h3 { margin-top: 0; }
+.script .meta { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-bottom: 10px; flex-wrap: wrap; }
+.script .meta span { background: #f7f2e8; padding: 2px 8px; border-radius: 999px; }
+.shot {
+  display: grid; grid-template-columns: 56px 100px 1fr 1fr; gap: 12px;
+  padding: 10px 0; border-bottom: 1px dashed var(--line); font-size: 13px;
+}
+.shot .t { font-family: var(--mono); color: var(--pink-deep); font-weight: 600; }
+.shot .visual { color: var(--ink); }
+.shot .audio { color: var(--muted); font-style: italic; }
+.shot:last-child { border-bottom: 0; }
+.label { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.label.pink { background: var(--pink-soft); color: var(--pink-deep); }
+.label.green { background: var(--green-soft); color: #1a6b3a; }
+.label.amber { background: var(--amber-soft); color: #8a5e15; }
+.label.blue { background: var(--blue-soft); color: #2a5db8; }
+.pick { background: #fffdf5; border: 2px solid var(--amber); }
+.pick::before { content: "⭐ 推荐"; display: inline-block; background: var(--amber); color: #fff; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; margin-bottom: 8px; }
+ol li, ul li { margin: 4px 0; }
+.cmp { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin: 16px 0; }
+.cmp > div { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-m); padding: 14px 16px; }
+.cmp h4 { margin: 0 0 8px; color: var(--ink); text-transform: none; letter-spacing: 0; font-size: 14px; }
+.cmp .pro { color: #1a6b3a; font-size: 13px; }
+.cmp .con { color: #8a5e15; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎬 MouseClaw 视频病毒化策略</h1>
+  <p class="subtitle">2026-05-19 · 抖音 / 小红书 / 视频号 / TikTok 投放 · 用户拍板版</p>
+
+  <div class="callout">
+    <strong>这个文档要回答的 4 个问题：</strong>
+    <ol style="margin:8px 0 0; padding-left: 22px;">
+      <li>用户痛点 → 我们的"反差感"在哪？（病毒化的根）</li>
+      <li>3 个候选脚本对比 → 你选哪个 → 我去做</li>
+      <li>配音方案：AI vs 真人 vs 无配音字幕版</li>
+      <li>4 个平台的剪辑/标签/发文差异</li>
+    </ol>
+  </div>
+
+  <h2>① 病毒化要解决的核心矛盾</h2>
+  <p>MouseClaw 卖点是 <strong>"桌面上养一只老鼠 + 语音召唤本地 AI"</strong>，但短视频用户看到「桌宠」会想到老款桌面玩具，看到「AI」会想到 ChatGPT。两个标签都太常见 = 滑走。</p>
+
+  <p><strong>必须找一个 3 秒内让人停下来的"反差点"</strong>。我列了 6 个候选 hook：</p>
+  <table>
+    <thead><tr><th width="180">Hook</th><th>反差感</th><th>3 秒内能 get 吗</th></tr></thead>
+    <tbody>
+      <tr><td class="k">「这只老鼠会写代码」</td><td>玩具 vs 生产力</td><td>✅ 强 — 立刻好奇</td></tr>
+      <tr><td class="k">「我开除了 ChatGPT，请了一只老鼠」</td><td>云 AI vs 桌宠</td><td>⭐ 最强 — 自带话题</td></tr>
+      <tr><td class="k">「我电脑里养了 Claude」</td><td>抽象 vs 具体生物</td><td>✅ 强 — 但需要懂 Claude</td></tr>
+      <tr><td class="k">「按住空格 + 说话，AI 帮我打字」</td><td>键盘 vs 嘴</td><td>⚠️ 中 — 像 Siri 平淡</td></tr>
+      <tr><td class="k">「12MB 的桌面 AI 助手」</td><td>体积 vs 能力</td><td>⚠️ 弱 — 只有开发者懂</td></tr>
+      <tr><td class="k">「拖一份文件给老鼠，它就懂了」</td><td>动作隐喻</td><td>✅ 强 — 视觉直观</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout pink">
+    <strong>我的判断：</strong>主推方向 <strong>「我开除了 ChatGPT，请了一只老鼠」</strong>（脚本 A）。次推 <strong>「拖一份文件给老鼠，它就懂了」</strong>（脚本 B，更适合喂桌宠功能展示）。
+  </div>
+
+  <h2>② 3 个候选脚本（35 秒分镜）</h2>
+
+  <div class="script pick">
+    <h3>脚本 A · 「我开除了 ChatGPT」</h3>
+    <div class="meta">
+      <span>⏱ 32s</span><span>🎙 旁白 + 字幕</span>
+      <span>🎯 核心：云 AI → 本地老鼠的反转</span>
+      <span>💬 适合：抖音 / TikTok / 视频号</span>
+    </div>
+
+    <div class="shot">
+      <div class="t">0-3s</div>
+      <div><span class="label pink">HOOK</span></div>
+      <div class="visual">手指狂点 ChatGPT 网页报错"You've reached your limit"，烦躁表情</div>
+      <div class="audio">"今天我开除了 ChatGPT。"</div>
+    </div>
+    <div class="shot">
+      <div class="t">3-6s</div>
+      <div><span class="label amber">转折</span></div>
+      <div class="visual">网页关掉，桌面右下角一只像素老鼠睡着，逐渐 zoom in</div>
+      <div class="audio">"请了它。"（停顿 1 秒，让老鼠成主角）</div>
+    </div>
+    <div class="shot">
+      <div class="t">6-12s</div>
+      <div><span class="label blue">演示 1</span></div>
+      <div class="visual">按 ⌘⇧Space 召唤，老鼠跳出来 + 气泡"听着呢"。屏幕上有半篇博客草稿。说话："帮我改一下这段开头让它更打动人"</div>
+      <div class="audio">老鼠"嘎吱"声 + 键盘敲击声 → AI 回复滚动出来</div>
+    </div>
+    <div class="shot">
+      <div class="t">12-18s</div>
+      <div><span class="label blue">演示 2</span></div>
+      <div class="visual">拖一份 PDF 到老鼠身上，老鼠张嘴吞下，气泡"🍽 已吃下"</div>
+      <div class="audio">"喂它一份文件，它就懂了。"</div>
+    </div>
+    <div class="shot">
+      <div class="t">18-25s</div>
+      <div><span class="label blue">演示 3</span></div>
+      <div class="visual">长按 fn 说话，字直接打到光标位置（要打的是个微信消息）</div>
+      <div class="audio">"长按 fn 说话，字自动打到光标位置 —— 不用切输入法，中英文都行。"</div>
+    </div>
+    <div class="shot">
+      <div class="t">25-30s</div>
+      <div><span class="label green">价值</span></div>
+      <div class="visual">桌面右下角，老鼠开心地睡了。屏幕一角字幕<br>"100% 本地 · 12MB · 你的数据不上云"</div>
+      <div class="audio">"我电脑没上传一个字到云端。"</div>
+    </div>
+    <div class="shot">
+      <div class="t">30-32s</div>
+      <div><span class="label pink">CTA</span></div>
+      <div class="visual">屏幕中央打字效果<br><code>GitHub 搜 MouseClaw</code></div>
+      <div class="audio">"GitHub 搜 MouseClaw，开源免费。"</div>
+    </div>
+
+    <h4>为什么这个最容易爆</h4>
+    <ul>
+      <li><strong>3 秒钩子是公愤</strong> — ChatGPT 用量限制 / 数据隐私 / 国内访问难，三选一就有共鸣</li>
+      <li><strong>反转明确</strong> — 一只像素老鼠取代云巨头，视觉冲击</li>
+      <li><strong>3 个 demo 不重复</strong> — 改文 / 喂文档 / 语音打字，覆盖不同需求场景</li>
+      <li><strong>"100% 本地"是社交货币</strong> — 隐私党会主动转发</li>
+    </ul>
+  </div>
+
+  <div class="script">
+    <h3>脚本 B · 「拖一份文件给老鼠」</h3>
+    <div class="meta">
+      <span>⏱ 25s</span><span>🎙 极简旁白 + ASMR 音效</span>
+      <span>🎯 核心：动作的疗愈感</span>
+      <span>💬 适合：小红书 / 视频号（女性用户多）</span>
+    </div>
+
+    <div class="shot">
+      <div class="t">0-3s</div>
+      <div><span class="label pink">HOOK</span></div>
+      <div class="visual">手柔和地拖动 Finder 里一份长文档，慢动作贴近老鼠</div>
+      <div class="audio">轻快的 lo-fi 音乐 + "嘿，它要吃文档了"</div>
+    </div>
+    <div class="shot">
+      <div class="t">3-8s</div>
+      <div><span class="label blue">演示</span></div>
+      <div class="visual">老鼠张嘴吞下，bubble 漂出"🍽 已吃下"。然后说话"用三句话告诉我重点"</div>
+      <div class="audio">"我连标题都不用看。"</div>
+    </div>
+    <div class="shot">
+      <div class="t">8-15s</div>
+      <div><span class="label blue">AI 输出</span></div>
+      <div class="visual">气泡里流式打字出三句精炼总结</div>
+      <div class="audio">键盘音效 → 突然柔和的"叮"</div>
+    </div>
+    <div class="shot">
+      <div class="t">15-22s</div>
+      <div><span class="label green">扩展场景</span></div>
+      <div class="visual">连续拖 3 个文件（PPT / 网页 / 截图），每次都吞下</div>
+      <div class="audio">"PPT、网页截图、PDF 都能吃。"</div>
+    </div>
+    <div class="shot">
+      <div class="t">22-25s</div>
+      <div><span class="label pink">CTA</span></div>
+      <div class="visual">字幕"GitHub: MouseClaw"，老鼠打哈欠睡了</div>
+      <div class="audio">"开源，免费，本地。"</div>
+    </div>
+
+    <h4>为什么适合小红书</h4>
+    <ul>
+      <li>女性用户对"萌宠 + 治愈"敏感，老鼠动作流畅 + 拖拽 ASMR = 高完播</li>
+      <li>主题简单 → 适合做"3 句话 review 一篇论文"等垂类拓展系列</li>
+      <li>没有"AI 焦虑"的紧张感，门槛低</li>
+    </ul>
+  </div>
+
+  <div class="script">
+    <h3>脚本 C · 「这只老鼠会写代码」</h3>
+    <div class="meta">
+      <span>⏱ 38s</span><span>🎙 真人出镜 + 配音</span>
+      <span>🎯 核心：开发者向技术 demo</span>
+      <span>💬 适合：B 站 / X / 知乎 / GitHub Trending</span>
+    </div>
+
+    <div class="shot">
+      <div class="t">0-3s</div>
+      <div><span class="label pink">HOOK</span></div>
+      <div class="visual">真人脸 + 一只像素老鼠 P 在肩膀上：「我把 Claude 装进了一只老鼠里」</div>
+      <div class="audio">"今天给大家看一个我做的东西"</div>
+    </div>
+    <div class="shot">
+      <div class="t">3-10s</div>
+      <div><span class="label blue">技术 demo</span></div>
+      <div class="visual">VSCode 打开，按召唤键，对老鼠说"把这个 React 组件重构成 hook 形式"，老鼠"嘎吱"一下，AI 流式改完代码直接写回光标</div>
+      <div class="audio">"它能读屏幕 + 改代码 + 写文件，不是聊天玩具"</div>
+    </div>
+    <div class="shot">
+      <div class="t">10-18s</div>
+      <div><span class="label blue">差异化</span></div>
+      <div class="visual">分屏：左边 ChatGPT 网页，右边老鼠。同一个问题，老鼠直接执行了；ChatGPT 还在让你复制粘贴</div>
+      <div class="audio">"区别是：它能动手"</div>
+    </div>
+    <div class="shot">
+      <div class="t">18-28s</div>
+      <div><span class="label blue">多后端</span></div>
+      <div class="visual">托盘菜单切换 Claude → Codex → Hermes，每个都能跑同一条 prompt</div>
+      <div class="audio">"你装哪个 CLI 它就用哪个 — Claude / Codex / 国内大模型都行"</div>
+    </div>
+    <div class="shot">
+      <div class="t">28-35s</div>
+      <div><span class="label green">隐私 + 体积</span></div>
+      <div class="visual">DMG 文件管理器图标，旁边显示"12 MB"。文字"语音识别全本地"</div>
+      <div class="audio">"12MB 安装包，语音不上云，模型首次启动下载"</div>
+    </div>
+    <div class="shot">
+      <div class="t">35-38s</div>
+      <div><span class="label pink">CTA</span></div>
+      <div class="visual">屏幕字幕<br><code>GitHub: MouseClaw（edwin-hao-ai）</code></div>
+      <div class="audio">"链接在简介，要 star 谢谢"</div>
+    </div>
+
+    <h4>为什么这个不是首选</h4>
+    <ul>
+      <li>技术细节多，普通用户 5 秒就划走</li>
+      <li>真人出镜成本高 + 需要个人 IP 沉淀</li>
+      <li>但 B 站 + X 上效果会比抖音好（开发者密度高）</li>
+    </ul>
+  </div>
+
+  <h2>③ 配音方案选择</h2>
+
+  <div class="cmp">
+    <div>
+      <h4>🤖 AI 配音（推荐）</h4>
+      <p>用 ElevenLabs / 火山引擎 TTS / 11labs 中文女声"思琪"或男声"硕"</p>
+      <p class="pro">✅ 零成本反复改</p>
+      <p class="pro">✅ 中英文切换流畅（适合脚本 A 跨语言）</p>
+      <p class="con">⚠️ 抖音算法识别 AI 配音可能限流（实测 2025-2026 限流减弱了，但仍建议加点真人编辑）</p>
+    </div>
+    <div>
+      <h4>🎙 真人配音</h4>
+      <p>你自己 / 配音平台（喜马拉雅认证主播 ~50-200 元/条）</p>
+      <p class="pro">✅ 不限流，平台权重高</p>
+      <p class="pro">✅ 情绪起伏自然</p>
+      <p class="con">⚠️ 改脚本要重录</p>
+      <p class="con">⚠️ 你自己的口音 vs 主播口音差异</p>
+    </div>
+    <div>
+      <h4>🔇 纯字幕 + BGM</h4>
+      <p>不配音，靠剪辑节奏 + 大字幕 + 音效</p>
+      <p class="pro">✅ 最快出片（1 小时能做）</p>
+      <p class="pro">✅ 通用 — 不分语言区</p>
+      <p class="con">⚠️ 35s 不配音很考验剪辑节奏</p>
+      <p class="con">⚠️ 信息密度不够，完播差</p>
+    </div>
+  </div>
+
+  <div class="callout pink">
+    <strong>我推荐的组合：</strong>脚本 A + AI 配音中文版（火山引擎"晓萌"女声，活泼）→ 抖音 / 小红书 / 视频号。
+    脚本 A + 你自己英文真人配音 → TikTok（中文配音 TikTok 算法会限流；英文你本人录更地道）。
+    脚本 B 做小红书第 2 条增量内容。脚本 C 留给 B 站 / X 时再做。
+  </div>
+
+  <h2>④ 4 个平台的差异化处理</h2>
+  <table>
+    <thead><tr><th>平台</th><th>时长</th><th>开头节奏</th><th>标签策略</th><th>CTA</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="k">🎵 抖音</td>
+        <td>15-35s</td>
+        <td>0-3s 必须有"情绪反差"（ChatGPT 报错 → 老鼠）</td>
+        <td>#开源 #AI助手 #程序员日常 #桌面小工具 (3-5 个，别多)</td>
+        <td>"GitHub 搜 MouseClaw" 口播 + 字幕</td>
+      </tr>
+      <tr>
+        <td class="k">📕 小红书</td>
+        <td>20-40s</td>
+        <td>0-3s 视觉萌点（老鼠动作）+ 一句生活化文案</td>
+        <td>#桌面小宠物 #生产力工具 #Mac工具 #AI工具 (5-8 个 OK)</td>
+        <td>评论区扣"GitHub 链接"自动回，正文最后写"评论 m 发你"</td>
+      </tr>
+      <tr>
+        <td class="k">📺 视频号</td>
+        <td>30-60s</td>
+        <td>慢一点节奏，可加片头</td>
+        <td>蹭"AI / 国产 / 本地化"热搜话题，标题党可以</td>
+        <td>口播 + 公众号回复关键词（比抖音允许更长 CTA）</td>
+      </tr>
+      <tr>
+        <td class="k">🌍 TikTok</td>
+        <td>15-30s</td>
+        <td>英文 hook："I fired ChatGPT and hired a mouse"</td>
+        <td>#opensource #aitools #productivity #macos #devtools</td>
+        <td>"Search MouseClaw on GitHub" 字幕 + bio link</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>⑤ 关于"网址" 与 GitHub 引导</h2>
+  <div class="callout warn">
+    <p><strong>用户提到「视频上可能不能有导流的网址」</strong>—— 实测 2026 现状：</p>
+    <ul>
+      <li><strong>抖音</strong>：视频画面里直接出现 <code>github.com/...</code> 完整 URL 会限流。但 <strong>口播 + 字幕「GitHub 搜 MouseClaw」是 OK 的</strong>（关键词检索不算导流）。</li>
+      <li><strong>小红书</strong>：URL 一律不行，但能在评论区写。视频内说"GitHub 搜项目名"算正常。</li>
+      <li><strong>视频号</strong>：可以在文末引导关注公众号；视频内说项目名 OK。</li>
+      <li><strong>TikTok</strong>：bio link 是合规出口，视频画面里出现 <code>github.com/...</code> 不会被罚但完播率会差。</li>
+    </ul>
+    <p><strong>统一策略：所有平台视频结尾都是「GitHub 搜 MouseClaw」字幕 + 口播，不放完整 URL。</strong></p>
+  </div>
+
+  <h2>⑥ 视频实现路径</h2>
+  <h3>选项 A · Remotion / hyperframes（代码化）</h3>
+  <p>你之前已经用 hyperframes 出过 demo-en/demo-zh.mp4。复用现有 setup，把脚本 A 写成 timeline。</p>
+  <p class="pro">✅ 可批量生成多语言版本</p>
+  <p class="pro">✅ 改文案 = 改一行配置，重渲染</p>
+  <p class="con">⚠️ 镜头切换 / 真人手部演示要"演示用素材"（录屏 + 抠图）</p>
+
+  <h3>选项 B · CapCut / 剪映（剪辑化）</h3>
+  <p>纯录屏 + 剪映剪。配音用剪映自带 AI 配音（晓萌、思琪都有）。</p>
+  <p class="pro">✅ 剪辑节奏自由</p>
+  <p class="pro">✅ AI 配音 + 字幕一键搞定</p>
+  <p class="con">⚠️ 多语言要重剪</p>
+
+  <div class="callout pink">
+    <strong>推荐路径：剪映出第一版（快），跑数据看哪个脚本爆。爆了用 hyperframes 做精修版 + 多语言批量复制。</strong>
+  </div>
+
+  <h2>⑦ 我下一步会做什么（等你拍板）</h2>
+  <ol>
+    <li>你回个数字：<strong>脚本 A / B / C</strong> 选哪个先做？（我建议 A）</li>
+    <li>配音用：<strong>AI 配音（剪映晓萌）/ 你自己录 / 纯字幕</strong>？</li>
+    <li>实现：<strong>剪映剪 / hyperframes 代码生成</strong>？（首版我推剪映）</li>
+    <li>拍板后我帮你：
+      <ul>
+        <li>写完整剪辑脚本（哪一秒切哪个镜头 / 哪句话 / 字幕在哪个位置）</li>
+        <li>列出需要的录屏素材清单（你自己录 / 我用 hyperframes 出）</li>
+        <li>写抖音 / 小红书 / 视频号 / TikTok 4 套发文文案（标题 + 描述 + 标签）</li>
+      </ul>
+    </li>
+  </ol>
+
+  <div class="callout good">
+    <strong>给我四个数字 / 一个字符串就行</strong>：<br>
+    <code>脚本=A · 配音=AI · 实现=剪映 · 首发平台=抖音</code><br>
+    其他的我都准备好后续做。
+  </div>
+</div>
+</body>
+</html>

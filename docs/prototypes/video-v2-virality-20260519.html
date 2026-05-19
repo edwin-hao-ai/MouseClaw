@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MouseClaw · 视频 v2 · 病毒性 + 全动画蓝图（2026-05-19）</title>
+<style>
+:root {
+  --bg: #faf7f2; --card: #ffffff; --ink: #2b2622; --muted: #8a8178;
+  --pink: #e8638c; --pink-soft: #fce4ec; --pink-deep: #d63d6a;
+  --green: #3fa66a; --green-soft: #e6f4ec;
+  --amber: #d9952b; --amber-soft: #fdf3e0;
+  --blue: #5b8def; --blue-soft: #e8f0fe;
+  --line: #ece6dd;
+  --radius-m: 14px;
+  --shadow: 0 1px 2px rgba(43,38,34,.06), 0 8px 24px rgba(43,38,34,.06);
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font: -apple-system, "PingFang SC", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.65 var(--font); -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 40px 24px 80px; }
+h1 { font-size: 32px; margin: 0 0 6px; letter-spacing: -.02em; }
+.subtitle { color: var(--muted); margin: 0 0 32px; font-size: 14px; }
+h2 { font-size: 22px; margin: 48px 0 12px; padding-bottom: 10px; border-bottom: 2px solid var(--line); }
+h3 { font-size: 17px; margin: 28px 0 8px; }
+code { background: rgba(0,0,0,.06); padding: 1px 6px; border-radius: 4px; font-family: var(--mono); font-size: 13px; }
+.callout { padding: 14px 18px; border-radius: 0 14px 14px 0; margin: 16px 0; font-size: 14px; border-left: 4px solid; }
+.callout.b { background: var(--blue-soft); border-color: var(--blue); }
+.callout.p { background: var(--pink-soft); border-color: var(--pink); }
+.callout.g { background: var(--green-soft); border-color: var(--green); }
+.callout.a { background: var(--amber-soft); border-color: var(--amber); }
+
+table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { background: #f3eee5; font-weight: 600; font-size: 13px; }
+td.k { font-weight: 600; white-space: nowrap; }
+td.mono { font-family: var(--mono); font-size: 12px; color: var(--pink-deep); }
+
+.shot {
+  display: grid; grid-template-columns: 80px 1.4fr 1.2fr 1fr; gap: 12px;
+  padding: 12px 0; border-bottom: 1px dashed var(--line); font-size: 13px;
+}
+.shot:last-child { border: 0; }
+.shot .t { font-family: var(--mono); color: var(--pink-deep); font-weight: 700; font-size: 14px; }
+.shot .visual strong { color: var(--ink); }
+.shot .audio { color: var(--muted); font-style: italic; }
+.shot .vfx { font-size: 12px; color: var(--blue); }
+
+.bgm {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-m);
+  padding: 14px 18px; margin: 12px 0;
+}
+.bgm h4 { margin: 0 0 6px; font-size: 14px; }
+.bgm .meta { font-size: 12px; color: var(--muted); }
+.bgm a { color: var(--pink-deep); text-decoration: none; word-break: break-all; }
+
+.pick { background: #fffdf5; border: 2px solid var(--amber); padding: 16px; border-radius: var(--radius-m); }
+.pick::before { content: "⭐ 推荐"; display: inline-block; background: var(--amber); color: #fff; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; margin-bottom: 8px; }
+ul li, ol li { margin: 4px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🚀 视频 v2 · 病毒性 + 全动画蓝图</h1>
+  <p class="subtitle">2026-05-19 · 你拍板：全动画(不录屏) · 剪映 AI 配音 · 病毒性强 · 让用户搜索下载</p>
+
+  <div class="callout p">
+    <strong>这份文档是「我下次会话开工 demo 1 的蓝图」</strong>。整合 3 件事：
+    <ol style="margin: 8px 0 0; padding-left: 22px;">
+      <li><strong>病毒性增强</strong>：怎么让人看完 + 记住 + 真去搜 MouseClaw</li>
+      <li><strong>动画方案</strong>：录屏 vs 动画的具体取舍 + hyperframes 怎么实现真实感</li>
+      <li><strong>素材清单</strong>：BGM 直接下载链接 + 字体 + 图标 web search 结果</li>
+    </ol>
+  </div>
+
+  <h2>① 病毒性 5 要素（我会怎么做）</h2>
+
+  <table>
+    <thead><tr><th width="150">要素</th><th>原理</th><th>demo 里怎么落地</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="k">1. 钩子 3 秒</td>
+        <td>第一秒留人，第三秒勾人。失败 = 80% 用户划走</td>
+        <td>0-1s：满屏红色 "You've reached your limit"（OpenAI 限流）<br>1-3s：背景一颗大像素老鼠从底部跳进来，盖住红字</td>
+      </tr>
+      <tr>
+        <td class="k">2. 反差冲突</td>
+        <td>预期 vs 实际的落差 = 病毒分享理由</td>
+        <td>"AI = 云上的巨头" 预期 vs "我电脑里养一只老鼠" 实际<br>视觉反差：高大上 ChatGPT logo → 小小一只像素老鼠</td>
+      </tr>
+      <tr>
+        <td class="k">3. 情绪节奏</td>
+        <td>紧张 → 好奇 → 惊喜 → 满足 → 行动 5 步骤</td>
+        <td>限流(紧张) → 老鼠登场(好奇) → AI 干活完成(惊喜) → "12MB · 本地"(满足) → "GitHub 搜"(行动)</td>
+      </tr>
+      <tr>
+        <td class="k">4. 记忆锚点</td>
+        <td>名字 + 视觉双绑定，用户隔几天还能搜回来</td>
+        <td>"老鼠 + 桌面 AI" → MouseClaw 名字 3 次出现：开头 lower-third、过程中老鼠张嘴气泡、结尾大字幕</td>
+      </tr>
+      <tr>
+        <td class="k">5. 行动 CTA</td>
+        <td>说"链接在简介"是 1% 转化；说"GitHub 搜 XXX"+ 给具体动作能到 5-10%</td>
+        <td>结尾 2 秒大字 <code>GitHub 搜 MouseClaw</code>（搜索框光标闪烁动画，模拟用户已经在搜）</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>② 让用户"心心念念"的 3 个心理钩</h2>
+
+  <div class="callout b">
+    <strong>核心心理学</strong>：你不是要他立刻下载，是要他<strong>晚上躺床上还想着这视频</strong>。3 个钩子：
+  </div>
+
+  <h3>钩 1 · 留白 + 反常识</h3>
+  <p>视频里<strong>不解释"为什么是老鼠"</strong>。让用户想——为什么是老鼠？为什么叫 MouseClaw？这种"未解之谜"会留在脑子里，触发自发搜索。</p>
+  <p style="font-size: 13px; color: var(--muted);">实施：视频里老鼠只是出现 + 干活，不解释来源。结尾字幕只说"GitHub 搜 MouseClaw"，不解释名字含义。让用户带着问号去搜。</p>
+
+  <h3>钩 2 · 稀缺感 + 内行人</h3>
+  <p>暗示"只有少数人知道"。技术圈用户对"还没火的好东西"特别敏感。</p>
+  <p style="font-size: 13px; color: var(--muted);">实施：lower-third 加一句小字 "100 人在用 · 开源"（具体数字可以是真实 Star 数）。视频中后段插一句旁白 "还没什么人知道"。</p>
+
+  <h3>钩 3 · 隐喻反复</h3>
+  <p>"喂老鼠""老鼠帮你写""老鼠睡了""老鼠跟着光标"—— 把日常动作全用"养宠物"语言重新组织。每听一句都加强一次"它是宠物 + 它是 AI"双重身份。</p>
+  <p style="font-size: 13px; color: var(--muted);">实施：所有旁白动词换成<strong>动物拟人</strong>。"AI 回复"→"老鼠告诉你"。"打开文件"→"喂它"。"按快捷键"→"喊它"。让用户脑子里产生新词条。</p>
+
+  <h2>③ 全动画方案 · 怎么不录屏也"真实"</h2>
+
+  <table>
+    <thead><tr><th>元素</th><th>真实感怎么来</th></tr></thead>
+    <tbody>
+      <tr><td class="k">ChatGPT 报错网页</td><td>HTML/CSS 1:1 复刻 chatgpt.com 报错 toast。字体用 system-ui，红色精确 #ff4747，按钮 hover 状态都做</td></tr>
+      <tr><td class="k">桌面背景</td><td>macOS Sequoia 默认壁纸（pixabay 找类似的渐变）+ 顶部 menubar mock（时间走动）</td></tr>
+      <tr><td class="k">浏览器窗口</td><td>HTML/CSS mock Safari/Chrome 的 chrome（红黄绿圆点 + 地址栏 + 标签栏）</td></tr>
+      <tr><td class="k">微信输入框</td><td>mock 微信聊天窗口（公开 UI 元素：绿色发送按钮、灰色输入框、对话气泡）</td></tr>
+      <tr><td class="k">鼠标光标</td><td>SVG macOS 鼠标光标（黑 + 白边）+ GSAP 移动动画（cubic-bezier 不要 linear）</td></tr>
+      <tr><td class="k">键盘按下视觉</td><td>屏幕角落浮一个 mockup <kbd>⌘ ⇧ Space</kbd> chip，按下变深色 0.2 秒</td></tr>
+      <tr><td class="k">像素老鼠动画</td><td>已有的 SVG sprite（睡/听/想/跳/吃）+ 加 sub-pixel 抖耳朵 + 眨眼 keyframes</td></tr>
+      <tr><td class="k">AI 流式吐字</td><td>用 GSAP <code>onUpdate</code> 按 progress 切 string（你以前实现过的方式，参考 demo-zh 已有的 splitString 动画）</td></tr>
+      <tr><td class="k">文件拖动</td><td>SVG PDF 图标 + GSAP 位移动画 + 老鼠张嘴时的 svg morph（已有 feed-wait sprite）</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout g">
+    <strong>关键差异</strong>：现有 <code>marketing/demo-zh/index.html</code> 已经是 hyperframes 静态文字 + 桌宠。我会把它扩展成<strong>有"假应用窗口"+"假鼠标光标"+"假浏览器"</strong>的 mock 系统。每个 mock 元素都是 HTML+CSS，可被 GSAP 操控。
+  </div>
+
+  <h2>④ BGM 直接下载链接（已 web search · 全部商用免费）</h2>
+
+  <div class="bgm pick">
+    <h4>🎵 Demo 1（开除 ChatGPT · 节奏紧 → 释放）</h4>
+    <p>「Lofi Pulse」by Lukrembo · 节奏明确 + 中段有"释放"break，匹配 "限流烦躁 → 老鼠登场" 反转</p>
+    <p class="meta">下载: <a href="https://pixabay.com/music/search/lofi/">pixabay.com/music/search/lofi/</a> · 搜 "lofi pulse" / "chill beat"</p>
+  </div>
+
+  <div class="bgm">
+    <h4>🎵 Demo 2-4（语音输入 / 喂文件 / 隐私 · 治愈 lofi）</h4>
+    <p>选 70-90 BPM 的 lofi。匹配"日常使用"温柔节奏</p>
+    <p class="meta">下载: <a href="https://www.chosic.com/free-music/lofi/">chosic.com/free-music/lofi/</a> · 搜 "warm lofi" / "cafe lofi"</p>
+  </div>
+
+  <div class="bgm">
+    <h4>🎵 Demo 5 + Overall（多后端 + 长片 · 节奏稍快带电子感）</h4>
+    <p>开发者向 demo 需要稍有"工程感"，可以略带 synth</p>
+    <p class="meta">下载: <a href="https://pixabay.com/music/search/electronic%20chill/">pixabay.com/music/search/electronic chill/</a></p>
+  </div>
+
+  <p style="font-size: 13px; color: var(--muted);">实施：我下次会话开工时会预先 curl 下载 2-3 首到 <code>marketing/assets/bgm/</code>。hyperframes 不直接挂 BGM，但你在剪映里同时导入 BGM + 配音 + 视频，剪映自己混音。</p>
+
+  <h2>⑤ Demo 1 的逐秒分镜（下次开工蓝图）</h2>
+  <p>这是我会写进 <code>marketing/demo-zh/index.html</code> 的精确分镜（每 0.5 秒一个事件）：</p>
+
+  <table>
+    <thead><tr><th width="80">时间</th><th>画面</th><th>动效 (GSAP)</th><th>配音 (剪映 AI)</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="mono">0.0-0.8s</td>
+        <td>满屏 ChatGPT 红色报错 toast "You've reached your message limit"</td>
+        <td>toast scale 0→1.2→1 弹出，背景模糊</td>
+        <td>—（让画面自己讲）</td>
+      </tr>
+      <tr>
+        <td class="mono">0.8-2.0s</td>
+        <td>手指狂点页面（光标快速点击效果），toast 不消失</td>
+        <td>光标 jitter 4 次，每次点击波纹</td>
+        <td><em>"今天我把 ChatGPT 开除了。"</em></td>
+      </tr>
+      <tr>
+        <td class="mono">2.0-3.0s</td>
+        <td>浏览器关闭动画，露出 macOS 桌面</td>
+        <td>窗口 scale 0.95 + opacity 0，桌面渐显</td>
+        <td><em>"请了一只老鼠。"</em></td>
+      </tr>
+      <tr>
+        <td class="mono">3.0-4.5s</td>
+        <td>右下角像素老鼠 zoom in，从睡眠 → 听 sprite 切换</td>
+        <td>scale 0.3→1.0 cubic-bezier(0.34, 1.56, 0.64, 1)（弹性）</td>
+        <td><em>"按住 ⌘⇧空格 + 说话 ——"</em></td>
+      </tr>
+      <tr>
+        <td class="mono">4.5-7.0s</td>
+        <td>左侧浮出 mock 浏览器（一篇博客草稿），右下角老鼠头顶气泡显示用户说的话："帮我把开场白改得更打动人"（流式打字）</td>
+        <td>气泡 from-bottom + 文字逐字 stagger 0.05s</td>
+        <td><em>"它能听见你 +"</em></td>
+      </tr>
+      <tr>
+        <td class="mono">7.0-11.0s</td>
+        <td>老鼠气泡变样式（success），开始流式吐 AI 回复："其实第一句话不该说『我们今天来聊聊』，可以试试：『假如你只有 5 分钟，你会怎么解释 X 给孩子听？』"</td>
+        <td>字逐字浮现，光标在 AI 回复结尾闪烁</td>
+        <td><em>"还能动手帮你改文件。"</em></td>
+      </tr>
+      <tr>
+        <td class="mono">11.0-15.0s</td>
+        <td>切镜：手柔慢拖一个 PDF 图标到老鼠嘴边，老鼠张嘴吞下，气泡 "🍽 已吃下 论文.pdf"</td>
+        <td>PDF 图标 motion path 弧线，老鼠张嘴 morph</td>
+        <td><em>"喂它一份文件 —— 它就能读懂。"</em></td>
+      </tr>
+      <tr>
+        <td class="mono">15.0-19.0s</td>
+        <td>切镜：微信聊天窗口，输入框光标闪烁。屏幕浮 <kbd>fn</kbd> 按下视觉，老鼠 listen 状态，字逐个落到输入框 "今晚六点半，西湖见怎么样？"</td>
+        <td>字符逐个 from y=-10 落入 + 标点自动加上</td>
+        <td><em>"长按 fn —— 字直接打到光标里。"</em></td>
+      </tr>
+      <tr>
+        <td class="mono">19.0-23.0s</td>
+        <td>桌面右下角，老鼠回到睡眠 sprite。屏幕中央浮三个 chip："12 MB · 100% 本地 · 0 字节上云"</td>
+        <td>chip 从底部 stagger 0.2s 弹出</td>
+        <td><em>"12 兆，本地推理，你的话不上云。"</em></td>
+      </tr>
+      <tr>
+        <td class="mono">23.0-27.0s</td>
+        <td>屏幕中央一个 Spotlight 搜索框样式的元素，光标在框里"打字"出 "MouseClaw"</td>
+        <td>字符逐个出现 + 搜索框周围波纹 + 底部 chip "100 人在用 · 开源"</td>
+        <td><em>"还没什么人知道。GitHub 搜 MouseClaw。"</em></td>
+      </tr>
+      <tr>
+        <td class="mono">27.0-30.0s</td>
+        <td>大字幕 "MouseClaw" + 小字 "桌面养只老鼠，AI 帮你干活" + 老鼠在底部摇尾巴</td>
+        <td>字幕慢慢 zoom + 老鼠尾巴抖动 loop</td>
+        <td><em>"M-O-U-S-E-C-L-A-W。记住了？"</em></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout a">
+    <strong>注意几个病毒性细节</strong>：
+    <ul style="margin: 8px 0 0;">
+      <li>0-2s 不配音，让画面情绪先到位（"限流烦躁" 是视觉就能传达的）</li>
+      <li>23s 那个 Spotlight 搜索动画是关键 —— <strong>模拟用户已经在搜了</strong>，引导他模仿</li>
+      <li>结尾"M-O-U-S-E-C-L-A-W 记住了？"是直接对观众发问，强化记忆 + 互动</li>
+      <li>不用 "下载链接见简介"，反复说 "GitHub 搜" —— 让用户觉得"找到 = 自己的本事"</li>
+    </ul>
+  </div>
+
+  <h2>⑥ 配音文案（剪映 AI 配音直接用）</h2>
+  <p>下面这段是 demo 1 的完整 SRT 字幕文本，复制粘贴进剪映 AI 配音直接生成（推荐"晓萌"或"思琪"音色）：</p>
+
+<pre style="background: var(--card); padding: 16px 18px; border: 1px solid var(--line); border-radius: 10px; font-size: 13px; line-height: 1.7; font-family: var(--mono);">1
+00:00:00,800 --> 00:00:02,000
+今天我把 ChatGPT 开除了。
+
+2
+00:00:02,000 --> 00:00:03,000
+请了一只老鼠。
+
+3
+00:00:03,000 --> 00:00:04,500
+按住 ⌘⇧空格 + 说话 ——
+
+4
+00:00:04,500 --> 00:00:07,000
+它能听见你 +
+
+5
+00:00:07,000 --> 00:00:11,000
+还能动手帮你改文件。
+
+6
+00:00:11,000 --> 00:00:15,000
+喂它一份文件 —— 它就能读懂。
+
+7
+00:00:15,000 --> 00:00:19,000
+长按 fn —— 字直接打到光标里。
+
+8
+00:00:19,000 --> 00:00:23,000
+12 兆，本地推理，你的话不上云。
+
+9
+00:00:23,000 --> 00:00:27,000
+还没什么人知道。GitHub 搜 MouseClaw。
+
+10
+00:00:27,000 --> 00:00:30,000
+M-O-U-S-E-C-L-A-W。记住了？
+</pre>
+
+  <h2>⑦ 文件输出 + 你怎么剪</h2>
+  <ol>
+    <li>我下次会话写完 demo 1 hyperframes → 跑 <code>npx hyperframes render</code> 出 <strong>无声视频</strong> <code>marketing/demo-zh/renders/demo-zh_xxx.mp4</code>（30s · 1920×1080 · 30fps）</li>
+    <li>你把 mp4 拖进剪映 + 上面的 SRT 字幕</li>
+    <li>剪映 "智能配音" → 选 "晓萌" → 它会按 SRT 时间码自动生成配音</li>
+    <li>导入 BGM（pixabay 链接已在 ④）→ 音量降到 -20dB（不抢配音）</li>
+    <li>导出 → 9:16（抖音/小红书）+ 16:9（B站）+ 1:1（视频号横屏也行）三个版本</li>
+  </ol>
+
+  <h2>⑧ 我下次会话开工时会做的</h2>
+  <ol>
+    <li>web search 下载 2-3 首 BGM 到 <code>marketing/assets/bgm/</code></li>
+    <li>新建 <code>marketing/demo1-fire-chatgpt/</code>（独立项目，不动现有 demo-zh）</li>
+    <li>写 mock 系统 css 组件：MockBrowser / MockMacOSDesktop / MockWeChat / MockCursor / MockKeyChip</li>
+    <li>写 demo 1 完整 30 秒 timeline（按上面 ⑤ 分镜）</li>
+    <li>渲染 + 出 mp4 + 写 SRT 字幕（已在 ⑥）</li>
+    <li>给你完整说明：怎么拖进剪映 + 怎么配 AI 配音 + 怎么导出</li>
+  </ol>
+
+  <p style="color: var(--muted); font-size: 13px;">demo 2-5 + overall 留到 demo 1 你看完反馈之后再决定方向。</p>
+
+  <div class="callout p">
+    <strong>这次你不用回什么字段了</strong>。这份文档是"我下次开工的施工图"，直接照着做。<br>
+    如果你看完觉得某个点要改（比如改 hook 文案 / 改某个分镜 / 改 BGM 风格），告诉我。否则我下次就按这个开干。
+  </div>
+</div>
+</body>
+</html>

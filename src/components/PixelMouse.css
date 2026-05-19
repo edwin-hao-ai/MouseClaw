@@ -116,6 +116,34 @@
   .mouse-feed-digest .mouse-svg { animation: none; }
 }
 
+/* v0.3.11 · Talk — AI 流式输出中：嘴一直在动 + 身体上下打节奏。
+   核心是「mouth bob」—— nose 像素 (那块红块) 用 transform 轻微上下抖一抖，
+   外加整体微微 scaleY 呼吸，比 think 的"小晃头"更"活"，让用户一眼看到"它在说"。 */
+.mouse-talk .mouse-svg {
+  animation: mc-talk-bob 380ms steps(2, end) infinite;
+  transform-origin: center bottom;
+}
+@keyframes mc-talk-bob {
+  0%   { transform: translateY(0)    scaleY(1); }
+  50%  { transform: translateY(-1px) scaleY(1.04); }
+  100% { transform: translateY(0)    scaleY(1); }
+}
+/* 嘴 (nose) 像素：第三个 rect 在 PixelMouse.tsx 末尾 —— 用 CSS nth-of-type 抓它做
+   "张嘴 / 闭嘴"两帧动画。steps(2) 让它像素化跳变而不是平滑变形。 */
+.mouse-talk .mouse-svg > rect:last-of-type {
+  animation: mc-talk-mouth 220ms steps(2, end) infinite;
+  transform-box: fill-box;
+  transform-origin: center top;
+}
+@keyframes mc-talk-mouth {
+  0%, 100% { transform: scaleY(1)   translateY(0); }
+  50%      { transform: scaleY(1.8) translateY(0.5px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mouse-talk .mouse-svg,
+  .mouse-talk .mouse-svg > rect:last-of-type { animation: none; }
+}
+
 /* Continuing session chain indicator — 3-pixel green block above head */
 .mouse-chain {
   position: absolute;

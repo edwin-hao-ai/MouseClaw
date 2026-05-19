@@ -65,6 +65,11 @@ async function bootstrap() {
     if (root) root.style.background = "transparent";
     const { default: DrawOverlay } = await import("./DrawOverlay");
     RootComp = DrawOverlay;
+  } else if (view === "downloader") {
+    // v0.4.0 · 模型下载进度独立窗口 —— 监听 model-progress 事件展示总进度
+    makeScrollableDocument("#faf7f2");
+    const { default: DownloaderView } = await import("./DownloaderView");
+    RootComp = DownloaderView;
   } else if (view === "onboarding") {
     // Onboarding card brings its own dark glass background; host wraps it
     // in a centered flex container with a faint matching gradient backdrop.

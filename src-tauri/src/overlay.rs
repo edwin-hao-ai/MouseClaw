@@ -182,17 +182,17 @@ pub fn emit_view(app: &AppHandle, view: &ViewKind) {
         ViewKind::Panel { .. } => "panel".to_string(),
         ViewKind::ModeBCountdown { remaining, .. } => format!("mode-b-countdown({remaining})"),
         ViewKind::ModeBInserting { .. } => "mode-b-inserting".to_string(),
+        ViewKind::VoiceConfirm { remaining, transcript } =>
+            format!("voice-confirm({remaining}, {} chars)", transcript.chars().count()),
+        ViewKind::TourStep { step } => format!("tour-step({step})"),
         ViewKind::Blocked { reason } => format!("blocked({reason})"),
     };
-    // v0.1.8 cursor-follow gating —— 只在 listening 跟随鼠标，其它有气泡的状态全部冻结
-    // 这样用户在读 Claude 回答时窗口不会被光标拽飞
+    // v0.1.8 cursor-follow gating —— 只在 AI 召唤 listening 时跟随鼠标。
+    // v0.4.0 · 语音输入法 (VoiceImeListening) 不再跟随 —— 用户反馈：长按 fn 说话时，
+    //   光标在目标输入框附近移动选词，桌宠跟着乱飞挡视线，体验差。
+    //   AI 召唤本身鼠标是"画圈圈定"动作，跟随有意义；语音输入鼠标是"选输入框位置"，跟随无意义。
     if let Some(state) = app.try_state::<Arc<AppState>>() {
-        let should_follow = matches!(
-            view,
-            ViewKind::Listening { .. }
-                | ViewKind::VoiceImeListening { .. }
-                | ViewKind::FeedListening { .. }
-        );
+        let should_follow = matches!(view, ViewKind::Listening { .. });
         if should_follow {
             crate::cursor_follow::enable(state.inner());
         } else {

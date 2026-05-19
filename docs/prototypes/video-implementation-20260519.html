@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MouseClaw · 视频实施方案 v1（2026-05-19）</title>
+<style>
+:root {
+  --bg: #faf7f2; --card: #ffffff; --ink: #2b2622; --muted: #8a8178;
+  --pink: #e8638c; --pink-soft: #fce4ec; --pink-deep: #d63d6a;
+  --green: #3fa66a; --green-soft: #e6f4ec;
+  --amber: #d9952b; --amber-soft: #fdf3e0;
+  --blue: #5b8def; --blue-soft: #e8f0fe;
+  --line: #ece6dd;
+  --radius-m: 14px;
+  --shadow: 0 1px 2px rgba(43,38,34,.06), 0 8px 24px rgba(43,38,34,.06);
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font: -apple-system, "PingFang SC", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.65 var(--font); -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 40px 24px 80px; }
+h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -.02em; }
+.subtitle { color: var(--muted); margin: 0 0 32px; font-size: 14px; }
+h2 { font-size: 22px; margin: 48px 0 12px; padding-bottom: 10px; border-bottom: 2px solid var(--line); }
+h3 { font-size: 17px; margin: 28px 0 8px; }
+h4 { font-size: 14px; margin: 16px 0 6px; }
+code { background: rgba(0,0,0,.06); padding: 1px 6px; border-radius: 4px; font-family: var(--mono); font-size: 13px; }
+.callout { padding: 14px 18px; border-radius: 0 var(--radius-m) var(--radius-m) 0; margin: 16px 0; font-size: 14px; border-left: 4px solid; }
+.callout.b { background: var(--blue-soft); border-color: var(--blue); }
+.callout.p { background: var(--pink-soft); border-color: var(--pink); }
+.callout.g { background: var(--green-soft); border-color: var(--green); }
+.callout.a { background: var(--amber-soft); border-color: var(--amber); }
+table { width: 100%; border-collapse: collapse; margin: 12px 0 24px; font-size: 14px; }
+th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { background: #f3eee5; font-weight: 600; font-size: 13px; }
+td.k { font-weight: 600; white-space: nowrap; }
+.demo {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-m);
+  padding: 18px 20px; margin: 14px 0; box-shadow: var(--shadow);
+}
+.demo h3 { margin-top: 0; }
+.demo .meta { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-bottom: 12px; flex-wrap: wrap; }
+.demo .meta span { background: #f7f2e8; padding: 2px 10px; border-radius: 999px; }
+.shot { display: grid; grid-template-columns: 60px 1fr 1.2fr; gap: 12px; padding: 8px 0; border-bottom: 1px dashed var(--line); font-size: 13px; }
+.shot:last-child { border: 0; }
+.t { font-family: var(--mono); color: var(--pink-deep); font-weight: 600; }
+.v { color: var(--ink); }
+.a { color: var(--muted); font-style: italic; }
+.pick { background: #fffdf5; border: 2px solid var(--amber); }
+.pick::before { content: "⭐ 推荐"; display: inline-block; background: var(--amber); color: #fff; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; margin-bottom: 8px; }
+ol li, ul li { margin: 4px 0; }
+.cmp { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin: 16px 0; }
+.cmp > div { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-m); padding: 14px 16px; }
+.cmp h4 { margin: 0 0 8px; font-size: 14px; }
+.pro { color: #1a6b3a; font-size: 13px; }
+.con { color: #8a5e15; font-size: 13px; }
+.warn { color: #b13838; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎬 视频实施方案 v1</h1>
+  <p class="subtitle">2026-05-19 · 你已拍板：脚本 A · AI 中文 · hyperframes · 多版本 · 长片 OK</p>
+
+  <div class="callout b">
+    <strong>这份文档要回答 3 件事：</strong>
+    <ol style="margin: 8px 0 0; padding-left: 22px;">
+      <li><strong>切几个单一 demo？</strong>—— 我建议 5 个，列在下面</li>
+      <li><strong>AI 配音用什么工具？</strong>—— 3 个选项对比，要你选</li>
+      <li><strong>overall 长片怎么剪？</strong>—— 单一拼接 vs 重写 timeline</li>
+    </ol>
+  </div>
+
+  <h2>① 视频拆分方案 · 5 个单一 demo + 1 个 overall</h2>
+
+  <p>用户在不同平台关注不同卖点。先做 5 个 12-15 秒的单一 demo（每个聚焦一个功能），再剪一个 60-75 秒 overall。这样：</p>
+  <ul>
+    <li><strong>单一 demo 适合 A/B 测试</strong> — 一个号发 5 条不同内容，看哪个最爆，下次重点推这个角度</li>
+    <li><strong>overall 长片适合视频号 / B 站</strong>（视频号 30-60s 完播友好，B 站允许更长）</li>
+    <li><strong>素材一份多用</strong> — 单一 demo 的镜头可以直接进 overall timeline</li>
+  </ul>
+
+  <h3>5 个单一 demo（每个 12-15 秒）</h3>
+
+  <div class="demo">
+    <h3>Demo 1 · 「我开除了 ChatGPT」（hook + AI 召唤）</h3>
+    <div class="meta">
+      <span>⏱ 15s</span><span>🎯 核心 hook · 首发推</span>
+      <span>🎙 配音：1 句</span><span>🎬 镜头：3</span>
+    </div>
+    <div class="shot"><div class="t">0-3s</div><div class="v">ChatGPT 网页"You've reached your limit" + 烦躁的鼠标乱点</div><div class="a">"我把 ChatGPT 开除了。"</div></div>
+    <div class="shot"><div class="t">3-6s</div><div class="v">浏览器关掉，桌面右下角像素老鼠睡着，zoom in</div><div class="a">"请了它。"</div></div>
+    <div class="shot"><div class="t">6-12s</div><div class="v">按 ⌘⇧Space 召唤，老鼠跳出"听着呢" → 说"帮我写一段开场白" → 老鼠脑袋上流式吐字</div><div class="a">"按住空格说话。它住在桌面右下角。"</div></div>
+    <div class="shot"><div class="t">12-15s</div><div class="v">桌宠回角落睡着，字幕"GitHub 搜 MouseClaw"</div><div class="a">"开源 · 免费 · 本地。"</div></div>
+  </div>
+
+  <div class="demo">
+    <h3>Demo 2 · 「长按 fn 说话，字直接打到光标」（语音输入）</h3>
+    <div class="meta">
+      <span>⏱ 13s</span><span>🎯 实用向 · 抖音 / 小红书</span>
+      <span>🎙 配音：2 句</span><span>🎬 镜头：2</span>
+    </div>
+    <div class="shot"><div class="t">0-3s</div><div class="v">微信打字界面，输入框光标闪烁</div><div class="a">"懒得打字？"</div></div>
+    <div class="shot"><div class="t">3-10s</div><div class="v">长按 fn，桌宠跳出"听着呢" + 说话："今晚六点半西湖见怎么样？"，字逐个出现在输入框 → 自动加标点 "今晚 6 点半，西湖见怎么样？"</div><div class="a">"按住 fn 键说，字直接打到光标。中英文都行。"</div></div>
+    <div class="shot"><div class="t">10-13s</div><div class="v">特写"中英文都行" + 字幕"GitHub: MouseClaw"</div><div class="a">"无需切输入法。"</div></div>
+  </div>
+
+  <div class="demo">
+    <h3>Demo 3 · 「拖一份文件给老鼠」（喂桌宠）</h3>
+    <div class="meta">
+      <span>⏱ 13s</span><span>🎯 萌点 + 实用 · 小红书 / 视频号</span>
+      <span>🎙 配音：1 句</span><span>🎬 镜头：2</span>
+    </div>
+    <div class="shot"><div class="t">0-3s</div><div class="v">手柔慢拖一份 PDF 贴近老鼠</div><div class="a">柔和 lo-fi + "看它吃文档。"</div></div>
+    <div class="shot"><div class="t">3-10s</div><div class="v">老鼠张嘴吞 → "🍽 已吃下" → 说"用三句话告诉我重点" → 流式吐三行总结</div><div class="a">"PDF / 网页 / 截图 / 代码 都能吃。"</div></div>
+    <div class="shot"><div class="t">10-13s</div><div class="v">字幕"GitHub: MouseClaw" + 老鼠打哈欠</div><div class="a">"喂得越多越懂你。"</div></div>
+  </div>
+
+  <div class="demo">
+    <h3>Demo 4 · 「12MB · 本地 · 不上云」（隐私 + 体积）</h3>
+    <div class="meta">
+      <span>⏱ 12s</span><span>🎯 隐私党 · X / B 站 / 视频号</span>
+      <span>🎙 配音：2 句</span><span>🎬 镜头：3</span>
+    </div>
+    <div class="shot"><div class="t">0-3s</div><div class="v">DMG 文件信息特写："12.0 MB" + 网速 0 KB/s</div><div class="a">"装它，12 MB。"</div></div>
+    <div class="shot"><div class="t">3-7s</div><div class="v">Wireshark / 流量监控显示对话期间无外网请求</div><div class="a">"你和它说的话，0 字节上云。"</div></div>
+    <div class="shot"><div class="t">7-10s</div><div class="v">分屏：左 ChatGPT 上云图标；右 MouseClaw "本地推理 ✓"</div><div class="a">"语音识别全本地 sherpa-onnx。"</div></div>
+    <div class="shot"><div class="t">10-12s</div><div class="v">字幕"GitHub: MouseClaw · 开源审计欢迎"</div><div class="a">"开源审计欢迎。"</div></div>
+  </div>
+
+  <div class="demo">
+    <h3>Demo 5 · 「Claude / Codex / Hermes 都能用」（多后端）</h3>
+    <div class="meta">
+      <span>⏱ 14s</span><span>🎯 开发者向 · B 站 / X</span>
+      <span>🎙 配音：2 句</span><span>🎬 镜头：3</span>
+    </div>
+    <div class="shot"><div class="t">0-3s</div><div class="v">托盘菜单展开 → 模型菜单显示 Claude / Codex / OpenClaw / Hermes</div><div class="a">"它不绑定 AI 后端。"</div></div>
+    <div class="shot"><div class="t">3-8s</div><div class="v">点 Claude → 对老鼠说 "重构这个 React 组件" → 改完代码 / 切到 Codex → 同一句话 → 不同风格的回答</div><div class="a">"装哪个 CLI 它就用哪个 — Claude、Codex、OpenClaw、Hermes 都行。"</div></div>
+    <div class="shot"><div class="t">8-12s</div><div class="v">字幕快闪 "Claude / Codex / OpenClaw / Hermes / Local Ollama..."</div><div class="a">"国内大模型也支持。"</div></div>
+    <div class="shot"><div class="t">12-14s</div><div class="v">字幕"GitHub: MouseClaw"</div><div class="a">—</div></div>
+  </div>
+
+  <h3>1 个 overall 长片（60-75 秒）</h3>
+  <div class="demo pick">
+    <h3>Overall · 「MouseClaw 完整 demo」</h3>
+    <div class="meta">
+      <span>⏱ 65s</span><span>🎯 全功能展示 · 视频号 / B 站 / YouTube Shorts</span>
+      <span>🎙 配音：8-10 句</span><span>🎬 镜头：12</span>
+    </div>
+
+    <p style="font-size:13px; color: var(--muted); margin-top:8px;">
+      串联 demo 1-5 的核心镜头，加更丰富的转场。结构：</p>
+    <ol style="font-size:13px;">
+      <li><strong>0-8s · Hook</strong>：复用 Demo 1 的 ChatGPT 开除场景 + 老鼠登场</li>
+      <li><strong>8-20s · 语音输入</strong>：复用 Demo 2 的中英文混合演示</li>
+      <li><strong>20-32s · AI 召唤 + 喂文件</strong>：Demo 1 + 3 合并镜头</li>
+      <li><strong>32-44s · 多后端 + 隐私</strong>：Demo 4 + 5 合并</li>
+      <li><strong>44-55s · 桌宠日常</strong>：休息 / 跟随光标 / 拖动到喜欢的位置 / 托盘菜单（新功能展示）</li>
+      <li><strong>55-65s · 收尾</strong>：开源 + 体积 + GitHub 搜 MouseClaw</li>
+    </ol>
+  </div>
+
+  <h2>② AI 配音工具选择</h2>
+
+  <div class="cmp">
+    <div>
+      <h4>🅰 火山引擎 TTS</h4>
+      <p style="font-size: 13px; color: var(--muted);">音色：「晓萌」（活泼女声）/「硕」（沉稳男声）</p>
+      <p class="pro">✅ 国内最自然中文 TTS</p>
+      <p class="pro">✅ API 简单，curl 调用</p>
+      <p class="pro">✅ 免费额度足够（每月 10 万字）</p>
+      <p class="con">⚠️ 需要注册账号 + 拿 API key</p>
+      <p style="font-size:12px; color: var(--muted);">链接：volcengine.com/product/tts</p>
+    </div>
+
+    <div>
+      <h4>🅱 剪映 / CapCut export 音频</h4>
+      <p style="font-size: 13px; color: var(--muted);">音色：剪映"晓萌""硕"同款（实际就是火山）</p>
+      <p class="pro">✅ 零代码 · 剪映里直接配</p>
+      <p class="pro">✅ 可手动调语速 / 停顿</p>
+      <p class="con">⚠️ 手动操作每条字幕都要点</p>
+      <p class="con">⚠️ export 出 mp3 还要单独喂进 hyperframes 时间线</p>
+      <p style="font-size:12px; color: var(--muted);">链接：lv.ulikecam.com</p>
+    </div>
+
+    <div class="pick" style="padding: 14px 16px;">
+      <h4>🅲 macOS 内置 say</h4>
+      <p style="font-size: 13px; color: var(--muted);">音色：Tingting（中文女声）/ Daniel（英文男声）</p>
+      <p class="pro">✅ 零依赖，命令行直接生成</p>
+      <p class="pro">✅ 完全免费 + 离线</p>
+      <p class="pro">✅ 跟 hyperframes 集成最容易（脚本化）</p>
+      <p class="warn">⚠️ 音色比火山差一档（适合 v1，后续替换）</p>
+      <p style="font-size:12px; color: var(--muted);">命令：<code>say -v Tingting "..." -o out.aiff</code></p>
+    </div>
+  </div>
+
+  <div class="callout p">
+    <strong>我推荐分两阶段</strong>：
+    <ol style="margin: 8px 0 0; padding-left: 22px;">
+      <li><strong>v1（这周做）：macOS say + Tingting</strong> — 我能在 hyperframes 项目里直接写 shell 脚本一次生成所有配音文件。零成本、零阻塞，先把视频做出来发。</li>
+      <li><strong>v2（如果数据好）：火山引擎晓萌</strong> — 注册账号 + 拿 key 后我帮你写 Python 替换脚本。音色差别在最终视频里能听出来，但 v1 跑数据时不需要那个差别。</li>
+    </ol>
+    <strong>极端方案</strong>：剪映手动配音也 OK，但要你手动操作 + 我无法自动化。
+  </div>
+
+  <h2>③ hyperframes 集成音频</h2>
+  <p>hyperframes 当前不原生支持 audio track。两种集成方式：</p>
+
+  <h3>方式 1 · hyperframes 出哑剧视频 → ffmpeg 后处理拼音频（推荐）</h3>
+  <ol>
+    <li>hyperframes 渲染纯画面 mp4（无声）</li>
+    <li>shell 脚本调 <code>say</code> 生成每句配音 aiff</li>
+    <li>ffmpeg 把所有 aiff 拼接成单条 mp3，按 scene 时间码对齐</li>
+    <li>ffmpeg 合成：<code>ffmpeg -i video.mp4 -i audio.mp3 -c:v copy -c:a aac final.mp4</code></li>
+  </ol>
+  <p class="pro" style="font-size:13px;">✅ 完全脚本化 · 每次改文案重跑就能出新版本</p>
+  <p class="con" style="font-size:13px;">⚠️ 音视频对齐要算 timing；字幕从 hyperframes 出</p>
+
+  <h3>方式 2 · 用剪映剪</h3>
+  <ol>
+    <li>hyperframes 出无声视频 (mp4)</li>
+    <li>导入剪映</li>
+    <li>剪映里点点字幕 + AI 配音 → 直接 export</li>
+  </ol>
+  <p class="pro" style="font-size:13px;">✅ 改字幕零成本</p>
+  <p class="con" style="font-size:13px;">⚠️ 你要在剪映里操作每个 demo · 5+1 个视频要操作 6 次</p>
+
+  <div class="callout g">
+    <strong>我推方式 1 · macOS say + ffmpeg</strong>：6 个视频一个 shell 脚本跑完，下次改文案 = 改一行配置 + 重跑。
+  </div>
+
+  <h2>④ 你需要提供什么</h2>
+  <p>大部分镜头是 mock UI / 录屏。需要你提供的是：</p>
+  <ul>
+    <li><strong>真实录屏 · 5 段</strong>（每段 5-8 秒，1080p 30fps）：
+      <ol>
+        <li>ChatGPT 网页报错"You've reached your limit"（demo 1 hook）</li>
+        <li>微信输入框 + 长按 fn 演示语音输入（demo 2）</li>
+        <li>Finder 拖一份 PDF 到桌面右下角（demo 3）</li>
+        <li>托盘菜单展开 + 切换 AI 后端（demo 5）</li>
+        <li>VSCode 召唤 AI 改代码（overall）</li>
+      </ol>
+      不录也可以，我用 mock UI 画，但真实录屏更有说服力。
+    </li>
+    <li><strong>桌宠演示动画</strong>（我可以用 hyperframes 重新画，不需要真录）</li>
+    <li><strong>音乐版权</strong> ——我推荐 epidemicsound.com / pixabay 免费 BGM，你选一首给我或我先用 pixabay 上的</li>
+  </ul>
+
+  <h2>⑤ 工作量评估</h2>
+  <table>
+    <thead><tr><th>阶段</th><th>内容</th><th>工时</th></tr></thead>
+    <tbody>
+      <tr><td class="k">①</td><td>hyperframes 项目重构（5 个 demo + 1 overall 共享 token / mock）</td><td>2-3h</td></tr>
+      <tr><td class="k">②</td><td>Demo 1 「开除 ChatGPT」hyperframes 实现 + say 脚本 + 字幕</td><td>1.5h</td></tr>
+      <tr><td class="k">③</td><td>Demo 2-5 hyperframes 实现（套同一框架）</td><td>3-4h</td></tr>
+      <tr><td class="k">④</td><td>Overall 长片 timeline 重组（复用 demo 1-5 镜头 + 加桌宠日常）</td><td>2-3h</td></tr>
+      <tr><td class="k">⑤</td><td>ffmpeg 拼音频脚本 + 各平台版本（抖音 9:16 / 小红书 9:16 / 视频号 9:16 + 横屏 16:9 for B 站）</td><td>2h</td></tr>
+      <tr><td class="k">⑥</td><td>4 套发文文案（标题 + 描述 + 标签 · 抖音 / 小红书 / 视频号 / TikTok）</td><td>1h</td></tr>
+      <tr><td>—</td><td><strong>总计</strong></td><td><strong>~12-14h</strong></td></tr>
+    </tbody>
+  </table>
+
+  <h2>⑥ 我下一步要你拍板的</h2>
+  <ol>
+    <li><strong>配音工具</strong>：A 火山引擎 / B 剪映 / <strong>C macOS say（推荐）</strong>？</li>
+    <li><strong>5 个 demo 都要做吗</strong>？或者先做 Demo 1 + overall 这两个最关键的，看数据？</li>
+    <li><strong>真实录屏</strong>你能录吗？录哪几段？不能我用 mock UI 兜底</li>
+    <li><strong>BGM</strong>：你有偏好（电子 / lofi / 钢琴）/ 还是让我从 pixabay 挑？</li>
+  </ol>
+
+  <div class="callout g">
+    <strong>给我 4 个答案就开干</strong>：<br>
+    例子：<code>配音=C · 范围=Demo1+overall先做 · 录屏=2/3/4我录 · BGM=lofi</code><br>
+    收到后我下一轮会话直接开始重写 marketing/demo-zh/ 出 v1。
+  </div>
+</div>
+</body>
+</html>

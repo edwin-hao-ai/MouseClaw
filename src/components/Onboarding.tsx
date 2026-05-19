@@ -33,6 +33,9 @@ export type VoiceImeTrigger =
   | "right-shift" | "right-command" | "right-option"
   | "disabled"; // 用户选不启用
 
+/** v0.4.0 · 语音识别用的模型语言。"zh" = 中文（含中英混合）/ "en" = English-only */
+export type VoiceLang = "zh" | "en";
+
 interface OnboardingProps {
   onComplete: (
     choice: ShortcutChoice,
@@ -40,6 +43,7 @@ interface OnboardingProps {
     skin: SkinId,
     voiceImeTrigger: VoiceImeTrigger,
     petAnchor: PetAnchor,
+    voiceLang: VoiceLang,
   ) => void;
 }
 
@@ -105,6 +109,14 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   const [backend, setBackend] = useState<BackendChoice>("claude-cli");
   const [skin, setSkin] = useState<SkinId>(DEFAULT_SKIN);
   const [voiceImeTrigger, setVoiceImeTrigger] = useState<VoiceImeTrigger>("fn");
+  // v0.4.0 · 语音识别模型语言（zh / en）。决定下哪个 sherpa 模型 (~199MB vs ~73MB)。
+  // 用户切到 en：仅识别英文，但准确率明显高于 zh-en 双语模型上的纯英文。
+  // 默认按 UI 语言推断 —— UI 是中文 → zh；UI 是英文 → en。
+  const [voiceLang, setVoiceLang] = useState<VoiceLang>(() => {
+    // 从 UI 语言推一个合理默认。t() 拿不到，简单判一下浏览器 lang
+    const ui = navigator.language?.toLowerCase() ?? "";
+    return ui.startsWith("zh") ? "zh" : "en";
+  });
   // v0.1.27 · 默认 bottom-right —— 最不挡视线
   const [petAnchor, setPetAnchor] = useState<PetAnchor>("bottom-right");
   // v0.1.28 · 后端 CLI 安装状态（id → {installed, installCmd, installUrl}）
@@ -339,18 +351,59 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     );
   }
 
-  // ── Step 4: 选 voice IME 触发键 (NEW v0.1.12) ─────────────────────────────
+  // ── Step 4: 选 voice IME 触发键 (NEW v0.1.12) + voice lang (v0.4.0) ───────
   if (step === 4) {
     const triggers: VoiceImeTrigger[] = [
       "fn", "option", "control", "right-shift", "right-command", "right-option", "disabled"
     ];
+    const isZhUi = t("onboarding.voice_ime.title").includes("语音");
     return (
       <div className="ob-root">
         <div className="ob-mouse-stage">
           <PixelMouse state="listen" size={96} skin={skin} />
         </div>
-        <h1 className="ob-title">{t("onboarding.voice_ime.title")}</h1>
-        <p className="ob-subtitle">{t("onboarding.voice_ime.subtitle")}</p>
+        <h1 className="ob-title">{isZhUi ? "语音识别设置" : "Voice Setup"}</h1>
+        <p className="ob-subtitle">
+          {isZhUi
+            ? "先选语音识别模型 —— 首次启动会自动下载（无需手动操作）"
+            : "Pick a voice model — auto-downloaded on first launch"}
+        </p>
+
+        {/* v0.4.0 · 语音模型语言（决定下哪个 sherpa 模型） */}
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: "#5a5249" }}>
+            {isZhUi ? "🎤 语音识别语言" : "🎤 Voice model"}
+          </div>
+          <div className="ob-options" role="radiogroup" aria-label="voice lang">
+            <button
+              type="button" role="radio"
+              aria-checked={voiceLang === "zh"}
+              className={`ob-option ${voiceLang === "zh" ? "selected" : ""}`}
+              onClick={() => setVoiceLang("zh")}
+            >
+              <span className="ob-label">
+                {isZhUi ? "中文（含中英混合 · ~199MB）" : "Chinese + mixed zh-en (~199MB)"}
+              </span>
+              {isZhUi && <span className="ob-tag">{t("common.recommended")}</span>}
+            </button>
+            <button
+              type="button" role="radio"
+              aria-checked={voiceLang === "en"}
+              className={`ob-option ${voiceLang === "en" ? "selected" : ""}`}
+              onClick={() => setVoiceLang("en")}
+            >
+              <span className="ob-label">
+                {isZhUi ? "English（纯英文 · ~73MB）" : "English-only (~73MB · best accuracy)"}
+              </span>
+              {!isZhUi && <span className="ob-tag">{t("common.recommended")}</span>}
+            </button>
+          </div>
+        </div>
+
+        {/* voice IME 触发键 */}
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: "#5a5249" }}>
+          {isZhUi ? "⌨️ 语音输入法触发键" : "⌨️ Voice IME hold key"}
+        </div>
         <div className="ob-options" role="radiogroup" aria-label={t("onboarding.voice_ime.title")}>
           {triggers.map(tr => (
             <button
@@ -523,7 +576,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
       <button
         type="button"
         className={`ob-cta ${!allDone ? "ob-cta-secondary" : ""}`}
-        onClick={() => onComplete(selected, backend, skin, voiceImeTrigger, petAnchor)}
+        onClick={() => onComplete(selected, backend, skin, voiceImeTrigger, petAnchor, voiceLang)}
       >
         {allDone ? t("onboarding.cta.finish") : t("onboarding.cta.skip")}
       </button>

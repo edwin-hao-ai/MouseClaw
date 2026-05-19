@@ -37,7 +37,7 @@ use crate::skins::SkinId;
 ///              做 fallback，体验不变但准度大跳。
 ///   v16 → v17: Whisper 整套删除（whisper_model 字段 + WhisperModel enum）。
 ///              sherpa-onnx zh-en bundled in DMG，无 user-facing model picker。
-pub const CURRENT_CONFIG_VERSION: u32 = 17;
+pub const CURRENT_CONFIG_VERSION: u32 = 19;
 
 /// 桌宠悬停位置 (v0.1.27) —— overlay 闲置时停哪儿打盹。
 /// 召唤快捷键触发时仍然跑到光标位置工作，完事 auto-hide 后回到 anchor。
@@ -114,6 +114,16 @@ pub struct Config {
     /// 加新语言：枚举改成 string + 前端 LANGUAGES 表加项即可，Rust 这边不卡。
     #[serde(default = "default_language")]
     pub language: String,
+    /// v0.4.0 · 语音识别模型语言 ——「zh」(中文 + 中英混合) /「en」(English)。
+    /// 在 Onboarding 选；持久化后 model_downloader 据此决定下哪个 sherpa 模型。
+    /// 默认 zh —— 与原默认中文用户体验对齐。海外用户首次 onboarding 会选 en。
+    /// 不同于上面 `language`（UI 文案 i18n），voice_lang 决定**模型**。
+    #[serde(default = "default_voice_lang")]
+    pub voice_lang: String,
+    /// v0.4.0 · 首次使用引导是否已完成 —— 模型下载完后桌宠主动跳出来教用户用一次。
+    /// 用户完成或跳过都设 true；PetMenu 的「📖 教我用 MouseClaw」可强制重启。
+    #[serde(default)]
+    pub firstrun_tour_done: bool,
     // tidy_up_enabled removed in v0.3.4 — LLM polish deleted (slow + costly,
     // violates voice-typing's speed-first value). Old configs silently ignore
     // the field via serde's default unknown-field behavior.
@@ -167,6 +177,7 @@ pub struct Config {
 
 fn legacy_version() -> u32 { 1 }
 fn default_language() -> String { "zh".into() }
+fn default_voice_lang() -> String { "zh".into() }
 // LLM tidy 默认**关** —— Claude CLI 调用每次 +3-8s，对 AI 召唤流程是过度优化。
 // 只有写到光标的语音 IME 场景值得开（精修文本，用户看到的就是它）。
 // 用户托盘菜单可一键开。
@@ -182,6 +193,8 @@ impl Default for Config {
             backend: Backend::default(),
             skin: SkinId::default(),
             language: default_language(),
+            voice_lang: default_voice_lang(),
+            firstrun_tour_done: false,
             voice_ime_enabled: default_voice_ime(),
             voice_ime_trigger: default_voice_ime_trigger(),
             clipboard_paused: false,

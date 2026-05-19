@@ -55,7 +55,8 @@ pub fn save_shortcut(
     choice: String,
     backend: String,
     skin: Option<String>,
-    _app: AppHandle,
+    voice_lang: Option<String>,
+    app: AppHandle,
 ) -> Result<(), String> {
     let new_str = config::choice_to_shortcut_str(&choice).to_string();
     Shortcut::from_str(&new_str)
@@ -63,6 +64,8 @@ pub fn save_shortcut(
 
     let backend = Backend::from_choice(&backend);
     let skin = SkinId::from_str(skin.as_deref().unwrap_or(""));
+    let voice_lang = voice_lang.as_deref().filter(|s| *s == "zh" || *s == "en")
+        .unwrap_or("zh").to_string();
     // 保留用户之前选的语言等设置（重走 onboarding 不要被重置成 default）
     let prev = config::Config::load();
     let cfg = config::Config {
@@ -70,6 +73,8 @@ pub fn save_shortcut(
         backend,
         skin,
         language: prev.language,
+        voice_lang: voice_lang.clone(),
+        firstrun_tour_done: prev.firstrun_tour_done,
         voice_ime_enabled: prev.voice_ime_enabled,
         voice_ime_trigger: prev.voice_ime_trigger,
         clipboard_paused: prev.clipboard_paused,
@@ -84,9 +89,23 @@ pub fn save_shortcut(
     cfg.save().map_err(|e| format!("保存配置失败：{e}"))?;
 
     println!(
-        "[mouseclaw] config saved → shortcut={new_str}, backend={:?}, skin={:?}, onboarded ✓ — 等待重启",
+        "[mouseclaw] config saved → shortcut={new_str}, backend={:?}, skin={:?}, voice_lang={voice_lang}, onboarded ✓",
         backend, skin
     );
+
+    // v0.4.0 · Onboarding 完成立即触发模型下载（不等用户首次按快捷键）
+    crate::transcribe_stream::kick_off_download_if_missing(app.clone());
+    crate::punctuation::kick_off_download_if_missing(app.clone());
+
+    // 若两个模型都还没下完 → 自动打开下载进度窗口，用户能看到动静
+    let need_download = !crate::transcribe_stream::is_ready()
+        || !crate::punctuation::is_ready();
+    if need_download {
+        if let Err(e) = open_downloader_window(app) {
+            eprintln!("[mouseclaw] auto-open downloader failed: {e}");
+        }
+    }
+
     Ok(())
 }
 
@@ -462,6 +481,131 @@ pub async fn open_panel_window(
 #[tauri::command]
 pub fn take_panel_context(state: State<'_, Arc<AppState>>) -> Option<crate::PendingPanelContext> {
     state.pending_panel_context.lock().unwrap().take()
+}
+
+/// v0.4.0 · 打开模型下载进度窗口 —— 托盘菜单 / blocked 气泡的入口
+#[tauri::command]
+pub fn open_downloader_window(app: AppHandle) -> Result<(), String> {
+    use tauri::{WebviewWindowBuilder, WebviewUrl};
+    if let Some(w) = app.get_webview_window("downloader") {
+        let _ = w.show();
+        let _ = w.set_focus();
+        return Ok(());
+    }
+    let res = WebviewWindowBuilder::new(
+        &app, "downloader",
+        WebviewUrl::App("index.html?view=downloader".into()),
+    )
+    .title("MouseClaw — 模型下载")
+    .inner_size(520.0, 460.0)
+    .min_inner_size(420.0, 360.0)
+    .resizable(true).decorations(true).focused(true)
+    .build();
+    match res {
+        Ok(w) => { let _ = w.set_focus(); Ok(()) }
+        Err(e) => Err(format!("打开下载窗口失败：{e:#}")),
+    }
+}
+
+/// v0.4.0 · 重试模型下载 —— 用户在 DownloaderView 点「🔁 重试下载」时调
+#[tauri::command]
+pub fn retry_model_downloads(app: AppHandle) -> Result<(), String> {
+    crate::transcribe_stream::kick_off_download_if_missing(app.clone());
+    crate::punctuation::kick_off_download_if_missing(app);
+    Ok(())
+}
+
+/// v0.4.0 · DownloaderView 挂载时调一次拿当前所有模型的状态快照。
+/// 没监听到 emit 也能正确显示「✅ 已就绪」或「等待开始」等状态。
+#[tauri::command]
+pub fn get_model_status() -> Vec<crate::model_downloader::ProgressEvent> {
+    crate::model_downloader::snapshot_all()
+}
+
+// ────────────────── v0.4.0 · 语音确认 commands ──────────────────
+
+/// 用户按 Enter / 点"发送" → 立即跳过倒数发送当前 text
+#[tauri::command]
+pub fn voice_confirm_send(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.voice_confirm_action.store(crate::VC_SEND_NOW, std::sync::atomic::Ordering::SeqCst);
+    Ok(())
+}
+
+/// 用户按 Esc / 点"取消" → 取消 pipeline
+#[tauri::command]
+pub fn voice_confirm_cancel(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.voice_confirm_action.store(crate::VC_CANCEL, std::sync::atomic::Ordering::SeqCst);
+    Ok(())
+}
+
+/// 用户编辑文本（点气泡进入输入框模式后 commit）→ 回写 + 立即发送
+#[tauri::command]
+pub async fn voice_confirm_edit(
+    text: String,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    *state.voice_confirm_text.lock().await = Some(text);
+    state.voice_confirm_action.store(crate::VC_SEND_NOW, std::sync::atomic::Ordering::SeqCst);
+    Ok(())
+}
+
+/// v0.3.11 · 用户开始打字 → 暂停倒数，回写当前 text（不发送）。
+/// 等用户主动 Enter (voice_confirm_send / voice_confirm_edit) 或 Esc (voice_confirm_cancel)。
+#[tauri::command]
+pub async fn voice_confirm_hold(
+    text: String,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    *state.voice_confirm_text.lock().await = Some(text);
+    state.voice_confirm_action.store(crate::VC_HOLD, std::sync::atomic::Ordering::SeqCst);
+    Ok(())
+}
+
+// ────────────────── v0.4.0 · 首次使用引导 commands ──────────────────
+
+/// 启动 / 重启首次引导 —— Step 1。
+/// 模型下完后由 DownloaderView 自动调；PetMenu「📖 教我用」也调它强制重启。
+#[tauri::command]
+pub fn tour_start(app: AppHandle) -> Result<(), String> {
+    crate::overlay::show_mouse(&app);
+    crate::overlay::emit_view(&app, &crate::events::ViewKind::TourStep { step: 1 });
+    Ok(())
+}
+
+/// 推进到下一步 —— 前端按用户操作（[好啊] / [已经打开了] / 完成对话）调用。
+#[tauri::command]
+pub fn tour_advance(step: u32, app: AppHandle) -> Result<(), String> {
+    if step >= 5 {
+        // 完成 —— 持久化 + 5 秒后自动收起
+        let mut cfg = crate::config::Config::load();
+        cfg.firstrun_tour_done = true;
+        let _ = cfg.save();
+        crate::overlay::emit_view(&app, &crate::events::ViewKind::TourStep { step: 5 });
+        let app_clone = app.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            crate::overlay::hide_overlay(&app_clone);
+        });
+    } else {
+        crate::overlay::emit_view(&app, &crate::events::ViewKind::TourStep { step });
+    }
+    Ok(())
+}
+
+/// 跳过引导 —— [下次再说] / [退出引导] / Esc 都走这条
+#[tauri::command]
+pub fn tour_skip(app: AppHandle) -> Result<(), String> {
+    let mut cfg = crate::config::Config::load();
+    cfg.firstrun_tour_done = true;
+    let _ = cfg.save();
+    crate::overlay::hide_overlay(&app);
+    Ok(())
+}
+
+/// 查询引导是否已完成 —— DownloaderView「模型下完」时调，决定是否自动触发
+#[tauri::command]
+pub fn get_tour_done() -> bool {
+    crate::config::Config::load().firstrun_tour_done
 }
 
 /// v0.3.11 · 从 HistoryView 「💬 继续这个话题」恢复一个旧 session 进 Panel 窗口。

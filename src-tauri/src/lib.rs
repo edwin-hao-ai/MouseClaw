@@ -21,6 +21,7 @@ pub mod punctuation;
 #[cfg(target_os = "macos")]
 pub mod tts;
 pub mod transcribe_stream;
+pub mod model_downloader;
 pub mod claude_cli;
 pub mod clipboard;
 pub mod clipboard_crypto;
@@ -115,7 +116,20 @@ pub struct AppState {
     /// v0.4 · drag-leave 防抖：记最后一次"打算 leave"的时刻，
     /// 200ms 内 re-enter 就 cancel 这次 leave（避免动画闪烁）。
     pub feed_last_leave: StdMutex<Option<std::time::Instant>>,
+    /// v0.4.0 · 语音确认状态 —— 转写完进 3 秒倒数，用户可 Esc 取消 / Enter 立即发 /
+    /// 编辑后发。`None` = 没在等用户操作；`Some(action)` = 用户已经做了选择，
+    /// 倒数 task 读到立即 break。简化版用 AtomicU8 表示三种状态。
+    pub voice_confirm_action: std::sync::atomic::AtomicU8,
+    /// v0.4.0 · 语音确认当前文本 —— commands::voice_confirm_edit 改写它
+    pub voice_confirm_text: Mutex<Option<String>>,
 }
+
+/// v0.4.0 · 语音确认动作枚举
+pub const VC_PENDING: u8 = 0;
+pub const VC_SEND_NOW: u8 = 1;
+pub const VC_CANCEL: u8 = 2;
+/// v0.3.11 · 用户开始编辑文本 → 暂停倒数，等用户主动 Enter/Esc 才走
+pub const VC_HOLD: u8 = 3;
 
 impl AppState {
     fn new(backend: Backend) -> anyhow::Result<Self> {
@@ -136,6 +150,8 @@ impl AppState {
             fed_docs: Mutex::new(None),
             feed_drag_active: AtomicBool::new(false),
             feed_last_leave: StdMutex::new(None),
+            voice_confirm_action: std::sync::atomic::AtomicU8::new(VC_PENDING),
+            voice_confirm_text: Mutex::new(None),
         })
     }
 }
@@ -311,6 +327,17 @@ pub fn run() {
             commands::open_panel_window,
             commands::take_panel_context,
             commands::resume_session,
+            commands::open_downloader_window,
+            commands::retry_model_downloads,
+            commands::get_model_status,
+            commands::voice_confirm_send,
+            commands::voice_confirm_cancel,
+            commands::voice_confirm_edit,
+            commands::voice_confirm_hold,
+            commands::tour_start,
+            commands::tour_advance,
+            commands::tour_skip,
+            commands::get_tour_done,
             commands::open_hub_window,
             commands::save_voice_ime,
             commands::get_voice_ime,
@@ -415,11 +442,14 @@ pub fn run() {
                 ),
             }
 
-            // Background Whisper model download if missing
-            // v0.3 · sherpa streaming ASR：先从 bundle seed，没就后台下载
-            transcribe_stream::kick_off_download_if_missing();
-            // v0.3.6 · 标点模型 —— 跟 ASR 一样从 bundle seed 到用户目录
-            let _ = punctuation::try_seed_from_bundle();
+            // v0.4.0 · sherpa 模型按需下载（DMG 不再打包，~260MB → 35MB）。
+            //   只在已 onboarded 用户启动时跑 —— 否则首次安装会下了 199MB
+            //   zh-en 才发现用户在 onboarding 选了 English，前面下的全废。
+            //   未 onboarded 由 commands::save_shortcut 在 onboarding 完成时调起。
+            if cfg.onboarded {
+                transcribe_stream::kick_off_download_if_missing(app.handle().clone());
+                punctuation::kick_off_download_if_missing(app.handle().clone());
+            }
 
             // v0.1.27 · 已 onboarded 的用户：启动时把桌宠送到 anchor 位置打盹。
             // Follow 模式跳过 —— 由 cursor_follow 接管。

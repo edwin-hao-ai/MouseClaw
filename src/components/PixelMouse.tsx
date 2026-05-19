@@ -21,7 +21,8 @@ export type MouseState =
   | "hub"    // v0.1.14 · Hub 打开：坐下，弯眼 ︶
   | "paste"  // v0.1.14 · 粘贴动作：爪子拎剪贴板，闪一下
   | "feed-wait"     // v0.4 · 文件 hover 在桌宠上：张嘴等接收
-  | "feed-digest";  // v0.4 · 已吞下文件：闭眼眯笑 + 肚子发光（CSS）
+  | "feed-digest"   // v0.4 · 已吞下文件：闭眼眯笑 + 肚子发光（CSS）
+  | "talk";  // v0.3.11 · AI 流式输出时：嘴一直在动 + 身体节奏抖（CSS keyframe mc-talk）
 
 interface PixelMouseProps {
   state: MouseState;

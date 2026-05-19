@@ -234,14 +234,9 @@ pub async fn on_shortcut_press(app: AppHandle, state: Arc<AppState>) {
     }
 
     // v0.2 · check sherpa streaming model
+    // v0.4.0 · 模型走 lazy download，blocked 气泡显示**实时下载进度**让用户知道在干嘛
     if !crate::transcribe_stream::is_ready() {
-        let msg = match crate::transcribe_stream::current_state() {
-            Some(crate::transcribe_stream::ModelState::Downloading) =>
-                "正在下载语音模型（~180MB），首次启动需稍等几分钟，完成后再试".to_string(),
-            Some(crate::transcribe_stream::ModelState::Failed(e)) =>
-                format!("语音模型下载失败：{e}\n手动重试：删除 ~/.mouseclaw/models/sherpa-zh-en 后重启 App"),
-            _ => "语音模型未就绪，请稍候".to_string(),
-        };
+        let msg = build_model_blocked_msg();
         emit_view(&app, &ViewKind::Blocked { reason: msg });
         schedule_auto_hide(&app, &state, 6000);
         return;
@@ -436,7 +431,13 @@ pub async fn on_shortcut_release(app: AppHandle, state: Arc<AppState>) {
             if punctuated != light {
                 println!("[mouseclaw] transcript (punctuated): {punctuated:?}");
             }
-            run_pipeline(punctuated, app_clone, state_clone).await;
+            // v0.4.0 · A 方案 · 3 秒倒数确认 —— 防误识别浪费 token。
+            // Esc 取消 / Enter 立即发 / 点气泡进 edit / 默认 3s 后自动发。
+            let final_text = match voice_confirm_countdown(&app_clone, &state_clone, &punctuated).await {
+                Some(t) => t,
+                None => { hide_overlay(&app_clone); return; }
+            };
+            run_pipeline(final_text, app_clone, state_clone).await;
         });
     });
 }
@@ -447,6 +448,130 @@ pub async fn on_shortcut_release(app: AppHandle, state: Arc<AppState>) {
 ///   - 登录过期 / 没 API key → 提示 `claude login` / 检查 env
 ///   - rate limit / 5xx → 提示稍后重试
 ///   - 其它 → 原样 + 「按 ⌘空格 重试」尾巴
+/// v0.4.0 · 语音确认倒数 —— 转写完后 3 秒确认窗口。
+/// 返回值：
+///   - `Some(text)` = 用户确认（或倒数完毕） → 发给 AI；text 可能被用户编辑过
+///   - `None` = 用户取消（Esc / 点取消）→ 调用方应 hide_overlay 不跑 pipeline
+///
+/// 协议：通过 `state.voice_confirm_action` AtomicU8 + commands 传递用户操作：
+///   - VC_PENDING = 还在倒数
+///   - VC_SEND_NOW = 用户按 Enter / 倒数完 → 立即发
+///   - VC_CANCEL = 用户按 Esc → 取消
+///
+/// 编辑路径：用户点气泡 → 前端弹输入框 → 改完 → 调 `voice_confirm_edit(new_text)`
+/// 命令把新文本回写 + 标记 SEND_NOW。这部分由 commands.rs 实现，本函数只需读结果。
+pub async fn voice_confirm_countdown(
+    app: &AppHandle,
+    state: &Arc<AppState>,
+    initial_text: &str,
+) -> Option<String> {
+    use std::sync::atomic::Ordering;
+    use crate::{VC_PENDING, VC_SEND_NOW, VC_CANCEL, VC_HOLD};
+
+    // 写入初始文本到 state，供 commands::voice_confirm_edit/hold 读取 + 改写
+    *state.voice_confirm_text.lock().await = Some(initial_text.to_string());
+    state.voice_confirm_action.store(VC_PENDING, Ordering::SeqCst);
+
+    // v0.3.11 · 6 秒倒数（之前 3 秒用户来不及改）+ 用户开始打字 HOLD 暂停倒数。
+    //   HOLD 状态：remaining 锁在 99 表示"编辑中"，前端据此显示"✏️ 编辑中"。
+    const COUNTDOWN_SECS: u32 = 6;
+    let mut remaining = COUNTDOWN_SECS;
+    let mut holding = false;
+
+    loop {
+        let cur = state.voice_confirm_text.lock().await.clone().unwrap_or_default();
+        emit_view(app, &ViewKind::VoiceConfirm {
+            transcript: cur,
+            remaining: if holding { 99 } else { remaining },
+        });
+        // 1 秒切 10 片 × 100ms 让 Enter/Esc 快响应
+        for _ in 0..10 {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            let action = state.voice_confirm_action.load(Ordering::SeqCst);
+            match action {
+                a if a == VC_SEND_NOW => {
+                    let text = state.voice_confirm_text.lock().await.take()
+                        .unwrap_or_else(|| initial_text.to_string());
+                    state.voice_confirm_action.store(VC_PENDING, Ordering::SeqCst);
+                    return Some(text);
+                }
+                a if a == VC_CANCEL => {
+                    *state.voice_confirm_text.lock().await = None;
+                    state.voice_confirm_action.store(VC_PENDING, Ordering::SeqCst);
+                    return None;
+                }
+                a if a == VC_HOLD => {
+                    // 进入 hold：reset flag 回 PENDING 但记 holding=true
+                    holding = true;
+                    state.voice_confirm_action.store(VC_PENDING, Ordering::SeqCst);
+                }
+                _ => {}
+            }
+        }
+        if holding {
+            // 保持显示"编辑中"，不递减 —— 等用户主动 Enter / Esc
+            continue;
+        }
+        if remaining <= 1 {
+            // 倒数完毕 = 默认发送
+            let text = state.voice_confirm_text.lock().await.take()
+                .unwrap_or_else(|| initial_text.to_string());
+            state.voice_confirm_action.store(VC_PENDING, Ordering::SeqCst);
+            return Some(text);
+        }
+        remaining -= 1;
+    }
+}
+
+/// v0.4.0 · 组装 blocked 气泡里的"模型未就绪"消息。
+/// 优先用 model_downloader 的实时进度快照（具体下到第几个文件 / 哪个镜像 / 多少 MB），
+/// fallback 到老的 ModelState 文案。
+pub fn build_model_blocked_msg() -> String {
+    use crate::model_downloader::latest_progress;
+    // 优先看 active 语言模型进度（用户最关心 —— 这是按快捷键被挡住时唯一关心的事）
+    let active_id = crate::transcribe_stream::active_spec().id;
+    if let Some(p) = latest_progress(active_id) {
+        return format_progress(&p);
+    }
+    // 还没收到任何 progress event —— 用 active spec 算总 MB，不再 hardcode 199
+    let spec = crate::transcribe_stream::active_spec();
+    let total_mb = spec.files.iter().map(|f| f.bytes).sum::<u64>() as f64 / 1024.0 / 1024.0;
+    match crate::transcribe_stream::current_state() {
+        Some(crate::transcribe_stream::ModelState::Downloading) =>
+            format!("🦞 正在准备语音模型（首次启动需下 ~{:.0}MB），完成后再试", total_mb),
+        Some(crate::transcribe_stream::ModelState::Failed(e)) =>
+            format!("🦞 语音模型下载失败：{e}\n托盘 → 📥 模型下载进度 → 🔁 重试"),
+        _ => "🦞 语音模型未就绪，请稍候".into(),
+    }
+}
+
+fn format_progress(p: &crate::model_downloader::ProgressEvent) -> String {
+    let pct = if p.total_expected > 0 {
+        (p.total_done as f64 / p.total_expected as f64 * 100.0).min(100.0) as u32
+    } else { 0 };
+    let done_mb = p.total_done as f64 / 1024.0 / 1024.0;
+    let tot_mb = p.total_expected as f64 / 1024.0 / 1024.0;
+    let host = p.mirror.strip_prefix("https://")
+        .and_then(|s| s.split('/').next()).unwrap_or("");
+    let footer = "\n（托盘 📥 模型下载进度 可查看详情）";
+    match p.phase {
+        "downloading" => format!(
+            "🦞 正在下载语音模型…\n{:.0}/{:.0} MB · {}% · {}{}",
+            done_mb, tot_mb, pct, host, footer
+        ),
+        "fallback" => format!(
+            "🦞 镜像 {host} 不通，切换中…\n已下 {:.0}/{:.0} MB{}",
+            done_mb, tot_mb, footer
+        ),
+        "verifying" => format!("🦞 解压并校验模型…{footer}"),
+        "error" => {
+            let detail = p.message.as_deref().unwrap_or("");
+            format!("🦞 语音模型下载失败：{detail}\n托盘 → 📥 模型下载进度 → 🔁 重试")
+        }
+        _ => format!("🦞 准备语音模型中…{footer}"),
+    }
+}
+
 fn friendly_backend_error(raw: &str, backend: crate::backend::Backend) -> String {
     let lower = raw.to_lowercase();
     let bin = backend.binary_name();

@@ -5,7 +5,7 @@
  * its own URL route `?view=onboarding`.
  */
 import { invoke } from "@tauri-apps/api/core";
-import { Onboarding, type VoiceImeTrigger } from "./components/Onboarding";
+import { Onboarding, type VoiceImeTrigger, type VoiceLang } from "./components/Onboarding";
 import type { ShortcutChoice, BackendChoice, SkinId, PetAnchor } from "./types";
 
 export default function OnboardingView() {
@@ -13,10 +13,12 @@ export default function OnboardingView() {
     choice: ShortcutChoice, backend: BackendChoice, skin: SkinId,
     voiceImeTrigger: VoiceImeTrigger,
     petAnchor: PetAnchor,
+    voiceLang: VoiceLang,
   ) => {
     try {
-      // 1. 持久化主快捷键 + AI 后端 + 皮肤
-      await invoke("save_shortcut", { choice, backend, skin });
+      // 1. 持久化主快捷键 + AI 后端 + 皮肤 + 语音模型语言
+      // v0.4.0 · voiceLang 决定下哪个 sherpa 模型；save_shortcut 返回后会立即触发后台下载
+      await invoke("save_shortcut", { choice, backend, skin, voiceLang });
       // 2. 持久化 voice IME 触发键 + enable 状态
       if (voiceImeTrigger === "disabled") {
         await invoke("save_voice_ime", { enabled: false });

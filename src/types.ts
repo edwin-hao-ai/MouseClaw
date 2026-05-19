@@ -15,6 +15,11 @@ export type ViewKind =
   | { kind: "panel"; sessionId: number; turns: Turn[] }
   | { kind: "mode-b-countdown"; insertText: string; remaining: number }
   | { kind: "mode-b-inserting"; insertText: string }
+  // v0.4.0 · 语音转写完成后的 3 秒确认窗口（A 方案）
+  // Esc 取消 / Enter 立即发 / 点气泡编辑 / 倒数完自动发
+  | { kind: "voice-confirm"; transcript: string; remaining: number }
+  // v0.4.0 · 首次使用引导 · 5 步流程
+  | { kind: "tour-step"; step: number }
   | { kind: "blocked"; reason: string };
 
 export interface Turn {

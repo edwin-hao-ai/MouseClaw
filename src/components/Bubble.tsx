@@ -65,50 +65,54 @@ export function Bubble({
     [text, markdown]
   );
 
-  // v0.1.23 · 永远从顶看 —— 用户反馈「上面好像缺一块」就是流式自动滚到底引起的。
-  // 改成：流式期间也保持 scrollTop=0（除非用户手动往下翻去看最新 token），
-  // 用户读长回复的自然方向是从上到下，看不到开头才是真问题。
+  // v0.3.11 · 流式滚动策略（聊天标准行为）：
+  //   - streaming=true 时默认跟随最新 token 滚到底；用户手动上滚则**暂停跟随**，
+  //     把视图保持在用户当前位置（防止"我想看上面那段，结果它把我拽下来"）
+  //   - 用户再滚回 ~bottom 时自动恢复跟随
+  //   - streaming=false（流结束 / 静态长回复）保持当前位置，不强制顶 / 底，
+  //     避免抢用户阅读焦点。新 mount 的静态长回复初始就在顶部（浏览器默认）。
+  //   - v0.1.23 的"永远顶部"被用户反向反馈推翻：流式时看不到正在生成的内容更难受。
   const scrollRef = useRef<HTMLDivElement>(null);
-  const userScrolledRef = useRef(false);
-  // v0.3.7 · 视觉提示：用户滚下去了 → 顶部加 fade + ▲ 回顶按钮；
-  // 这样用户看到"哦上面还有内容"就不会以为是 bubble 自己截断了。
+  const followBottomRef = useRef(true); // 流式默认跟随
   const [showFadeTop, setShowFadeTop] = useState(false);
   const [showFadeBottom, setShowFadeBottom] = useState(false);
 
+  // 流式内容更新时：若处于跟随模式，滚到底
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || !scrollable) return;
-    // 用户没主动滚过 → 一直钉在顶部
-    if (!userScrolledRef.current) {
-      el.scrollTop = 0;
+    if (streaming && followBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
     }
-    // 重算 fade 显示状态
     setShowFadeTop(el.scrollTop > 4);
     setShowFadeBottom(el.scrollTop + el.clientHeight < el.scrollHeight - 4);
   }, [text, streaming, scrollable]);
 
-  // 用户开始滚动后就不再强制定位 + 实时更新 fade 显示
+  // 监听用户滚动 → 决定是否继续跟随
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || !scrollable) return;
     const onScroll = () => {
-      if (el.scrollTop > 4) userScrolledRef.current = true;
+      const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 12;
+      followBottomRef.current = nearBottom;
       setShowFadeTop(el.scrollTop > 4);
-      setShowFadeBottom(el.scrollTop + el.clientHeight < el.scrollHeight - 4);
+      setShowFadeBottom(!nearBottom);
     };
     el.addEventListener("scroll", onScroll, { passive: true });
-    // 初次挂载时也算一遍（处理 first paint）
     onScroll();
-    return () => {
-      el.removeEventListener("scroll", onScroll);
-      userScrolledRef.current = false;
-    };
+    return () => el.removeEventListener("scroll", onScroll);
   }, [scrollable]);
 
+  const scrollToBottom = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    followBottomRef.current = true;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  };
   const scrollToTop = () => {
     const el = scrollRef.current;
     if (!el) return;
-    userScrolledRef.current = false;
+    followBottomRef.current = false;
     el.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -162,6 +166,15 @@ export function Bubble({
       </div>
       {scrollable && showFadeBottom && (
         <div className="bubble-fade-bottom" aria-hidden />
+      )}
+      {scrollable && streaming && showFadeBottom && (
+        <button
+          type="button"
+          className="bubble-scroll-bottom"
+          onClick={scrollToBottom}
+          aria-label="跟随最新"
+          title="跟随最新"
+        >▼</button>
       )}
       {loading && <span className="bubble-shimmer" aria-hidden />}
       {expandable && (

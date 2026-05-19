@@ -403,6 +403,13 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
     }
     if !crate::transcribe_stream::is_ready() {
         eprintln!("[mouseclaw] 🎙️ sherpa not ready (model still downloading?), skip voice IME");
+        // v0.4.0 · 给用户气泡反馈 —— 之前只 eprintln 用户看不到，按 fn 按了半天以为坏了。
+        // 复用 pipeline 的 blocked 消息组装（带实时下载进度）。
+        crate::overlay::show_mouse(&app);
+        crate::overlay::emit_view(&app, &crate::events::ViewKind::Blocked {
+            reason: crate::pipeline::build_model_blocked_msg(),
+        });
+        crate::overlay::schedule_auto_hide(&app, &state, 6000);
         MONITOR.triggered.store(false, Ordering::Relaxed);
         return;
     }
