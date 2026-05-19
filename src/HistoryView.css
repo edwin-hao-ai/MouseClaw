@@ -63,11 +63,19 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
+/* v0.3.11 · session 行容器 —— 标题按钮 + 「继续这个话题」按钮并排 */
+.hv-session-row {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+}
+
 .hv-session-head {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   padding: var(--space-3) var(--space-4);
   background: transparent;
   border: 0;
@@ -81,6 +89,31 @@
 .hv-session-head:hover {
   background: rgba(255, 107, 157, 0.04);
 }
+
+/* v0.3.11 · 「💬 继续这个话题」 —— 把这个旧 session 接回 Panel 窗口续聊 */
+.hv-session-resume {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-right: var(--space-3);
+  padding: 6px 12px;
+  background: rgba(255, 107, 157, 0.10);
+  color: var(--text-link);
+  border: 1px solid rgba(255, 107, 157, 0.22);
+  border-radius: 999px;
+  font: inherit;
+  font-size: var(--text-meta);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--duration-tap) var(--ease-tap),
+              transform var(--duration-tap) var(--ease-tap);
+}
+.hv-session-resume:hover:not(:disabled) {
+  background: rgba(255, 107, 157, 0.18);
+  transform: translateY(-1px);
+}
+.hv-session-resume:active:not(:disabled) { transform: translateY(0); }
+.hv-session-resume:disabled { opacity: 0.5; cursor: progress; }
 
 .hv-session-chip {
   font-family: var(--font-mono);

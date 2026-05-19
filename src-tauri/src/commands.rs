@@ -411,8 +411,7 @@ pub async fn paste_clipboard_item(
 /// 3. 开 / 聚焦 panel webview window
 /// 前端 PanelView 挂载时 invoke `take_panel_context` 取出上下文 + 渲染
 #[tauri::command]
-pub fn open_panel_window(
-    session_id: u64,
+pub async fn open_panel_window(
     transcript: String,
     reply: String,
     app: AppHandle,
@@ -421,9 +420,13 @@ pub fn open_panel_window(
     use tauri::WebviewWindowBuilder;
     use tauri::WebviewUrl;
 
-    // 1. 存上下文
+    // v0.3.11 · session_id 不再由前端传 —— 后端权威，直接读当前 session。
+    // 之前 React 端 hardcode sessionId: 1，Panel chip 永远显示 #000001（cosmetic bug）。
+    let session_id = state.sessions.lock().await.current_session();
+
+    // 1. 存上下文（turns=None，Panel 退化到渲染 transcript+reply 一对）
     *state.pending_panel_context.lock().unwrap() = Some(crate::PendingPanelContext {
-        session_id, transcript, reply,
+        session_id, transcript, reply, turns: None,
     });
 
     // 2. 隐藏 overlay —— 用户视觉焦点切到新窗口
@@ -459,6 +462,89 @@ pub fn open_panel_window(
 #[tauri::command]
 pub fn take_panel_context(state: State<'_, Arc<AppState>>) -> Option<crate::PendingPanelContext> {
     state.pending_panel_context.lock().unwrap().take()
+}
+
+/// v0.3.11 · 从 HistoryView 「💬 继续这个话题」恢复一个旧 session 进 Panel 窗口。
+///   1. 读 ~/.mouseclaw/sessions.jsonl，挑出指定 session_id 的全部 turn
+///   2. SessionStore::resume —— in-memory state 切到这个 session（id + 最近 N 轮）
+///   3. 把最后一对 user/assistant 塞进 pending_panel_context，渲染初始 Panel 内容
+///   4. 隐藏 overlay + 开 / 聚焦 panel 窗口
+///
+/// 这之后用户的 follow-up 会按这个 session 续传给 Claude（context_preamble 拼上历史）。
+#[tauri::command]
+pub async fn resume_session(
+    session_id: u64,
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    use crate::events::{Turn, TurnRole};
+    use crate::sessions::TurnRecord;
+    use tauri::WebviewWindowBuilder;
+    use tauri::WebviewUrl;
+
+    // 1. 读 jsonl 拿这个 session 的 turn 列表
+    let home = std::env::var_os("HOME").ok_or("HOME not set")?;
+    let path = std::path::PathBuf::from(home).join(".mouseclaw/sessions.jsonl");
+    if !path.exists() {
+        return Err("还没有历史记录文件".to_string());
+    }
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("read sessions.jsonl: {e}"))?;
+    let mut turns: Vec<Turn> = Vec::new();
+    let mut last_user: Option<String> = None;
+    let mut last_assistant: Option<String> = None;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() { continue; }
+        let Ok(record) = serde_json::from_str::<TurnRecord>(line) else { continue; };
+        if record.session_id != session_id { continue; }
+        match record.role {
+            TurnRole::User => { last_user = Some(record.text.clone()); }
+            TurnRole::Assistant => { last_assistant = Some(record.text.clone()); }
+        }
+        turns.push(Turn { role: record.role, text: record.text, streaming: None });
+    }
+    if turns.is_empty() {
+        return Err(format!("session #{session_id} 没有 turn"));
+    }
+
+    // 2. SessionStore in-memory state 切到这个 session（resume 只保留最近 N 轮做 prompt 上下文）
+    let display_turns = turns.clone();
+    {
+        let mut store = state.sessions.lock().await;
+        store.resume(session_id, turns);
+    }
+
+    // 3. 塞 Panel 初始上下文 —— 完整 turns 给 Panel 渲染整段对话历史，
+    //    transcript/reply 作为兜底（如果前端 turns 字段没读出来还能显示最后一对）
+    *state.pending_panel_context.lock().unwrap() = Some(crate::PendingPanelContext {
+        session_id,
+        transcript: last_user.unwrap_or_else(|| String::from("(无用户输入)")),
+        reply: last_assistant.unwrap_or_else(|| String::from("(无回复)")),
+        turns: Some(display_turns),
+    });
+
+    // 4. 隐藏 overlay + 开 / 聚焦 panel 窗口（和 open_panel_window 同样的窗口行为）
+    crate::overlay::hide_overlay(&app);
+    if let Some(w) = app.get_webview_window("panel") {
+        let _ = w.show();
+        let _ = w.set_focus();
+        use tauri::Emitter;
+        let _ = w.emit("panel-context-changed", ());
+        return Ok(());
+    }
+    let result = WebviewWindowBuilder::new(
+        &app, "panel",
+        WebviewUrl::App("index.html?view=panel".into()),
+    )
+    .title("MouseClaw — 继续追问")
+    .inner_size(480.0, 560.0)
+    .min_inner_size(380.0, 380.0)
+    .resizable(true).decorations(true).focused(true)
+    .build();
+    match result {
+        Ok(w) => { let _ = w.set_focus(); Ok(()) }
+        Err(e) => Err(format!("打开 panel 窗口失败：{e:#}")),
+    }
 }
 
 /// 内部入口 —— 非 #[tauri::command]，可从托盘 / 全局快捷键等地方调

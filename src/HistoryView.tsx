@@ -105,23 +105,51 @@ function Thumbnail({ path }: { path: string }) {
 
 function Session({ session }: { session: HistorySession }) {
   const [open, setOpen] = useState(false);
+  const [resuming, setResuming] = useState(false);
   const userTurns = session.turns.filter((t) => t.role === "user").length;
   const firstUser = session.turns.find((t) => t.role === "user");
 
+  // v0.3.11 · 继续这个话题 —— 把当前 session 切回这个 id + 打开 Panel 窗口续聊。
+  // 用户痛点：不小心关掉 Panel 后想接着问没有入口；之前只能新开一段对话。
+  const handleResume = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (resuming) return;
+    setResuming(true);
+    try {
+      await invoke("resume_session", { sessionId: session.session_id });
+    } catch (err) {
+      console.warn("resume_session failed:", err);
+      alert(`继续会话失败：${String(err)}`);
+    } finally {
+      setResuming(false);
+    }
+  };
+
   return (
     <div className={`hv-session ${open ? "open" : ""}`}>
-      <button
-        type="button"
-        className="hv-session-head"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-      >
-        <span className="hv-session-chip">{fmtSession(session.session_id)}</span>
-        <span className="hv-session-time">{fmtTime(session.started_at)}</span>
-        <span className="hv-session-turns">{userTurns} 轮</span>
-        <span className="hv-session-preview">{firstUser?.text ?? "(空)"}</span>
-        <span className="hv-session-caret">{open ? "▾" : "▸"}</span>
-      </button>
+      <div className="hv-session-row">
+        <button
+          type="button"
+          className="hv-session-head"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+        >
+          <span className="hv-session-chip">{fmtSession(session.session_id)}</span>
+          <span className="hv-session-time">{fmtTime(session.started_at)}</span>
+          <span className="hv-session-turns">{userTurns} 轮</span>
+          <span className="hv-session-preview">{firstUser?.text ?? "(空)"}</span>
+          <span className="hv-session-caret">{open ? "▾" : "▸"}</span>
+        </button>
+        <button
+          type="button"
+          className="hv-session-resume"
+          onClick={handleResume}
+          disabled={resuming}
+          title="把这段对话接回继续追问窗口"
+        >
+          {resuming ? "打开中…" : "💬 继续这个话题"}
+        </button>
+      </div>
       {open && (
         <div className="hv-session-body">
           {session.turns.map((turn, i) => (

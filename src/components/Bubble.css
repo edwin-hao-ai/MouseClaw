@@ -16,6 +16,10 @@
   box-shadow: var(--shadow-bubble);
   border: 1px solid var(--bubble-border);
   animation: bubble-in var(--duration-bubble-in) var(--ease-default);
+  /* v0.3.11 · 父 .stage 是 pointer-events:none（透明区域穿透到底层 app），
+     气泡本体必须显式 opt-in 才能收到滚轮 / 点击 —— 否则 .bubble-scroll 永远滚不动，
+     用户看到长回复以为内容被截断。 */
+  pointer-events: auto;
 }
 
 /* v0.1.8 修：长回复气泡内部可滚动。
@@ -24,7 +28,12 @@
    v0.1.23 修：margin 折叠导致顶部看起来"缺一块" —— 加 contain:layout 隔离 */
 .bubble-scroll {
   display: block !important;
-  max-height: 320px;
+  /* v0.3.11 · 之前 max-height:320 = 直接吃掉整个 320×320 overlay 窗口高度，
+     加上 chip + padding + expand 按钮 bubble 总高 > 窗口 → 顶部边框 / 阴影 /
+     ▲ 回顶按钮全部被裁掉看不见。窗口高 320 - 桌宠 64 - gap/padding ~30
+     - bubble chrome (chip ~24 + padding ~24 + expand ~30) = ~150px 给正文。
+     设 170px 留一点缓冲，超长内容引导到 Panel。 */
+  max-height: 170px;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(0,0,0,0.25) transparent;

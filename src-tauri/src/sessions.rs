@@ -155,6 +155,20 @@ impl SessionStore {
         Ok(())
     }
 
+    /// v0.3.11 · 从历史记录恢复一个 session —— 用户在 HistoryView 里点
+    /// 「💬 继续这个话题」时调。把 in-memory state 切到指定 session：
+    ///   - `current_session` = 指定 id（下次 append 会写到同一 session）
+    ///   - `history` 重填为该 session 的最近 MAX_HISTORY_TURNS 轮（拼 prompt 用）
+    ///   - `last_turn_at` 拨到现在 —— 5 分钟 idle 从 resume 开始计
+    ///   - `last_frontmost` 清空 —— 防止 app-switch heuristic 立刻又开新 session
+    pub fn resume(&mut self, session_id: u64, turns: Vec<Turn>) {
+        self.current_session = session_id;
+        self.history = turns;
+        self.trim_history();
+        self.last_turn_at = Some(Utc::now());
+        self.last_frontmost = None;
+    }
+
     fn trim_history(&mut self) {
         let n = self.history.len();
         if n > MAX_HISTORY_TURNS {

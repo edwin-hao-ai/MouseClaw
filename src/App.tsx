@@ -175,8 +175,9 @@ export default function App() {
   // 之前 inline 渲染到 320×320 overlay 里完全装不下，UI 全乱（用户实测反馈）。
   const handleExpand = useCallback(() => {
     if (view.kind !== "reply") return;
+    // v0.3.11 · session_id 由后端读 state.sessions.current_session() 决定 ——
+    // 之前 hardcode 1 让 Panel chip 永远显示 #000001。
     invoke("open_panel_window", {
-      sessionId: 1,
       transcript: view.transcript,
       reply: view.reply,
     }).catch(e => console.warn("open_panel_window failed:", e));
@@ -242,7 +243,9 @@ export default function App() {
   const DRAG_THRESHOLD = 5;
 
   const handlePetPointerDown = useCallback(async (e: React.PointerEvent) => {
-    if (view.kind !== "idle" || e.button !== 0) return;
+    // v0.3.11 · 拖动不再 gate 在 idle —— 回复 / thinking / 录音 状态下用户也常需要把桌宠
+    // 挪开（比如挡住下面要看的内容）。只挡住非左键。
+    if (e.button !== 0) return;
     try {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
       const pos = await getCurrentWindow().outerPosition();
@@ -260,10 +263,10 @@ export default function App() {
     } catch (err) {
       console.debug("pointerdown init skipped:", err);
     }
-  }, [view.kind]);
+  }, []);
 
   const handlePetPointerMove = useCallback(async (e: React.PointerEvent) => {
-    if (view.kind !== "idle" || !dragStartRef.current) return;
+    if (!dragStartRef.current) return;
     const start = dragStartRef.current;
     const dx = e.screenX - start.pointerX;
     const dy = e.screenY - start.pointerY;
@@ -282,10 +285,10 @@ export default function App() {
     } catch (err) {
       console.debug("setPosition:", err);
     }
-  }, [view.kind]);
+  }, []);
 
   const handlePetPointerUp = useCallback(async (e: React.PointerEvent) => {
-    if (view.kind !== "idle" || !dragStartRef.current) return;
+    if (!dragStartRef.current) return;
     (e.target as Element).releasePointerCapture?.(e.pointerId);
     const wasDragged = draggingRef.current;
     dragStartRef.current = null;
@@ -301,7 +304,7 @@ export default function App() {
     } catch (err) {
       console.debug("save_pet_custom_position skipped:", err);
     }
-  }, [view.kind]);
+  }, []);
 
   const handleMouseClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -335,7 +338,7 @@ export default function App() {
         onPointerMove={handlePetPointerMove}
         onPointerUp={handlePetPointerUp}
         onPointerCancel={handlePetPointerUp}
-        style={{ cursor: view.kind === "idle" ? "grab" : "pointer" }}
+        style={{ cursor: "grab" }}
       >
         <PixelMouse
           state={mouseStateFor(view)} skin={skin}

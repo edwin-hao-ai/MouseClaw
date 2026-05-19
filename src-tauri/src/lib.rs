@@ -63,11 +63,16 @@ use crate::sessions::SessionStore;
 /// std::Mutex for the cpal Recorder (cpal::Stream is !Send so we never await
 /// while holding the recorder lock).
 /// 「💬 继续追问」按钮 → 新开 Panel 窗口时携带的对话上下文
+/// v0.3.11 · 加 `turns` 字段 —— 恢复历史 session 时把全部历史塞进来，
+///   Panel 能渲染完整对话而不是只显示最后一对 user/assistant。
+///   bubble 的「继续追问」入口不填 turns（None），Panel 退化到只渲染 transcript+reply。
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PendingPanelContext {
     pub session_id: u64,
     pub transcript: String,
     pub reply: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turns: Option<Vec<crate::events::Turn>>,
 }
 
 pub struct AppState {
@@ -305,6 +310,7 @@ pub fn run() {
             commands::paste_clipboard_item,
             commands::open_panel_window,
             commands::take_panel_context,
+            commands::resume_session,
             commands::open_hub_window,
             commands::save_voice_ime,
             commands::get_voice_ime,

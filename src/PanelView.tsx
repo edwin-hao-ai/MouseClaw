@@ -19,6 +19,9 @@ interface PanelContext {
   session_id: number;
   transcript: string;
   reply: string;
+  /** v0.3.11 · 从 HistoryView 恢复时后端塞进来的完整历史 turns；
+   *  bubble 的「继续追问」入口不填，此时退化到 [transcript, reply] 一对。 */
+  turns?: Turn[];
 }
 
 export default function PanelView() {
@@ -31,10 +34,16 @@ export default function PanelView() {
       const c = await invoke<PanelContext | null>("take_panel_context");
       if (c) {
         setCtx(c);
-        setTurns([
-          { role: "user", text: c.transcript },
-          { role: "assistant", text: c.reply },
-        ]);
+        // v0.3.11 · 优先用后端塞进来的完整 turns（resume_session 路径），
+        // 否则退化到 transcript+reply 一对（bubble 「继续追问」路径）。
+        if (c.turns && c.turns.length > 0) {
+          setTurns(c.turns);
+        } else {
+          setTurns([
+            { role: "user", text: c.transcript },
+            { role: "assistant", text: c.reply },
+          ]);
+        }
       }
     } catch (e) {
       console.warn("take_panel_context failed:", e);
