@@ -56,6 +56,8 @@
 - **🔁 AI 任务串行队列**：一次做一件、排队逐个做完都通知；语音听写永远即时不排队；忙碌时桌宠右下角三点 badge
 - **🎓 首次使用引导**：模型下完桌宠主动跳出教学（含 learn-by-doing 真用一遍）· PetMenu「📖 教我用」可重看
 - **✏️ 语音确认可编辑**：转写完进确认框可直接改字 · Esc 取消 / Enter 立即 — 防止语音误识别浪费 token
+- **📖 语音术语库 + 本地纠错**：内置程序员词表（API / Tauri / Rust / commit 等不被听错）+ 可加自定义词；3 秒规则纠常见误识别，纯本地不调 LLM
+- **🔤 选词触发**：选中文字也能弹 Reactive 动作（macOS 限制：仅原生 app，Chrome/Electron 用复制路径）
 - **🦞 桌宠跟随光标**：托盘开关，老鼠在屏幕里跟着你的鼠标走
 - **🎨 9 款皮肤**：经典灰 / 小白鼠 / 田鼠 / 忍者 / 机械 / 金鼠 / 🐱 小灰猫 / 🦊 赤狐 / 🐸 树蛙
 
@@ -133,6 +135,8 @@ A pixel-art mouse that sleeps in the corner of your macOS screen.
 - **🔁 Serial AI queue** — one task at a time, queued & each notified on done; voice typing never queues; busy badge on the pet
 - **🎓 First-run tour** — pet teaches you after model downloads (with hands-on learn-by-doing); "📖 Teach me" in pet menu to redo
 - **✏️ Editable voice confirm** — edit the transcript in place after transcription, Esc cancel / Enter send (prevents token waste on misrecognized speech)
+- **📖 Voice vocabulary + local correction** — built-in programmer terms (API / Tauri / Rust / commit…) + your own custom words so jargon isn't misheard; rule-based correction of common misrecognitions, 100% local, no LLM
+- **🔤 Selection trigger** — select text to pop the Reactive actions too (macOS limit: native apps only; Chrome/Electron use the copy path)
 - **🦞 Cursor follow** — pet follows your mouse around screen (toggle in tray)
 - **🎨 9 skins** — classic / white / brown / ninja / robot / gold / 🐱 cat / 🦊 fox / 🐸 frog
 

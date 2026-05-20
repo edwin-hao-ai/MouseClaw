@@ -37,6 +37,13 @@ activity, serial task queue. Still a 12 MB DMG.
   One AI task at a time, queued and each notified on done; voice typing never queues.
 - **✏️ 语音确认可编辑 / Editable voice confirm** —— 转写完进确认框可直接改字；续写若丢
   光标自动落剪贴板兜底。Edit the transcript in place; insert-at-cursor falls back to clipboard.
+- **📖 语音术语库 + 本地纠错 / Voice vocabulary + local correction** —— 内置程序员词表
+  （API / Tauri / Rust / commit 等不被听错）+ 可加自定义词（sherpa hotwords）；3 秒规则纠
+  常见误识别，纯本地不调 LLM。中英双语 ASR 锁定，不再二选一。
+  Built-in programmer vocabulary + custom words via sherpa hotwords; rule-based local
+  correction of common misrecognitions (no LLM); bilingual ASR locked (no language toggle).
+- **🔤 选词触发 / Selection trigger** —— 选中文字也能弹 Reactive 动作（macOS 限制：仅原生
+  app；Chrome/Electron 走复制路径）。Select text to trigger Reactive too (native apps only).
 - **🛠 一键装 CLI / One-click CLI install** —— 托盘 / onboarding 一键装 agent-browser /
   OfficeCLI，装完桌宠弹庆祝气泡。One-click install of agent-browser / OfficeCLI from the tray.
 - **🎓 learn-by-doing 教程 / Hands-on onboarding** —— onboarding 第 7/8 步带你真用一遍。
