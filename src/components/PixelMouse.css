@@ -368,14 +368,9 @@
   transform-origin: center;
 }
 
-/* intimacy —— 互动越多眼睛越大（更有神 / 更亲）。纯视觉调味，幅度克制。 */
-.mouse-wrap.intimacy-1 .mc-eyes { transform: scale(1.05); transform-box: fill-box; transform-origin: center; }
-.mouse-wrap.intimacy-2 .mc-eyes { transform: scale(1.10); transform-box: fill-box; transform-origin: center; }
-.mouse-wrap.intimacy-3 .mc-eyes { transform: scale(1.16); transform-box: fill-box; transform-origin: center; }
-/* 注意：companion 活跃态（追鼠标用 SVG transform attribute）优先级高于这里的 CSS
-   scale —— 浏览器里 CSS transform property 覆盖 presentation attribute，所以
-   追鼠标时 intimacy 放大暂时让位（可接受：眼睛在动时放不放大不明显）。idle 静止
-   时 intimacy scale 生效。neglected 的 .mc-eyes 规则在本规则之后，优先级更高。 */
+/* intimacy 眼睛放大 —— **不在 CSS 做**。改在 PixelMouse.tsx 折进 .mc-eyes 的 SVG
+   transform attribute（与追鼠标 translate 串联），否则 CSS transform 会覆盖 attribute
+   导致追鼠标失效（2026-05-20 回归教训）。 */
 
 /* reduced-motion 一律降级为无动画（仅保留状态指示，无脉动） */
 @media (prefers-reduced-motion: reduce) {

@@ -494,12 +494,25 @@ export function PixelMouse({
   // （眼球追鼠标 / 点头才看得见）。sleep/drowsy 保持闭眼线条，CSS 做半闭效果。
   const eyesOpen = companionActive && companionState !== "sleep" && companionState !== "drowsy";
   const eyesState = state === "sleep" && eyesOpen ? ("listen" as MouseState) : state;
-  // 眼球平移 —— 用 SVG transform **attribute**（user 单位，WebKit 可靠；CSS px 在
-  // WebKit 的 SVG group 上语义不一致）。sleep/drowsy/neglected 不偏移（表情由 CSS 接管）。
+  // 眼球 transform —— **全部折进 SVG attribute**（translate 追鼠标 + scale 亲密度）。
+  // 关键（2026-05-20 修回归）：亲密度放大之前用 CSS `.intimacy-N .mc-eyes{transform:scale}`，
+  // 但 CSS transform property 会**覆盖** SVG presentation attribute → 一旦亲密度到 level≥1，
+  // 追鼠标的 translate 被 scale 盖掉，眼睛就不跟随了（用户报"之前 work 现在不 work"）。
+  // 改成同一个 attribute 里串联，两者共存。
+  //   - sleep/drowsy/dizzy/neglected：attr 留空，眼睛表情由各自 CSS（含 !important）接管
+  //   - 否则：translate(追鼠标) + scale-around-center(亲密度)。
+  //     SVG scale 默认绕 viewBox 原点(0,0)，会把眼睛推向左上 → 必须 translate 到眼睛中心
+  //     (≈8,6.5) 再 scale 再 translate 回来，才是"原地放大"。
   const noOffset = companionState === "sleep" || companionState === "drowsy"
     || companionState === "dizzy" || neglected;
-  const eyesTransformAttr = (eyeOffset && !noOffset)
-    ? `translate(${eyeOffset.x.toFixed(3)} ${eyeOffset.y.toFixed(3)})` : undefined;
+  const intimacyScale = (isDefaultState && !neglected) ? [1, 1.05, 1.10, 1.16][intimacyLevel] : 1;
+  let eyesTransformAttr: string | undefined;
+  if (!noOffset) {
+    const t = eyeOffset ? `translate(${eyeOffset.x.toFixed(3)} ${eyeOffset.y.toFixed(3)})` : "";
+    const s = intimacyScale !== 1
+      ? ` translate(8 6.5) scale(${intimacyScale}) translate(-8 -6.5)` : "";
+    eyesTransformAttr = (t + s).trim() || undefined;
+  }
   return (
     <div className={`mouse-wrap mouse-${state} mouse-skin-${s.id}${twitching ? " mouse-twitch" : ""}${companionClass}${intimacyClass}`} style={{ width: size, height: size }}>
       {continuing && <div className="mouse-chain" aria-hidden />}

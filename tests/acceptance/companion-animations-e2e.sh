@@ -67,6 +67,8 @@ check "LongFocus nudge：Rust enum + 规则 + 前端 type" \
   bash -c 'grep -q "LongFocus" src-tauri/src/nudge.rs && grep -q "long-focus" src/types.ts'
 check "眼球偏移用 SVG transform attribute（WebKit 可靠，非 CSS px）" \
   grep -q 'transform={eyesTransformAttr}' src/components/PixelMouse.tsx
+check "无 CSS .intimacy-N .mc-eyes transform（会覆盖追鼠标 attribute · 2026-05-20 回归）" \
+  bash -c '! grep -E "intimacy-[123] .mc-eyes" src/components/PixelMouse.css | grep -q transform'
 check "PixelMouse.companion.test 覆盖 9 款皮肤" \
   grep -q "for (const skin of SKINS)" src/components/__tests__/PixelMouse.companion.test.tsx
 

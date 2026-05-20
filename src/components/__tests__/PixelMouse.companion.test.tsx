@@ -145,6 +145,27 @@ describe("PixelMouse · companion", () => {
     expect(cls).not.toContain("neglected");
   });
 
+  // REGRESSION（2026-05-20）：亲密度 ≥1 时眼球追鼠标不能失效。
+  // 之前 intimacy 用 CSS .mc-eyes{transform:scale} 覆盖了 SVG translate attribute →
+  // 互动多了眼睛就不跟随。现在两者折进同一个 attribute 串联。
+  it("REGRESSION: intimacyLevel>0 时 eyeOffset translate 仍在（追鼠标不被 scale 吞）", () => {
+    const { container } = render(
+      <PixelMouse state="sleep" companionState="alert" intimacyLevel={3} eyeOffset={{ x: 0.4, y: -0.2 }} />
+    );
+    const transform = container.querySelector(".mc-eyes")?.getAttribute("transform") || "";
+    // translate（追鼠标）和 scale（亲密度）必须同时存在于一个 attribute
+    expect(transform).toMatch(/translate\(0\.400 -0\.200\)/);
+    expect(transform).toMatch(/scale\(1\.16\)/);
+  });
+
+  it("REGRESSION: 没有冲突的 CSS .intimacy-N .mc-eyes transform 规则残留", () => {
+    // 纯静态保险：intimacy 不能再用 CSS transform（会覆盖 attribute）
+    // 这条由 acceptance 脚本 grep 把关；此处占位说明意图
+    const { container } = render(<PixelMouse state="sleep" intimacyLevel={1} eyeOffset={{ x: 0.3, y: 0 }} />);
+    const transform = container.querySelector(".mc-eyes")?.getAttribute("transform") || "";
+    expect(transform).toMatch(/translate\(0\.300 0\.000\)/); // tracking 仍生效
+  });
+
   it("9 款皮肤都能渲染 companion 帧无异常", () => {
     for (const skin of SKINS) {
       const { container } = render(
