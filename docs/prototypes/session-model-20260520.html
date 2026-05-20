@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MouseClaw · Session 模型（默认连续 + 可见状态 + 钉住任务）· 2026-05-20</title>
+<style>
+  :root {
+    --bg: #faf7f2; --card: #ffffff; --ink: #2b2622; --muted: #8a8178;
+    --pink: #e8638c; --pink-soft: #fce4ec; --pink-deep: #d63d6a;
+    --green: #3fa66a; --green-soft: #e6f4ec; --green-pixel: #5cd6a0;
+    --amber: #d9952b; --amber-soft: #fdf3e0;
+    --blue: #5b8def; --blue-soft: #e8f0fe;
+    --line: #ece6dd; --line-strong: #d8d0c4;
+    --radius-m: 14px; --radius-l: 22px;
+    --shadow-card: 0 1px 2px rgba(43,38,34,.06), 0 8px 24px rgba(43,38,34,.06);
+    --shadow-bubble: 0 8px 32px rgba(43,38,34,.12);
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --font: -apple-system, "PingFang SC", system-ui, sans-serif;
+    --m-body:#cfcfcf; --m-belly:#fff; --m-ear-in:#ff9bb8; --m-ear-out:#cfcfcf;
+    --m-eye:#1a1a1a; --m-nose:#d63d6a; --m-tail:#8a8a8a; --m-paw:#fff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.65 var(--font); -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 44px 24px 90px; }
+  h1 { font-size: 30px; margin: 0 0 4px; letter-spacing: -.02em; }
+  h2 { font-size: 20px; margin: 46px 0 10px; padding-bottom: 8px; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 15px; margin: 22px 0 8px; }
+  .sub { color: var(--muted); margin: 0 0 26px; font-size: 14px; }
+  .lead { color: var(--muted); font-size: 14.5px; max-width: 760px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-m); padding: 18px 22px; box-shadow: var(--shadow-card); }
+  .card + .card { margin-top: 12px; }
+  code, kbd { font-family: var(--mono); font-size: 12.5px; background: #f2ede5; padding: 1.5px 6px; border-radius: 5px; }
+  kbd { background:#fff; border:1px solid var(--line-strong); box-shadow:0 1px 0 var(--line-strong); padding:1px 7px; font-weight:600; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
+  .pill { display:inline-block; font-size:11px; font-weight:700; padding:2px 9px; border-radius:999px; }
+  .pill-green { background: var(--green-soft); color: var(--green); }
+  .pill-amber { background: var(--amber-soft); color: var(--amber); }
+  .pill-muted { background:#f0ebe2; color: var(--muted); }
+
+  /* desktop stage */
+  .stage { position: relative; min-height: 300px; border-radius: var(--radius-l); overflow: hidden;
+    background: radial-gradient(ellipse at 30% 20%, #5b8def22, transparent 50%),
+      radial-gradient(ellipse at 80% 80%, #e8638c22, transparent 50%),
+      linear-gradient(135deg, #f8efe4, #efe5d5); border: 1px solid var(--line); padding: 18px; }
+  .mock-app { background: rgba(255,255,255,.94); backdrop-filter: blur(8px); border-radius: 10px; padding: 12px 14px;
+    border: 1px solid #00000010; box-shadow: 0 4px 16px #00000010; font-size: 13px; line-height: 1.8; max-width: 540px; }
+  .mock-tb { display:flex; gap:6px; padding-bottom:8px; margin-bottom:8px; border-bottom:1px solid var(--line); align-items:center; }
+  .mock-tb i { width:10px; height:10px; border-radius:999px; } .r{background:#ff5f57}.y{background:#febc2e}.g{background:#28c840}
+  .mock-tb span { margin-left:8px; color:var(--muted); font-size:12px; }
+
+  /* pixel mouse */
+  .pet { position:absolute; display:flex; flex-direction:column; align-items:center; }
+  .pet svg { image-rendering: pixelated; shape-rendering: crispEdges; display:block; }
+  .chip { background:#fff; border:1px solid var(--line); border-radius:14px; padding:5px 11px; box-shadow:var(--shadow-bubble);
+    font-size:12px; font-weight:600; margin-bottom:6px; white-space:nowrap; }
+  .chip-chain { color: var(--green); }
+  .chip-fresh { color: var(--muted); }
+  .chip-pin { background: linear-gradient(135deg,#e8f0fe,#fff); color: var(--blue); }
+  .chip-soft { background: linear-gradient(135deg,#fff7e0,#fff); color: var(--amber); }
+
+  /* chain indicator above head (3px green bar) */
+  .chain-bar { width:28px; height:8px; margin:0 auto 2px; display:flex; gap:3px; justify-content:center; }
+  .chain-bar i { width:5px; height:8px; background: var(--green-pixel); border-radius:1px; }
+
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .opt { border-radius: var(--radius-m); padding: 14px 16px; border:1px solid var(--line); }
+  .opt-good { background: var(--green-soft); border-color:#9cd9b4; }
+  .opt-bad { background:#fbf3f1; border-color:#f0d8d4; }
+  .controls { display:flex; gap:8px; flex-wrap:wrap; padding:14px 16px; background:#fff; border:1px solid var(--line); border-radius:10px; margin-top:12px; align-items:center; }
+  .controls button { font:inherit; font-size:13px; padding:7px 13px; border-radius:7px; background:var(--pink); color:#fff; border:none; cursor:pointer; font-weight:600; }
+  .controls button:hover { background:var(--pink-deep); }
+  .controls button.ghost { background:#f0ebe2; color:var(--ink); }
+  .controls .label { font-size:12px; color:var(--muted); margin-left:6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Session 模型 · 默认连续 + 状态可见 + 钉住任务</h1>
+  <p class="sub">v0.4.x · 2026-05-20 · 解决"每次召唤都像新会话 / 改 bug & 编辑 PPT 多轮上下文丢失"</p>
+
+  <div class="card">
+    <p class="lead" style="margin:0">
+      <strong>核心改动</strong>：删掉隐式断点（<code>app_switched</code> + 5 分钟超时），
+      <strong>默认永远连续</strong>。要断必须是<strong>有意 + 看得见</strong>的：桌宠头顶链条图标常驻显示当前轮次，
+      双击快捷键 / 菜单「🆕 新对话」一键重置。多轮编辑 PPT 这类长任务可「📌 钉住」绝不断。
+    </p>
+  </div>
+
+  <h2>① 三种状态长什么样（点按钮切换）</h2>
+  <div class="stage" id="stage">
+    <div class="mock-app">
+      <div class="mock-tb"><i class="r"></i><i class="y"></i><i class="g"></i><span id="mockTitle">PowerPoint · 2026战略.pptx</span></div>
+      <div id="mockBody">第 3 页 · 标题「2026 战略」<br>正在多轮优化配色与排版…</div>
+    </div>
+    <div class="pet" id="pet" style="right: 40px; bottom: 24px;">
+      <div class="chip" id="petChip">　</div>
+      <div class="chain-bar" id="chainBar" style="visibility:hidden;"><i></i><i></i><i></i></div>
+      <svg width="60" height="60" viewBox="0 0 16 16">
+        <rect x="3" y="0" width="2" height="2" fill="var(--m-ear-out)"/><rect x="11" y="0" width="2" height="2" fill="var(--m-ear-out)"/>
+        <rect x="2" y="1" width="4" height="3" fill="var(--m-ear-out)"/><rect x="10" y="1" width="4" height="3" fill="var(--m-ear-out)"/>
+        <rect x="3" y="2" width="2" height="2" fill="var(--m-ear-in)"/><rect x="11" y="2" width="2" height="2" fill="var(--m-ear-in)"/>
+        <rect x="1" y="4" width="14" height="7" fill="var(--m-body)"/>
+        <rect x="4" y="6" width="1" height="2" fill="var(--m-eye)"/><rect x="11" y="6" width="1" height="2" fill="var(--m-eye)"/>
+        <rect x="7" y="9" width="2" height="1" fill="var(--m-nose)"/>
+        <rect x="4" y="11" width="8" height="3" fill="var(--m-belly)"/><rect x="13" y="11" width="3" height="1" fill="var(--m-tail)"/>
+      </svg>
+    </div>
+  </div>
+  <div class="controls">
+    <button onclick="setState('fresh')">🆕 全新会话</button>
+    <button onclick="setState('chain')">🔗 连续中（第 5 轮）</button>
+    <button onclick="setState('soft')">⏳ 隔了 30 分钟（软提示）</button>
+    <button onclick="setState('pin')">📌 钉住任务</button>
+    <span class="label" id="stateLabel">当前：连续中</span>
+  </div>
+
+  <h2>② 三个状态的语义</h2>
+  <div class="card">
+    <table>
+      <tr><th width="16%">状态</th><th>桌宠头顶</th><th>含义 / 触发</th></tr>
+      <tr>
+        <td><span class="pill pill-muted">全新</span></td>
+        <td>无链条 · 无 chip（保持轻量"3 秒消失"）</td>
+        <td>双击快捷键 / 菜单「🆕 新对话」之后的第一次召唤。干净上下文。</td>
+      </tr>
+      <tr>
+        <td><span class="pill pill-green">连续中</span></td>
+        <td>绿色链条 + 「🔗 第 N 轮」</td>
+        <td>默认状态。只要不重置就一直续。你随时看得见现在是第几轮。</td>
+      </tr>
+      <tr>
+        <td><span class="pill pill-amber">软提示</span></td>
+        <td>「🔗 接着 30 分钟前 · 双击我重置」（非阻塞）</td>
+        <td>隔很久后第一次召唤：不弹窗、不打断，只是提醒上下文可能旧了。不理它就继续。</td>
+      </tr>
+      <tr>
+        <td><span class="pill" style="background:var(--blue-soft);color:var(--blue)">钉住</span></td>
+        <td>「📌 正在搞 deck.pptx · 第 N 轮」</td>
+        <td>长任务模式：手动钉住后，无论切 app、隔多久都不断。再点一次解钉。</td>
+      </tr>
+    </table>
+  </div>
+
+  <h2>③ 怎么操作（全部显式、可预测）</h2>
+  <div class="card">
+    <table>
+      <tr><th width="34%">动作</th><th>结果</th></tr>
+      <tr><td>按住快捷键说话（正常召唤）</td><td>续当前会话；头顶链条 + 轮次 +1</td></tr>
+      <tr><td><kbd>双击</kbd>快捷键</td><td>强制开全新会话（已实现，保留）</td></tr>
+      <tr><td>点桌宠 → 菜单「🆕 新对话」</td><td>同上，鼠标用户的入口</td></tr>
+      <tr><td>说「新对话 / 重新开始 / clear」</td><td>语音也能重置（已实现，保留）</td></tr>
+      <tr><td>点桌宠 → 菜单「📌 钉住任务」</td><td>进入钉住模式；再点「📌 解除钉住」退出</td></tr>
+      <tr><td>切换 app（终端↔编辑器↔浏览器）</td><td><strong>不再断</strong>（删 app_switched）—— 改 bug 跨 app 全程连续</td></tr>
+      <tr><td>隔很久再召唤</td><td>不自动断；显示软提示，你决定续还是双击重置</td></tr>
+    </table>
+  </div>
+
+  <h2>④ 为什么不做"弹窗询问"</h2>
+  <div class="grid2">
+    <div class="opt opt-bad">
+      <strong>❌ 每次要开新会话就弹窗问</strong><br>
+      <span style="font-size:13px; color:#7a3b35">
+      MouseClaw 命根子是「一键、3 秒消失、不打扰」。90% 召唤是一次性的（翻译/解释/润色），
+      在前面插「继续 / 新开?」的问题 = 每次多一步、被打断。问得越频繁越糟。
+      </span>
+    </div>
+    <div class="opt opt-good">
+      <strong>✅ 显示状态 + 一键逃生</strong><br>
+      <span style="font-size:13px; color:#2c6b47">
+      不问你，而是<strong>让你看见</strong>（头顶链条 + 轮次）。想新开就<kbd>双击</kbd>，比回答弹窗快。
+      隔久了给非阻塞软提示，不理它就继续。控制权在你，但零打断。
+      </span>
+    </div>
+  </div>
+
+  <h2>⑤ PPT 多轮编辑场景走查</h2>
+  <div class="card">
+    <ol style="margin:0; padding-left:20px; font-size:13.5px; line-height:1.95;">
+      <li>开始搞 PPT → 点桌宠「📌 钉住任务」（或者直接连续召唤也行，钉住只是更保险）</li>
+      <li>「把第 3 页标题改成 2026 战略」→ AI 经 OfficeCLI 改 PPT · 头顶「📌 deck.pptx · 第 1 轮」</li>
+      <li>「配色换蓝色系」→ 第 2 轮，记得是同一个 PPT</li>
+      <li>切到浏览器找参考图 → <strong>不断</strong>（钉住 + 已删 app_switched）</li>
+      <li>切回来「用刚才那张图的风格」→ 第 4 轮，上下文完整</li>
+      <li>…十几轮后搞完 → 点「📌 解除钉住」或双击快捷键 → 干净开下一个任务</li>
+    </ol>
+    <p style="margin:10px 0 0; font-size:12.5px; color:var(--muted)">
+      关键：上下文锚点是「这个 .pptx 文件」，不是时间窗也不是前台 app。钉住把这个意图显式建模出来。
+      历史轮次上限从 10 调到 ~20，保证长任务记得住。
+    </p>
+  </div>
+
+  <h2>⑥ 技术落地（拍板后）</h2>
+  <div class="card">
+    <ul style="margin:0; padding-left:20px; font-size:13.5px; line-height:1.9;">
+      <li><code>sessions.rs::touch</code> · <code>should_new = force_new</code>（删 idle_expired + app_switched）</li>
+      <li>新增 <code>pinned: bool</code> + <code>pinned_label</code> · 钉住时 force_new 也被忽略，只能手动解钉</li>
+      <li>链条图标：DESIGN.md §3.1 已定义，接 <code>emit_view</code> 时带上 <code>continuing</code> + <code>turn</code> + <code>pinned</code></li>
+      <li>软提示：上次回复 &gt; 30 分钟时，气泡带一个非阻塞 chip（不改 session，只提示）</li>
+      <li>托盘 / PetMenu 加「🆕 新对话」「📌 钉住任务 / 解除钉住」</li>
+      <li><code>MAX_HISTORY_TURNS</code> 10 → 20</li>
+    </ul>
+  </div>
+
+  <p style="margin:46px 0 0; color:var(--muted); font-size:12.5px; text-align:center">
+    Prototype · 2026-05-20 · 拍板后才动 Rust。弹窗 vs 软提示、要不要钉住模式 —— 你定。
+  </p>
+</div>
+
+<script>
+const pet = document.getElementById('pet');
+const chip = document.getElementById('petChip');
+const chainBar = document.getElementById('chainBar');
+const label = document.getElementById('stateLabel');
+const mockTitle = document.getElementById('mockTitle');
+
+function setState(s) {
+  chip.className = 'chip';
+  chainBar.style.visibility = 'hidden';
+  if (s === 'fresh') {
+    chip.style.visibility = 'hidden';
+    label.textContent = '当前：全新会话（无标记，轻量）';
+  } else if (s === 'chain') {
+    chip.style.visibility = 'visible';
+    chip.classList.add('chip-chain'); chip.textContent = '🔗 第 5 轮';
+    chainBar.style.visibility = 'visible';
+    label.textContent = '当前：连续中（默认状态）';
+  } else if (s === 'soft') {
+    chip.style.visibility = 'visible';
+    chip.classList.add('chip-soft'); chip.textContent = '🔗 接着 30 分钟前 · 双击我重置';
+    chainBar.style.visibility = 'visible';
+    label.textContent = '当前：软提示（非阻塞，不理它就继续）';
+  } else if (s === 'pin') {
+    chip.style.visibility = 'visible';
+    chip.classList.add('chip-pin'); chip.textContent = '📌 正在搞 deck.pptx · 第 8 轮';
+    chainBar.style.visibility = 'visible';
+    label.textContent = '当前：钉住任务（切 app / 隔多久都不断）';
+  }
+}
+setState('chain');
+</script>
+</body>
+</html>
