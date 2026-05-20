@@ -44,6 +44,27 @@
   -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
+/* v0.4+ · 点桌宠浮爱心 —— 从桌宠头顶往上飘 + 淡出（700ms，与 App.tsx 清理时长一致） */
+.pet-heart {
+  position: absolute;
+  left: 50%;
+  top: 18%;
+  transform: translateX(-50%);
+  font-size: 14px;
+  pointer-events: none;
+  user-select: none;
+  z-index: 5;
+  animation: pet-heart-float 700ms ease-out forwards;
+}
+@keyframes pet-heart-float {
+  0%   { opacity: 0; transform: translate(-50%, 4px) scale(0.5); }
+  30%  { opacity: 1; transform: translate(-50%, -6px) scale(1.1); }
+  100% { opacity: 0; transform: translate(-50%, -26px) scale(0.9); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pet-heart { animation-duration: 700ms; } /* 仍淡出，但 reduced 用户接受简单淡出 */
+}
+
 /* 让 SVG 自己也别变选中态（双保险） */
 .stage-mouse svg {
   user-select: none;

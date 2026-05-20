@@ -306,6 +306,77 @@
   50%      { transform: translateY(0.8px); }
 }
 
+/* waking —— 醒来伸懒腰：一次性纵向拉伸 + 回弹（去掉 sleep→awake 的生硬瞬切） */
+.mouse-wrap.companion-waking .mouse-svg {
+  animation: mc-waking 700ms cubic-bezier(.34, 1.56, .64, 1);
+  transform-origin: center bottom;
+}
+@keyframes mc-waking {
+  0%   { transform: translateY(3px) scaleY(0.88); }       /* 还瘫着（接 sleep 姿态） */
+  35%  { transform: translateY(-3px) scaleY(1.14); }      /* 伸懒腰拔高 */
+  60%  { transform: translateY(0) scaleY(0.96); }
+  100% { transform: translateY(0) scaleY(1); }
+}
+
+/* dizzy —— 鼠标快速甩动：整体摇晃 + 眼睛快速抖（所有皮肤通用，不改 anatomy） */
+.mouse-wrap.companion-dizzy .mouse-svg {
+  animation: mc-dizzy 380ms ease-in-out infinite;
+  transform-origin: center bottom;
+}
+.mouse-wrap.companion-dizzy .mc-eyes {
+  animation: mc-dizzy-eyes 200ms ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@keyframes mc-dizzy {
+  0%, 100% { transform: rotate(-6deg); }
+  50%      { transform: rotate(6deg); }
+}
+@keyframes mc-dizzy-eyes {
+  0%, 100% { transform: translateX(-0.6px); }
+  50%      { transform: translateX(0.6px); }
+}
+
+/* hop —— 一段打字 burst 结束：一次性小跳（"提交完成"的轻量庆祝） */
+.mouse-wrap.companion-hop .mouse-svg {
+  animation: mc-hop 480ms cubic-bezier(.34, 1.56, .64, 1);
+}
+@keyframes mc-hop {
+  0%, 100% { transform: translateY(0); }
+  40%      { transform: translateY(-6px); }
+  60%      { transform: translateY(-4px); }
+}
+
+/* glance —— 整点抬头看一眼：身体微仰（眼睛朝上由 hook 的 eyeOffset 接管） */
+.mouse-wrap.companion-glance .mouse-svg {
+  animation: mc-glance 2s ease-in-out;
+  transform-origin: center bottom;
+}
+@keyframes mc-glance {
+  0%, 100% { transform: rotate(0); }
+  25%, 75% { transform: rotate(-2deg) translateY(-1px); }
+}
+
+/* neglected —— 冷落超 N 天：低头委屈（眼睛朝下 + 整体轻微下沉 + 略暗） */
+.mouse-wrap.companion-neglected .mouse-svg {
+  filter: brightness(0.9) saturate(0.85);
+  transform: translateY(1.5px) rotate(-1deg);
+}
+.mouse-wrap.companion-neglected .mc-eyes {
+  transform: translateY(0.5px) scaleY(0.8);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* intimacy —— 互动越多眼睛越大（更有神 / 更亲）。纯视觉调味，幅度克制。 */
+.mouse-wrap.intimacy-1 .mc-eyes { transform: scale(1.05); transform-box: fill-box; transform-origin: center; }
+.mouse-wrap.intimacy-2 .mc-eyes { transform: scale(1.10); transform-box: fill-box; transform-origin: center; }
+.mouse-wrap.intimacy-3 .mc-eyes { transform: scale(1.16); transform-box: fill-box; transform-origin: center; }
+/* 注意：companion 活跃态（追鼠标用 SVG transform attribute）优先级高于这里的 CSS
+   scale —— 浏览器里 CSS transform property 覆盖 presentation attribute，所以
+   追鼠标时 intimacy 放大暂时让位（可接受：眼睛在动时放不放大不明显）。idle 静止
+   时 intimacy scale 生效。neglected 的 .mc-eyes 规则在本规则之后，优先级更高。 */
+
 /* reduced-motion 一律降级为无动画（仅保留状态指示，无脉动） */
 @media (prefers-reduced-motion: reduce) {
   .mouse-wrap.companion-typing .mouse-svg,
@@ -316,7 +387,12 @@
   .mouse-wrap.companion-clicked .mc-ear-l,
   .mouse-wrap.companion-clicked .mc-ear-r,
   .mouse-wrap.companion-worried .mouse-svg,
-  .mouse-wrap.companion-drowsy .mouse-svg {
+  .mouse-wrap.companion-drowsy .mouse-svg,
+  .mouse-wrap.companion-waking .mouse-svg,
+  .mouse-wrap.companion-dizzy .mouse-svg,
+  .mouse-wrap.companion-dizzy .mc-eyes,
+  .mouse-wrap.companion-hop .mouse-svg,
+  .mouse-wrap.companion-glance .mouse-svg {
     animation: none;
     transition: none;
   }

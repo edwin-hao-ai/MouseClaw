@@ -71,16 +71,17 @@ describe("PixelMouse · companion", () => {
     expect(wrap?.className).not.toContain("companion-excited");
   });
 
-  it("eyeOffset 平移 .mc-eyes group（所有皮肤生效）", () => {
+  it("eyeOffset 平移 .mc-eyes group（SVG transform attribute · 所有皮肤生效）", () => {
     for (const skin of SKINS) {
       const { container } = render(
         <PixelMouse state="listen" skin={skin.id} companionState="alert" eyeOffset={{ x: 0.4, y: -0.2 }} />
       );
       const eyes = container.querySelector(".mc-eyes") as HTMLElement | null;
       expect(eyes, `skin=${skin.id} 缺 .mc-eyes group`).toBeTruthy();
-      const transform = eyes!.getAttribute("style") || "";
+      // v0.4+ · 用 SVG transform attribute（user 单位，WebKit 可靠），不是 CSS style
+      const transform = eyes!.getAttribute("transform") || "";
       expect(transform, `skin=${skin.id} 未应用 eyeOffset transform`)
-        .toMatch(/translate\(0\.400px,\s*-0\.200px\)/);
+        .toMatch(/translate\(0\.400 -0\.200\)/);
     }
   });
 
@@ -89,9 +90,9 @@ describe("PixelMouse · companion", () => {
       <PixelMouse state="listen" companionState="sleep" eyeOffset={{ x: 0.5, y: 0.5 }} />
     );
     const eyes = container.querySelector(".mc-eyes") as HTMLElement | null;
-    const style = eyes?.getAttribute("style") || "";
-    // sleep 时 transform 应该是 undefined / 空 —— 由 CSS 接管 scaleY 闭眼
-    expect(style).not.toMatch(/translate\(/);
+    const transform = eyes?.getAttribute("transform") || "";
+    // sleep 时 transform attribute 应缺省 —— 由 CSS 接管 scaleY 闭眼
+    expect(transform).not.toMatch(/translate\(/);
   });
 
   // v0.4+ 扩展状态
@@ -110,8 +111,38 @@ describe("PixelMouse · companion", () => {
       <PixelMouse state="listen" companionState="drowsy" eyeOffset={{ x: 0.5, y: 0.5 }} />
     );
     expect(container.querySelector(".mouse-wrap")?.className).toContain("companion-drowsy");
-    const style = container.querySelector(".mc-eyes")?.getAttribute("style") || "";
-    expect(style).not.toMatch(/translate\(/);
+    const transform = container.querySelector(".mc-eyes")?.getAttribute("transform") || "";
+    expect(transform).not.toMatch(/translate\(/);
+  });
+
+  // v0.4+ 全集补完状态
+  it("waking / dizzy / hop / glance 各自挂对应 companion class", () => {
+    for (const cs of ["waking", "dizzy", "hop", "glance"] as const) {
+      const { container } = render(<PixelMouse state="sleep" companionState={cs} />);
+      expect(container.querySelector(".mouse-wrap")?.className).toContain(`companion-${cs}`);
+    }
+  });
+
+  it("dizzy → 眼睛不平移（转圈，由 CSS 接管）", () => {
+    const { container } = render(
+      <PixelMouse state="sleep" companionState="dizzy" eyeOffset={{ x: 0.5, y: 0.5 }} />
+    );
+    const transform = container.querySelector(".mc-eyes")?.getAttribute("transform") || "";
+    expect(transform).not.toMatch(/translate\(/);
+  });
+
+  it("intimacyLevel → 挂 intimacy-N class；neglected → companion-neglected", () => {
+    const { container: c1 } = render(<PixelMouse state="sleep" intimacyLevel={2} />);
+    expect(c1.querySelector(".mouse-wrap")?.className).toContain("intimacy-2");
+    const { container: c2 } = render(<PixelMouse state="sleep" neglected />);
+    expect(c2.querySelector(".mouse-wrap")?.className).toContain("companion-neglected");
+  });
+
+  it("intimacy / neglected 在任务态（think）不挂（不分心）", () => {
+    const { container } = render(<PixelMouse state="think" intimacyLevel={3} neglected />);
+    const cls = container.querySelector(".mouse-wrap")?.className || "";
+    expect(cls).not.toContain("intimacy-");
+    expect(cls).not.toContain("neglected");
   });
 
   it("9 款皮肤都能渲染 companion 帧无异常", () => {

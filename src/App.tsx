@@ -24,6 +24,7 @@ import { DEFAULT_SKIN } from "./skins";
 import { useT, getCurrentLang } from "./i18n";
 import { ReactiveOverlay, type ReactivePayload } from "./components/ReactiveOverlay";
 import { useCompanion } from "./hooks/useCompanion";
+import { useIntimacy } from "./hooks/useIntimacy";
 import { useAdaptiveOverlay } from "./hooks/useAdaptiveOverlay";
 
 const PREVIEW_LONG = "这篇 Nature 文章讨论 2026 年 AI 加速材料发现的三个突破：室温超导候选材料、新型电池电解液、碳捕获催化剂。核心机制是自动化实验室加大模型生成假设的迭代闭环。";
@@ -79,7 +80,16 @@ export default function App() {
   // v0.4+ · 陪伴向动画 —— hook 订阅 Rust companion-tick + 算桌宠当前帧
   const petStageRef = useRef<HTMLDivElement>(null);
   const stageRootRef = useRef<HTMLDivElement>(null);
-  const companion = useCompanion(petStageRef);
+  // v0.4+ · 亲密度（localStorage 持久化）—— companion 互动信号 → bumpInteract
+  const intimacy = useIntimacy();
+  const companion = useCompanion(petStageRef, intimacy.bumpInteract);
+  // v0.4+ · 点桌宠 → 浮一颗爱心（prototype 彩蛋移植）。存一组飘心的 id 队列。
+  const [hearts, setHearts] = useState<number[]>([]);
+  const popHeart = useCallback(() => {
+    const id = Date.now() + Math.random();
+    setHearts((hs) => [...hs, id]);
+    window.setTimeout(() => setHearts((hs) => hs.filter((h) => h !== id)), 700);
+  }, []);
   // v0.4 · 内容驱动 overlay 尺寸 —— 见 hooks/useAdaptiveOverlay.ts 注释。
   // 只在 idle 视图启用：非 idle 由 Rust emit_view 那侧管尺寸，不要前后端打架。
   useAdaptiveOverlay(stageRootRef, { enabled: true });
@@ -501,8 +511,11 @@ export default function App() {
       return;
     }
     if (view.kind !== "idle") return;
+    // v0.4+ · 点桌宠 → 浮爱心 + 记一次亲密互动（菜单仍照常开合）
+    popHeart();
+    intimacy.bumpInteract();
     setPetMenuOpen(prev => !prev);
-  }, [view.kind]);
+  }, [view.kind, popHeart, intimacy]);
 
   return (
     <div ref={stageRootRef} className="stage stage-mouse-bubble">
@@ -530,7 +543,12 @@ export default function App() {
           twitching={twitching}
           companionState={companion.state}
           eyeOffset={{ x: companion.eyeOffsetX, y: companion.eyeOffsetY }}
+          intimacyLevel={intimacy.level}
+          neglected={intimacy.neglected}
         />
+        {hearts.map((id) => (
+          <span key={id} className="pet-heart" aria-hidden>❤️</span>
+        ))}
         <PetMenu
           open={petMenuOpen}
           onClose={() => setPetMenuOpen(false)}

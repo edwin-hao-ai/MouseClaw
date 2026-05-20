@@ -46,8 +46,13 @@ interface PixelMouseProps {
    *   所有皮肤"硬规则）。
    */
   companionState?: "idle" | "typing" | "alert" | "excited" | "sleep"
-                 | "clicked" | "worried" | "drowsy";
+                 | "clicked" | "worried" | "drowsy"
+                 | "waking" | "dizzy" | "hop" | "glance";
   eyeOffset?: { x: number; y: number };
+  /** v0.4+ · 亲密度 0–3 —— level 越高 idle 时眼睛微大；见 useIntimacy */
+  intimacyLevel?: 0 | 1 | 2 | 3;
+  /** v0.4+ · 冷落超 N 天 → 委屈表情 */
+  neglected?: boolean;
 }
 
 // ── Body parts (按 body variant 决定形状) ───────────────────────────
@@ -472,7 +477,7 @@ function Extras({ state, skin }: { state: MouseState; skin: Skin }) {
 
 export function PixelMouse({
   state, size = 96, skin = "classic", continuing = false, twitching = false,
-  companionState, eyeOffset,
+  companionState, eyeOffset, intimacyLevel = 0, neglected = false,
 }: PixelMouseProps) {
   const s = getSkin(skin);
   // companion 在"非任务态"挂（idle 状态下 mouseStateFor 返回 "sleep"；onboarding/listening
@@ -481,20 +486,22 @@ export function PixelMouse({
   const isDefaultState = state === "sleep" || state === "listen";
   const companionActive = isDefaultState && companionState && companionState !== "idle";
   const companionClass = companionActive ? ` companion-${companionState}` : "";
-  // 眼睛 anatomy 决策：
-  //   - companion=sleep / drowsy → 保持 sleep 闭眼线条（CSS 再做 scaleY 半闭效果）
-  //   - companion 是 alert/excited/clicked/worried/typing → 把 sleep 闭眼覆盖成 listen 睁眼
-  //     这样眼球追鼠标 + 点头节奏才看得见
-  //   - companion 未驱动（undefined / idle）+ state=sleep → 原样保留闭眼（向后兼容）
-  const eyesState =
-    state === "sleep" && companionActive && companionState !== "sleep" && companionState !== "drowsy"
-      ? "listen" as MouseState
-      : state;
-  // 眼球平移 —— SVG 内单位（viewBox 16×16）。sleep / drowsy 不偏移（闭眼 / 半垂由 CSS 接管）。
-  const eyesTransform = (eyeOffset && companionState !== "sleep" && companionState !== "drowsy")
-    ? `translate(${eyeOffset.x.toFixed(3)}px, ${eyeOffset.y.toFixed(3)}px)` : undefined;
+  // 亲密度：只在非任务态生效（任务态不分心）。level>0 加 idle-intimacy-N，neglected 加委屈类。
+  const intimacyClass = isDefaultState
+    ? `${intimacyLevel > 0 ? ` intimacy-${intimacyLevel}` : ""}${neglected ? " companion-neglected" : ""}`
+    : "";
+  // 眼睛 anatomy：companion 非 sleep/drowsy/neglected 时，把 sleep 闭眼覆盖成 listen 睁眼
+  // （眼球追鼠标 / 点头才看得见）。sleep/drowsy 保持闭眼线条，CSS 做半闭效果。
+  const eyesOpen = companionActive && companionState !== "sleep" && companionState !== "drowsy";
+  const eyesState = state === "sleep" && eyesOpen ? ("listen" as MouseState) : state;
+  // 眼球平移 —— 用 SVG transform **attribute**（user 单位，WebKit 可靠；CSS px 在
+  // WebKit 的 SVG group 上语义不一致）。sleep/drowsy/neglected 不偏移（表情由 CSS 接管）。
+  const noOffset = companionState === "sleep" || companionState === "drowsy"
+    || companionState === "dizzy" || neglected;
+  const eyesTransformAttr = (eyeOffset && !noOffset)
+    ? `translate(${eyeOffset.x.toFixed(3)} ${eyeOffset.y.toFixed(3)})` : undefined;
   return (
-    <div className={`mouse-wrap mouse-${state} mouse-skin-${s.id}${twitching ? " mouse-twitch" : ""}${companionClass}`} style={{ width: size, height: size }}>
+    <div className={`mouse-wrap mouse-${state} mouse-skin-${s.id}${twitching ? " mouse-twitch" : ""}${companionClass}${intimacyClass}`} style={{ width: size, height: size }}>
       {continuing && <div className="mouse-chain" aria-hidden />}
       <svg
         viewBox="-1 -3 18 18"
@@ -510,7 +517,7 @@ export function PixelMouse({
         <g className="mc-tail" style={{ transformOrigin: "13px 9px" }}>
           <Tail skin={s} />
         </g>
-        <g className="mc-eyes" style={{ transform: eyesTransform, transition: "transform 80ms linear" }}>
+        <g className="mc-eyes" transform={eyesTransformAttr}>
           <Eyes state={eyesState} skin={s} />
         </g>
         <Extras state={state} skin={s} />

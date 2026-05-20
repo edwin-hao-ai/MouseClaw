@@ -30,6 +30,15 @@ const COOLDOWN_SECS: i64 = 30 * 60;
 /// 心流保护：最近 30min 里键盘活跃 sample 占比阈值
 const FOCUS_PROTECTION_HITS: usize = 50; // 60 sample 里 50 个活跃 ≈ 83%
 const FOCUS_PROTECTION_WINDOW: u64 = 30 * 60;
+/// v0.4+ · 连续专注多久后允许提醒休息（2h）
+const LONG_FOCUS_SECS: i64 = 2 * 60 * 60;
+/// 专注段判定：距上次键击 < 这个秒数算"仍在专注"（更新 focus 起点）
+const FOCUS_ACTIVE_GAP: f64 = 60.0;
+/// 专注段中断：距上次键击 > 这个秒数算"离开了"（清 focus 起点）
+const FOCUS_BREAK_GAP: f64 = 5.0 * 60.0;
+/// LongFocus 只在"自然停顿"时发：距上次键击在这个区间（停了打字但人还在）
+const FOCUS_PAUSE_MIN: f64 = 3.0;
+const FOCUS_PAUSE_MAX: f64 = 120.0;
 
 /// IDE bundle id 关键字（大小写不敏感子串匹配）。
 /// 主要的代码编辑器都覆盖；不全也无所谓 —— 不命中只是不触发 Stuck，无害。
@@ -52,6 +61,10 @@ pub struct NudgeState {
     pub last_morning_day: i64,
     /// v0.1.32 · 上次发"午餐"的本地 epoch-day。Lunch 每天只发一次。
     pub last_lunch_day: i64,
+    /// v0.4+ · 当前这一段"连续专注"的起点（unix 秒）。None = 当前不在专注段。
+    /// spawn loop 每 tick 更新：用户在场就 set（首次）/ 保持；离场够久就清。
+    /// LongFocus 规则读它判断"已经连续工作多久了"。
+    pub focus_started_at: Option<i64>,
 }
 
 impl NudgeState {
@@ -78,8 +91,31 @@ impl NudgeState {
         match kind {
             NudgeKind::GoodMorning => self.last_morning_day = now / 86400,
             NudgeKind::Lunch       => self.last_lunch_day   = now / 86400,
+            // 发完 LongFocus 重置专注段 —— 否则 cooldown 内会一直满足时长条件
+            NudgeKind::LongFocus   => self.focus_started_at = None,
             _ => {}
         }
+    }
+
+    /// v0.4+ · 每个评估 tick 更新"连续专注段"起点。
+    /// 用户在敲键（gap < FOCUS_ACTIVE_GAP）→ 没起点就记 now；离开够久 → 清。
+    pub fn update_focus(&mut self, now: i64, secs_since_keyboard: f64) {
+        if secs_since_keyboard < FOCUS_ACTIVE_GAP {
+            if self.focus_started_at.is_none() {
+                self.focus_started_at = Some(now);
+            }
+        } else if secs_since_keyboard > FOCUS_BREAK_GAP {
+            self.focus_started_at = None;
+        }
+        // 中间地带（自然停顿）保持起点不动 —— 让 LongFocus 能在停顿时触发
+    }
+
+    /// v0.4+ · 当前是否满足"连续专注 ≥ 2h 且此刻自然停顿"。
+    pub fn long_focus_ready(&self, now: i64, secs_since_keyboard: f64) -> bool {
+        let Some(started) = self.focus_started_at else { return false };
+        now - started >= LONG_FOCUS_SECS
+            && (FOCUS_PAUSE_MIN..=FOCUS_PAUSE_MAX).contains(&secs_since_keyboard)
+            && self.cooldown_ok(NudgeKind::LongFocus, now)
     }
 }
 
@@ -92,12 +128,29 @@ pub fn pick_nudge(
     // 0. DnD / Nap 直接跳过所有 nudge
     if state.in_nap(now_ts) { return None; }
 
+    let Some(latest) = buf.latest() else { return None; };
+
+    // 0.5 v0.4+ · LongFocus —— **在心流保护之前**判定。
+    //   连续专注 ≥ 2h 且此刻出现自然停顿（停了打字但人还在）→ 趁停顿提醒休息。
+    //   故意放在 focus-protection 之前：停顿时 30min 窗口仍是高活跃，
+    //   若放后面会被心流保护吞掉，永远发不出来。靠"停顿窗口"避免打断心流。
+    if state.long_focus_ready(now_ts, latest.secs_since_keyboard) {
+        return Some(NudgePayload {
+            kind: NudgeKind::LongFocus,
+            message: if lang_en {
+                "👀 You've been focused for 2 hours — rest your eyes a moment?".into()
+            } else {
+                "👀 已经专注 2 小时啦 —— 让眼睛歇一会儿？".into()
+            },
+            cta_label: None,
+            cta_action: None,
+        });
+    }
+
     // 1. 心流保护：最近 30min 高强度敲键 → 排队所有提醒
     if buf.keyboard_active_count(now_ts, FOCUS_PROTECTION_WINDOW) >= FOCUS_PROTECTION_HITS {
         return None;
     }
-
-    let Some(latest) = buf.latest() else { return None; };
     // v0.1.32 · 共享给 Lunch / GoodMorning / Water 用的预计算
     let today_epoch_day = now_ts / 86400; // 本地时区简化处理
     let user_present = latest.secs_since_keyboard < 5.0 * 60.0
@@ -232,6 +285,16 @@ pub fn spawn(
             let now = Local::now().timestamp();
 
             let lang_en = crate::config::Config::load().language == "en";
+
+            // v0.4+ · 先更新"连续专注段"起点（LongFocus 规则要读），再评估
+            {
+                let buf_g = match buffer.read() { Ok(g) => g, Err(_) => continue };
+                if let Some(latest) = buf_g.latest() {
+                    if let Ok(mut st) = state.write() {
+                        st.update_focus(now, latest.secs_since_keyboard);
+                    }
+                }
+            }
 
             let nudge = {
                 let buf_g = match buffer.read() { Ok(g) => g, Err(_) => continue };
@@ -375,5 +438,78 @@ mod tests {
         let n = pick_nudge(&buf, &st, now, false).unwrap();
         assert_eq!(n.kind, NudgeKind::LateNight);
         assert!(n.cta_action.is_none());
+    }
+
+    // ─── v0.4+ · LongFocus（连续专注 2h 提醒） ───────────────
+
+    #[test]
+    fn update_focus_sets_and_clears_span() {
+        let mut st = NudgeState::new();
+        st.update_focus(1000, 5.0);                  // 在敲键 → 记起点
+        assert_eq!(st.focus_started_at, Some(1000));
+        st.update_focus(2000, 30.0);                 // 自然停顿 → 起点不动
+        assert_eq!(st.focus_started_at, Some(1000));
+        st.update_focus(3000, 6.0 * 60.0);           // 离开 6min → 清
+        assert_eq!(st.focus_started_at, None);
+    }
+
+    #[test]
+    fn long_focus_fires_after_2h_at_pause() {
+        let now = 1_000_000;
+        let started = now - (2 * 60 * 60 + 10);      // 2h 前开始专注
+        // 此刻自然停顿：距上次键击 30s（停了打字但人还在），鼠标刚动
+        let buf = fresh_buf(vec![s(now, "com.microsoft.VSCode", 30.0, 2.0, 14)]);
+        let mut st = NudgeState::new();
+        st.focus_started_at = Some(started);
+        let n = pick_nudge(&buf, &st, now, false).expect("应触发 LongFocus");
+        assert_eq!(n.kind, NudgeKind::LongFocus);
+    }
+
+    #[test]
+    fn long_focus_not_firing_before_2h() {
+        let now = 1_000_000;
+        let buf = fresh_buf(vec![s(now, "com.microsoft.VSCode", 30.0, 2.0, 14)]);
+        let mut st = NudgeState::new();
+        st.focus_started_at = Some(now - 60 * 60);   // 才 1h
+        // 不应是 LongFocus（可能命中别的规则或 None，但 kind 不是 LongFocus）
+        if let Some(n) = pick_nudge(&buf, &st, now, false) {
+            assert_ne!(n.kind, NudgeKind::LongFocus);
+        }
+    }
+
+    #[test]
+    fn long_focus_not_firing_when_still_typing() {
+        let now = 1_000_000;
+        // 距上次键击仅 1s —— 还在猛敲，不是停顿 → 不打断
+        let buf = fresh_buf(vec![s(now, "com.microsoft.VSCode", 1.0, 1.0, 14)]);
+        let mut st = NudgeState::new();
+        st.focus_started_at = Some(now - 3 * 60 * 60);
+        if let Some(n) = pick_nudge(&buf, &st, now, false) {
+            assert_ne!(n.kind, NudgeKind::LongFocus);
+        }
+    }
+
+    #[test]
+    fn long_focus_bypasses_focus_protection() {
+        // 关键：停顿时 30min 窗口仍高活跃（命中心流保护），但 LongFocus 在它之前判定
+        let now = 1_000_000;
+        let mut samples: Vec<_> = (0..60).map(|i| {
+            s(now - (60 - i as i64) * 30, "com.microsoft.VSCode", 1.0, 1.0, 14)
+        }).collect();
+        // 最近一个 sample 是自然停顿（30s 没敲键）
+        *samples.last_mut().unwrap() = s(now, "com.microsoft.VSCode", 30.0, 2.0, 14);
+        let buf = fresh_buf(samples);
+        let mut st = NudgeState::new();
+        st.focus_started_at = Some(now - 2 * 60 * 60 - 100);
+        let n = pick_nudge(&buf, &st, now, false).expect("LongFocus 应越过心流保护");
+        assert_eq!(n.kind, NudgeKind::LongFocus);
+    }
+
+    #[test]
+    fn long_focus_resets_span_after_fire() {
+        let mut st = NudgeState::new();
+        st.focus_started_at = Some(500);
+        st.mark_fired(NudgeKind::LongFocus, 1000);
+        assert_eq!(st.focus_started_at, None, "发完应重置专注段");
     }
 }

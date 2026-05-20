@@ -6,6 +6,7 @@
 import { describe, it, expect } from "vitest";
 import {
   deriveCompanionFrame,
+  type CompanionCtx,
   IDLE_TO_SLEEP_SECS,
   TYPING_PULSE_SECS,
   ALERT_PX,
@@ -16,6 +17,11 @@ import {
 } from "../useCompanion";
 
 const PET_CENTER = { x: 100, y: 100 };
+
+// helper：测试调用点保持简洁。waking/dizzy/hop/glance 缺省 false，需要时覆盖。
+function ctx(partial: CompanionCtx): CompanionCtx {
+  return { waking: false, dizzy: false, hop: false, glance: false, ...partial };
+}
 
 describe("deriveCompanionFrame", () => {
   it("sleep 优先 —— 键鼠都超 idle 阈值即入睡，覆盖一切", () => {
@@ -138,7 +144,7 @@ describe("deriveCompanionFrame", () => {
   it("clicked —— sinceClick < CLICK_FLASH_SECS → clicked 状态（优先于 typing/excited）", () => {
     const f = deriveCompanionFrame(
       { x: 200, y: 200, sinceKey: 0.05, sinceMouse: 0.05, sinceClick: CLICK_FLASH_SECS / 2 },
-      PET_CENTER, { typingStormSecs: 0, nowHour: 12 },
+      PET_CENTER, ctx({ typingStormSecs: 0, nowHour: 12 }),
     );
     expect(f.state).toBe("clicked");
   });
@@ -146,7 +152,7 @@ describe("deriveCompanionFrame", () => {
   it("clicked 过期 → 不再是 clicked", () => {
     const f = deriveCompanionFrame(
       { x: 1000, y: 1000, sinceKey: 5, sinceMouse: 5, sinceClick: CLICK_FLASH_SECS + 0.1 },
-      PET_CENTER, { typingStormSecs: 0, nowHour: 12 },
+      PET_CENTER, ctx({ typingStormSecs: 0, nowHour: 12 }),
     );
     expect(f.state).not.toBe("clicked");
   });
@@ -155,7 +161,7 @@ describe("deriveCompanionFrame", () => {
     const f = deriveCompanionFrame(
       { x: 200, y: 200, sinceKey: 0.05, sinceMouse: 5, sinceClick: 999 },
       PET_CENTER,
-      { typingStormSecs: TYPING_STORM_DURATION_SECS + 0.5, nowHour: 12 },
+      ctx({ typingStormSecs: TYPING_STORM_DURATION_SECS + 0.5, nowHour: 12 }),
     );
     expect(f.state).toBe("worried");
   });
@@ -163,7 +169,7 @@ describe("deriveCompanionFrame", () => {
   it("worried 仅在累计够秒数时触发；典型短暂打字 ≠ worried", () => {
     const f = deriveCompanionFrame(
       { x: 200, y: 200, sinceKey: 0.05, sinceMouse: 5, sinceClick: 999 },
-      PET_CENTER, { typingStormSecs: 0.5, nowHour: 12 },
+      PET_CENTER, ctx({ typingStormSecs: 0.5, nowHour: 12 }),
     );
     expect(f.state).toBe("typing");
   });
@@ -172,7 +178,7 @@ describe("deriveCompanionFrame", () => {
     for (const hour of [23, 0, 3, 5]) {
       const f = deriveCompanionFrame(
         { x: 1000, y: 1000, sinceKey: 1, sinceMouse: 1, sinceClick: 999 },
-        PET_CENTER, { typingStormSecs: 0, nowHour: hour },
+        PET_CENTER, ctx({ typingStormSecs: 0, nowHour: hour }),
       );
       expect(f.state, `hour=${hour}`).toBe("drowsy");
     }
@@ -182,7 +188,7 @@ describe("deriveCompanionFrame", () => {
     for (const hour of [6, 12, 18, 22]) {
       const f = deriveCompanionFrame(
         { x: 1000, y: 1000, sinceKey: 1, sinceMouse: 1, sinceClick: 999 },
-        PET_CENTER, { typingStormSecs: 0, nowHour: hour },
+        PET_CENTER, ctx({ typingStormSecs: 0, nowHour: hour }),
       );
       expect(f.state, `hour=${hour}`).toBe("idle");
     }
@@ -191,7 +197,7 @@ describe("deriveCompanionFrame", () => {
   it("drowsy 模式下 sleep 阈值减半（5s 而非 10s）", () => {
     const f = deriveCompanionFrame(
       { x: 1000, y: 1000, sinceKey: IDLE_TO_SLEEP_SECS / 2 + 0.5, sinceMouse: IDLE_TO_SLEEP_SECS / 2 + 0.5, sinceClick: 999 },
-      PET_CENTER, { typingStormSecs: 0, nowHour: 2 },
+      PET_CENTER, ctx({ typingStormSecs: 0, nowHour: 2 }),
     );
     expect(f.state).toBe("sleep");
   });
@@ -199,9 +205,63 @@ describe("deriveCompanionFrame", () => {
   it("clicked / worried / drowsy 仍带 eyeOffset（眼球追鼠标 always-on）", () => {
     const f = deriveCompanionFrame(
       { x: 1000, y: PET_CENTER.y, sinceKey: 5, sinceMouse: 5, sinceClick: 0.1 },
-      PET_CENTER, { typingStormSecs: 0, nowHour: 12 },
+      PET_CENTER, ctx({ typingStormSecs: 0, nowHour: 12 }),
     );
     expect(f.state).toBe("clicked");
     expect(f.eyeOffsetX).toBeGreaterThan(0); // 鼠标在右
+  });
+
+  // ─── v0.4+ 全集补完：waking / dizzy / hop / glance ───────────────
+
+  it("waking —— ctx.waking 时进 waking（伸懒腰），仍追鼠标", () => {
+    const f = deriveCompanionFrame(
+      { x: 200, y: 200, sinceKey: 0.05, sinceMouse: 0.05, sinceClick: 0.05 },
+      PET_CENTER, ctx({ typingStormSecs: 0, nowHour: 12, waking: true }),
+    );
+    expect(f.state).toBe("waking");
+    expect(f.eyeOffsetX).not.toBe(0);
+  });
+
+  it("dizzy —— ctx.dizzy 时眼睛不追鼠标（转圈）", () => {
+    const f = deriveCompanionFrame(
+      { x: 1000, y: PET_CENTER.y, sinceKey: 5, sinceMouse: 0, sinceClick: 999 },
+      PET_CENTER, ctx({ typingStormSecs: 0, nowHour: 12, dizzy: true }),
+    );
+    expect(f.state).toBe("dizzy");
+    expect(f.eyeOffsetX).toBe(0);
+    expect(f.eyeOffsetY).toBe(0);
+  });
+
+  it("hop —— ctx.hop（burst 结束小跳），优先于 clicked/typing", () => {
+    const f = deriveCompanionFrame(
+      { x: 200, y: 200, sinceKey: 0.6, sinceMouse: 5, sinceClick: 999 },
+      PET_CENTER, ctx({ typingStormSecs: 0, nowHour: 12, hop: true }),
+    );
+    expect(f.state).toBe("hop");
+  });
+
+  it("glance —— 本来 idle + ctx.glance → glance，眼睛强制朝上", () => {
+    const f = deriveCompanionFrame(
+      { x: PET_CENTER.x + ALERT_PX + 50, y: PET_CENTER.y, sinceKey: 2, sinceMouse: 0, sinceClick: 999 },
+      PET_CENTER, ctx({ typingStormSecs: 0, nowHour: 12, glance: true }),
+    );
+    expect(f.state).toBe("glance");
+    expect(f.eyeOffsetY).toBeLessThan(0);
+  });
+
+  it("glance 让位给贴近反应（鼠标靠近不发呆抬头）", () => {
+    const f = deriveCompanionFrame(
+      { x: PET_CENTER.x + 10, y: PET_CENTER.y, sinceKey: 2, sinceMouse: 0, sinceClick: 999 },
+      PET_CENTER, ctx({ typingStormSecs: 0, nowHour: 12, glance: true }),
+    );
+    expect(f.state).toBe("excited");
+  });
+
+  it("优先级链 waking > dizzy > hop > clicked", () => {
+    const tick = { x: 200, y: 200, sinceKey: 0.05, sinceMouse: 0.05, sinceClick: 0.05 };
+    expect(deriveCompanionFrame(tick, PET_CENTER, ctx({ typingStormSecs: 0, nowHour: 12, waking: true, dizzy: true, hop: true })).state).toBe("waking");
+    expect(deriveCompanionFrame(tick, PET_CENTER, ctx({ typingStormSecs: 0, nowHour: 12, dizzy: true, hop: true })).state).toBe("dizzy");
+    expect(deriveCompanionFrame(tick, PET_CENTER, ctx({ typingStormSecs: 0, nowHour: 12, hop: true })).state).toBe("hop");
+    expect(deriveCompanionFrame(tick, PET_CENTER, ctx({ typingStormSecs: 0, nowHour: 12 })).state).toBe("clicked");
   });
 });
