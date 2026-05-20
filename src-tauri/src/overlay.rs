@@ -38,20 +38,21 @@ pub fn reposition_to_cursor(app: &AppHandle) {
 /// 主线程访问会静默崩溃。现在统一 marshal 到主线程。
 pub fn show_mouse(app: &AppHandle) {
     use tauri::LogicalSize;
+    // ⚠️ 必须在排队主线程闭包**之前**同步 mark_expanded（不能放进闭包里）：
+    // voice IME 路径在 worker 线程跑 —— show_mouse 排完闭包后，调用方紧接着同步调
+    // emit_view → expand_to_full → set_mode，此刻若 CURRENT_MODE 还是 compact(0)，
+    // set_mode 不会 no-op，会再排一个"保持锚点"闭包；该闭包读窗口位置时（冷启动首帧
+    // set_position 尚未提交）拿到旧 anchor 坐标 → 把桌宠拽回角落（用户报：第一次按 fn
+    // 桌宠不移到光标，第二次才移）。提前同步置 expanded，让 expand_to_full 真 no-op。
+    crate::overlay_size::mark_expanded();
     let app2 = app.clone();
     let _ = app.run_on_main_thread(move || {
         let Some(window) = app2.get_webview_window("mouse") else { return };
-        // v0.4 fix · 一个 closure 内做完所有事 —— 之前 show_mouse 只 set_position，
-        // 跟 emit_view 在后面调的 expand_to_full 形成竞态：set_mode 的 anchor-preserve
-        // 用 80×80 当前尺寸算位置，把窗口移回 anchor 位置上 resize，桌宠没跟到光标。
-        //
-        // 现在：先 expand 到 320，再用 320 尺寸算光标偏移，最后 set_position。
-        // CURRENT_MODE 同步标记为 expanded，下游 emit_view 的 expand_to_full no-op。
+        // 先 expand 到 320，再用 320 尺寸算光标偏移，最后 set_position。
         let _ = window.set_size(LogicalSize::new(
             crate::overlay_size::EXPANDED_SIZE,
             crate::overlay_size::EXPANDED_SIZE,
         ));
-        crate::overlay_size::mark_expanded();
         if let Some((x, y)) = current_mouse_pos_top_left(&window) {
             let half = crate::overlay_size::EXPANDED_SIZE / 2.0;
             let pos_x = x - half;
