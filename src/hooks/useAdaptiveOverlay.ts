@@ -23,7 +23,16 @@
 import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
-const PADDING_PX = 24;       // 给 drop-shadow / 圆角留点透气
+// v0.4 fix (2026-05-20)：padding 分两档 ——
+//   · 桌宠本体（.mouse-wrap）只有小 drop-shadow → BASE_PADDING 够，idle 不必撑大窗口
+//     （保住 f253762 的"idle 缩窗不遮挡"）。
+//   · 气泡类（.bubble / .pet-menu / voice-confirm 等）带 --shadow-bubble
+//     (0 12px 32px，外扩 ~44px) → 用 SHADOW_PADDING，否则阴影被窗口边界裁成"一圈黑边"。
+const BASE_PADDING = 24;     // 只有桌宠时的透气边距
+const SHADOW_PADDING = 96;   // 有阴影气泡时的边距（≈ 每边 48px 容下软阴影）
+/** 这些元素带重 box-shadow（--shadow-bubble），命中任一就用 SHADOW_PADDING。
+ *  注意：不含 .stage-bubble —— 它装的是 session chip（轻阴影），用 BASE 即可。 */
+const SHADOWED_SELECTOR = ".bubble, .pet-menu, .nudge-bubble, .rx-ribbon, [data-adaptive-measure]";
 const DEBOUNCE_MS = 16;      // 一帧 60fps
 const POLL_FALLBACK_MS = 1000; // 兜底轮询（v0.4 fix · 250ms → 1s，亚像素抖动放大成飘移的元凶）
 const CHANGE_THRESHOLD_PX = 4; // v0.4 fix · 变化 < 4px 不 invoke（ceil + 亚像素 → 1-2px 噪声）
@@ -72,10 +81,13 @@ export function useAdaptiveOverlay(
         if (r.bottom > maxY) maxY = r.bottom;
       });
       if (minX === Infinity) return;
+      // 有阴影气泡在场 → 用大 padding 容下阴影；否则（只有桌宠）用小 padding 不撑大窗口。
+      const hasShadowed = root.querySelector(SHADOWED_SELECTOR) != null;
+      const pad = hasShadowed ? SHADOW_PADDING : BASE_PADDING;
       // v0.4 fix (2026-05-20)：Math.ceil 永远向上取整 + 亚像素 getBoundingClientRect
       // 会被放大成单向累积飘移。改用 Math.round + 4px 容差阈值。
-      const w = Math.round(maxX - minX + PADDING_PX);
-      const h = Math.round(maxY - minY + PADDING_PX);
+      const w = Math.round(maxX - minX + pad);
+      const h = Math.round(maxY - minY + pad);
       const dw = Math.abs(w - lastSizeRef.current.w);
       const dh = Math.abs(h - lastSizeRef.current.h);
       if (dw < CHANGE_THRESHOLD_PX && dh < CHANGE_THRESHOLD_PX) return;
