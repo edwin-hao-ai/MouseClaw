@@ -122,14 +122,17 @@ export default function App() {
       .catch(() => { /* 浏览器 dev 模式 invoke 不可用 */ });
   }, []);
 
-  // v0.4.x · voice-confirm 期间让 overlay 可获键盘焦点 —— 用户能直接打字改识别文本。
-  // 离开 voice-confirm 立刻关掉，恢复非激活面板（不抢焦点）。
+  // v0.4.x · voice-confirm 默认**不抢焦点** —— 否则目标 app 光标丢失，续写功能失效。
+  // 只在用户主动点确认框 / 按 Tab（editRequested）时才让 overlay 获焦进编辑。
+  // 离开 voice-confirm 一律关掉，恢复非激活面板。
+  const [editRequested, setEditRequested] = useState(false);
   useEffect(() => {
-    if (view.kind === "voice-confirm") {
+    if (view.kind !== "voice-confirm") { setEditRequested(false); return; }
+    if (editRequested) {
       invoke("set_overlay_focusable", { focusable: true }).catch(() => {});
       return () => { invoke("set_overlay_focusable", { focusable: false }).catch(() => {}); };
     }
-  }, [view.kind]);
+  }, [view.kind, editRequested]);
 
   // v0.4.0 · 监听模型下载进度 —— 聚合 ASR + 标点两条，算总 % 给桌宠 idle 气泡用
   useEffect(() => {
@@ -353,6 +356,10 @@ export default function App() {
         } else if (e.key === "Enter") {
           invoke("voice_confirm_send").catch(() => {});
           e.preventDefault();
+        } else if (e.key === "Tab") {
+          // Tab → 主动进编辑（让 overlay 获焦 + 暂停倒数）
+          e.preventDefault();
+          setEditRequested(true);
         }
         return;
       }
@@ -579,7 +586,7 @@ export default function App() {
 
   return (
     <div ref={stageRootRef} className="stage stage-mouse-bubble">
-      <BubbleFor view={view} continuing={continuing} onExpand={handleExpand} onNewSession={handleNewSession} modelProgress={modelProgress} />
+      <BubbleFor view={view} continuing={continuing} onExpand={handleExpand} onNewSession={handleNewSession} modelProgress={modelProgress} editRequested={editRequested} onRequestEdit={() => setEditRequested(true)} />
       {/* Local ack bubble — visible above the pet without going through Rust */}
       {transientAck && (
         <div className="stage-bubble">
@@ -681,8 +688,9 @@ interface BubbleForProps {
   view: ViewKind; continuing: boolean;
   onExpand: () => void; onNewSession: () => void;
   modelProgress: { pct: number; mb_done: number; mb_total: number; phase: string } | null;
+  editRequested: boolean; onRequestEdit: () => void;
 }
-function BubbleFor({ view, continuing, onExpand, onNewSession, modelProgress }: BubbleForProps) {
+function BubbleFor({ view, continuing, onExpand, onNewSession, modelProgress, editRequested, onRequestEdit }: BubbleForProps) {
   switch (view.kind) {
     case "idle":
       // v0.4.0 · idle 时模型未就绪 → 显示常驻迷你气泡 + 打开下载窗口入口
@@ -750,8 +758,9 @@ function BubbleFor({ view, continuing, onExpand, onNewSession, modelProgress }: 
         />
       );
     case "voice-confirm":
-      // v0.4.0 · 转写完 3 秒倒数确认。点气泡 = 进入编辑模式。
-      return <VoiceConfirmBubble transcript={view.transcript} remaining={view.remaining} />;
+      // v0.4.0 · 转写完 3 秒倒数确认。默认不抢焦点；点气泡 / Tab = 进入编辑模式。
+      return <VoiceConfirmBubble transcript={view.transcript} remaining={view.remaining}
+               editRequested={editRequested} onRequestEdit={onRequestEdit} />;
     case "tour-step":
       // v0.4.0 · 首次使用引导 5 步流程
       return <TourBubble step={view.step} />;
@@ -789,8 +798,11 @@ function BubbleFor({ view, continuing, onExpand, onNewSession, modelProgress }: 
 //   单一形态：转写文本一上来就装进可编辑 textarea，用户直接 ↵ 发 / Esc 取消 / 改字。
 //   倒数 N 秒到了自动发送（Rust 端管，前端只显示数字）。
 //   之前"先气泡 → 点一下进编辑"两段式被用户反馈"修改框很乱" → 砍掉。
-interface VoiceConfirmBubbleProps { transcript: string; remaining: number; }
-function VoiceConfirmBubble({ transcript, remaining }: VoiceConfirmBubbleProps) {
+interface VoiceConfirmBubbleProps {
+  transcript: string; remaining: number;
+  editRequested: boolean; onRequestEdit: () => void;
+}
+function VoiceConfirmBubble({ transcript, remaining, editRequested, onRequestEdit }: VoiceConfirmBubbleProps) {
   const [text, setText] = useState(transcript);
   const dirtyRef = useRef(false); // 用户改过 → 不再被 Rust 周期 emit 覆盖
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -801,13 +813,20 @@ function VoiceConfirmBubble({ transcript, remaining }: VoiceConfirmBubbleProps) 
     if (!dirtyRef.current) setText(transcript);
   }, [transcript]);
 
-  // mount 后自动 focus + 光标移到末尾（让用户能直接接着说补充）
+  // v0.4.x · 只有用户主动进编辑（editRequested）后才 focus —— 默认不抢焦点，
+  // 保住目标 app 光标让续写能插入。editRequested 翻 true 时 overlay 已被设为可获焦，
+  // 这里再 focus textarea + 光标移末尾。同时通知 Rust 暂停倒数（HOLD）。
   useEffect(() => {
+    if (!editRequested) return;
     const el = taRef.current;
     if (!el) return;
     el.focus();
     el.setSelectionRange(el.value.length, el.value.length);
-  }, []);
+    if (!dirtyRef.current) {
+      dirtyRef.current = true;
+      invoke("voice_confirm_hold", { text: el.value }).catch(() => {});
+    }
+  }, [editRequested]);
 
   const cancel = () => invoke("voice_confirm_cancel").catch(() => {});
   const sendNow = () => {
@@ -849,7 +868,7 @@ function VoiceConfirmBubble({ transcript, remaining }: VoiceConfirmBubbleProps) 
         display: "flex", alignItems: "center", justifyContent: "space-between",
         fontSize: 11, color: "#8a8178", marginBottom: 6, gap: 8,
       }}>
-        <span style={{ whiteSpace: "nowrap" }}>🎙 听到（可改）</span>
+        <span style={{ whiteSpace: "nowrap" }}>{editRequested ? "🎙 听到（编辑中）" : "🎙 听到"}</span>
         <span style={{
           color: holding ? "#1a6b3a" : "#d63d6a", fontWeight: 600,
           whiteSpace: "nowrap",
@@ -860,6 +879,10 @@ function VoiceConfirmBubble({ transcript, remaining }: VoiceConfirmBubbleProps) 
       <textarea
         ref={taRef}
         value={text}
+        // v0.4.x · 默认 readOnly（不抢焦点，保住目标 app 光标让续写能插入）；
+        // 点一下 / Tab 才进编辑（onRequestEdit → overlay 获焦）。
+        readOnly={!editRequested}
+        onClick={() => { if (!editRequested) onRequestEdit(); }}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
@@ -882,15 +905,18 @@ function VoiceConfirmBubble({ transcript, remaining }: VoiceConfirmBubbleProps) 
           lineHeight: 1.5,
           resize: "none",
           outline: "none",
-          background: "#fafaf7",
+          background: editRequested ? "#fff" : "#fafaf7",
           color: "#2b2622",
+          cursor: editRequested ? "text" : "pointer",
         }}
       />
       <div style={{
         display: "flex", alignItems: "center", justifyContent: "space-between",
         marginTop: 6, gap: 6,
       }}>
-        <span style={{ fontSize: 10, color: "#a8a098" }}>↵ 发 · Esc 取消</span>
+        <span style={{ fontSize: 10, color: "#a8a098" }}>
+          {editRequested ? "↵ 发 · Esc 取消" : "点这 / Tab 改 · ↵ 发 · Esc 取消"}
+        </span>
         <div style={{ display: "flex", gap: 6 }}>
           <button
             type="button"
