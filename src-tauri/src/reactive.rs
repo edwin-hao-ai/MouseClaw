@@ -20,6 +20,7 @@
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Mutex, OnceLock};
+use std::time::Instant;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
@@ -111,6 +112,30 @@ static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 pub static LAST_TEXT: once_cell::sync::Lazy<Mutex<Option<String>>> =
     once_cell::sync::Lazy::new(|| Mutex::new(None));
 
+/// v0.4 fix (2026-05-20) · 反馈环防护。
+/// process_reactive_action 把结果写回剪贴板时，剪贴板监听 loop（500ms 轮询）会以为
+/// "用户又复制了新内容" → 又弹一次 ribbon（让你处理刚处理完的结果）。
+/// 写回前先 mark_self_write(结果文本)，on_new_text 看到匹配 + 2s 内就跳过，不弹。
+static SELF_WRITE: once_cell::sync::Lazy<Mutex<Option<(String, Instant)>>> =
+    once_cell::sync::Lazy::new(|| Mutex::new(None));
+
+/// 写回剪贴板前调 —— 标记接下来这段内容是我们自己写的，别当用户复制处理。
+pub fn mark_self_write(text: &str) {
+    if let Ok(mut g) = SELF_WRITE.lock() {
+        *g = Some((text.to_string(), Instant::now()));
+    }
+}
+
+/// 判断 text 是否是我们刚写回的（2s 窗口覆盖 500ms 轮询延迟）。
+fn is_self_write(text: &str) -> bool {
+    if let Ok(g) = SELF_WRITE.lock() {
+        if let Some((t, when)) = g.as_ref() {
+            return when.elapsed().as_secs() < 2 && t == text;
+        }
+    }
+    false
+}
+
 pub fn init(app: AppHandle) {
     let _ = APP_HANDLE.set(app);
 }
@@ -165,6 +190,10 @@ const SENSITIVE_BUNDLES: &[&str] = &[
 
 /// 统一入口 —— clipboard 和 selection 都调它。
 pub fn on_new_text(source: Source, text: &str, bundle: &str) {
+    // 反馈环防护：这段是 process_reactive_action 刚写回剪贴板的结果 → 不要再弹 ribbon
+    if matches!(source, Source::Clipboard) && is_self_write(text) {
+        return;
+    }
     let Some((tier, icon)) = classify(text, bundle) else {
         return; // 静音
     };
@@ -305,6 +334,10 @@ fn looks_like_secret(text: &str) -> bool {
 mod tests {
     use super::*;
 
+    /// 串行锁 —— 触碰全局 static（LAST_TEXT / SELF_WRITE）的测试用它，
+    /// 避免 cargo 并行跑时互相清掉对方的状态造成 flaky。
+    static STATE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn short_copy_silent() {
         assert_eq!(classify("OK", ""), None);
@@ -426,6 +459,7 @@ mod tests {
 
     #[test]
     fn last_text_roundtrip() {
+        let _g = STATE_LOCK.lock().unwrap();
         // 直接调 on_new_text 没 AppHandle 也能 set LAST_TEXT
         on_new_text(Source::Clipboard, "hello world a long enough message", "");
         let got = peek_last_text();
@@ -441,5 +475,26 @@ mod tests {
         let s = "🦞".repeat(100);
         let p = preview_of(&s, 10);
         assert!(p.chars().count() <= 11);
+    }
+
+    #[test]
+    fn self_write_suppresses_clipboard_echo() {
+        let _g = STATE_LOCK.lock().unwrap();
+        // 反馈环防护：mark_self_write 后，同内容从 Clipboard 进来应被 is_self_write 拦截
+        let echo = "this is the cleaned result text written back to clipboard";
+        mark_self_write(echo);
+        assert!(is_self_write(echo), "刚标记的内容应判定为 self-write");
+        // 不同内容不拦截
+        assert!(!is_self_write("some other clipboard content entirely"));
+    }
+
+    #[test]
+    fn self_write_helper_matches_exact_content() {
+        let _g = STATE_LOCK.lock().unwrap();
+        // is_self_write 不分 source —— 分流在 on_new_text 里（matches Source::Clipboard）。
+        // 这里验证 helper：内容匹配就 true，由调用方按 source 决定用不用。
+        let echo = "selection text that happens to match a self write somehow ok";
+        mark_self_write(echo);
+        assert!(is_self_write(echo));
     }
 }

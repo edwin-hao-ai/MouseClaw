@@ -144,6 +144,9 @@ fn write_to_pasteboard(text: &str) -> Result<()> {
     use cocoa::foundation::{NSAutoreleasePool, NSString};
     use objc::{class, msg_send, sel, sel_impl};
 
+    // 反馈环防护：标记接下来这段是我们自己写的，剪贴板监听别再弹 ribbon。
+    crate::reactive::mark_self_write(text);
+
     unsafe {
         let pool: id = NSAutoreleasePool::new(nil);
         let pb: id = msg_send![class!(NSPasteboard), generalPasteboard];
