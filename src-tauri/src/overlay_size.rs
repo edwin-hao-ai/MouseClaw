@@ -13,8 +13,43 @@
 //! 切换时让桌宠的**屏幕绝对位置**保持不变 —— 缩小时窗口 origin 向桌宠移，
 //! 放大时反向。桌宠在窗口里始终是底部中央。
 
-use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
-use tauri::{AppHandle, LogicalPosition, LogicalSize, Manager};
+use std::sync::atomic::{AtomicI32, AtomicU32, AtomicU64, AtomicU8, Ordering};
+use tauri::{AppHandle, Emitter, LogicalPosition, LogicalSize, Manager};
+
+/// v0.4+ · 撞到的是哪面墙 —— 决定前端播哪个方向的挤压回弹动画。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BonkDir { Left, Right, Top, Bottom }
+impl BonkDir {
+    fn as_str(self) -> &'static str {
+        match self { BonkDir::Left=>"left", BonkDir::Right=>"right", BonkDir::Top=>"top", BonkDir::Bottom=>"bottom" }
+    }
+}
+
+#[derive(serde::Serialize, Clone)]
+struct BonkPayload { dir: &'static str }
+
+/// 上次发撞边事件的时间 + 方向 —— 防止贴着墙拖动时每帧狂发。
+static LAST_BONK_MS: AtomicU64 = AtomicU64::new(0);
+static LAST_BONK_DIR: AtomicU8 = AtomicU8::new(255);
+
+fn now_ms() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+}
+
+/// 发"撞墙"事件给前端（带方向）。同方向 400ms 内去重；换方向立即发。
+/// 既给 follow 路径（reposition_to_cursor）用，也给 resize 路径（set_to_explicit）用。
+pub fn emit_bonk_edge(app: &AppHandle, dir: BonkDir) {
+    let now = now_ms();
+    let code = dir as u8;
+    if code == LAST_BONK_DIR.load(Ordering::Relaxed)
+        && now.saturating_sub(LAST_BONK_MS.load(Ordering::Relaxed)) < 400 {
+        return;
+    }
+    LAST_BONK_MS.store(now, Ordering::Relaxed);
+    LAST_BONK_DIR.store(code, Ordering::Relaxed);
+    let _ = app.emit(crate::events::EV_EDGE_BONK, BonkPayload { dir: dir.as_str() });
+}
 
 /// 桌宠在窗口里的水平偏移（窗口宽 / 2，因为桌宠水平居中）
 const PET_X_OFFSET_RATIO: f64 = 0.5;
@@ -25,9 +60,13 @@ const PET_BOTTOM_OFFSET: f64 = 40.0;
 
 /// 当前窗口模式。0 = compact(80), 1 = expanded(320)
 static CURRENT_MODE: AtomicU32 = AtomicU32::new(0);
-/// 上次桌宠中心的屏幕逻辑像素位置（用于切换时保持视觉锚点不变）。
-static LAST_PET_CENTER_X: AtomicI32 = AtomicI32::new(0);
-static LAST_PET_CENTER_Y: AtomicI32 = AtomicI32::new(0);
+/// 桌宠中心的"权威屏幕位置"（逻辑像素，top-left origin）。
+/// v0.4+ 漂移根治：这是 set_to_explicit 的真锚点 —— 当窗口被屏幕边 clamp 顶住时，
+/// 不信任"被顶过的当前位置"，而用这里存的"未被 clamp 的真值"反算，让内容缩回后
+/// 桌宠回到原位（不再累积漂移）。窗口不贴边时，当前位置即真值，存回这里。
+/// 哨兵 i32::MIN = 尚未初始化（首帧用当前位置兜底）。
+static LAST_PET_CENTER_X: AtomicI32 = AtomicI32::new(i32::MIN);
+static LAST_PET_CENTER_Y: AtomicI32 = AtomicI32::new(i32::MIN);
 
 pub const COMPACT_SIZE: f64 = 80.0;
 pub const EXPANDED_SIZE: f64 = 320.0;
@@ -76,40 +115,96 @@ pub fn set_to_explicit(app: &AppHandle, want_w: f64, want_h: f64) {
         if (cur_w - w).abs() < 3.0 && (cur_h - h).abs() < 3.0 {
             return;
         }
-        let pet_cx = cur_x + cur_w * PET_X_OFFSET_RATIO;
-        let pet_cy = cur_y + cur_h - PET_BOTTOM_OFFSET;
-        let raw_new_x = pet_cx - w * PET_X_OFFSET_RATIO;
-        let raw_new_y = pet_cy - (h - PET_BOTTOM_OFFSET);
-        // v0.4 fix · clamp 到 visibleFrame 防止累积飘移把窗口推出屏幕导致 NSWindow
-        // 收到非法 frame crash。用 macOS visibleFrame（已扣 menubar + dock）。
-        let (new_x, new_y) = clamp_to_screen(raw_new_x, raw_new_y, w, h);
+        let frame = visible_frame_top_left();
+        // 从当前窗口推出的桌宠锚点
+        let cur_pet_cx = cur_x + cur_w * PET_X_OFFSET_RATIO;
+        let cur_pet_cy = cur_y + cur_h - PET_BOTTOM_OFFSET;
+        // v0.4+ 漂移根治：窗口当前正贴着屏幕边 = 上次被 clamp 顶住了 → 当前位置不可信，
+        // 改用上次存的"未被 clamp 真锚点"。不贴边 → 当前位置即真值，存回去。
+        // 哨兵 i32::MIN 表示从未存过 → 一律用当前位置兜底。
+        let stored_x = LAST_PET_CENTER_X.load(Ordering::Relaxed);
+        let stored_y = LAST_PET_CENTER_Y.load(Ordering::Relaxed);
+        let have_stored = stored_x != i32::MIN && stored_y != i32::MIN;
+        let flush = is_flush_against_edge(cur_x, cur_y, cur_w, cur_h, frame);
+        let (anchor_x, anchor_y) = if flush && have_stored {
+            (stored_x as f64, stored_y as f64)
+        } else {
+            LAST_PET_CENTER_X.store(cur_pet_cx as i32, Ordering::Relaxed);
+            LAST_PET_CENTER_Y.store(cur_pet_cy as i32, Ordering::Relaxed);
+            (cur_pet_cx, cur_pet_cy)
+        };
+        let raw_new_x = anchor_x - w * PET_X_OFFSET_RATIO;
+        let raw_new_y = anchor_y - (h - PET_BOTTOM_OFFSET);
+        // clamp 到 visibleFrame（防 NSWindow 收非法 frame crash）+ 报出撞了哪面墙。
+        let (new_x, new_y, bonk) = clamp_origin_with_bonk(raw_new_x, raw_new_y, w, h, frame);
         CURRENT_MODE.store(1, Ordering::Relaxed);
-        LAST_PET_CENTER_X.store(pet_cx as i32, Ordering::Relaxed);
-        LAST_PET_CENTER_Y.store(pet_cy as i32, Ordering::Relaxed);
         let _ = window.set_size(LogicalSize::new(w, h));
         let _ = window.set_position(LogicalPosition::new(new_x, new_y));
+        if let Some(dir) = bonk { emit_bonk_edge(&app2, dir); }
     });
 }
 
-/// 把 (x, y) clamp 到主屏 visibleFrame 内（top-left origin, logical pt），让宽 w / 高 h
-/// 的窗口仍完整在屏幕内。返回 (safe_x, safe_y)。
-/// 主屏拿不到 → 返回原值（兜底退化）。
-fn clamp_to_screen(x: f64, y: f64, w: f64, h: f64) -> (f64, f64) {
-    #[cfg(target_os = "macos")]
-    {
-        if let Some((sx, sy, sw, sh)) = visible_frame_top_left() {
-            let max_x = sx + sw - w;
-            let max_y = sy + sh - h;
-            let safe_x = x.clamp(sx, max_x.max(sx));
-            let safe_y = y.clamp(sy, max_y.max(sy));
-            return (safe_x, safe_y);
-        }
-    }
-    (x, y)
+/// 窗口是否正贴着屏幕 visible frame 的任一边（说明被 clamp 顶住了）。
+/// 拿不到屏幕 → false（兜底当作没贴边，用当前位置）。
+fn is_flush_against_edge(x: f64, y: f64, w: f64, h: f64, frame: Option<(f64, f64, f64, f64)>) -> bool {
+    let Some((sx, sy, sw, sh)) = frame else { return false; };
+    const EPS: f64 = 2.0;
+    x <= sx + EPS || y <= sy + EPS || x + w >= sx + sw - EPS || y + h >= sy + sh - EPS
 }
 
+/// 把窗口左上角 (x,y) clamp 进 visible frame，并报出被顶向了哪面墙（=撞了那面墙）。
+/// 拿不到屏幕 → 原值 + None。纯函数，可单测。
+fn clamp_origin_with_bonk(x: f64, y: f64, w: f64, h: f64, frame: Option<(f64, f64, f64, f64)>)
+    -> (f64, f64, Option<BonkDir>)
+{
+    let Some((sx, sy, sw, sh)) = frame else { return (x, y, None); };
+    let max_x = (sx + sw - w).max(sx);
+    let max_y = (sy + sh - h).max(sy);
+    let cx = x.clamp(sx, max_x);
+    let cy = y.clamp(sy, max_y);
+    let mut dir = None;
+    // 被往右推 = 撞左墙；被往左推 = 撞右墙（水平优先）
+    if cx > x + 0.5 { dir = Some(BonkDir::Left); }
+    else if cx < x - 0.5 { dir = Some(BonkDir::Right); }
+    else if cy > y + 0.5 { dir = Some(BonkDir::Top); }
+    else if cy < y - 0.5 { dir = Some(BonkDir::Bottom); }
+    (cx, cy, dir)
+}
+
+/// follow 路径专用 clamp：桌宠跟随光标时，要留在屏内的是**桌宠本体**（约 96px，
+/// 居中靠底），而不是整个 320 透明窗口。允许透明边距溢出屏幕，但桌宠不被切。
+/// 返回 clamp 后的窗口左上角 + 撞了哪面墙。
+pub fn clamp_follow_with_bonk(raw_x: f64, raw_y: f64, w: f64, h: f64)
+    -> (f64, f64, Option<BonkDir>)
+{
+    let Some((sx, sy, sw, sh)) = visible_frame_top_left() else { return (raw_x, raw_y, None); };
+    const PET_HALF: f64 = 48.0;  // 桌宠 listening 时约 96px 宽，半宽
+    const PET_FULL: f64 = 96.0;
+    const BOTTOM_PAD: f64 = 8.0; // 桌宠底距窗口底
+    // 水平：桌宠中心 = 窗口中心
+    let center_x = raw_x + w / 2.0;
+    let lo_x = sx + PET_HALF;
+    let hi_x = (sx + sw - PET_HALF).max(lo_x);
+    let cc = center_x.clamp(lo_x, hi_x);
+    // 垂直：桌宠底部留在屏内
+    let pet_bottom = raw_y + h - BOTTOM_PAD;
+    let lo_b = sy + PET_FULL;
+    let hi_b = (sy + sh).max(lo_b);
+    let cb = pet_bottom.clamp(lo_b, hi_b);
+    let nx = cc - w / 2.0;
+    let ny = cb - h + BOTTOM_PAD;
+    let mut dir = None;
+    if cc > center_x + 0.5 { dir = Some(BonkDir::Left); }
+    else if cc < center_x - 0.5 { dir = Some(BonkDir::Right); }
+    else if cb > pet_bottom + 0.5 { dir = Some(BonkDir::Top); }
+    else if cb < pet_bottom - 0.5 { dir = Some(BonkDir::Bottom); }
+    (nx, ny, dir)
+}
+
+/// 主屏 visibleFrame（top-left origin, logical pt）—— (x, y, w, h)。已扣 menubar + dock。
+/// 拿不到 → None。clamp 逻辑 + reposition_to_cursor 共用。⚠️ 必须主线程调用。
 #[cfg(target_os = "macos")]
-fn visible_frame_top_left() -> Option<(f64, f64, f64, f64)> {
+pub(crate) fn visible_frame_top_left() -> Option<(f64, f64, f64, f64)> {
     use cocoa::base::id;
     use cocoa::foundation::NSRect;
     use objc::{class, msg_send, sel, sel_impl};
@@ -123,6 +218,9 @@ fn visible_frame_top_left() -> Option<(f64, f64, f64, f64)> {
         Some((visible.origin.x, top_y, visible.size.width, visible.size.height))
     }
 }
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn visible_frame_top_left() -> Option<(f64, f64, f64, f64)> { None }
 
 fn set_mode(app: &AppHandle, new_size: f64, mode_tag: u32) {
     if CURRENT_MODE.swap(mode_tag, Ordering::SeqCst) == mode_tag {
@@ -162,6 +260,69 @@ fn set_mode(app: &AppHandle, new_size: f64, mode_tag: u32) {
             "[overlay_size] mode={mode_tag} size={new_size:.0} anchor_xy=({pet_cx:.0},{pet_cy:.0}) win_xy=({new_x:.0},{new_y:.0})"
         );
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // 1920×1080 主屏，visible frame 从 (0,0) 起（忽略 menubar 简化）。
+    const F: Option<(f64, f64, f64, f64)> = Some((0.0, 0.0, 1920.0, 1080.0));
+
+    #[test]
+    fn clamp_no_edge_no_bonk() {
+        // 窗口完全在屏内 → 不动 + 无撞墙
+        let (x, y, b) = clamp_origin_with_bonk(800.0, 400.0, 320.0, 320.0, F);
+        assert_eq!((x, y), (800.0, 400.0));
+        assert!(b.is_none());
+    }
+
+    #[test]
+    fn clamp_left_edge_reports_left_bonk() {
+        // 想去 x=-50（左溢出）→ 推回 0 → 撞左墙
+        let (x, _, b) = clamp_origin_with_bonk(-50.0, 400.0, 320.0, 320.0, F);
+        assert_eq!(x, 0.0);
+        assert_eq!(b, Some(BonkDir::Left));
+    }
+
+    #[test]
+    fn clamp_right_edge_reports_right_bonk() {
+        let (x, _, b) = clamp_origin_with_bonk(1700.0, 400.0, 320.0, 320.0, F);
+        assert_eq!(x, 1920.0 - 320.0);
+        assert_eq!(b, Some(BonkDir::Right));
+    }
+
+    #[test]
+    fn clamp_top_edge_reports_top_bonk() {
+        let (_, y, b) = clamp_origin_with_bonk(800.0, -30.0, 320.0, 320.0, F);
+        assert_eq!(y, 0.0);
+        assert_eq!(b, Some(BonkDir::Top));
+    }
+
+    #[test]
+    fn clamp_bottom_edge_reports_bottom_bonk() {
+        let (_, y, b) = clamp_origin_with_bonk(800.0, 900.0, 320.0, 320.0, F);
+        assert_eq!(y, 1080.0 - 320.0);
+        assert_eq!(b, Some(BonkDir::Bottom));
+    }
+
+    #[test]
+    fn no_frame_passes_through() {
+        let (x, y, b) = clamp_origin_with_bonk(-999.0, -999.0, 320.0, 320.0, None);
+        assert_eq!((x, y), (-999.0, -999.0));
+        assert!(b.is_none());
+    }
+
+    #[test]
+    fn flush_detection() {
+        // 贴左边
+        assert!(is_flush_against_edge(0.0, 400.0, 320.0, 320.0, F));
+        // 贴右边
+        assert!(is_flush_against_edge(1600.0, 400.0, 320.0, 320.0, F));
+        // 屏幕中间不贴边
+        assert!(!is_flush_against_edge(800.0, 400.0, 320.0, 320.0, F));
+        // 拿不到屏幕 → 不算贴边
+        assert!(!is_flush_against_edge(0.0, 0.0, 320.0, 320.0, None));
+    }
 }
 
 /// 启动时初始化 —— 把窗口缩到 compact 模式，让默认 idle 静默状态就只占桌宠区域。

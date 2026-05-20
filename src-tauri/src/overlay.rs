@@ -24,9 +24,17 @@ pub fn reposition_to_cursor(app: &AppHandle) {
                 None => (320.0, 320.0),
             };
             let scale = window.scale_factor().unwrap_or(1.0);
-            let pos_x = x - (ww / scale) / 2.0;
-            let pos_y = y - (wh / scale) + 32.0;
+            let win_w = ww / scale;
+            let win_h = wh / scale;
+            let raw_x = x - win_w / 2.0;
+            let raw_y = y - win_h + 32.0;
+            // v0.4+ · clamp 让桌宠本体不跑出屏幕 + 撞边回弹（窗口透明边距可溢出，桌宠不被切）。
+            let (pos_x, pos_y, bonk) =
+                crate::overlay_size::clamp_follow_with_bonk(raw_x, raw_y, win_w, win_h);
             let _ = window.set_position(LogicalPosition::new(pos_x, pos_y));
+            if let Some(dir) = bonk {
+                crate::overlay_size::emit_bonk_edge(&app2, dir);
+            }
         }
     });
 }

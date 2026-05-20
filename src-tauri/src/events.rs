@@ -115,6 +115,11 @@ pub const EV_NUDGE: &str = "nudge";
 /// 前端据此显示链条图标 + 「第 N 轮」+ 「📌 任务名」+ 软提示。payload: SessionState。
 pub const EV_SESSION_STATE: &str = "session-state";
 
+/// v0.4+ · 桌宠撞到屏幕边缘 —— overlay 窗口被 clamp 顶住时 emit。
+/// payload: { dir: "left"|"right"|"top"|"bottom" }（撞的是哪面墙）。
+/// 前端给桌宠精灵加 `mc-bonk-{dir}` class 播一次"挤压回弹"动画。纯视觉，不动窗口。
+pub const EV_EDGE_BONK: &str = "edge-bonk";
+
 #[derive(Debug, Clone, Serialize)]
 pub struct SessionState {
     /// 当前是否有可续上下文（决定显不显示链条图标）

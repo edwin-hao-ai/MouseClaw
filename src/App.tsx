@@ -216,6 +216,25 @@ export default function App() {
     if (view.kind !== "idle" && reactive) setReactive(null);
   }, [view.kind, reactive]);
 
+  // v0.4+ · 撞墙回弹 —— Rust 在 overlay 窗口被屏幕边 clamp 顶住时 emit edge-bonk{dir}。
+  // 桌宠精灵朝那面墙挤压 + 回弹一下（纯 CSS transform，不动窗口）。480ms 后清掉以便再触发。
+  const [bonkDir, setBonkDir] = useState<"left" | "right" | "top" | "bottom" | null>(null);
+  const bonkClearRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    try {
+      const p = listen<{ dir: "left" | "right" | "top" | "bottom" }>("edge-bonk", (e) => {
+        if (bonkClearRef.current) window.clearTimeout(bonkClearRef.current);
+        // 先清空再设，强制 React 重挂 class → 同方向连撞也能重播动画
+        setBonkDir(null);
+        requestAnimationFrame(() => setBonkDir(e.payload.dir));
+        bonkClearRef.current = window.setTimeout(() => setBonkDir(null), 480);
+      });
+      p.then((fn) => { unlisten = fn; }).catch(() => {});
+    } catch {/* dev mode */}
+    return () => { if (unlisten) unlisten(); if (bonkClearRef.current) window.clearTimeout(bonkClearRef.current); };
+  }, []);
+
   // v0.4 · 后台任务忙碌计数 —— 任何 reactive action 在跑时 > 0。
   // 桌宠据此显示忙碌指示（跨任何视图可见），用户永远知道"还在处理"。
   const [bgTaskCount, setBgTaskCount] = useState(0);
@@ -618,6 +637,7 @@ export default function App() {
           eyeOffset={{ x: companion.eyeOffsetX, y: companion.eyeOffsetY }}
           intimacyLevel={intimacy.level}
           neglected={intimacy.neglected}
+          bonk={bonkDir}
         />
         {hearts.map((id) => (
           <span key={id} className="pet-heart" aria-hidden>❤️</span>

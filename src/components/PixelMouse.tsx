@@ -53,6 +53,8 @@ interface PixelMouseProps {
   intimacyLevel?: 0 | 1 | 2 | 3;
   /** v0.4+ · 冷落超 N 天 → 委屈表情 */
   neglected?: boolean;
+  /** v0.4+ · 撞墙回弹方向 —— 非 null 时给 .mouse-wrap 加 mc-bonk-{dir}，精灵朝那面墙挤压回弹。 */
+  bonk?: "left" | "right" | "top" | "bottom" | null;
 }
 
 // ── Body parts (按 body variant 决定形状) ───────────────────────────
@@ -477,7 +479,7 @@ function Extras({ state, skin }: { state: MouseState; skin: Skin }) {
 
 export function PixelMouse({
   state, size = 96, skin = "classic", continuing = false, twitching = false,
-  companionState, eyeOffset, intimacyLevel = 0, neglected = false,
+  companionState, eyeOffset, intimacyLevel = 0, neglected = false, bonk = null,
 }: PixelMouseProps) {
   const s = getSkin(skin);
   // companion 在"非任务态"挂（idle 状态下 mouseStateFor 返回 "sleep"；onboarding/listening
@@ -514,7 +516,7 @@ export function PixelMouse({
     eyesTransformAttr = (t + s).trim() || undefined;
   }
   return (
-    <div className={`mouse-wrap mouse-${state} mouse-skin-${s.id}${twitching ? " mouse-twitch" : ""}${companionClass}${intimacyClass}`} style={{ width: size, height: size }}>
+    <div className={`mouse-wrap mouse-${state} mouse-skin-${s.id}${twitching ? " mouse-twitch" : ""}${companionClass}${intimacyClass}${bonk ? ` mc-bonk-${bonk}` : ""}`} style={{ width: size, height: size }}>
       {continuing && <div className="mouse-chain" aria-hidden />}
       <svg
         viewBox="-1 -3 18 18"

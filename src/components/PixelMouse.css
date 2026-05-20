@@ -393,6 +393,50 @@
   }
 }
 
+/* ───────── v0.4+ · 撞墙回弹（软果冻）─────────
+   App.tsx 收到 Rust 的 edge-bonk{dir} → 给 .mouse-wrap 加 mc-bonk-{dir}。
+   动画作用在 .mouse-svg（内层）→ 不改 .mouse-wrap 的 boundingRect → 不干扰
+   useAdaptiveOverlay 的尺寸测量。挂在文件末尾 → 同特异度下压过 companion / state
+   动画，撞墙瞬间接管 .mouse-svg 的 transform。transform-origin 贴向撞的那面墙，
+   挤压 ~0.80 + 向内回弹一点再归位。9 款骨架一视同仁（纯 scale/translate，palette 无关）。
+   全集 8 色调色板不涉及，符合"动画必须适配所有皮肤"硬规则。 */
+@keyframes mc-bonk-right {
+  0%   { transform: translateX(0) scale(1, 1); }
+  16%  { transform: translateX(5px) scale(0.80, 1.12); }
+  44%  { transform: translateX(-7px) scale(1.08, 0.93); }
+  68%  { transform: translateX(2px) scale(0.98, 1.02); }
+  100% { transform: translateX(0) scale(1, 1); }
+}
+@keyframes mc-bonk-left {
+  0%   { transform: translateX(0) scale(1, 1); }
+  16%  { transform: translateX(-5px) scale(0.80, 1.12); }
+  44%  { transform: translateX(7px) scale(1.08, 0.93); }
+  68%  { transform: translateX(-2px) scale(0.98, 1.02); }
+  100% { transform: translateX(0) scale(1, 1); }
+}
+@keyframes mc-bonk-top {
+  0%   { transform: translateY(0) scale(1, 1); }
+  16%  { transform: translateY(-5px) scale(1.12, 0.80); }
+  44%  { transform: translateY(7px) scale(0.93, 1.08); }
+  68%  { transform: translateY(-2px) scale(1.02, 0.98); }
+  100% { transform: translateY(0) scale(1, 1); }
+}
+@keyframes mc-bonk-bottom {
+  0%   { transform: translateY(0) scale(1, 1); }
+  16%  { transform: translateY(5px) scale(1.12, 0.80); }
+  44%  { transform: translateY(-7px) scale(0.93, 1.08); }
+  68%  { transform: translateY(2px) scale(1.02, 0.98); }
+  100% { transform: translateY(0) scale(1, 1); }
+}
+.mouse-wrap.mc-bonk-right .mouse-svg  { animation: mc-bonk-right 460ms cubic-bezier(.34,1.56,.64,1); transform-origin: right center; }
+.mouse-wrap.mc-bonk-left .mouse-svg   { animation: mc-bonk-left 460ms cubic-bezier(.34,1.56,.64,1); transform-origin: left center; }
+.mouse-wrap.mc-bonk-top .mouse-svg    { animation: mc-bonk-top 460ms cubic-bezier(.34,1.56,.64,1); transform-origin: center top; }
+.mouse-wrap.mc-bonk-bottom .mouse-svg { animation: mc-bonk-bottom 460ms cubic-bezier(.34,1.56,.64,1); transform-origin: center bottom; }
+@media (prefers-reduced-motion: reduce) {
+  /* 无障碍：不弹（动画时长压到 1ms，直接归位）。撞边仍发生，只是不抖。 */
+  .mouse-wrap[class*="mc-bonk-"] .mouse-svg { animation-duration: 1ms; }
+}
+
 /* Continuing session chain indicator — 3-pixel green block above head */
 .mouse-chain {
   position: absolute;
