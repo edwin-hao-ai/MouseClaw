@@ -240,7 +240,29 @@ rect 才能知道真正占用了多少像素。这是 jsdom + 真 webview 都验
 - 2026-05-19 reactive ribbon 显示不全，又一次想改 EXPANDED_SIZE
 - 2026-05-20 PetMenu 加教程项被剪 → 终于上自适应（这个规则就是这一天立的）
 
+## 选词检测：原生 app only（已知限制 · v0.4+）
+
+**选词触发（selection.rs，轮询 AXSelectedText）只在原生 Cocoa app 生效。**
+
+macOS Accessibility 的 `AXSelectedText` 在 web/Electron app 里**不暴露**：
+- ✅ 能用：备忘录 / TextEdit / 邮件 / Xcode / Safari（部分）/ 原生 NSTextView/NSTextField
+- ❌ 不能用：Chrome / VSCode / Slack / Discord / Notion / 飞书 等（err=-25205/-25212）
+
+**这是 macOS 平台限制，不是 bug**（2026-05-20 验证 + 用户拍板"接受原生 only"）。
+web/Electron app 里要处理选中文字 → 用**复制**路径（reactive ribbon 同样触发）。
+
+不要再花时间"修"选词在 Chrome 里不工作 —— 唯一能覆盖所有 app 的方案是"选中后双击 ⌘
+模拟 Cmd+C"，用户当前**不要**这个手势。若以后改主意，那是新功能不是 bug fix。
+
 ## AI 任务串行 + 听写即时（硬规则 · v0.4+）
+
+**附 · 本地实时任务（ASR / 标点）必须扛得住 AI 子进程并发**（2026-05-20 教训）：
+- 本地 CPU 密集同步工作（sherpa 解码 / punctuation）**不要**放 `tauri::async_runtime::spawn`
+  （tokio async worker）—— AI 子进程抢 runtime 时会饿死。用专用 `std::thread`。
+- AI 子进程（claude/codex/…）spawn 时必须 `claude_cli::lower_priority(&mut cmd)`
+  （nice +10）—— 让本地 ASR 在并发时抢得到 CPU。空闲时 niced 进程仍满速，无损单任务。
+
+
 
 **用户决策（2026-05-20）**：桌宠是一只，一次只做一件 AI 工作 —— **所有 AI 任务排队串行**，
 逐个做完，每个做完都通知用户；**语音输入法 fn 听写永远即时、不排队**（本地 sherpa 打字）。

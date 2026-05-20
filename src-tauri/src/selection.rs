@@ -84,7 +84,10 @@ fn run_loop() {
                 last_text = None; continue;
             }
             Ok(SelResult::NoSelectedAttr(code)) => {
-                diag(format!("AXSelectedText 不可用 (err={code}) — 该 app 不暴露选区（Chrome/Electron/VSCode 类 web app 常见，属已知盲区）"));
+                // 设计决策（2026-05-20 用户拍板）：选词只在原生 Cocoa app 生效。
+                // web/Electron（Chrome/VSCode/Slack/飞书）不暴露 AXSelectedText
+                // (err=-25205/-25212) = macOS 限制，预期行为不是 bug。这些 app 用复制路径。
+                diag(format!("当前 app 不支持 AX 选词 (err={code})；原生 app（备忘录/TextEdit/邮件等）可用，web/Electron 请用复制"));
                 last_text = None; continue;
             }
             Ok(SelResult::EmptySelection) => { last_text = None; continue; }
