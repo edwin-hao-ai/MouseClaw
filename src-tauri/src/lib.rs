@@ -138,6 +138,10 @@ pub struct AppState {
     pub voice_confirm_action: std::sync::atomic::AtomicU8,
     /// v0.4.0 · 语音确认当前文本 —— commands::voice_confirm_edit 改写它
     pub voice_confirm_text: Mutex<Option<String>>,
+    /// v0.4.x · session 是否钉住的同步镜像 —— tray（sync 上下文）读它显示
+    /// 「钉住 / 解除钉住」标签，避免去 lock tokio::Mutex 的 SessionStore。
+    /// 真值在 SessionStore.pinned；toggle_pin_session 同步更新这个镜像。
+    pub session_pinned: AtomicBool,
 }
 
 /// v0.4.0 · 语音确认动作枚举
@@ -169,6 +173,7 @@ impl AppState {
             feed_last_leave: StdMutex::new(None),
             voice_confirm_action: std::sync::atomic::AtomicU8::new(VC_PENDING),
             voice_confirm_text: Mutex::new(None),
+            session_pinned: AtomicBool::new(false),
         })
     }
 }
@@ -246,36 +251,10 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage(app_state.clone())
-        // v0.4 · 拖文档喂桌宠：在桌宠窗口监听 drag-drop 事件
-        .on_window_event({
-            let state = app_state.clone();
-            move |window, event| {
-                if window.label() != "mouse" {
-                    return;
-                }
-                if let tauri::WindowEvent::DragDrop(drag) = event {
-                    let app = window.app_handle().clone();
-                    match drag {
-                        tauri::DragDropEvent::Enter { paths, .. } => {
-                            if paths.iter().any(|p| p.is_file()) {
-                                feed_flow::on_drag_enter(&app, &state);
-                            }
-                        }
-                        tauri::DragDropEvent::Leave => {
-                            feed_flow::on_drag_leave(&app, &state);
-                        }
-                        tauri::DragDropEvent::Drop { paths, .. } => {
-                            let files: Vec<std::path::PathBuf> =
-                                paths.iter().filter(|p| p.is_file()).cloned().collect();
-                            if !files.is_empty() {
-                                feed_flow::on_files_dropped(app, state.clone(), files);
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        })
+        // v0.4 fix (2026-05-20)：喂文件的 enter/leave/drop **统一走 drag_detector**
+        // （NSPasteboard 轮询 + 鼠标键状态）。之前这里用 Tauri 的 WindowEvent::DragDrop，
+        // 但 WKWebView 会把拖进来的 HTML 文件当导航请求拦截，drop 喂不进去（图片正常）。
+        // drag_detector 在 OS 层判定 drop，不分文件类型，所有类型一视同仁。
         .plugin(tauri_plugin_opener::init())
         // v0.1.26 · 开机自启动。--minimized 标志在 main.rs 检测，启动时不弹任何窗口
         .plugin(tauri_plugin_autostart::init(
@@ -331,6 +310,8 @@ pub fn run() {
             commands::submit_query,
             commands::follow_up,
             commands::new_session,
+            commands::toggle_pin_session,
+            commands::get_session_state,
             commands::save_shortcut,
             commands::cancel_pipeline,
             commands::toggle_recording,

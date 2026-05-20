@@ -55,8 +55,15 @@ fn run_loop() {
     let mut last_emit_at: Option<Instant> = None;
 
     println!("[mouseclaw] 🔤 selection capture loop started (poll {POLL_INTERVAL_MS}ms, min {MIN_SELECTION_CHARS} chars)");
-    // 节流诊断：每 ~10s 最多打一次"无 AX 权限"，避免刷屏
-    let mut last_ax_warn: Option<Instant> = None;
+    // 节流诊断：每 ~5s 最多打一次失败原因，避免刷屏
+    let mut last_diag: Option<Instant> = None;
+    let mut diag = |msg: String| {
+        let now = last_diag.map_or(true, |t: Instant| t.elapsed() > Duration::from_secs(5));
+        if now {
+            println!("[mouseclaw] 🔤 {msg}");
+            last_diag = Some(Instant::now());
+        }
+    };
 
     loop {
         std::thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
@@ -64,29 +71,29 @@ fn run_loop() {
         if is_paused() || crate::clipboard::is_paused() {
             continue;
         }
-        // 没 AX 权限时直接 skip —— AX 调用会失败，但更省事是先查
         if !crate::permissions::check_accessibility() {
-            let warn_now = last_ax_warn.map_or(true, |t| t.elapsed() > Duration::from_secs(10));
-            if warn_now {
-                println!("[mouseclaw] 🔤 选词功能需要「辅助功能」权限 —— 系统设置 → 隐私与安全性 → 辅助功能 放行 MouseClaw");
-                last_ax_warn = Some(Instant::now());
-            }
+            diag("需要「辅助功能」权限 —— 系统设置 → 隐私与安全性 → 辅助功能 放行 MouseClaw".into());
             continue;
         }
 
-        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            current_selection_text()
-        }));
-        let Ok(maybe_text) = r else {
-            eprintln!("[mouseclaw] 🔤 selection panic — skip this tick");
-            continue;
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(current_selection_diag));
+        let text = match r {
+            Err(_) => { eprintln!("[mouseclaw] 🔤 selection panic — skip"); continue; }
+            Ok(SelResult::NoFocused(code)) => {
+                diag(format!("AXFocusedUIElement 失败 (err={code}) — 前台 app 可能不支持 AX 或没聚焦文本框"));
+                last_text = None; continue;
+            }
+            Ok(SelResult::NoSelectedAttr(code)) => {
+                diag(format!("AXSelectedText 不可用 (err={code}) — 该 app 不暴露选区（Chrome/Electron/VSCode 类 web app 常见，属已知盲区）"));
+                last_text = None; continue;
+            }
+            Ok(SelResult::EmptySelection) => { last_text = None; continue; }
+            Ok(SelResult::Text(t)) => t,
         };
-        let Some(text) = maybe_text else {
-            last_text = None;
-            continue;
-        };
+
         let n = text.chars().count();
         if n < MIN_SELECTION_CHARS {
+            diag(format!("选区 {n} 字 < {MIN_SELECTION_CHARS} 阈值，跳过"));
             continue;
         }
         println!("[mouseclaw] 🔤 selection detected: {n} chars");
@@ -134,19 +141,32 @@ mod ax {
     }
 }
 
-/// 拉当前 focused 元素的选区文字（None = 没选 / 失败 / 无权限）。
+/// 选区抓取结果 —— 带诊断原因，loop 节流打印帮定位"选词不触发"卡在哪步。
 #[cfg(target_os = "macos")]
-fn current_selection_text() -> Option<String> {
+enum SelResult {
+    /// 成功拿到非空选区
+    Text(String),
+    /// AXFocusedUIElement 失败（err 码）—— 通常是 app 不支持 AX 或没真正聚焦元素
+    NoFocused(i32),
+    /// 有 focused 但 AXSelectedText 失败（err 码）—— 该 app 不暴露选区属性
+    /// （Chrome / Electron / VSCode 等 web 系常见 = -25205 kAXErrorAttributeUnsupported）
+    NoSelectedAttr(i32),
+    /// 拿到属性但选区为空 / 没选东西
+    EmptySelection,
+}
+
+/// 拉当前 focused 元素的选区文字（带诊断）。
+#[cfg(target_os = "macos")]
+fn current_selection_diag() -> SelResult {
     use cocoa::base::{id, nil};
     use objc::{class, msg_send, sel, sel_impl};
 
     unsafe {
         let pool: id = msg_send![class!(NSAutoreleasePool), new];
-        let result = (|| -> Option<String> {
+        let result = (|| -> SelResult {
             let systemwide = ax::AXUIElementCreateSystemWide();
-            if systemwide.is_null() { return None; }
+            if systemwide.is_null() { return SelResult::NoFocused(-1); }
 
-            // Step 1: AXFocusedUIElement
             let focused_attr = CFString::new("AXFocusedUIElement");
             let mut focused: CFTypeRef = std::ptr::null();
             let err = ax::AXUIElementCopyAttributeValue(
@@ -154,12 +174,10 @@ fn current_selection_text() -> Option<String> {
                 focused_attr.as_concrete_TypeRef(),
                 &mut focused,
             );
-            // systemwide 由 framework 持有，不需要我们 release
             if err != ax::K_AX_ERROR_SUCCESS || focused.is_null() {
-                return None;
+                return SelResult::NoFocused(err);
             }
 
-            // Step 2: AXSelectedText
             let sel_attr = CFString::new("AXSelectedText");
             let mut sel_value: CFTypeRef = std::ptr::null();
             let err2 = ax::AXUIElementCopyAttributeValue(
@@ -170,16 +188,20 @@ fn current_selection_text() -> Option<String> {
             CFRelease(focused);
 
             if err2 != ax::K_AX_ERROR_SUCCESS || sel_value.is_null() {
-                return None;
+                return SelResult::NoSelectedAttr(err2);
             }
             let s = cfstring_to_string(sel_value as CFStringRef);
             CFRelease(sel_value);
-            s.filter(|t| !t.is_empty())
+            match s.filter(|t| !t.is_empty()) {
+                Some(t) => SelResult::Text(t),
+                None => SelResult::EmptySelection,
+            }
         })();
         let _: () = msg_send![pool, drain];
         result
     }
 }
+
 
 #[cfg(target_os = "macos")]
 fn cfstring_to_string(cf: CFStringRef) -> Option<String> {

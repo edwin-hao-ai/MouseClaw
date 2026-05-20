@@ -41,11 +41,50 @@ pub async fn follow_up(
     Ok(())
 }
 
-/// 显式新建 session（Panel 的 ＋ 按钮）。
+/// 显式新建 session（Panel 的 ＋ 按钮 / 菜单「🆕 新对话」/ 双击快捷键）。
+/// 钉住任务时 touch(true) 会被忽略 —— 返回 `pinned=true` 让前端提示"先解钉"。
 #[tauri::command]
-pub async fn new_session(state: State<'_, Arc<AppState>>) -> Result<u64, String> {
-    let mut store = state.sessions.lock().await;
-    Ok(store.touch(true, None))
+pub async fn new_session(app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<bool, String> {
+    let snap = {
+        let mut store = state.sessions.lock().await;
+        if store.is_pinned() {
+            // 钉住中：拒绝清空，保护长任务
+            return Ok(true);
+        }
+        store.touch(true, None);
+        store.state_snapshot()
+    };
+    let _ = app.emit(crate::events::EV_SESSION_STATE, snap);
+    Ok(false)
+}
+
+/// 钉住 / 解除钉住当前会话（菜单「📌 钉住任务」）。返回钉住后的状态。
+#[tauri::command]
+pub async fn toggle_pin_session(app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<bool, String> {
+    let (now_pinned, snap) = {
+        let mut store = state.sessions.lock().await;
+        if store.is_pinned() {
+            store.unpin();
+        } else {
+            // 用当前前台 app 名当任务标签（拿不到就 None）
+            let label = crate::mode_b::frontmost_app_name();
+            store.pin(label);
+        }
+        (store.is_pinned(), store.state_snapshot())
+    };
+    // 同步镜像给 tray（sync 上下文读）
+    state.session_pinned.store(now_pinned, std::sync::atomic::Ordering::Relaxed);
+    let _ = app.emit(crate::events::EV_SESSION_STATE, snap);
+    crate::tray::rebuild_tray_menu(&app);
+    println!("[mouseclaw] 📌 session pinned → {now_pinned}");
+    Ok(now_pinned)
+}
+
+/// 前端启动 / 窗口挂载时读一次当前 session 状态（链条图标初始化）。
+#[tauri::command]
+pub async fn get_session_state(state: State<'_, Arc<AppState>>) -> Result<crate::events::SessionState, String> {
+    let store = state.sessions.lock().await;
+    Ok(store.state_snapshot())
 }
 
 /// Onboarding 完成 —— 保存快捷键 + 后端选择 + onboarded 标记。

@@ -17,8 +17,8 @@ import { PetMenu } from "./components/PetMenu";
 import { NudgeBubble } from "./components/NudgeBubble";
 import { RecordingBubble } from "./components/RecordingBubble";
 import {
-  EV_VIEW_CHANGED, EV_SKIN_CHANGED, EV_NUDGE,
-  type ViewKind, type SkinId, type NudgePayload,
+  EV_VIEW_CHANGED, EV_SKIN_CHANGED, EV_NUDGE, EV_SESSION_STATE,
+  type ViewKind, type SkinId, type NudgePayload, type SessionState,
 } from "./types";
 import { DEFAULT_SKIN } from "./skins";
 import { useT, getCurrentLang } from "./i18n";
@@ -58,6 +58,10 @@ export default function App() {
   const [view, setView] = useState<ViewKind>({ kind: "idle" });
   // session continuation chip — true when current view is part of an ongoing session
   const [continuing, setContinuing] = useState(false);
+  // v0.4.x · session 状态（链条图标 / 第 N 轮 / 钉住 / 软提示）
+  const [sessionState, setSessionState] = useState<SessionState>({
+    continuing: false, round: 0, pinned: false, softHint: false,
+  });
   // v0.4.0 · 模型下载状态 —— idle 时模型未就绪自动显示常驻迷你气泡，
   //   让用户即使没按快捷键也能看到「在下载 / 完成 / 失败」。
   //   下完后这个气泡自动消失，桌宠回到正常 sleep 状态。
@@ -297,6 +301,23 @@ export default function App() {
     try {
       const p = listen<NudgePayload>(EV_NUDGE, (e) => setNudge(e.payload));
       p.then((fn) => { unlisten = fn; }).catch(() => {});
+    } catch { /* browser-only mode */ }
+    return () => { if (unlisten) unlisten(); };
+  }, []);
+
+  // v0.4.x · session 状态监听 —— 驱动链条图标 + 第 N 轮 + 钉住 + 软提示
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    try {
+      const p = listen<SessionState>(EV_SESSION_STATE, (e) => {
+        setSessionState(e.payload);
+        setContinuing(e.payload.continuing);
+      });
+      p.then((fn) => { unlisten = fn; }).catch(() => {});
+      // 初次挂载读一次当前状态
+      invoke<SessionState>("get_session_state")
+        .then((s) => { setSessionState(s); setContinuing(s.continuing); })
+        .catch(() => {});
     } catch { /* browser-only mode */ }
     return () => { if (unlisten) unlisten(); };
   }, []);
@@ -549,6 +570,12 @@ export default function App() {
           <Bubble text={transientAck} variant="success" />
         </div>
       )}
+      {/* v0.4.x · session 状态 chip —— idle 静默时浮在桌宠头顶，让"连续/钉住/软提示"可见 */}
+      {view.kind === "idle" && !transientAck && !petMenuOpen && !nudge && sessionState.continuing && (
+        <div className="stage-bubble">
+          <SessionChip s={sessionState} />
+        </div>
+      )}
       <div
         ref={petStageRef}
         className="stage-mouse"
@@ -602,6 +629,25 @@ export default function App() {
       </div>
     </div>
   );
+}
+
+/** v0.4.x · 桌宠头顶的 session 状态 chip —— 钉住 / 软提示 / 第 N 轮，三选一显示。 */
+function SessionChip({ s }: { s: SessionState }) {
+  const zh = getCurrentLang().startsWith("zh");
+  let text: string;
+  let cls = "session-chip";
+  if (s.pinned) {
+    cls += " session-chip-pin";
+    const label = s.pinnedLabel ? ` ${s.pinnedLabel}` : "";
+    text = zh ? `📌 钉住${label} · 第 ${s.round} 轮` : `📌 Pinned${label} · turn ${s.round}`;
+  } else if (s.softHint) {
+    cls += " session-chip-soft";
+    text = zh ? "🔗 接着很久前的对话 · 双击快捷键重置" : "🔗 Continuing an old chat · double-tap to reset";
+  } else {
+    cls += " session-chip-chain";
+    text = zh ? `🔗 第 ${s.round} 轮` : `🔗 turn ${s.round}`;
+  }
+  return <div className={cls}>{text}</div>;
 }
 
 interface BubbleForProps {

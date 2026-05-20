@@ -111,6 +111,26 @@ pub const EV_LANG_CHANGED: &str = "lang-changed";
 /// payload: NudgePayload。前端在 App.tsx 监听 → 渲染浮动 nudge bubble。
 pub const EV_NUDGE: &str = "nudge";
 
+/// v0.4.x · Session 状态广播 —— pipeline 每次处理完一轮 / 用户开新对话 / 钉住切换时 emit。
+/// 前端据此显示链条图标 + 「第 N 轮」+ 「📌 任务名」+ 软提示。payload: SessionState。
+pub const EV_SESSION_STATE: &str = "session-state";
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SessionState {
+    /// 当前是否有可续上下文（决定显不显示链条图标）
+    pub continuing: bool,
+    /// 对话轮数（一问一答 = 1 轮）
+    pub round: u32,
+    /// 是否钉住任务模式
+    pub pinned: bool,
+    /// 钉住的任务标签（如 "deck.pptx"）
+    #[serde(rename = "pinnedLabel", skip_serializing_if = "Option::is_none")]
+    pub pinned_label: Option<String>,
+    /// 是否该显示"隔了很久"软提示
+    #[serde(rename = "softHint")]
+    pub soft_hint: bool,
+}
+
 /// 提醒类型 —— frontend 据此选 icon/文案/动画。
 /// kebab-case 以便与前端 `NudgeKind` TS union 对齐。
 #[derive(Debug, Clone, Copy, Serialize, serde::Deserialize, PartialEq, Eq, Hash)]

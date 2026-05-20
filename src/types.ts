@@ -55,6 +55,16 @@ export const EV_SKIN_CHANGED = "skin-changed";
 export const EV_STREAM_CHUNK = "stream-chunk";
 export const EV_COUNTDOWN    = "countdown-tick";
 export const EV_NUDGE        = "nudge";
+export const EV_SESSION_STATE = "session-state";
+
+/** Session 状态（v0.4.x）—— 驱动链条图标 / 第 N 轮 / 钉住 / 软提示。 */
+export interface SessionState {
+  continuing: boolean;
+  round: number;
+  pinned: boolean;
+  pinnedLabel?: string;
+  softHint: boolean;
+}
 
 /** Proactive reminder kind (v0.1.27 P3) — matches Rust `NudgeKind`. */
 export type NudgeKind =

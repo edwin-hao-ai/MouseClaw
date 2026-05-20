@@ -203,6 +203,19 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
           &vocab_builtin_item as &dyn tauri::menu::IsMenuItem<tauri::Wry>],
     )?;
 
+    // v0.4.x · 会话控制：新对话 + 钉住任务
+    let pinned_now = app.try_state::<std::sync::Arc<crate::AppState>>()
+        .map(|s| s.session_pinned.load(std::sync::atomic::Ordering::Relaxed))
+        .unwrap_or(false);
+    let s_new_session = if en { "🆕 New chat" } else { "🆕 新对话" };
+    let s_pin = if pinned_now {
+        if en { "📌 Unpin task (keep continuous)" } else { "📌 解除钉住任务" }
+    } else {
+        if en { "📌 Pin task (multi-round, never reset)" } else { "📌 钉住任务（多轮不重置）" }
+    };
+    let new_session_item = MenuItem::with_id(app, "new-session", s_new_session, true, None::<&str>)?;
+    let pin_item = MenuItem::with_id(app, "toggle-pin-session", s_pin, true, None::<&str>)?;
+
     // v0.1.21 · 工作区设置（指向同一窗口的设置项；用户点 → 弹 NSOpenPanel）
     let workspace_item = MenuItem::with_id(
         app, "set-workspace", &s_workspace_label, true, None::<&str>
@@ -230,7 +243,7 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 
     // List items (declaring early so the vec! below can reference them)
     let mut items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = vec![
-        &summon, &clipboard_item, &history,
+        &summon, &new_session_item, &pin_item, &clipboard_item, &history,
         &skin_picker_item, &anchor_submenu, &lang_submenu,
         &sep1, &vime_item, &trigger_submenu, &vocab_submenu, &pause_item,
         &workspace_item,
@@ -334,6 +347,49 @@ fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
     }
     match id {
         "summon"          => summon_via_tray(app),
+        "new-session"     => {
+            let app2 = app.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Some(state) = app2.try_state::<std::sync::Arc<crate::AppState>>() {
+                    let pinned = {
+                        let mut store = state.sessions.lock().await;
+                        if store.is_pinned() { true } else { store.touch(true, None); false }
+                    };
+                    use tauri::Emitter;
+                    if pinned {
+                        // 钉住中拒绝重置 —— 提示用户先解钉
+                        let lang = crate::config::Config::load().language;
+                        let msg = if lang == "en" { "📌 Task is pinned — unpin first to start a new chat" }
+                                  else { "📌 任务已钉住 —— 先解除钉住才能开新对话" };
+                        for (_, w) in app2.webview_windows() {
+                            let _ = w.emit(crate::events::EV_VIEW_CHANGED, serde_json::json!({
+                                "kind":"reply","transcript":"new chat","reply":msg,"mode":"A","streaming":false,
+                            }));
+                        }
+                    } else {
+                        let snap = { state.sessions.lock().await.state_snapshot() };
+                        let _ = app2.emit(crate::events::EV_SESSION_STATE, snap);
+                    }
+                }
+            });
+        }
+        "toggle-pin-session" => {
+            let app2 = app.clone();
+            tauri::async_runtime::spawn(async move {
+                use tauri::Emitter;
+                if let Some(state) = app2.try_state::<std::sync::Arc<crate::AppState>>() {
+                    let (now_pinned, snap) = {
+                        let mut store = state.sessions.lock().await;
+                        if store.is_pinned() { store.unpin(); }
+                        else { store.pin(crate::mode_b::frontmost_app_name()); }
+                        (store.is_pinned(), store.state_snapshot())
+                    };
+                    state.session_pinned.store(now_pinned, std::sync::atomic::Ordering::Relaxed);
+                    let _ = app2.emit(crate::events::EV_SESSION_STATE, snap);
+                    rebuild_tray_menu(&app2);
+                }
+            });
+        }
         "open-clipboard"  => {
             if let Err(e) = crate::commands::open_hub_window(app.clone()) {
                 eprintln!("[mouseclaw] open-clipboard: {e}");

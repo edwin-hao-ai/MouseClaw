@@ -145,9 +145,15 @@ pub async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppStat
     // 4. Record turns into session history
     {
         let mut store = state.sessions.lock().await;
+        // 软提示要看"这一轮之前"的间隔 —— record 会把 last_turn_at 拨到 now，所以先抓。
+        let soft_hint = store.should_soft_hint();
         let screenshot_path = img_path.to_string_lossy().to_string();
         let _ = store.record_user(transcript.clone(), Some(screenshot_path)).await;
         let _ = store.record_assistant(reply.clone()).await;
+        // v0.4.x · 广播 session 状态给前端（链条图标 + 第 N 轮 + 钉住 + 软提示）
+        let mut snap = store.state_snapshot();
+        snap.soft_hint = soft_hint;
+        let _ = app.emit(crate::events::EV_SESSION_STATE, snap);
     }
 
     // 5. Mode detection — [INSERT_AT_CURSOR] marker → Mode B (write at cursor)
