@@ -345,6 +345,7 @@ pub fn run() {
             commands::enable_browser_automation,
             commands::capability_status,
             commands::install_cli,
+            commands::show_status_window,
             commands::save_language,
             commands::get_language,
             commands::list_clipboard,
@@ -446,6 +447,10 @@ pub fn run() {
 
             // v0.1.24 启动 60s 后做一次版本检查
             update_check::spawn(app.handle().clone());
+
+            // v0.4.x · 老用户升级发现性 —— 启动 8s 后，若已 onboarded 但缺
+            // browser/office CLI 且没弹过，弹一次性 nudge 引导去状态页装。
+            cli_install::maybe_hint_upgrade(app.handle().clone());
 
             if let Err(e) = tray::setup(&app.handle()) {
                 eprintln!("[mouseclaw] tray setup failed: {e:#}");

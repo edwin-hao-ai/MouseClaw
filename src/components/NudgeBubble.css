@@ -135,3 +135,4 @@
 .nudge-bubble.nudge-water        { border-left: 3px solid #6ec1ff; }       /* water blue */
 .nudge-bubble.nudge-good-morning { border-left: 3px solid #ffd166; }       /* sunrise yellow */
 .nudge-bubble.nudge-lunch        { border-left: 3px solid #ffa873; }       /* warm orange */
+.nudge-bubble.nudge-learned-cli  { border-left: 3px solid var(--accent-primary, #ff6b9d); } /* v0.4.x 升级提示 */

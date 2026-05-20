@@ -621,7 +621,8 @@ fn toggle_voice_ime(app: &AppHandle) {
 
 /// 打开「📊 系统状态」窗口 —— 一眼看到 claude / agent-browser / Chrome CDP / 权限的就绪状态。
 /// 每行都有"去解决"按钮（装 / 启用 / 开权限）。
-fn open_status_window(app: &AppHandle) {
+/// pub(crate) —— commands::show_status_window 也复用（升级提示 nudge 的 CTA）。
+pub(crate) fn open_status_window(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("status") {
         let _ = w.show();
         activate_app();

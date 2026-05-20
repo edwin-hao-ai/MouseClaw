@@ -822,6 +822,13 @@ pub fn install_cli(app: AppHandle, target: String) -> Result<(), String> {
     Ok(())
 }
 
+/// v0.4.x · 打开系统状态窗口（升级提示 nudge 的 CTA 用）。
+#[tauri::command]
+pub fn show_status_window(app: AppHandle) -> Result<(), String> {
+    crate::tray::open_status_window(&app);
+    Ok(())
+}
+
 /// 取消当前 pipeline（cancel_pipeline）—— bump gen + 隐藏 overlay。
 #[tauri::command]
 pub fn cancel_pipeline(app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<(), String> {

@@ -128,6 +128,12 @@ pub enum NudgeKind {
     GoodMorning,
     /// v0.1.32 · 午餐：12:00-13:30 久坐 → 提醒午饭啦
     Lunch,
+    /// v0.4.x · 老用户升级提示：装上 browser use / office use CLI 才能完整动手。
+    /// 一次性（marker file 兜底），不走 presence 心跳，由启动检测直接 emit。
+    LearnedCli,
+    /// v0.4+ · 连续工作：长时间高强度敲键（≥ 2h 窗口持续活跃）+ **当下出现自然停顿**
+    /// → 趁停顿提醒休息眼睛 / 起来走走。刻意在停顿时发，不打断心流。
+    LongFocus,
 }
 
 impl NudgeKind {
@@ -139,6 +145,8 @@ impl NudgeKind {
             NudgeKind::Water       => "water",
             NudgeKind::GoodMorning => "good-morning",
             NudgeKind::Lunch       => "lunch",
+            NudgeKind::LearnedCli  => "learned-cli",
+            NudgeKind::LongFocus   => "long-focus",
         }
     }
 }

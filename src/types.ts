@@ -59,7 +59,8 @@ export const EV_NUDGE        = "nudge";
 /** Proactive reminder kind (v0.1.27 P3) — matches Rust `NudgeKind`. */
 export type NudgeKind =
   | "stretch" | "stuck" | "late-night"
-  | "water" | "good-morning" | "lunch";  // v0.1.32
+  | "water" | "good-morning" | "lunch"  // v0.1.32
+  | "learned-cli";                       // v0.4.x · 老用户升级提示
 
 export interface NudgePayload {
   kind: NudgeKind;

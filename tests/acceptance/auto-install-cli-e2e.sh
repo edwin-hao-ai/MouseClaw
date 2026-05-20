@@ -63,6 +63,18 @@ grep_f "总结这个表" src/components/OnboardingTutorial.tsx "Card B 文本（
 grep_f "写一句产品介绍" src/components/OnboardingTutorial.tsx "Card C 文本（Mode B）"
 
 echo
+echo "── 老用户升级发现性（upgrade hint nudge）────────────────────────────"
+grep_f "maybe_hint_upgrade" src-tauri/src/cli_install.rs "maybe_hint_upgrade 定义"
+grep_f "maybe_hint_upgrade" src-tauri/src/lib.rs "启动时调 maybe_hint_upgrade"
+grep_f "upgrade_cli_hint_shown" src-tauri/src/cli_install.rs "一次性 marker file"
+grep_f "LearnedCli" src-tauri/src/events.rs "NudgeKind::LearnedCli 变体"
+grep_f "learned-cli" src-tauri/src/events.rs "as_str 映射"
+grep_f "learned-cli" src/types.ts "前端 NudgeKind union 含 learned-cli"
+grep_f "open-status" src-tauri/src/cli_install.rs "CTA action open-status"
+grep_f "open-status" src/components/NudgeBubble.tsx "NudgeBubble 处理 open-status"
+grep_f "show_status_window" src-tauri/src/lib.rs "show_status_window 命令已注册"
+
+echo
 echo "── i18n 完整性（zh + en + types）─────────────────────────────────────"
 for k in \
   "status.row.officecli.title" "status.install.do_it" "status.install.retry" \

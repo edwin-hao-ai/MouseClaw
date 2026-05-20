@@ -81,6 +81,70 @@ pub fn start_install(app: AppHandle, target: InstallTarget) {
     });
 }
 
+/// 升级提示 marker —— 弹过一次就写它，之后不再打扰。
+fn hint_marker_path() -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_default();
+    std::path::PathBuf::from(home).join(".mouseclaw").join("upgrade_cli_hint_shown")
+}
+
+/// v0.4.x · 老用户升级发现性。
+///
+/// 老用户 `onboarded=true`，升级后直接进 idle、永远看不到 Onboarding step 7/8。
+/// 启动延迟几秒后检查：已 onboarded && 有 CLI 没装 && 没弹过 → 弹一次 nudge 气泡，
+/// 文案只提**缺**的那个（已装 agent-browser 的人只会看到 OfficeCLI 提示）。
+///
+/// 一次性：弹完写 marker file，之后启动不再弹（用户也可在状态页随时装）。
+pub fn maybe_hint_upgrade(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        // 让启动其它流程先跑（模型下载提示等），别开机就糊脸
+        tokio::time::sleep(std::time::Duration::from_secs(8)).await;
+
+        let cfg = crate::config::Config::load();
+        if !cfg.onboarded {
+            return; // 新用户走 Onboarding step 7/8，不需要这个
+        }
+        if hint_marker_path().exists() {
+            return; // 弹过了
+        }
+
+        let has_ab  = crate::claude_cli::find_binary("agent-browser").is_ok();
+        let has_off = crate::claude_cli::find_binary("officecli").is_ok();
+        if has_ab && has_off {
+            return; // 两个都装了，没什么可提示
+        }
+
+        let lang_en = cfg.language != "zh";
+        // 缺哪个就只说哪个 —— 别让已经装好 agent-browser 的人看到莫名其妙的提示
+        let what = match (has_ab, has_off) {
+            (true, false)  => if lang_en { "edit Office files" } else { "操作 Office 文件" },
+            (false, true)  => if lang_en { "drive a browser" } else { "操作浏览器" },
+            _              => if lang_en { "drive a browser & edit Office files" } else { "操作浏览器 / Office 文件" },
+        };
+        let message = if lang_en {
+            format!("🎉 New trick unlocked — install one tool and I can {what}")
+        } else {
+            format!("🎉 我有新本事了 · 装上工具我就能{what}")
+        };
+        let cta_label = if lang_en { "Set it up".into() } else { "去装上".into() };
+
+        let payload = crate::events::NudgePayload {
+            kind: crate::events::NudgeKind::LearnedCli,
+            message,
+            cta_label: Some(cta_label),
+            cta_action: Some("open-status".into()),
+        };
+        if let Err(e) = app.emit(crate::events::EV_NUDGE, payload) {
+            eprintln!("[cli_install] upgrade-hint emit failed: {e}");
+            return;
+        }
+        // 写 marker —— 不论用户点不点，弹过一次就不再烦
+        let p = hint_marker_path();
+        if let Some(dir) = p.parent() { let _ = std::fs::create_dir_all(dir); }
+        let _ = std::fs::write(&p, b"1");
+        println!("[cli_install] upgrade hint shown (has_ab={has_ab} has_off={has_off})");
+    });
+}
+
 async fn run(app: AppHandle, target: InstallTarget) {
     let id = target.id().to_string();
     emit(&app, InstallEvent::Started { target: id.clone() });
@@ -260,5 +324,13 @@ mod tests {
         let e = classify_failure("agent-browser", Some(1));
         assert_eq!(e.code, "unknown");
         assert!(e.message.contains("npm"));
+    }
+
+    #[test]
+    fn hint_marker_under_mouseclaw_dir() {
+        // marker 必须落在 ~/.mouseclaw 下，跟其它状态文件同源
+        let p = hint_marker_path();
+        assert!(p.to_string_lossy().contains(".mouseclaw"));
+        assert!(p.ends_with("upgrade_cli_hint_shown"));
     }
 }

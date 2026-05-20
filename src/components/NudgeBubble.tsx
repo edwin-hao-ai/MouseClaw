@@ -43,6 +43,9 @@ export function NudgeBubble({ payload, onDismiss }: NudgeBubbleProps) {
     if (payload.ctaAction === "summon") {
       // Same as PetMenu's summon: toggle recording (acts as if shortcut pressed)
       invoke("toggle_recording").catch(() => {});
+    } else if (payload.ctaAction === "open-status") {
+      // v0.4.x · 升级提示 → 打开系统状态窗，用户在那里一键装 browser/office CLI
+      invoke("show_status_window").catch(() => {});
     }
     onDismiss();
   };
