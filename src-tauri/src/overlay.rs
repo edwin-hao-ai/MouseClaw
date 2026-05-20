@@ -190,7 +190,7 @@ pub fn emit_view(app: &AppHandle, view: &ViewKind) {
                 files.len(),
                 partial.chars().take(20).collect::<String>())
         }
-        ViewKind::Thinking { transcript } => {
+        ViewKind::Thinking { transcript, .. } => {
             format!("thinking({})", transcript.chars().take(20).collect::<String>())
         }
         ViewKind::Reply { reply, streaming, .. } => {

@@ -593,6 +593,7 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
 
     crate::overlay::emit_view(&app, &crate::events::ViewKind::Thinking {
         transcript: "(语音输入中…)".into(),
+        status: None,
     });
 
     tauri::async_runtime::spawn_blocking(move || {

@@ -67,7 +67,7 @@ pub async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppStat
         (None, None) => transcript.clone(),
     };
 
-    emit_view(&app, &ViewKind::Thinking { transcript: transcript.clone() });
+    emit_view(&app, &ViewKind::Thinking { transcript: transcript.clone(), status: None });
 
     // v0.1.20 · 拿出已采样的鼠标轨迹（on_shortcut_release 烘到 screenshot 上的那批）
     let trail_summary = state.last_trail.lock().await.take().and_then(|trail| {
@@ -123,6 +123,26 @@ pub async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppStat
                         streaming: true,
                     },
                 );
+            }
+        },
+        // on_status：处理期间的实时活动（思考 / 工具）→ 更新 Thinking 气泡状态行，
+        // 让用户看到"在动"。节流 ~150ms 避免 thinking_delta 刷爆 IPC。
+        {
+            let app_status = app.clone();
+            let transcript_status = transcript.clone();
+            let mut last_status = std::time::Instant::now() - Duration::from_secs(1);
+            move |status: &str| {
+                let now = std::time::Instant::now();
+                if now.duration_since(last_status) >= Duration::from_millis(150) {
+                    last_status = now;
+                    emit_view(
+                        &app_status,
+                        &ViewKind::Thinking {
+                            transcript: transcript_status.clone(),
+                            status: Some(status.to_string()),
+                        },
+                    );
+                }
             }
         },
     )
@@ -442,7 +462,7 @@ pub async fn on_shortcut_release(app: AppHandle, state: Arc<AppState>) {
     // v0.2 · 停 streaming polling 任务 → 让 200ms loop 看到 false 退出
     state.streaming_active.store(false, std::sync::atomic::Ordering::SeqCst);
 
-    emit_view(&app, &ViewKind::Thinking { transcript: "(转写中…)".into() });
+    emit_view(&app, &ViewKind::Thinking { transcript: "(转写中…)".into(), status: None });
 
     let app_clone = app.clone();
     let state_clone = state.clone();

@@ -34,7 +34,14 @@ pub enum ViewKind {
         #[serde(default)]
         partial: String,
     },
-    Thinking { transcript: String },
+    Thinking {
+        transcript: String,
+        /// v0.4.x · AI 处理期间的实时活动（Claude CLI 的 thinking_delta / tool_use）。
+        /// None = 还没活动（刚进 thinking）；Some = 正在思考/读文件/跑命令，气泡显示
+        /// 这行让用户知道没卡死。其他后端没有细粒度事件就保持 None。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        status: Option<String>,
+    },
     Reply {
         transcript: String,
         reply: String,

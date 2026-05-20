@@ -90,7 +90,10 @@ impl Backend {
 
 /// 统一流式调用入口 —— 按 backend 分发到对应 CLI。
 /// `on_chunk` 收到的是**累计**文本（不是单 delta），调用方直接 emit 即可。
-pub async fn ask_streaming<F>(
+/// `on_chunk`：累计**最终答案**文本。`on_status`：处理期间的**实时活动**
+/// （Claude CLI 的 thinking_delta / tool_use），让用户知道没卡死。
+/// 没有细粒度事件的后端（Codex/OpenClaw/Hermes）不调 on_status。
+pub async fn ask_streaming<F, G>(
     backend: Backend,
     transcript: &str,
     image: &Path,
@@ -98,23 +101,27 @@ pub async fn ask_streaming<F>(
     cursor: Option<&CursorContext>,
     trail_summary: Option<&str>,
     on_chunk: F,
+    on_status: G,
 ) -> Result<String>
 where
     F: FnMut(&str),
+    G: FnMut(&str),
 {
     match backend {
         Backend::ClaudeCli => {
             crate::claude_cli::ask_claude_streaming(
-                transcript, image, frontmost, cursor, trail_summary, on_chunk
+                transcript, image, frontmost, cursor, trail_summary, on_chunk, on_status
             ).await
         }
-        Backend::CodexCli => codex_streaming(
+        Backend::CodexCli => { let _ = on_status; codex_streaming(
             transcript, image, frontmost, cursor, trail_summary, on_chunk
-        ).await,
+        ).await },
         Backend::OpenclawCli => {
+            let _ = on_status;
             openclaw_streaming(transcript, image, frontmost, cursor, trail_summary, on_chunk).await
         }
         Backend::HermesAgent => {
+            let _ = on_status;
             hermes_streaming(transcript, image, frontmost, cursor, trail_summary, on_chunk).await
         }
     }

@@ -402,16 +402,34 @@ fn build_prompt(
 /// 累加后每收到一块就回调 `on_chunk(累计文本)`，让前端气泡实时长出来。
 ///
 /// `on_chunk` 收到的是**累计**文本（不是单个 delta），调用方直接拿去 emit 即可。
-pub async fn ask_claude_streaming<F>(
+/// Claude 工具名 → 用户能懂的中文活动标签。
+fn friendly_tool_label(tool: &str) -> String {
+    match tool {
+        "Read"      => "读取文件…".into(),
+        "Write"     => "写文件…".into(),
+        "Edit"      => "修改文件…".into(),
+        "Bash"      => "运行命令…".into(),
+        "Grep"      => "搜索代码…".into(),
+        "Glob"      => "查找文件…".into(),
+        "WebFetch"  => "读取网页…".into(),
+        "WebSearch" => "搜索网络…".into(),
+        "Task"      => "调度子任务…".into(),
+        other       => format!("{other}…"),
+    }
+}
+
+pub async fn ask_claude_streaming<F, G>(
     transcript: &str,
     image_path: &Path,
     frontmost_app: Option<&str>,
     cursor: Option<&CursorContext>,
     trail_summary: Option<&str>,
     mut on_chunk: F,
+    mut on_status: G,
 ) -> Result<String>
 where
     F: FnMut(&str),
+    G: FnMut(&str),
 {
     let prompt = build_prompt(transcript, image_path, frontmost_app, cursor, trail_summary);
     let sys_prompt = system_prompt();
@@ -455,6 +473,7 @@ where
     let mut stderr = child.stderr.take();
     let mut reader = BufReader::new(stdout).lines();
     let mut accumulated = String::new();
+    let mut thinking_buf = String::new();
 
     while let Some(line) = reader.next_line().await.context("read claude stdout")? {
         if line.trim().is_empty() {
@@ -464,16 +483,40 @@ where
         let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else {
             continue;
         };
-        // 只取 stream_event → content_block_delta → text_delta → .text
-        if v.get("type").and_then(|t| t.as_str()) == Some("stream_event") {
+        let top_type = v.get("type").and_then(|t| t.as_str());
+
+        // ① stream_event → content_block_delta：可能是最终文本 text_delta，
+        //    也可能是 thinking_delta（扩展思考）—— 后者喂 on_status 显示"💭 思考中"。
+        if top_type == Some("stream_event") {
             let ev = &v["event"];
-            if ev.get("type").and_then(|t| t.as_str()) == Some("content_block_delta") {
+            let ev_type = ev.get("type").and_then(|t| t.as_str());
+            if ev_type == Some("content_block_delta") {
                 let delta = &ev["delta"];
-                if delta.get("type").and_then(|t| t.as_str()) == Some("text_delta") {
-                    if let Some(text) = delta.get("text").and_then(|t| t.as_str()) {
-                        accumulated.push_str(text);
-                        on_chunk(&accumulated);
+                match delta.get("type").and_then(|t| t.as_str()) {
+                    Some("text_delta") => {
+                        if let Some(text) = delta.get("text").and_then(|t| t.as_str()) {
+                            accumulated.push_str(text);
+                            on_chunk(&accumulated);
+                        }
                     }
+                    Some("thinking_delta") => {
+                        // Claude 扩展思考 —— 累计思考文本，取尾部一小段当状态行
+                        if let Some(th) = delta.get("thinking").and_then(|t| t.as_str()) {
+                            thinking_buf.push_str(th);
+                            let tail: String = thinking_buf.chars()
+                                .rev().take(48).collect::<Vec<_>>()
+                                .into_iter().rev().collect();
+                            on_status(&format!("💭 {}", tail.trim()));
+                        }
+                    }
+                    _ => {}
+                }
+            } else if ev_type == Some("content_block_start") {
+                // ② tool_use 开始 → 报"🔧 正在用某工具"
+                let cb = &ev["content_block"];
+                if cb.get("type").and_then(|t| t.as_str()) == Some("tool_use") {
+                    let tool = cb.get("name").and_then(|t| t.as_str()).unwrap_or("工具");
+                    on_status(&format!("🔧 {}", friendly_tool_label(tool)));
                 }
             }
         }
@@ -504,7 +547,7 @@ pub async fn ask_claude(
     frontmost_app: Option<&str>,
     cursor: Option<&CursorContext>,
 ) -> Result<String> {
-    ask_claude_streaming(transcript, image_path, frontmost_app, cursor, None, |_| {}).await
+    ask_claude_streaming(transcript, image_path, frontmost_app, cursor, None, |_| {}, |_| {}).await
 }
 
 /// 把 Mode B inner text 里 Claude 常加的装饰剥掉 —— prompt 已经禁止过，但 LLM 经常忘。

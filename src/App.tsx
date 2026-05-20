@@ -748,8 +748,10 @@ function BubbleFor({ view, continuing, onExpand, onNewSession, modelProgress, ed
       return <Bubble text={head + body} variant="default" streaming />;
     }
     case "thinking":
-      // 慢 —— Claude 调用要 10-30s，给个动态 loading 让用户知道在干活
-      return <Bubble text={view.transcript} loading />;
+      // 慢 —— Claude 调用要 10-30s，给个动态 loading 让用户知道在干活。
+      // v0.4.x · 有实时活动（status：💭 思考 / 🔧 工具）就显示它，让用户看到"在动"
+      // 不像卡死；没活动则显示用户问题本身。
+      return <Bubble text={view.status || view.transcript} loading />;
     case "reply": {
       const streaming = view.streaming ?? false;
       const long = isLongReply(view.reply);
