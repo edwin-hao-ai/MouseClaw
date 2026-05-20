@@ -95,8 +95,12 @@ export default function App() {
     window.setTimeout(() => setHearts((hs) => hs.filter((h) => h !== id)), 700);
   }, []);
   // v0.4 · 内容驱动 overlay 尺寸 —— 见 hooks/useAdaptiveOverlay.ts 注释。
-  // 只在 idle 视图启用：非 idle 由 Rust emit_view 那侧管尺寸，不要前后端打架。
-  useAdaptiveOverlay(stageRootRef, { enabled: true });
+  // listening（AI 召唤说话）时**禁用**：那是唯一开 cursor_follow 的状态，窗口位置
+  // 归 cursor_follow 管（30fps 跟光标走）。自适应若同时按"保持锚点"反算位置 → 跟
+  // cursor_follow 抢同一个窗口 → 桌宠在光标和原锚点之间来回弹（用户报"乱飘"）。
+  // 其余视图（idle / tour / voice-confirm / reply / voice-ime-listening 等）窗口不
+  // 跟随，自适应是唯一尺寸权威。
+  useAdaptiveOverlay(stageRootRef, { enabled: view.kind !== "listening" });
 
   // v0.3.12 · 在 idle 状态下显示 React-only UI（下载提示气泡 / petMenu / nudge / ack
   //   / v0.4 reactive ribbon）时主动通知 Rust 把窗口 hit-box 扩到全窗口；
@@ -951,7 +955,7 @@ function TourBubble({ step }: TourBubbleProps) {
 
   if (step === 1) {
     return (
-      <div style={wrapStyle}>
+      <div data-adaptive-measure="" style={wrapStyle}>
         <ChipHeader>🎓 第 1 步 / 共 5 步</ChipHeader>
         <strong style={{ color: "#d63d6a" }}>下载完啦！</strong> 我能听见你说话，<br />
         帮你召唤本地 AI、做语音输入。<br />
@@ -967,7 +971,7 @@ function TourBubble({ step }: TourBubbleProps) {
   }
   if (step === 2) {
     return (
-      <div style={wrapStyle}>
+      <div data-adaptive-measure="" style={wrapStyle}>
         <ChipHeader>🎓 第 2 步 / 5 · 准备目标</ChipHeader>
         随便<strong style={{ color: "#d63d6a" }}>打开一个网页</strong>，比如<br />
         公众号文章 / 维基 / 新闻。<br />
@@ -983,7 +987,7 @@ function TourBubble({ step }: TourBubbleProps) {
   }
   if (step === 3) {
     return (
-      <div style={wrapStyle}>
+      <div data-adaptive-measure="" style={wrapStyle}>
         <ChipHeader>🎓 第 3 步 / 5 · 召唤 AI</ChipHeader>
         按住 {kbd("⌘")} {kbd("⇧")} {kbd("Space")} 然后说：<br />
         <em style={{
@@ -1002,7 +1006,7 @@ function TourBubble({ step }: TourBubbleProps) {
   }
   if (step === 4) {
     return (
-      <div style={wrapStyle}>
+      <div data-adaptive-measure="" style={wrapStyle}>
         <ChipHeader>🎓 第 4 步 / 5 · 语音打字</ChipHeader>
         再教你<strong style={{ color: "#d63d6a" }}>一招</strong> —— 任何输入框里<br />
         长按 {kbd("fn")} 说话，字会打到光标位置。<br />
@@ -1019,7 +1023,7 @@ function TourBubble({ step }: TourBubbleProps) {
   }
   // step >= 5 庆祝
   return (
-    <div style={{ ...wrapStyle, background: "#e6f4ec", borderColor: "#b8e8c3" }}>
+    <div data-adaptive-measure="" style={{ ...wrapStyle, background: "#e6f4ec", borderColor: "#b8e8c3" }}>
       <strong style={{ color: "#1a6b3a", fontSize: 16 }}>🎉 你学会了！</strong><br />
       以后任何时候按 {kbd("⌘")} {kbd("⇧")} {kbd("Space")} 就能召唤我。<br />
       <span style={{ fontSize: 12, color: "#5a5249", marginTop: 8, display: "block" }}>
