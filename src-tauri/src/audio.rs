@@ -8,11 +8,15 @@
 //!   1st press → `Recorder::start()` spawns the audio thread + cpal stream
 //!   2nd press → `stop_and_take()` joins the thread and returns 16 kHz samples
 //!
-//! Resampling: naive nearest-neighbor (good for speech, no extra deps).
+//! Resampling (v0.4.1): sherpa-onnx 自带的 `LinearResampler`（Kaldi 风格 **带抗混叠
+//! 低通的窗口 sinc** 重采样，cutoff≈7.9kHz / 6 个过零点），**有状态**，分块连续喂。
+//! 之前用的是朴素最近邻抽取（无抗混叠）—— Mac 内置麦 48kHz→16kHz 直接每 3 点取 1，
+//! 8kHz 以上高频混叠成噪声，严重拖垮识别（尤其英文辅音 4–8kHz / 中英混说）。
 
 use std::sync::{mpsc, Arc, Mutex};
 use anyhow::{anyhow, Context, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use sherpa_onnx::LinearResampler;
 
 pub const WHISPER_SR: u32 = 16_000;
 pub const MAX_SECONDS: usize = 600;
@@ -27,6 +31,10 @@ pub struct Recorder {
     /// v0.2 · Shared with audio thread —— streaming consumer can drain it
     /// mid-recording for partial transcription. None until init succeeds.
     samples_buf: Arc<Mutex<Vec<f32>>>,
+    /// v0.4.1 · 抗混叠重采样器（source_rate → 16kHz）。有状态：分块连续喂保证
+    /// 跨 drain 边界连续、无伪影。source_rate==16k 时为 None（直通）。
+    /// 用 Mutex 串行化 —— drain（流式 200ms）与 stop（结束）不会真并发，但加锁更安全。
+    resampler: Mutex<Option<LinearResampler>>,
 }
 
 impl Recorder {
@@ -124,13 +132,43 @@ impl Recorder {
             .context("audio thread initialisation channel closed")?
             .map_err(|e| anyhow!(e))?;
 
+        // v0.4.1 · 知道 source_rate 后建抗混叠重采样器（≠16k 才需要）。
+        let resampler = if source_rate != WHISPER_SR {
+            match LinearResampler::create(source_rate as i32, WHISPER_SR as i32) {
+                Some(rs) => {
+                    println!("[mouseclaw] 🎤 anti-aliased resampler {source_rate}→{WHISPER_SR} Hz");
+                    Some(rs)
+                }
+                None => {
+                    eprintln!("[mouseclaw] 🎤 ⚠️ LinearResampler 创建失败，退回直通（可能降低识别率）");
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         Ok(Self {
             stop_tx,
             samples_rx,
             handle: Some(handle),
             source_rate,
             samples_buf: samples_buf_shared,
+            resampler: Mutex::new(resampler),
         })
+    }
+
+    /// v0.4.1 · 把一批 source_rate 的 raw mono 样本喂给有状态抗混叠重采样器，
+    /// 返回 16kHz 样本。`flush=true` 用于最后一批（冲掉滤波器内部残留）。
+    /// source_rate==16k（resampler None）→ 直通。
+    fn resample_chunk(&self, pcm: &[f32], flush: bool) -> Vec<f32> {
+        match self.resampler.lock() {
+            Ok(g) => match g.as_ref() {
+                Some(rs) => rs.resample(pcm, flush),
+                None => pcm.to_vec(),
+            },
+            Err(_) => pcm.to_vec(),
+        }
     }
 
     /// v0.2 · 流式消费：拉走当前累积样本，重采样到 16kHz mono，返回。
@@ -143,7 +181,7 @@ impl Recorder {
             Err(_) => return Vec::new(),
         };
         if pcm.is_empty() { return pcm; }
-        resample_to_16k(&pcm, self.source_rate)
+        self.resample_chunk(&pcm, false)
     }
 
     /// v0.2 · streaming 模式下停止录音并 drain 最后一批样本（已 resample）。
@@ -155,13 +193,14 @@ impl Recorder {
         }
         // After join the audio thread has finished writing; safe to drain.
         let pcm = match self.samples_buf.lock() {
-            Ok(g) => g.clone(),
+            Ok(mut g) => std::mem::take(&mut *g),
             Err(_) => Vec::new(),
         };
         // Drop unread samples_rx (audio thread may have queued a final batch
         // that we don't need — we already drained the shared buffer).
         let _ = self.samples_rx.try_recv();
-        Ok(resample_to_16k(&pcm, self.source_rate))
+        // flush=true：冲掉重采样器滤波器尾部，拿到最后这段完整的 16k。
+        Ok(self.resample_chunk(&pcm, true))
     }
 
     // stop_and_take removed in v0.3 — callers migrated to stop_drain_remaining_16k.
@@ -187,18 +226,3 @@ fn append_mono<S, F: Fn(&S) -> f32>(
     }
 }
 
-fn resample_to_16k(input: &[f32], src_rate: u32) -> Vec<f32> {
-    if src_rate == WHISPER_SR {
-        return input.to_vec();
-    }
-    let ratio = src_rate as f64 / WHISPER_SR as f64;
-    let n_out = (input.len() as f64 / ratio).round() as usize;
-    let mut out = Vec::with_capacity(n_out);
-    for i in 0..n_out {
-        let idx = (i as f64 * ratio) as usize;
-        if idx < input.len() {
-            out.push(input[idx]);
-        }
-    }
-    out
-}
