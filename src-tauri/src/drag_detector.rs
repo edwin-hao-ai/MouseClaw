@@ -95,13 +95,16 @@ mod imp {
         let mouse_mask: NSUInteger = msg_send![class!(NSEvent), pressedMouseButtons];
         let left_down = (mouse_mask & 1) != 0;
 
-        let pb_has_file = has_file_url(pb);
+        // v0.4 fix (2026-05-20)：只在拖的是**支持的文件类型**时才唤桌宠。
+        // 用户反馈：拖文件是高频操作，多数时候并不想喂桌宠 —— 不该一拖就扑过来。
+        // 读出真实文件路径，任一是 feed 支持类型（非 Reject）才触发。
+        let pb_has_supported = pasteboard_has_supported_file(pb);
 
-        if count != prev && left_down && pb_has_file {
-            // 新 drag session，是文件 drag，鼠标还按着 → drag started
+        if count != prev && left_down && pb_has_supported {
+            // 新 drag session，是支持类型的文件 drag，鼠标还按着 → drag started
             if !DRAG_ENTER_SENT.swap(true, Ordering::SeqCst) {
                 println!(
-                    "[drag-detector] 🐕 file drag started (pb changeCount {prev} → {count}) → run to greet"
+                    "[drag-detector] 🐕 supported-file drag started (pb changeCount {prev} → {count}) → approach"
                 );
                 if let Some((app, state)) = APP_REF.lock().unwrap().clone() {
                     crate::feed_flow::on_drag_enter(&app, &state);
@@ -123,7 +126,35 @@ mod imp {
         let _: () = msg_send![pool, drain];
     }
 
-    /// drag pasteboard 是否包含 file URL UTI
+    /// drag pasteboard 是否含**支持类型**的文件（feed::classify != Reject）。
+    /// 先快速判 file-url 类型，再读出真实路径逐个 classify。
+    /// 任一支持即 true；全不支持 / 读不到路径 → false（不唤桌宠）。
+    unsafe fn pasteboard_has_supported_file(pb: id) -> bool {
+        // 1. 快筛：连 file-url 类型都没有，直接 false（文本 / 网址 drag）
+        if !has_file_url(pb) { return false; }
+        // 2. 读 NSURL 列表
+        let nsurl_class: id = msg_send![class!(NSURL), class];
+        let classes: id = msg_send![class!(NSArray), arrayWithObject: nsurl_class];
+        let urls: id = msg_send![pb, readObjectsForClasses: classes options: nil];
+        if urls == nil { return false; }
+        let n: NSUInteger = msg_send![urls, count];
+        for i in 0..n {
+            let url: id = msg_send![urls, objectAtIndex: i];
+            if url == nil { continue; }
+            let path_id: id = msg_send![url, path];
+            if path_id == nil { continue; }
+            let cstr: *const std::os::raw::c_char = msg_send![path_id, UTF8String];
+            if cstr.is_null() { continue; }
+            let path_str = std::ffi::CStr::from_ptr(cstr).to_string_lossy().into_owned();
+            let kind = crate::feed::classify(std::path::Path::new(&path_str));
+            if kind != crate::feed::FeedKind::Reject {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// drag pasteboard 是否包含 file URL UTI（快筛）
     unsafe fn has_file_url(pb: id) -> bool {
         let types: id = msg_send![pb, types];
         if types == nil { return false; }

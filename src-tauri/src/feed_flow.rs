@@ -359,8 +359,35 @@ async fn run_to_cursor_then_follow(app: AppHandle, state: Arc<AppState>) {
 
     if let Some((cx, cy)) = target_logical {
         let scale = scale.max(0.5);
-        let tx = cx - (ww / scale) / 2.0;
-        let ty = cy - (wh / scale) + 32.0; // 同 show_mouse 的偏移（窗口下沿距光标 32px）
+        let ww_l = ww / scale;
+        let wh_l = wh / scale;
+        // v0.4 fix (2026-05-20)：桌宠**不再贴到光标**，停在离光标 KEEP_DISTANCE 的地方。
+        // 用户反馈：之前桌宠扑得太近、还紧跟随，"文件必须喂给它才罢休"。多数拖文件
+        // 场景用户根本不想喂。改成：从桌宠 home 方向接近、停在光标侧旁 ~120px，
+        // 用户真想喂只需再拖一点点到桌宠身上（mouse 窗口 hit-box 触发 drop）。
+        const KEEP_DISTANCE: f64 = 120.0;
+        // 桌宠视觉中心（窗口底部居中，距底 ~40px）
+        let pet_half_from_bottom = 40.0;
+        let start_cx = start_logical.0 + ww_l / 2.0;
+        let start_cy = start_logical.1 + wh_l - pet_half_from_bottom;
+        // 方向：从光标指回桌宠起点（让它从"家"那侧靠近，不穿过光标）
+        let mut dir_x = start_cx - cx;
+        let mut dir_y = start_cy - cy;
+        let dist = (dir_x * dir_x + dir_y * dir_y).sqrt();
+        if dist < 1.0 {
+            // 起点几乎重合（罕见）→ 默认停在光标正下方一点
+            dir_x = 0.0;
+            dir_y = 1.0;
+        } else {
+            dir_x /= dist;
+            dir_y /= dist;
+        }
+        // 目标桌宠中心 = 光标 + 单位方向 × KEEP_DISTANCE
+        let pet_target_cx = cx + dir_x * KEEP_DISTANCE;
+        let pet_target_cy = cy + dir_y * KEEP_DISTANCE;
+        // 转成窗口左上角坐标
+        let tx = pet_target_cx - ww_l / 2.0;
+        let ty = pet_target_cy - (wh_l - pet_half_from_bottom);
         for i in 1..=frames {
             if !state.feed_drag_active.load(Ordering::SeqCst) {
                 return; // 用户中途 leave / drop
@@ -380,11 +407,12 @@ async fn run_to_cursor_then_follow(app: AppHandle, state: Arc<AppState>) {
         }
     }
 
-    // 第二阶段：把控制权交给 cursor_follow（30fps lag-follow）
-    // overlay.rs::emit_view 已经为 FeedWaiting 不开 follow，所以这里手动开。
-    if state.feed_drag_active.load(Ordering::SeqCst) {
-        crate::cursor_follow::enable(&state);
-    }
+    // v0.4 fix (2026-05-20)：**不再开 cursor_follow**。
+    // 之前跑到位后开 30fps 紧跟随，桌宠死死黏着光标 → 用户报"文件必须喂给它
+    // 才罢休"。现在桌宠跑到光标侧旁 ~120px 就停下静候（FeedWaiting 张嘴动画
+    // 继续）。用户真想喂只需再拖一点到桌宠身上触发 mouse 窗口的 drop hit-box；
+    // 不想喂就正常拖走、松手 → drag-detector 检测到 mouseUp → on_drag_leave
+    // 把桌宠送回 anchor。保证"拖文件 ≠ 被桌宠纠缠"。
 }
 
 /// 用户按 Esc：取消正在进行的 feed flow（feed-waiting 期间 / feed-listening 期间都管）。
