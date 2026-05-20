@@ -216,24 +216,27 @@ export default function App() {
     if (view.kind !== "idle" && reactive) setReactive(null);
   }, [view.kind, reactive]);
 
-  // v0.4+ · 撞墙回弹 —— Rust 在 overlay 窗口被屏幕边 clamp 顶住时 emit edge-bonk{dir}。
-  // 桌宠精灵朝那面墙挤压 + 回弹一下（纯 CSS transform，不动窗口）。480ms 后清掉以便再触发。
-  const [bonkDir, setBonkDir] = useState<"left" | "right" | "top" | "bottom" | null>(null);
+  // v0.4+ · 撞墙回弹 —— 桌宠精灵朝那面墙挤压 + 回弹一下（纯 CSS transform，不动窗口）。
+  // 两个触发源共用：① Rust emit edge-bonk{dir}（listening 跟随 / resize 被屏幕边顶住）；
+  //   ② 手动拖动桌宠撞到显示器边（前端 clamp，见 handlePetPointerMove）。
+  type BonkDir = "left" | "right" | "top" | "bottom";
+  const [bonkDir, setBonkDir] = useState<BonkDir | null>(null);
   const bonkClearRef = useRef<number | undefined>(undefined);
+  const triggerBonk = useCallback((dir: BonkDir) => {
+    if (bonkClearRef.current) window.clearTimeout(bonkClearRef.current);
+    // 先清空再设，强制 React 重挂 class → 同方向连撞也能重播动画
+    setBonkDir(null);
+    requestAnimationFrame(() => setBonkDir(dir));
+    bonkClearRef.current = window.setTimeout(() => setBonkDir(null), 480);
+  }, []);
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     try {
-      const p = listen<{ dir: "left" | "right" | "top" | "bottom" }>("edge-bonk", (e) => {
-        if (bonkClearRef.current) window.clearTimeout(bonkClearRef.current);
-        // 先清空再设，强制 React 重挂 class → 同方向连撞也能重播动画
-        setBonkDir(null);
-        requestAnimationFrame(() => setBonkDir(e.payload.dir));
-        bonkClearRef.current = window.setTimeout(() => setBonkDir(null), 480);
-      });
+      const p = listen<{ dir: BonkDir }>("edge-bonk", (e) => triggerBonk(e.payload.dir));
       p.then((fn) => { unlisten = fn; }).catch(() => {});
     } catch {/* dev mode */}
     return () => { if (unlisten) unlisten(); if (bonkClearRef.current) window.clearTimeout(bonkClearRef.current); };
-  }, []);
+  }, [triggerBonk]);
 
   // v0.4 · 后台任务忙碌计数 —— 任何 reactive action 在跑时 > 0。
   // 桌宠据此显示忙碌指示（跨任何视图可见），用户永远知道"还在处理"。
@@ -506,9 +509,14 @@ export default function App() {
     pointerX: number; pointerY: number;
     winX: number; winY: number;
     scale: number;
+    // v0.4+ · 拖动撞墙回弹用：显示器可放窗口范围（逻辑 px）。窗口尺寸 + 桌宠 inset
+    // 在 move 里实时测（拖动期间窗口会被扩到 320，桌宠只占中间一小块）。
+    monX: number; monY: number; monW: number; monH: number;
   } | null>(null);
   const draggingRef = useRef(false);
   const draggedRef = useRef(false);
+  // v0.4+ · 拖动时当前正顶着哪面墙 —— 防贴墙连发，只在"首次接触"弹一次。
+  const dragWallRef = useRef<BonkDir | null>(null);
   const DRAG_THRESHOLD = 5;
 
   const handlePetPointerDown = useCallback(async (e: React.PointerEvent) => {
@@ -519,18 +527,27 @@ export default function App() {
     // 移出 hit-box 时会切到穿透 → 拖动断裂、桌宠定在半路不动。
     invoke("set_overlay_has_ui", { hasUi: true }).catch(() => {});
     try {
-      const { getCurrentWindow } = await import("@tauri-apps/api/window");
-      const pos = await getCurrentWindow().outerPosition();
-      const scale = await getCurrentWindow().scaleFactor();
+      const { getCurrentWindow, currentMonitor } = await import("@tauri-apps/api/window");
+      const win = getCurrentWindow();
+      const pos = await win.outerPosition();
+      const scale = await win.scaleFactor();
+      // v0.4+ · 抓当前显示器范围（物理 → 逻辑），拖动撞边时 clamp 用。
+      const mon = await currentMonitor().catch(() => null);
+      const msf = mon?.scaleFactor ?? scale;
       dragStartRef.current = {
         pointerX: e.screenX,
         pointerY: e.screenY,
         winX: pos.x / scale,
         winY: pos.y / scale,
         scale,
+        monX: mon ? mon.position.x / msf : 0,
+        monY: mon ? mon.position.y / msf : 0,
+        monW: mon ? mon.size.width / msf : Number.POSITIVE_INFINITY,
+        monH: mon ? mon.size.height / msf : Number.POSITIVE_INFINITY,
       };
       draggingRef.current = false;
       draggedRef.current = false;
+      dragWallRef.current = null;
       (e.target as Element).setPointerCapture?.(e.pointerId);
     } catch (err) {
       console.debug("pointerdown init skipped:", err);
@@ -548,16 +565,45 @@ export default function App() {
       draggingRef.current = true;
       draggedRef.current = true;
     }
-    // dragging 态：移动窗口跟着鼠标走
+    // dragging 态：移动窗口跟着鼠标走 —— clamp **桌宠本体**留在显示器内（窗口四周
+    // 透明边距可越界出屏），撞边回弹。窗口拖动时被扩到 320，桌宠只占中间一小块，
+    // 所以必须按桌宠实际渲染 rect 算 inset，而不是按整窗 —— 否则桌宠离屏幕边还差
+    // 一大截就被挡住（用户反馈）。
     try {
       const { getCurrentWindow, LogicalPosition } = await import("@tauri-apps/api/window");
-      const newX = start.winX + dx;
-      const newY = start.winY + dy;
-      await getCurrentWindow().setPosition(new LogicalPosition(newX, newY));
+      const wantX = start.winX + dx;
+      const wantY = start.winY + dy;
+      // 窗口逻辑尺寸 + 桌宠在窗口内的 inset（CSS px = 逻辑 px），实时测。
+      const winW = window.innerWidth;
+      const winH = window.innerHeight;
+      let insetL = 0, insetR = 0, insetT = 0, insetB = 0;
+      const petEl = petStageRef.current;
+      if (petEl) {
+        const r = petEl.getBoundingClientRect();
+        insetL = r.left; insetR = winW - r.right;
+        insetT = r.top;  insetB = winH - r.bottom;
+      }
+      // 桌宠本体留在屏内 → 允许窗口越界出屏（透明边距）。
+      const loX = start.monX - insetL;
+      const hiX = Math.max(loX, start.monX + start.monW - winW + insetR);
+      const loY = start.monY - insetT;
+      const hiY = Math.max(loY, start.monY + start.monH - winH + insetB);
+      const cx = Math.min(hiX, Math.max(loX, wantX));
+      const cy = Math.min(hiY, Math.max(loY, wantY));
+      // 撞了哪面墙（被往里推 = 撞那面）
+      let wall: BonkDir | null = null;
+      if (cx > wantX + 0.5) wall = "left";
+      else if (cx < wantX - 0.5) wall = "right";
+      else if (cy > wantY + 0.5) wall = "top";
+      else if (cy < wantY - 0.5) wall = "bottom";
+      // 只在"首次接触"弹一次；离开墙后再撞才会重弹
+      if (wall && wall !== dragWallRef.current) triggerBonk(wall);
+      dragWallRef.current = wall;
+      await getCurrentWindow().setPosition(new LogicalPosition(cx, cy));
     } catch (err) {
       console.debug("setPosition:", err);
     }
-  }, []);
+  }, [triggerBonk]);
 
   const handlePetPointerUp = useCallback(async (e: React.PointerEvent) => {
     if (!dragStartRef.current) return;
@@ -565,6 +611,7 @@ export default function App() {
     const wasDragged = draggingRef.current;
     dragStartRef.current = null;
     draggingRef.current = false;
+    dragWallRef.current = null;
     // v0.3.12 · 拖动结束 —— 放开 has_ui 锁定。下一帧 useEffect 会按 idle 状态自动恢复
     // 正确值（idle 静默 = false / 有气泡 = true）。
     if (view.kind === "idle") {
