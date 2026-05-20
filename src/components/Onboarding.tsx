@@ -1,19 +1,21 @@
 /**
- * Eight-step Onboarding (v0.4.x):
+ * Seven-step Onboarding (v0.4.x):
  *   Step 1 — pick a global shortcut (AI summon)
  *   Step 2 — pick an AI backend
  *   Step 3 — pick a desktop pet skin
  *   Step 4 — pick voice IME trigger key
  *   Step 5 — pick pet anchor / where the pet lives
  *   Step 6 — grant required permissions
- *   Step 7 — install Browser Use + Office Use CLIs (NEW v0.4.x)
- *   Step 8 — three "Try this" tutorial cards (NEW v0.4.x)
+ *   Step 7 — enable browser automation (CDP / agent-browser) + Office CLI · 最后一步
+ *
+ * v0.4.x（2026-05-21）：移除了原 Step 8「试这条」三卡 demo —— 三个 demo 都依赖
+ * 外部前置条件（浏览器自动化已启用 / officecli + 真实文件 / 外部输入框），onboarding
+ * 当下未必满足，演示常常落空、误导用户。重点改为「保证 CLI 装好可用」，少一步更顺。
  */
 import { useState, useEffect, useCallback, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { PixelMouse } from "./PixelMouse";
 import { OnboardingInstall } from "./OnboardingInstall";
-import { OnboardingTutorial } from "./OnboardingTutorial";
 import type { BackendChoice, SkinId, PetAnchor } from "../types";
 import { SKINS, DEFAULT_SKIN } from "../skins";
 import { useT } from "../i18n";
@@ -109,7 +111,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   const t = useT();
   const OPTIONS = buildOptions(t);
   const PERMISSIONS = buildPermissions(t);
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6 | 7>(1);
   const [selected, setSelected] = useState<ShortcutChoice>("hold-option");
   const [backend, setBackend] = useState<BackendChoice>("claude-cli");
   const [skin, setSkin] = useState<SkinId>(DEFAULT_SKIN);
@@ -485,19 +487,11 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     );
   }
 
-  // ── Step 7: 装 Browser Use + Office Use CLI (v0.4.x) ─────────────────────
+  // ── Step 7: 浏览器自动化 + Office CLI（最后一步）(v0.4.x) ─────────────────
+  // 完成 / 跳过都直接结束 onboarding（restart）—— 不再有 Step 8 demo。
   if (step === 7) {
-    return <OnboardingInstall onNext={() => setStep(8)} />;
-  }
-
-  // ── Step 8: learn-by-doing 三卡教程 (v0.4.x) ──────────────────────────────
-  if (step === 8) {
-    return (
-      <OnboardingTutorial
-        onDone={() => onComplete(selected, backend, skin, voiceImeTrigger, petAnchor, voiceLang)}
-        onSkip={() => onComplete(selected, backend, skin, voiceImeTrigger, petAnchor, voiceLang)}
-      />
-    );
+    return <OnboardingInstall
+      onNext={() => onComplete(selected, backend, skin, voiceImeTrigger, petAnchor, voiceLang)} />;
   }
 
   // ── Step 6: 权限申请 ──────────────────────────────────────────────────────

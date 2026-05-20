@@ -50,17 +50,23 @@ grep_f "OnboardingInstall" src/components/Onboarding.tsx "Step 7 拼进 Onboardi
 grep_f "step === 7" src/components/Onboarding.tsx "Step 7 分支"
 grep_f 'setStep(7)' src/components/Onboarding.tsx "Step 6 跳 Step 7"
 grep_f "install_cli" src/components/OnboardingInstall.tsx "OnboardingInstall 调 install_cli"
-grep_f "npm i -g @vercel/agent-browser" src/components/OnboardingInstall.tsx "命令全文可见"
+grep_f "npm i -g agent-browser" src/components/OnboardingInstall.tsx "命令全文可见（正确包名 agent-browser）"
+grep_f "enable_browser_automation" src/components/OnboardingInstall.tsx "CDP「用我的 Chrome」选项接 enable_browser_automation"
 grep_f "raw.githubusercontent.com/iOfficeAI/OfficeCLI" src/components/OnboardingInstall.tsx "OfficeCLI 命令全文可见"
 
 echo
-echo "── Block 4 · Onboarding tutorial step ───────────────────────────────────"
-grep_f "OnboardingTutorial" src/components/Onboarding.tsx "Step 8 拼进 Onboarding"
-grep_f "step === 8" src/components/Onboarding.tsx "Step 8 分支"
-grep_f "submit_query" src/components/OnboardingTutorial.tsx "Tutorial 真跑 pipeline"
-grep_f "搜一下今天北京天气" src/components/OnboardingTutorial.tsx "Card A 文本（浏览器自动化）"
-grep_f "总结这个表" src/components/OnboardingTutorial.tsx "Card B 文本（Office）"
-grep_f "写一句产品介绍" src/components/OnboardingTutorial.tsx "Card C 文本（Mode B）"
+echo "── Block 4 · 教程 demo 步已移除（2026-05-21）· Step 7 是最后一步 ─────────"
+# v0.4.x：移除了 Step 8「试这条」三卡 demo（前置条件常不满足、易误导）。
+grep_absent() {
+  if grep -q -- "$1" "$2" 2>/dev/null; then echo "  ❌ 不该再出现: $3 (pat=$1 in $2)"; FAIL=$((FAIL+1));
+  else echo "  ✅ 已移除: $3"; PASS=$((PASS+1)); fi
+}
+grep_absent "OnboardingTutorial" src/components/Onboarding.tsx "Onboarding 不再引用 OnboardingTutorial"
+grep_absent "step === 8" src/components/Onboarding.tsx "无 Step 8 分支"
+[ ! -f src/components/OnboardingTutorial.tsx ] \
+  && { echo "  ✅ OnboardingTutorial.tsx 已删除"; PASS=$((PASS+1)); } \
+  || { echo "  ❌ OnboardingTutorial.tsx 仍存在"; FAIL=$((FAIL+1)); }
+grep_f "onComplete(selected" src/components/Onboarding.tsx "Step 7 完成直接 onComplete（最后一步）"
 
 echo
 echo "── 老用户升级发现性（upgrade hint nudge）────────────────────────────"
@@ -78,7 +84,7 @@ echo
 echo "── i18n 完整性（zh + en + types）─────────────────────────────────────"
 for k in \
   "status.row.officecli.title" "status.install.do_it" "status.install.retry" \
-  "celebrate.title" "tutorial.cardA.title" "onbinst.title" "onbinst.no_node"
+  "celebrate.title" "onbinst.title" "onbinst.no_node" "onbinst.cdp_title"
 do
   grep_f "$k" src/i18n/types.ts "$k 在 types.ts"
   grep_f "$k" src/i18n/zh.ts    "$k 在 zh.ts"

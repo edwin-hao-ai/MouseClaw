@@ -208,14 +208,15 @@ pub fn save_pet_custom_position(x: f64, y: f64) -> Result<(), String> {
 /// 把 mouse overlay 窗口的 hit-box 从"右下角桌宠区"扩到"整个窗口"，避免气泡左半部分点不到。
 /// 默认 idle 静默时 = false（右下 110×110 hit-box），其余区域穿透到底层 app。
 #[tauri::command]
-pub fn set_overlay_has_ui(has_ui: bool, app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+pub fn set_overlay_has_ui(has_ui: bool, _app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    // 这个命令**只**切 passthrough hit-box 布尔（whole-window vs 右下角小框）。
+    //
+    // v0.4+ 漂移根治（2026-05-21）：之前这里还会 expand_to_full/shrink_to_compact 改窗口
+    // 尺寸。但 idle 视图下尺寸已经由 useAdaptiveOverlay → set_overlay_content_size 全权管理，
+    // 两条路同时 reposition → nudge 出现/「稍后」消失时桌宠"跳两下"漂移（用户多次报）。
+    // 现在 idle 尺寸唯一来源 = 自适应 hook；本命令不再碰尺寸，只管 hit-box。
+    // 见 CLAUDE.md「前后端不要同时管同一个窗口尺寸」。
     state.overlay_has_ui.store(has_ui, std::sync::atomic::Ordering::Relaxed);
-    // v0.3.12 fix3 · React-only UI（下载提示 / petMenu / nudge / drag）也要触发窗口尺寸切换
-    if has_ui {
-        crate::overlay_size::expand_to_full(&app);
-    } else {
-        crate::overlay_size::shrink_to_compact(&app);
-    }
     Ok(())
 }
 
@@ -225,10 +226,14 @@ pub fn set_overlay_has_ui(has_ui: bool, app: AppHandle, state: State<'_, Arc<App
 /// 见 CLAUDE.md "Overlay 窗口尺寸：用内容测量，别拍数字"。
 ///
 /// 行为：keep pet 视觉锚点（底部中央那点）不变 → 改窗口 size + position。
-/// has_ui 默认按 true 处理（既然在测尺寸，说明肯定有 UI 要显示）。
+///
+/// v0.4+ 漂移根治（2026-05-21）：**不再**在这里 store(has_ui=true)。has_ui（passthrough
+/// hit-box 布尔）唯一来源 = 前端 set_overlay_has_ui（它才知道有没有可交互 UI vs 只有桌宠）。
+/// 之前这里强制 true → 「稍后」消失时本 hook（测桌宠 88px）跑在前端 set_overlay_has_ui(false)
+/// 之后，又把布尔设回 true → 整窗一直接收点击、盖住底层 app + 尺寸/hit-box 两路打架。
+/// 现在职责分离：本命令只管尺寸，前端 effect 只管 hit-box。
 #[tauri::command]
-pub fn set_overlay_content_size(width: f64, height: f64, app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    state.overlay_has_ui.store(true, std::sync::atomic::Ordering::Relaxed);
+pub fn set_overlay_content_size(width: f64, height: f64, app: AppHandle, _state: State<'_, Arc<AppState>>) -> Result<(), String> {
     crate::overlay_size::set_to_explicit(&app, width, height);
     Ok(())
 }
@@ -691,7 +696,10 @@ pub async fn voice_confirm_hold(
 /// 模型下完后由 DownloaderView 自动调；PetMenu「📖 教我用」也调它强制重启。
 #[tauri::command]
 pub fn tour_start(app: AppHandle) -> Result<(), String> {
-    crate::overlay::show_mouse(&app);
+    // v0.4.x fix · 用 _at_anchor（和能正常点击的 nudge 同一条路径），
+    // 不用 show_mouse —— 后者会把窗口跳到光标 + 启用 cursor_follow，
+    // 是 AI 召唤专用。tour 是静态教程气泡，应该稳停在锚点。
+    crate::overlay::show_mouse_at_anchor(&app);
     crate::overlay::emit_view(&app, &crate::events::ViewKind::TourStep { step: 1 });
     Ok(())
 }
@@ -699,6 +707,7 @@ pub fn tour_start(app: AppHandle) -> Result<(), String> {
 /// 推进到下一步 —— 前端按用户操作（[好啊] / [已经打开了] / 完成对话）调用。
 #[tauri::command]
 pub fn tour_advance(step: u32, app: AppHandle) -> Result<(), String> {
+    println!("[tour] advance → step={step} (click reached Rust ✓)");
     if step >= 5 {
         // 完成 —— 持久化 + 5 秒后自动收起
         let mut cfg = crate::config::Config::load();
@@ -719,6 +728,7 @@ pub fn tour_advance(step: u32, app: AppHandle) -> Result<(), String> {
 /// 跳过引导 —— [下次再说] / [退出引导] / Esc 都走这条
 #[tauri::command]
 pub fn tour_skip(app: AppHandle) -> Result<(), String> {
+    println!("[tour] skip (click reached Rust ✓)");
     let mut cfg = crate::config::Config::load();
     cfg.firstrun_tour_done = true;
     let _ = cfg.save();

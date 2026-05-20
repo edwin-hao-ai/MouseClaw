@@ -6,6 +6,40 @@ versioning follows [SemVer](https://semver.org/).
 
 ---
 
+## [0.4.1] · 2026-05-21
+
+一波打磨：根治提醒后桌宠漂移、修好 agent-browser 安装、浏览器能力改成"优先用你自己的
+Chrome"、中英混合识别更准、onboarding 精简一步。安装包仍 12 MB。
+Polish pass: kill the post-nudge pet drift, fix agent-browser install, make
+browser automation prefer *your own* Chrome, sharper mixed zh/en recognition,
+one fewer onboarding step. Still a 12 MB DMG.
+
+### Fixed
+- **🎓 首次引导 tour 的按钮能点了 / First-run tour buttons are clickable** —— tour 气泡的
+  「好啊 / 下次再说」点不动：helper 组件定义在渲染函数体内，桌宠眼球追鼠标导致频繁重渲染时
+  按钮被反复 remount，点击落空。提到模块级后引用稳定。The tour bubble's buttons were
+  remounting on every re-render (inline component defs) — hoisted them to module scope.
+- **🎯 提醒「稍后」后桌宠不再漂移 / No more pet drift after a reminder** —— 喝水/睡觉等
+  提醒气泡点「稍后」收起时，桌宠会一点点往斜上方挪。根因是 idle 视图下"前端 has_ui 改尺寸"
+  和"自适应测量改尺寸"两条路同时 reposition + 锚点取整偏置。改为自适应测量单一管尺寸 +
+  锚点 round 取整。Dismissing a reminder no longer nudges the pet diagonally upward.
+- **🌐 agent-browser 装得上了 / agent-browser install fixed** —— 之前装的是不存在的
+  `@vercel/agent-browser`（npm 404 → exit 1）。修正为正确包名 `agent-browser` + 自动备好浏览器。
+  Was installing a non-existent package; now uses the correct `agent-browser`.
+- **🗣 中英混合识别更准 / Sharper mixed zh/en speech** —— 抗混叠重采样修识别率根因 +
+  英文大小写还原 + 品牌词表，混说句子里的英文不再全大写。Anti-aliasing resample +
+  English casing restore + brand vocab.
+
+### Changed
+- **✨ 浏览器自动化：优先用你自己的 Chrome / Browser automation prefers your own Chrome** ——
+  onboarding 浏览器步改成三选一，把 CDP「用我的 Chrome」（复用本机 Chrome、带你的登录/cookie、
+  不下载）设为默认推荐项，agent-browser（独立 headless）降为进阶选项，另加"暂不启用"。
+  The onboarding browser step is now a 3-way choice with "Use my Chrome" (CDP, your
+  logins/cookies, no download) as the recommended default.
+- **🪜 onboarding 少一步 / One fewer onboarding step** —— 移除原"试这条"三卡 demo（依赖外部
+  前置条件、常常落空误导用户），重点改为确保浏览器/Office CLI 装好可用。8 步 → 7 步。
+  Removed the "try this" demo step; focus on getting the CLIs installed.
+
 ## [0.4.0] · 2026-05-20
 
 桌宠从"会说话的工具"长成"有性格的伙伴"：陪伴向动画全集、撞墙回弹、Reactive 反应、

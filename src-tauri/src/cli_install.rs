@@ -3,7 +3,9 @@
 //! 设计目标见 docs/prototypes/auto-install-cli-20260520.html 八态拍板。
 //!
 //! 安装路径（两个 CLI）：
-//!   - `agent-browser`：`npm i -g @vercel/agent-browser` —— 依赖本机有 Node + npm
+//!   - `agent-browser`：`npm i -g agent-browser` 然后 `agent-browser install`（首次下/检测浏览器）
+//!                      —— 依赖本机有 Node + npm。⚠️ 包名是 `agent-browser`，**不是**
+//!                      `@vercel/agent-browser`（后者 npm 上不存在 → E404 → exit 1）。
 //!   - `officecli`：    `curl -fsSL https://raw.githubusercontent.com/iOfficeAI/OfficeCLI/main/install.sh | bash`
 //!                      —— 单二进制，**不**依赖 Node
 //!
@@ -164,16 +166,25 @@ async fn run(app: AppHandle, target: InstallTarget) {
     }
 }
 
-/// 装 agent-browser —— `npm i -g @vercel/agent-browser`。
+/// 装 agent-browser —— 两步：
+///   1. `npm i -g agent-browser`（装 CLI 本体）
+///   2. `agent-browser install`（首次下 Chrome for Testing / 检测已有 Chrome·Brave·Playwright）
+///
+/// ⚠️ 包名是 `agent-browser`，**不是** `@vercel/agent-browser`（后者 npm 上不存在，
+///    会 E404 → exit 1，这正是 v0.4.0 用户实测装不上的根因）。
+///
 /// 没有 npm 直接报 NoNpm，让前端引导到 nodejs.org（不假装能装 Node）。
+/// 第 2 步 best-effort：CLI 本体已装好就算成功，浏览器没就绪也不整体判失败
+/// （agent-browser 运行时还能自动探测系统 Chrome），只把日志透给用户。
 async fn run_agent_browser(app: &AppHandle) -> Result<(), InstallError> {
     let npm = crate::claude_cli::find_binary("npm").map_err(|_| InstallError {
         code: "no-npm",
         message: "本机没找到 npm。先装 Node.js（nodejs.org），装完老鼠自动检测。".into(),
     })?;
 
+    // ── 第 1 步：装 CLI 本体 ──
     let mut child = Command::new(&npm)
-        .args(["install", "-g", "@vercel/agent-browser"])
+        .args(["install", "-g", "agent-browser"])
         .env("PATH", crate::claude_cli::expanded_path())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -190,10 +201,60 @@ async fn run_agent_browser(app: &AppHandle) -> Result<(), InstallError> {
         message: format!("等待 npm 退出失败：{e}"),
     })?;
 
-    if status.success() {
-        Ok(())
-    } else {
-        Err(classify_failure("agent-browser", status.code()))
+    if !status.success() {
+        return Err(classify_failure("agent-browser", status.code()));
+    }
+
+    // ── 第 2 步：备好浏览器引擎（best-effort）──
+    provision_agent_browser_browser(app).await;
+    Ok(())
+}
+
+/// `agent-browser install` —— 首次下 Chrome for Testing（已有 Chrome/Brave/Playwright 会自动探测）。
+/// best-effort：失败不让整体安装判失败，只 emit 一条日志说明（CLI 本体已就绪，
+/// 运行时仍可能探测到系统浏览器）。找不到刚装的二进制也只记日志。
+async fn provision_agent_browser_browser(app: &AppHandle) {
+    let Ok(bin) = crate::claude_cli::find_binary("agent-browser") else {
+        emit(app, InstallEvent::Log {
+            target: "agent-browser".into(),
+            line: "（已装 CLI；未能定位二进制跑 `agent-browser install`，运行时将自动探测系统浏览器）".into(),
+        });
+        return;
+    };
+
+    emit(app, InstallEvent::Log {
+        target: "agent-browser".into(),
+        line: "→ agent-browser install（备好浏览器引擎，首次可能下载 Chrome for Testing）".into(),
+    });
+
+    let spawned = Command::new(&bin)
+        .arg("install")
+        .env("PATH", crate::claude_cli::expanded_path())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn();
+
+    let mut child = match spawned {
+        Ok(c) => c,
+        Err(e) => {
+            emit(app, InstallEvent::Log {
+                target: "agent-browser".into(),
+                line: format!("（`agent-browser install` 启动失败：{e}；运行时将自动探测系统浏览器）"),
+            });
+            return;
+        }
+    };
+
+    let _ = stream_lines(app, "agent-browser", &mut child).await;
+    match child.wait().await {
+        Ok(s) if s.success() => emit(app, InstallEvent::Log {
+            target: "agent-browser".into(),
+            line: "✓ 浏览器引擎已就绪".into(),
+        }),
+        _ => emit(app, InstallEvent::Log {
+            target: "agent-browser".into(),
+            line: "（浏览器引擎未就绪；运行时将自动探测系统 Chrome/Brave，或之后在终端跑 `agent-browser install`）".into(),
+        }),
     }
 }
 
@@ -272,7 +333,7 @@ fn classify_failure(target: &str, exit_code: Option<i32>) -> InstallError {
         (_, "permission") =>
             "权限不足 —— 试试在终端跑 `sudo` 版命令，或装到用户目录 (~/.local/bin)。".into(),
         ("agent-browser", _) =>
-            format!("npm 安装失败（exit {:?}）。可以打开终端手动跑：npm i -g @vercel/agent-browser",
+            format!("npm 安装失败（exit {:?}）。可以打开终端手动跑：npm i -g agent-browser && agent-browser install",
                     exit_code),
         ("officecli", _) =>
             format!("OfficeCLI 安装失败（exit {:?}）。可以去 GitHub releases 直接下载二进制。",

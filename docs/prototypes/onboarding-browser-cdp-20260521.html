@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Onboarding 浏览器能力 · CDP「用我的 Chrome」一等选项 · prototype 20260521</title>
+<style>
+  :root{
+    --bg:#0e1422; --panel:#161d2c;
+    --card:rgba(255,255,255,0.04); --card-border:rgba(255,255,255,0.10);
+    --ink:#f5f5f7; --dim:#a1a1a8; --pink:#ff6b9d; --pink-soft:#ff9bb8;
+    --success:#5cd6a0; --info:#6ec1ff; --mono:ui-monospace,Menlo,monospace;
+    --grad:linear-gradient(135deg,#ff6b9d,#ff9bb8);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#05070d;font:14px/1.5 -apple-system,"PingFang SC",system-ui,sans-serif;color:var(--ink);
+       min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:30px;gap:24px;flex-wrap:wrap}
+  .win{width:680px;background:var(--bg);border-radius:14px;overflow:hidden;
+       box-shadow:0 30px 80px rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.06)}
+  .titlebar{height:40px;display:flex;align-items:center;justify-content:center;position:relative;background:#f4f4f6;color:#2b2622;font-weight:600;font-size:13px}
+  .lights{position:absolute;left:14px;display:flex;gap:8px}
+  .lights i{width:12px;height:12px;border-radius:50%}
+  .lights i:nth-child(1){background:#ff5f57}.lights i:nth-child(2){background:#febc2e}.lights i:nth-child(3){background:#28c840}
+  .body{padding:30px 40px 36px}
+  h1{text-align:center;font-size:24px;font-weight:800;margin:6px 0 6px}
+  .sub{text-align:center;color:var(--dim);font-size:14px;margin:0 0 22px}
+  .group-label{font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em;margin:18px 0 8px}
+
+  /* 选项卡 */
+  .opt{border:1.5px solid var(--card-border);background:var(--card);border-radius:12px;padding:14px 16px;margin-bottom:10px;cursor:pointer;transition:border-color .15s,background .15s;position:relative}
+  .opt:hover{border-color:rgba(255,255,255,.22)}
+  .opt.sel{border-color:var(--pink);background:rgba(255,107,157,.07)}
+  .opt-head{display:flex;align-items:center;gap:10px}
+  .opt-radio{width:18px;height:18px;border-radius:50%;border:2px solid #555c6b;flex:none;display:grid;place-items:center}
+  .opt.sel .opt-radio{border-color:var(--pink)}
+  .opt.sel .opt-radio::after{content:"";width:9px;height:9px;border-radius:50%;background:var(--pink)}
+  .opt-icon{font-size:18px}
+  .opt-title{font-weight:700;font-size:14px}
+  .badge{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;margin-left:6px}
+  .badge-rec{background:rgba(92,214,160,.16);color:var(--success)}
+  .badge-adv{background:rgba(255,255,255,.08);color:var(--dim)}
+  .opt-desc{color:var(--dim);font-size:12.5px;line-height:1.55;margin:8px 0 0 28px}
+  .opt-desc b{color:#dfe4ee;font-weight:600}
+  .tags{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 0 28px}
+  .tag{font-size:11px;padding:2px 8px;border-radius:6px;font-family:var(--mono)}
+  .tag-good{background:rgba(92,214,160,.12);color:var(--success)}
+  .tag-warn{background:rgba(255,168,115,.14);color:#ffa873}
+  .tag-info{background:rgba(110,193,255,.12);color:var(--info)}
+
+  /* 折叠：Chrome 限制说明 */
+  .note{margin:8px 0 0 28px;font-size:11.5px;color:#8a93a6;line-height:1.55;
+        background:rgba(110,193,255,.06);border-left:2px solid var(--info);padding:8px 10px;border-radius:0 6px 6px 0}
+  .off-row{display:flex;align-items:center;gap:10px;border:1px solid var(--card-border);background:var(--card);border-radius:12px;padding:14px 16px}
+  .off-row .check{margin-left:auto}
+
+  .cta{margin-top:22px;width:100%;border:0;padding:15px;border-radius:14px;background:var(--grad);color:#fff;font-weight:700;font-size:15px;cursor:pointer;box-shadow:0 8px 30px rgba(255,107,157,.4)}
+  .cta.secondary{margin-top:10px;background:rgba(255,255,255,.05);color:var(--dim);box-shadow:none;font-weight:600;font-size:14px}
+
+  .sidenote{max-width:380px;color:#8a93a6;font-size:13px;line-height:1.7}
+  .sidenote h2{color:#dfe4ee;font-size:15px;margin:0 0 10px}
+  .sidenote code{background:rgba(255,255,255,.06);padding:1px 6px;border-radius:5px;font-family:var(--mono);font-size:12px}
+  .sidenote li{margin-bottom:8px}
+</style>
+</head>
+<body>
+  <div class="win">
+    <div class="titlebar"><span class="lights"><i></i><i></i><i></i></span>欢迎使用 MouseClaw 🦞</div>
+    <div class="body">
+      <h1>给老鼠装上动手能力</h1>
+      <p class="sub">让老鼠真能操作浏览器和 Office 文件 · 都可跳过，之后随时在托盘里开</p>
+
+      <div class="group-label">🌐 浏览器自动化 —— 选一种</div>
+
+      <div class="opt sel" id="optCdp" onclick="pick('cdp')">
+        <div class="opt-head">
+          <span class="opt-radio"></span>
+          <span class="opt-icon">✨</span>
+          <span class="opt-title">用我的 Chrome</span>
+          <span class="badge badge-rec">推荐</span>
+        </div>
+        <div class="opt-desc">复用你<b>已经装好的 Chrome</b>，老鼠能在带你<b>登录态 / cookie</b> 的页面上干活。</div>
+        <div class="tags">
+          <span class="tag tag-good">不下载</span>
+          <span class="tag tag-good">带你的登录</span>
+          <span class="tag tag-good">最轻量</span>
+        </div>
+        <div class="note">
+          首次会开一个<b>专用调试 profile</b> 的 Chrome 窗口（Chrome 安全规则不允许在你的主窗口开调试端口），
+          在里面把要自动化的网站<b>登录一次</b>，之后 cookie 一直留着、老鼠每次复用。
+        </div>
+      </div>
+
+      <div class="opt" id="optAb" onclick="pick('ab')">
+        <div class="opt-head">
+          <span class="opt-radio"></span>
+          <span class="opt-icon">📦</span>
+          <span class="opt-title">装独立引擎 agent-browser</span>
+          <span class="badge badge-adv">进阶</span>
+        </div>
+        <div class="opt-desc">Vercel Labs 的 headless 引擎，跑一个<b>全新空白</b> Chromium —— 没有你的登录态。</div>
+        <div class="tags">
+          <span class="tag tag-info">npm 全局装</span>
+          <span class="tag tag-warn">要下载浏览器</span>
+          <span class="tag tag-warn">无你的登录</span>
+        </div>
+      </div>
+
+      <div class="opt" id="optNone" onclick="pick('none')">
+        <div class="opt-head">
+          <span class="opt-radio"></span>
+          <span class="opt-icon">🚫</span>
+          <span class="opt-title">暂不启用浏览器自动化</span>
+        </div>
+        <div class="opt-desc">老鼠仍能看截图给你"点哪填什么"的步骤指南，只是不主动替你点。之后随时在托盘开。</div>
+      </div>
+
+      <div class="group-label">📄 Office 文件</div>
+      <div class="off-row">
+        <span class="opt-icon">📄</span>
+        <div style="flex:1">
+          <div class="opt-title" style="font-size:13.5px">读写 Word / Excel / PPT（officecli）</div>
+          <div class="opt-desc" style="margin:2px 0 0">单二进制 · 不用装 Office · 不用登录</div>
+        </div>
+        <label class="check"><input type="checkbox" checked /></label>
+      </div>
+
+      <button class="cta" id="cta">✨ 启用「用我的 Chrome」+ 装 officecli</button>
+      <button class="cta secondary">跳过 · 之后再说</button>
+    </div>
+  </div>
+
+  <div class="sidenote">
+    <h2>这个 prototype 在定什么</h2>
+    <ul>
+      <li><b>把 CDP「用我的 Chrome」升为一等 + 默认推荐项</b>，agent-browser 降为进阶选项，再加一个"暂不启用"。</li>
+      <li>CDP 走已实现的 <code>enable_browser_automation</code>（<code>browser_bridge::enable()</code>）：起 Chrome(调试 profile) + 注册 <code>chrome-devtools-mcp</code>。</li>
+      <li>诚实标注 Chrome 限制：主窗口不能开调试端口，用专用 profile，首次登一次。</li>
+      <li>officecli 保持独立勾选（和浏览器选项无关）。</li>
+    </ul>
+    <p style="margin-top:14px">点三个选项看选中态 + 底部 CTA 文案随之变化。觉得 OK 我就照这个改 OnboardingInstall.tsx。</p>
+  </div>
+
+<script>
+  let choice = 'cdp';
+  const cta = document.getElementById('cta');
+  function pick(c){
+    choice = c;
+    ['cdp','ab','none'].forEach(id=>{
+      document.getElementById('opt'+id.charAt(0).toUpperCase()+id.slice(1)).classList.toggle('sel', id===c);
+    });
+    cta.textContent =
+      c==='cdp'  ? '✨ 启用「用我的 Chrome」+ 装 officecli' :
+      c==='ab'   ? '📦 装 agent-browser + officecli' :
+                   '装 officecli · 浏览器之后再说';
+  }
+  pick('cdp');
+</script>
+</body>
+</html>

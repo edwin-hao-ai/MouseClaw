@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Onboarding 试这条 · 忙碌反馈 + 完成确认 · prototype 20260521</title>
+<style>
+  /* 复用 Onboarding.css 实测 token（dark 主题） */
+  :root{
+    --bg:#0e1422; --panel:#161d2c; --panel2:#1b2436;
+    --card:rgba(255,255,255,0.04); --card-border:rgba(255,255,255,0.10);
+    --ink:#f5f5f7; --dim:#a1a1a8; --pink:#ff6b9d; --pink-soft:#ff9bb8;
+    --success:#5cd6a0; --mono:ui-monospace,Menlo,monospace;
+    --grad:linear-gradient(135deg,#ff6b9d,#ff9bb8);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#05070d;font:14px/1.5 -apple-system,"PingFang SC",system-ui,sans-serif;color:var(--ink);
+       min-height:100vh;display:flex;align-items:center;justify-content:center;padding:30px;gap:24px;flex-wrap:wrap}
+
+  /* ── 模拟 onboarding 窗口 ── */
+  .win{width:680px;background:var(--bg);border-radius:14px;overflow:hidden;
+       box-shadow:0 30px 80px rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.06)}
+  .titlebar{height:40px;display:flex;align-items:center;justify-content:center;position:relative;
+            background:#f4f4f6;color:#2b2622;font-weight:600;font-size:13px}
+  .lights{position:absolute;left:14px;display:flex;gap:8px}
+  .lights i{width:12px;height:12px;border-radius:50%}
+  .lights i:nth-child(1){background:#ff5f57}.lights i:nth-child(2){background:#febc2e}.lights i:nth-child(3){background:#28c840}
+  .body{padding:34px 40px 40px}
+  h1{text-align:center;font-size:26px;font-weight:800;margin:8px 0 6px}
+  .sub{text-align:center;color:var(--dim);font-size:15px;margin:0 0 8px}
+
+  /* 全局忙碌横幅 —— 演示中才出现 */
+  .running-banner{margin:14px auto 0;max-width:520px;display:none;align-items:center;gap:10px;justify-content:center;
+       background:rgba(255,107,157,.10);border:1px solid rgba(255,107,157,.30);color:var(--pink-soft);
+       border-radius:999px;padding:8px 16px;font-size:13px}
+  .running-banner.on{display:flex}
+  .running-banner .pet{font-size:16px;animation:bob .9s ease-in-out infinite}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+  .dots{display:inline-flex;gap:3px}
+  .dots i{width:4px;height:4px;border-radius:50%;background:var(--pink-soft);animation:blink 1.2s infinite}
+  .dots i:nth-child(2){animation-delay:.2s}.dots i:nth-child(3){animation-delay:.4s}
+  @keyframes blink{0%,80%,100%{opacity:.3}40%{opacity:1}}
+
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:100%;margin:18px 0 16px}
+  .card{background:var(--card);border:1px solid var(--card-border);border-radius:12px;padding:12px;
+        display:flex;flex-direction:column;min-height:180px;transition:opacity .2s,border-color .2s}
+  .card .icon{font-size:22px;margin-bottom:4px}
+  .card .title{font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:4px}
+  .card .line{font-size:12px;color:var(--pink-soft);font-weight:500;line-height:1.4;margin-bottom:8px}
+  .card .outcome{font-size:11px;color:var(--dim);line-height:1.5;font-family:var(--mono);flex:1}
+  .try{margin-top:8px;border:0;padding:7px 0;border-radius:8px;background:var(--grad);
+       color:#fff;font-weight:600;font-size:12px;cursor:pointer;width:100%;
+       transition:opacity .15s,filter .15s;display:flex;align-items:center;justify-content:center;gap:6px}
+  .try:hover{filter:brightness(1.05)}
+  /* 演示中的那张卡 */
+  .card.running{border-color:rgba(255,107,157,.45);background:rgba(255,107,157,.06)}
+  .try.running{background:rgba(255,107,157,.18);color:var(--pink-soft);cursor:default}
+  .try.running .dots i{background:var(--pink-soft)}
+  /* 演过了 */
+  .card.done .try{background:rgba(92,214,160,.14);color:var(--success);border:1px solid rgba(92,214,160,.4)}
+  /* 串行禁用（别的卡在演时，本卡变灰不可点） */
+  .card.disabled{opacity:.4}
+  .card.disabled .try{cursor:not-allowed;pointer-events:none}
+  .hint-watch{font-size:10.5px;color:var(--pink-soft);margin-top:6px;text-align:center;display:none}
+  .card.running .hint-watch{display:block}
+
+  .cta{margin-top:10px;width:100%;border:0;padding:16px;border-radius:14px;background:var(--grad);
+       color:#fff;font-weight:700;font-size:16px;cursor:pointer;box-shadow:0 8px 30px rgba(255,107,157,.4)}
+  .cta.secondary{margin-top:10px;background:rgba(255,255,255,.05);color:var(--dim);box-shadow:none;font-weight:600;font-size:15px}
+
+  /* ── 完成确认弹窗（演示中点完成才弹）── */
+  .scrim{position:absolute;inset:0;background:rgba(5,7,13,.6);display:none;align-items:center;justify-content:center;border-radius:14px}
+  .scrim.on{display:flex}
+  .dialog{width:420px;background:var(--panel);border:1px solid rgba(255,255,255,.08);border-radius:16px;
+          padding:22px 24px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+  .dialog h3{margin:0 0 8px;font-size:16px}
+  .dialog p{margin:0 0 18px;color:var(--dim);font-size:13.5px;line-height:1.6}
+  .dialog .row{display:flex;gap:10px}
+  .dialog button{flex:1;border:0;padding:11px;border-radius:10px;font-size:13.5px;font-weight:600;cursor:pointer}
+  .btn-wait{background:var(--grad);color:#fff}
+  .btn-force{background:rgba(255,255,255,.06);color:var(--dim);border:1px solid rgba(255,255,255,.12)}
+
+  .note{max-width:380px;color:#8a93a6;font-size:13px;line-height:1.7}
+  .note h2{color:#dfe4ee;font-size:15px;margin:0 0 10px}
+  .note code{background:rgba(255,255,255,.06);padding:1px 6px;border-radius:5px;font-family:var(--mono);font-size:12px}
+  .note li{margin-bottom:8px}
+</style>
+</head>
+<body>
+  <div class="win">
+    <div class="titlebar"><span class="lights"><i></i><i></i><i></i></span>欢迎使用 MouseClaw 🦞</div>
+    <div class="body">
+      <h1>挑一条对老鼠喊出来 · 它现场演给你看</h1>
+      <p class="sub">三种典型用法，按「试这条」会自动跑给你看 —— 不用真的喊。</p>
+
+      <div class="running-banner" id="banner">
+        <span class="pet">🦞</span> 老鼠正在演示中 · 看屏幕右下角的它
+        <span class="dots"><i></i><i></i><i></i></span>
+      </div>
+
+      <div class="grid" id="grid">
+        <div class="card" data-k="A">
+          <div class="icon">🌐</div>
+          <div class="title">浏览器自动化</div>
+          <div class="line">「搜一下今天北京天气」</div>
+          <div class="outcome">→ 老鼠开浏览器 · 搜 · 念结果给你</div>
+          <button class="try" onclick="fire('A')">试这条</button>
+          <div class="hint-watch">↘ 看右下角老鼠</div>
+        </div>
+        <div class="card" data-k="B">
+          <div class="icon">📄</div>
+          <div class="title">读写 Office 文件</div>
+          <div class="line">「总结这个表」（用示例 xlsx）</div>
+          <div class="outcome">→ officecli 读表 · 3 句摘要</div>
+          <button class="try" onclick="fire('B')">试这条</button>
+          <div class="hint-watch">↘ 看右下角老鼠</div>
+        </div>
+        <div class="card" data-k="C">
+          <div class="icon">⌨️</div>
+          <div class="title">写回光标（B 模式）</div>
+          <div class="line">「写一句产品介绍」</div>
+          <div class="outcome">→ 倒数 3s · 自动键入光标位置</div>
+          <button class="try" onclick="fire('C')">试这条</button>
+          <div class="hint-watch">↘ 看右下角老鼠</div>
+        </div>
+      </div>
+
+      <button class="cta" id="done" onclick="clickDone()">完成 · 开始用 MouseClaw</button>
+      <button class="cta secondary" onclick="clickDone()">跳过 · 开始用</button>
+    </div>
+
+    <!-- 完成确认（仅演示中弹）-->
+    <div class="scrim" id="scrim">
+      <div class="dialog">
+        <h3>老鼠还在演示中 🦞</h3>
+        <p>现在「完成」会重启 MouseClaw（授权屏幕录制后必须重启才生效），<strong style="color:#ff9bb8">正在跑的演示会被中断、不会继续</strong>。要等它演完吗？</p>
+        <div class="row">
+          <button class="btn-wait" onclick="closeScrim()">等演完</button>
+          <button class="btn-force" onclick="forceDone()">直接完成</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <h2>这个 prototype 演示什么</h2>
+    <ul>
+      <li><b>① 真实忙碌反馈</b>：点「试这条」→ 该卡变「⏳ 演示中」+ 顶部出现 <code>老鼠演示中</code> 横幅。绑定真实 <code>bg-task-changed</code> 事件，不是瞬闪。</li>
+      <li><b>② 防连点 / 串行</b>：演示中其余两张卡变灰不可点（AI 任务串行）。演完该卡变 <code>✓ 演过了</code>（可 ↻ 重跑），全部恢复。</li>
+      <li><b>③ 完成中断保护</b>：演示中点「完成 / 跳过」→ 弹确认 [等演完] / [直接完成]。任务卡住也能强制完成，不困住用户。</li>
+    </ul>
+    <p style="margin-top:14px">试试：点任一「试这条」（模拟 4s 演示），演示中再点别的卡 / 点「完成」看效果。</p>
+  </div>
+
+<script>
+  let busy = null;          // 正在演示的卡 key，null = 空闲
+  const done = new Set();
+
+  function render(){
+    document.querySelectorAll('.card').forEach(card=>{
+      const k = card.dataset.k;
+      const btn = card.querySelector('.try');
+      card.classList.remove('running','disabled','done');
+      btn.classList.remove('running');
+      if(busy === k){
+        card.classList.add('running');
+        btn.classList.add('running');
+        btn.innerHTML = '<span class="dots"><i></i><i></i><i></i></span> 演示中';
+      } else if(busy && busy !== k){
+        card.classList.add('disabled');
+        btn.textContent = done.has(k) ? '↻ 试这条' : '试这条';
+      } else {
+        if(done.has(k)){ card.classList.add('done'); btn.textContent = '✓ 演过了 · ↻ 再试'; }
+        else btn.textContent = '试这条';
+      }
+    });
+    document.getElementById('banner').classList.toggle('on', !!busy);
+  }
+
+  function fire(k){
+    if(busy) return;                 // 串行：有任务在跑就忽略（防连点）
+    busy = k; render();
+    // 模拟 pipeline：4s 后 bg-task-changed → count=0
+    clearTimeout(window._t);
+    window._t = setTimeout(()=>{ done.add(k); busy = null; render(); }, 4000);
+  }
+
+  function clickDone(){
+    if(busy){ document.getElementById('scrim').classList.add('on'); return; }
+    alert('（prototype）完成 → 重启 App');
+  }
+  function closeScrim(){ document.getElementById('scrim').classList.remove('on'); }
+  function forceDone(){ closeScrim(); clearTimeout(window._t); busy=null; render(); alert('（prototype）直接完成 → 重启，演示中断'); }
+
+  render();
+</script>
+</body>
+</html>

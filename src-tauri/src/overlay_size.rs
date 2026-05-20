@@ -116,23 +116,7 @@ pub fn set_to_explicit(app: &AppHandle, want_w: f64, want_h: f64) {
             return;
         }
         let frame = visible_frame_top_left();
-        // 从当前窗口推出的桌宠锚点
-        let cur_pet_cx = cur_x + cur_w * PET_X_OFFSET_RATIO;
-        let cur_pet_cy = cur_y + cur_h - PET_BOTTOM_OFFSET;
-        // v0.4+ 漂移根治：窗口当前正贴着屏幕边 = 上次被 clamp 顶住了 → 当前位置不可信，
-        // 改用上次存的"未被 clamp 真锚点"。不贴边 → 当前位置即真值，存回去。
-        // 哨兵 i32::MIN 表示从未存过 → 一律用当前位置兜底。
-        let stored_x = LAST_PET_CENTER_X.load(Ordering::Relaxed);
-        let stored_y = LAST_PET_CENTER_Y.load(Ordering::Relaxed);
-        let have_stored = stored_x != i32::MIN && stored_y != i32::MIN;
-        let flush = is_flush_against_edge(cur_x, cur_y, cur_w, cur_h, frame);
-        let (anchor_x, anchor_y) = if flush && have_stored {
-            (stored_x as f64, stored_y as f64)
-        } else {
-            LAST_PET_CENTER_X.store(cur_pet_cx as i32, Ordering::Relaxed);
-            LAST_PET_CENTER_Y.store(cur_pet_cy as i32, Ordering::Relaxed);
-            (cur_pet_cx, cur_pet_cy)
-        };
+        let (anchor_x, anchor_y) = resolve_anchor(cur_x, cur_y, cur_w, cur_h, frame);
         let raw_new_x = anchor_x - w * PET_X_OFFSET_RATIO;
         let raw_new_y = anchor_y - (h - PET_BOTTOM_OFFSET);
         // clamp 到 visibleFrame（防 NSWindow 收非法 frame crash）+ 报出撞了哪面墙。
@@ -142,6 +126,39 @@ pub fn set_to_explicit(app: &AppHandle, want_w: f64, want_h: f64) {
         let _ = window.set_position(LogicalPosition::new(new_x, new_y));
         if let Some(dir) = bonk { emit_bonk_edge(&app2, dir); }
     });
+}
+
+/// v0.4+ 漂移根治 · flush-aware 权威锚点解析（set_mode + set_to_explicit 共用）。
+///
+/// 窗口当前正贴着屏幕边 = 上次被 clamp 顶住了 → 当前位置不可信，改用上次存的
+/// "未被 clamp 真锚点"。不贴边 → 当前位置即真值，存回去。
+/// 哨兵 i32::MIN 表示从未存过 → 一律用当前位置兜底。
+///
+/// 返回桌宠中心的屏幕绝对坐标（逻辑像素，top-left origin）。
+///
+/// ⚠️ 为什么 set_mode 也必须走这个：之前 set_mode（shrink/expand）无条件用当前位置
+/// 反算并存锚点。当 nudge / petMenu 把窗口扩到 320 并被屏幕边 clamp 后，用户点"稍后"
+/// 触发 shrink_to_compact → set_mode 读到的是"被顶住的 320 窗口"位置 → 把 clamp 偏移
+/// 烤进 LAST_PET_CENTER → 桌宠收缩后回不到角落，向屏幕中心漂移（2026-05-21 用户报）。
+fn resolve_anchor(
+    cur_x: f64, cur_y: f64, cur_w: f64, cur_h: f64,
+    frame: Option<(f64, f64, f64, f64)>,
+) -> (f64, f64) {
+    let cur_pet_cx = cur_x + cur_w * PET_X_OFFSET_RATIO;
+    let cur_pet_cy = cur_y + cur_h - PET_BOTTOM_OFFSET;
+    let stored_x = LAST_PET_CENTER_X.load(Ordering::Relaxed);
+    let stored_y = LAST_PET_CENTER_Y.load(Ordering::Relaxed);
+    let have_stored = stored_x != i32::MIN && stored_y != i32::MIN;
+    let flush = is_flush_against_edge(cur_x, cur_y, cur_w, cur_h, frame);
+    if flush && have_stored {
+        (stored_x as f64, stored_y as f64)
+    } else {
+        // ⚠️ 用 .round() 不是 `as i32`（向零截断）：截断对正 y（向下为正）= 每次都往
+        // 屏幕上方截 <1px，多次 resize 累积成"往上漂"。round 取最近整数，无单向偏置。
+        LAST_PET_CENTER_X.store(cur_pet_cx.round() as i32, Ordering::Relaxed);
+        LAST_PET_CENTER_Y.store(cur_pet_cy.round() as i32, Ordering::Relaxed);
+        (cur_pet_cx, cur_pet_cy)
+    }
 }
 
 /// 窗口是否正贴着屏幕 visible frame 的任一边（说明被 clamp 顶住了）。
@@ -243,19 +260,24 @@ fn set_mode(app: &AppHandle, new_size: f64, mode_tag: u32) {
         let cur_w = size.width as f64 / scale;
         let cur_h = size.height as f64 / scale;
 
-        // 当前桌宠的屏幕绝对位置（视觉锚点）
-        let pet_cx = cur_x + cur_w * PET_X_OFFSET_RATIO;
-        let pet_cy = cur_y + cur_h - PET_BOTTOM_OFFSET;
+        // 当前桌宠的屏幕绝对位置（视觉锚点）—— flush-aware：窗口被屏幕边顶住时
+        // 用存的真锚点而非"被顶过的当前位置"，否则收缩会把 clamp 偏移烤进锚点 → 漂移。
+        let frame = visible_frame_top_left();
+        let (pet_cx, pet_cy) = resolve_anchor(cur_x, cur_y, cur_w, cur_h, frame);
 
         // 新窗口需要放在哪里才能让桌宠中心保持原位
-        let new_x = pet_cx - new_size * PET_X_OFFSET_RATIO;
-        let new_y = pet_cy - new_size + PET_BOTTOM_OFFSET;
-
-        LAST_PET_CENTER_X.store(pet_cx as i32, Ordering::Relaxed);
-        LAST_PET_CENTER_Y.store(pet_cy as i32, Ordering::Relaxed);
+        let raw_new_x = pet_cx - new_size * PET_X_OFFSET_RATIO;
+        let raw_new_y = pet_cy - new_size + PET_BOTTOM_OFFSET;
+        // v0.4+ 漂移根治（2026-05-21）：必须跟 set_to_explicit 一样 clamp 进 visible frame。
+        // 之前 set_mode 不 clamp → 在角落把 320 窗口摆到屏幕外（如右下溢出）→ macOS
+        // NSWindow.constrainFrameRect 会把溢出窗口悄悄往屏内（左上）挪 → 我们下次读
+        // outer_position() 读到的是被挪过的位置 → 跨 resize 周期锚点不一致 → 桌宠"往斜上方
+        // 不停漂移"。clamp 后窗口永远在屏内，macOS 没机会偷偷挪它。
+        let (new_x, new_y, bonk) = clamp_origin_with_bonk(raw_new_x, raw_new_y, new_size, new_size, frame);
 
         let _ = window.set_size(LogicalSize::new(new_size, new_size));
         let _ = window.set_position(LogicalPosition::new(new_x, new_y));
+        if let Some(dir) = bonk { emit_bonk_edge(&app2, dir); }
         println!(
             "[overlay_size] mode={mode_tag} size={new_size:.0} anchor_xy=({pet_cx:.0},{pet_cy:.0}) win_xy=({new_x:.0},{new_y:.0})"
         );
@@ -310,6 +332,31 @@ mod tests {
         let (x, y, b) = clamp_origin_with_bonk(-999.0, -999.0, 320.0, 320.0, None);
         assert_eq!((x, y), (-999.0, -999.0));
         assert!(b.is_none());
+    }
+
+    /// 漂移根治回归。两个断言放同一 test 内顺序跑 —— LAST_PET_CENTER 是进程级
+    /// 全局静态，拆成两个 #[test] 会因 cargo 并行执行互相污染（flaky）。
+    #[test]
+    fn resolve_anchor_flush_aware() {
+        // (1) 贴边窗口收缩时必须用存的真锚点，不被 clamp 偏移污染。
+        // 先存一个"角落真锚点"（桌宠中心在 sw-64 = 1856, sh-64 = 1016）
+        LAST_PET_CENTER_X.store(1856, Ordering::Relaxed);
+        LAST_PET_CENTER_Y.store(1016, Ordering::Relaxed);
+        // 模拟被右下角 clamp 顶住的 320 窗口：x=1600 → x+w=1920 贴右边
+        let (ax, ay) = resolve_anchor(1600.0, 760.0, 320.0, 320.0, F);
+        // 必须返回存的真锚点，不是被顶过的当前位置反算值
+        assert_eq!((ax, ay), (1856.0, 1016.0));
+
+        // (2) 不贴边时用当前位置并存回（自愈 stale anchor）。
+        LAST_PET_CENTER_X.store(9999, Ordering::Relaxed); // 故意放一个 stale 值
+        LAST_PET_CENTER_Y.store(9999, Ordering::Relaxed);
+        // 屏幕中间的 80 compact 窗口，不贴边
+        let (ax, ay) = resolve_anchor(800.0, 400.0, 80.0, 80.0, F);
+        // 当前位置反算：cx = 800+40 = 840, cy = 400+80-40 = 440
+        assert_eq!((ax, ay), (840.0, 440.0));
+        // 且存回了当前真值
+        assert_eq!(LAST_PET_CENTER_X.load(Ordering::Relaxed), 840);
+        assert_eq!(LAST_PET_CENTER_Y.load(Ordering::Relaxed), 440);
     }
 
     #[test]
