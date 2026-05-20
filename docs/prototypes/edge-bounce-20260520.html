@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>MouseClaw · 撞墙回弹物理效果 prototype (2026-05-20)</title>
+<style>
+  :root {
+    --bg: #1a1d24;
+    --panel: #242833;
+    --panel2: #2d3240;
+    --ink: #e8ecf2;
+    --ink-dim: #8b94a8;
+    --accent: #7ab8ff;
+    --good: #6dd58c;
+    --warn: #ffc857;
+    --bad: #ff7a8a;
+    --radius-md: 10px;
+    --radius-lg: 16px;
+    /* 弹性曲线（与真 app PixelMouse.css 的 cubic-bezier(.34,1.56,.64,1) 同源） */
+    --spring: cubic-bezier(.34,1.56,.64,1);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--ink);
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    font-size: 14px;
+  }
+  header { padding: 18px 32px 12px; border-bottom: 1px solid #2d3240; }
+  header h1 { margin: 0 0 6px; font-size: 18px; font-weight: 600; }
+  header p { margin: 0; color: var(--ink-dim); font-size: 13px; line-height: 1.55; }
+  header code { background:#2d3240; padding:1px 6px; border-radius:5px; color:var(--accent); }
+
+  .controls { margin: 16px 32px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .controls button {
+    background: var(--panel2); border: 1px solid #3a4050; color: var(--ink);
+    padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 13px;
+  }
+  .controls button:hover { border-color: var(--accent); }
+  .controls .hint { color: var(--ink-dim); font-size: 12px; }
+  .seg { display:inline-flex; border:1px solid #3a4050; border-radius:8px; overflow:hidden; }
+  .seg button { border:0; border-radius:0; }
+  .seg button.on { background: var(--accent); color:#0d1117; font-weight:600; }
+  .toggle { display:inline-flex; align-items:center; gap:8px; color:var(--ink-dim); font-size:13px; }
+
+  /* === mock desktop scene =========================================== */
+  .desk {
+    position: relative;
+    margin: 8px 32px;
+    height: 460px;
+    background:
+      radial-gradient(1200px 400px at 30% -10%, #34406a 0%, transparent 60%),
+      linear-gradient(135deg, #2a3550 0%, #1c2236 100%);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    border: 1px solid #3a4050;
+  }
+  /* 屏幕边缘高亮（撞到时发光） */
+  .edge { position:absolute; pointer-events:none; opacity:0; transition: opacity 160ms ease; }
+  .edge.top    { top:0; left:0; right:0; height:46px; background:linear-gradient(to bottom, var(--accent), transparent); }
+  .edge.bottom { bottom:0; left:0; right:0; height:46px; background:linear-gradient(to top, var(--accent), transparent); }
+  .edge.left   { top:0; bottom:0; left:0; width:46px; background:linear-gradient(to right, var(--accent), transparent); }
+  .edge.right  { top:0; bottom:0; right:0; width:46px; background:linear-gradient(to left, var(--accent), transparent); }
+  .edge.flash { opacity:0.5; }
+
+  .mock-win {
+    position:absolute; left:60px; top:60px; width:300px;
+    background:#1e1e2e; border-radius:10px; padding:12px 14px;
+    font-family:"SF Mono",Menlo,monospace; font-size:12px; line-height:1.6;
+    color:#c7cad1; box-shadow:0 12px 40px rgba(0,0,0,.45);
+  }
+  .mock-win .bar { color:var(--ink-dim); border-bottom:1px solid #2d3240; padding-bottom:6px; margin-bottom:8px; }
+  .kw{color:#c678dd} .fn{color:#61afef} .str{color:#98c379} .com{color:#5c6370;font-style:italic}
+
+  /* hero pet — 跟随鼠标 + 撞边回弹 */
+  .hero {
+    position: absolute; width: 72px; height: 72px;
+    left: 0; top: 0; pointer-events: none;
+    /* 位置由 JS 设 left/top（窗口锚点 = clamp 后的安全位）；
+       回弹是 .hero .pet-svg 上的 transform，不动 .hero 本体 → 不跟"窗口位置"抢 */
+  }
+  .hero .tip {
+    position:absolute; bottom:100%; left:50%; transform:translateX(-50%);
+    margin-bottom:2px; white-space:nowrap; font-size:10px; color:var(--ink-dim);
+    background:rgba(0,0,0,.4); padding:1px 6px; border-radius:6px; opacity:0; transition:opacity .2s;
+  }
+  .hero.bonking .tip { opacity:1; }
+
+  /* === pet sprite ==================================================== */
+  .pet-svg {
+    display:block; width:72px; height:72px; image-rendering:pixelated;
+    transform-origin:center bottom;
+  }
+  @keyframes breathe { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-1.2px)} }
+  .pet-svg.idle { animation: breathe 2.6s ease-in-out infinite; }
+
+  /* ───────── 撞墙回弹关键帧（4 个方向 × 2 种风格）─────────
+     soft（果冻）：挤压大、回弹大、Q 弹
+     firm（脆点）：挤压小、回弹小、利落（机器鼠 / 忍者更合适） */
+
+  /* RIGHT wall — 朝右撞，向左回弹。origin 贴右墙 */
+  @keyframes bonk-right-soft {
+    0%{transform:translateX(0) scale(1,1)}
+    16%{transform:translateX(5px) scale(.78,1.14)}
+    44%{transform:translateX(-8px) scale(1.10,.92)}
+    68%{transform:translateX(3px) scale(.98,1.02)}
+    100%{transform:translateX(0) scale(1,1)} }
+  @keyframes bonk-right-firm {
+    0%{transform:translateX(0) scale(1,1)}
+    20%{transform:translateX(3px) scale(.90,1.06)}
+    55%{transform:translateX(-4px) scale(1.03,.98)}
+    100%{transform:translateX(0) scale(1,1)} }
+
+  @keyframes bonk-left-soft {
+    0%{transform:translateX(0) scale(1,1)}
+    16%{transform:translateX(-5px) scale(.78,1.14)}
+    44%{transform:translateX(8px) scale(1.10,.92)}
+    68%{transform:translateX(-3px) scale(.98,1.02)}
+    100%{transform:translateX(0) scale(1,1)} }
+  @keyframes bonk-left-firm {
+    0%{transform:translateX(0) scale(1,1)}
+    20%{transform:translateX(-3px) scale(.90,1.06)}
+    55%{transform:translateX(4px) scale(1.03,.98)}
+    100%{transform:translateX(0) scale(1,1)} }
+
+  /* TOP wall — 朝上撞，向下回弹（头顶气泡那面常撞顶） */
+  @keyframes bonk-top-soft {
+    0%{transform:translateY(0) scale(1,1)}
+    16%{transform:translateY(-5px) scale(1.14,.78)}
+    44%{transform:translateY(8px) scale(.92,1.10)}
+    68%{transform:translateY(-3px) scale(1.02,.98)}
+    100%{transform:translateY(0) scale(1,1)} }
+  @keyframes bonk-top-firm {
+    0%{transform:translateY(0) scale(1,1)}
+    20%{transform:translateY(-3px) scale(1.06,.90)}
+    55%{transform:translateY(4px) scale(.98,1.03)}
+    100%{transform:translateY(0) scale(1,1)} }
+
+  /* BOTTOM wall — 朝下撞（很少，dock 区），向上回弹 */
+  @keyframes bonk-bottom-soft {
+    0%{transform:translateY(0) scale(1,1)}
+    16%{transform:translateY(5px) scale(1.14,.78)}
+    44%{transform:translateY(-8px) scale(.92,1.10)}
+    68%{transform:translateY(3px) scale(1.02,.98)}
+    100%{transform:translateY(0) scale(1,1)} }
+  @keyframes bonk-bottom-firm {
+    0%{transform:translateY(0) scale(1,1)}
+    20%{transform:translateY(3px) scale(1.06,.90)}
+    55%{transform:translateY(-4px) scale(.98,1.03)}
+    100%{transform:translateY(0) scale(1,1)} }
+
+  .pet-svg.bonk-right.soft { animation: bonk-right-soft 460ms var(--spring); transform-origin:right center; }
+  .pet-svg.bonk-right.firm { animation: bonk-right-firm 300ms var(--spring); transform-origin:right center; }
+  .pet-svg.bonk-left.soft  { animation: bonk-left-soft 460ms var(--spring); transform-origin:left center; }
+  .pet-svg.bonk-left.firm  { animation: bonk-left-firm 300ms var(--spring); transform-origin:left center; }
+  .pet-svg.bonk-top.soft   { animation: bonk-top-soft 460ms var(--spring); transform-origin:center top; }
+  .pet-svg.bonk-top.firm   { animation: bonk-top-firm 300ms var(--spring); transform-origin:center top; }
+  .pet-svg.bonk-bottom.soft{ animation: bonk-bottom-soft 460ms var(--spring); transform-origin:center bottom; }
+  .pet-svg.bonk-bottom.firm{ animation: bonk-bottom-firm 300ms var(--spring); transform-origin:center bottom; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pet-svg[class*="bonk-"] { animation-duration: 1ms !important; } /* 仍归位，但不弹（无障碍） */
+  }
+
+  /* 撞击瞬间的小星 / 惊讶 */
+  .impact { position:absolute; font-size:13px; opacity:0; pointer-events:none; }
+  .impact.go { animation: impact-pop 460ms ease-out; }
+  @keyframes impact-pop { 0%{opacity:0;transform:scale(.4)} 30%{opacity:1;transform:scale(1.1)} 100%{opacity:0;transform:scale(.9) translateY(-6px)} }
+
+  /* === 9 皮肤同屏排 ================================================= */
+  .pet-row { margin: 6px 32px 20px; display:grid; grid-template-columns:repeat(9,1fr); gap:10px; }
+  .pet-cell {
+    background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.06);
+    border-radius:var(--radius-md); padding:10px 6px 6px; text-align:center;
+    position:relative; aspect-ratio:1/1.1; overflow:hidden;
+  }
+  .pet-cell .name { font-size:10.5px; color:var(--ink-dim); margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pet-cell .pet-svg { margin:0 auto; }
+
+  .status { margin: 0 32px 24px; color:var(--ink-dim); font-size:12px; font-family:"SF Mono",Menlo,monospace; }
+  .status b { color:var(--accent); font-weight:500; }
+  .note { margin:16px 32px; padding:12px 16px; background:var(--panel); border-radius:10px; border:1px solid #3a4050; font-size:12.5px; color:var(--ink-dim); line-height:1.7; }
+  .note b { color:var(--ink); } .note .q { color:var(--warn); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>桌宠「撞墙回弹」物理效果 · v0.4 候选</h1>
+  <p>
+    把鼠标移进下面的模拟桌面 → 桌宠像 listening 时那样跟随你；推到屏幕边时，
+    <b>窗口被钉在屏内不再溢出（这就治了"乱飘"——位置不再累积偏移）</b>，
+    桌宠精灵朝那面墙 <code>挤压 + 回弹一点</code> 再归位。
+    回弹只是 SVG 的 transform，<b>不动窗口本体</b>，所以不跟 cursor_follow 抢位置。
+  </p>
+</header>
+
+<div class="controls">
+  <span class="hint">回弹风格：</span>
+  <span class="seg" id="styleSeg">
+    <button data-style="soft" class="on">软（果冻 Q 弹）</button>
+    <button data-style="firm">硬（脆点·机械感）</button>
+  </span>
+  <label class="toggle"><input type="checkbox" id="bounceOn" checked /> 开启回弹（关 = 现状：只 clamp 不弹）</label>
+  <label class="toggle"><input type="checkbox" id="impactOn" checked /> 撞击星星 ✦</label>
+</div>
+
+<div class="desk" id="desk">
+  <div class="edge top"></div><div class="edge bottom"></div>
+  <div class="edge left"></div><div class="edge right"></div>
+  <div class="mock-win">
+    <div class="bar">App.tsx</div>
+    <span class="com">// 把鼠标推到桌面四条边试试</span><br/>
+    <span class="kw">const</span> <span class="fn">pet</span> = <span class="str">"🦞"</span>;
+  </div>
+  <div class="hero" id="hero">
+    <span class="tip">咚！撞到边啦</span>
+    <span class="impact" id="impact">✦</span>
+  </div>
+</div>
+
+<div class="controls">
+  <span class="hint">9 款皮肤同步撞墙（验证全皮肤都成立）：</span>
+  <button data-dir="left">← 撞左</button>
+  <button data-dir="right">撞右 →</button>
+  <button data-dir="top">↑ 撞顶</button>
+  <button data-dir="bottom">↓ 撞底</button>
+  <button data-dir="all">四面轮一遍</button>
+</div>
+<div class="pet-row" id="petRow"></div>
+
+<div class="status" id="status">把鼠标移进上面的桌面 →</div>
+
+<div class="note">
+  <b>这个 prototype 想让你拍板的几点：</b><br/>
+  1. <span class="q">软 vs 硬</span>：默认全员用「软果冻」。机器鼠 / 忍者这种"硬"角色要不要单独走「硬·脆点」？（顶部切换看对比）<br/>
+  2. <span class="q">回弹幅度</span>：现在挤压到 ~0.78、回弹 ~8px。太夸张？太含蓄？<br/>
+  3. <span class="q">撞击星星 ✦</span>：要不要这个小反馈？还是太花、跑 50 次会烦？<br/>
+  4. <span class="q">触发频率</span>：只在"首次贴到墙"弹一次，贴着墙拖不会连发（已实现，可贴着边来回拖验证）。<br/>
+  <b>实现路线（拍板后）</b>：Rust 端 clamp 时若发生位置修正 → emit 一个带方向的 <code>edge-bonk</code> 事件 +
+  把"权威锚点"保持为未 clamp 的真值（治漂移）；React 桌宠收到事件给 <code>.pet-svg</code> 加对应
+  <code>bonk-{dir}</code> class 播一次动画。纯 transform，对 9 款骨架一视同仁。
+</div>
+
+<script>
+// ===== 皮肤定义（与 src/skins.ts 同步，palette 驱动）=====
+const SKINS = [
+  { id:"classic",  name:"经典灰", body:"standard", palette:{body:"#cfcfcf",belly:"#ffffff",earIn:"#ff9bb8",earOut:"#cfcfcf",eye:"#1a1a1a",nose:"#d63d6a",tail:"#8a8a8a"}},
+  { id:"lab",      name:"小白鼠", body:"slim",     palette:{body:"#fafafa",belly:"#ffffff",earIn:"#ffb3c8",earOut:"#e8e3dc",eye:"#ff5f57",nose:"#ff6b9d",tail:"#ffb3c8"}},
+  { id:"field",    name:"田鼠",   body:"chubby",   palette:{body:"#a47148",belly:"#e8d5b0",earIn:"#d6a07a",earOut:"#7a4e2e",eye:"#1a1a1a",nose:"#5a2e10",tail:"#7a4e2e"}},
+  { id:"ninja",    name:"忍者鼠", body:"ninja",    palette:{body:"#3a3a42",belly:"#5a5a64",earIn:"#1a1a1a",earOut:"#2a2a30",eye:"#ffd166",nose:"#1a1a1a",tail:"#2a2a30"}},
+  { id:"cyber",    name:"机械鼠", body:"robot",    palette:{body:"#c0c8d0",belly:"#e8eef4",earIn:"#00e5ff",earOut:"#7a8290",eye:"#00e5ff",nose:"#00e5ff",tail:"#7a8290"}},
+  { id:"golden",   name:"金鼠",   body:"round",    palette:{body:"#e8c87a",belly:"#fff4d6",earIn:"#d68a40",earOut:"#c8a050",eye:"#3a2818",nose:"#a06028",tail:"#c8a050"}},
+  { id:"cat-gray", name:"小灰猫", body:"cat",      palette:{body:"#a8a8a8",belly:"#f4f4f4",earIn:"#ff9bb8",earOut:"#7a7a7a",eye:"#3fa66a",nose:"#d63d6a",tail:"#7a7a7a"}},
+  { id:"fox-red",  name:"赤狐",   body:"fox",      palette:{body:"#d96e2c",belly:"#fff4ec",earIn:"#1a1a1a",earOut:"#a04a18",eye:"#1a1a1a",nose:"#1a1a1a",tail:"#fff4ec"}},
+  { id:"frog-tree",name:"树蛙",   body:"frog",     palette:{body:"#7ab84a",belly:"#f4e890",earIn:"#ffffff",earOut:"#5a8a30",eye:"#d63d6a",nose:"#5a8a30",tail:"#5a8a30"}},
+];
+
+function eyeAnchors(body){ switch(body){
+  case "robot": return [{cx:6.5,cy:7,r:1.6,square:true},{cx:10.5,cy:7,r:1.6,square:true}];
+  case "frog":  return [{cx:5,cy:5,r:2.2},{cx:11,cy:5,r:2.2}];
+  case "cat":   return [{cx:6,cy:8,r:1.3},{cx:10,cy:8,r:1.3}];
+  case "fox":   return [{cx:6,cy:8,r:1.2},{cx:10,cy:8,r:1.2}];
+  case "slim":  return [{cx:6,cy:7,r:1.1},{cx:10,cy:7,r:1.1}];
+  case "chubby":return [{cx:5.5,cy:8,r:1.4},{cx:10.5,cy:8,r:1.4}];
+  case "ninja": return [{cx:6,cy:7,r:1.0},{cx:10,cy:7,r:1.0}];
+  case "round": return [{cx:6,cy:8,r:1.2},{cx:10,cy:8,r:1.2}];
+  default:      return [{cx:6,cy:7,r:1.2},{cx:10,cy:7,r:1.2}];
+}}
+
+function eyesSVG(body,p){
+  const a = eyeAnchors(body); let s="";
+  const hasWhite = ["frog","cat","fox","round","chubby"].includes(body);
+  for(const e of a){
+    if(hasWhite) s+=`<ellipse cx="${e.cx}" cy="${e.cy}" rx="${e.r*1.1}" ry="${e.r*1.05}" fill="#fff"/>`;
+    const pr = e.r*0.7;
+    if(e.square){
+      s+=`<rect x="${e.cx-pr}" y="${e.cy-pr}" width="${pr*2}" height="${pr*2}" fill="${p.eye}"/>`;
+      s+=`<rect x="${e.cx-pr*0.3}" y="${e.cy-pr*0.5}" width="${pr*0.4}" height="${pr*0.4}" fill="#fff" opacity=".9"/>`;
+    } else {
+      s+=`<circle cx="${e.cx}" cy="${e.cy}" r="${pr}" fill="${p.eye}"/>`;
+      s+=`<circle cx="${e.cx-pr*0.3}" cy="${e.cy-pr*0.3}" r="${pr*0.25}" fill="#fff" opacity=".9"/>`;
+    }
+  }
+  return s;
+}
+
+function petSVG(skin){
+  const p=skin.palette, b=skin.body;
+  let ears="",head="",tail="",extras="";
+  head=`<ellipse cx="8" cy="8.5" rx="5" ry="4.5" fill="${p.body}"/><ellipse cx="8" cy="10" rx="3.6" ry="2.8" fill="${p.belly}"/>`;
+  if(b==="robot"){ears=`<line x1="5" y1="4" x2="5" y2="1.5" stroke="${p.earOut}" stroke-width=".6"/><circle cx="5" cy="1.3" r=".7" fill="${p.earIn}"/><line x1="11" y1="4" x2="11" y2="1.5" stroke="${p.earOut}" stroke-width=".6"/><circle cx="11" cy="1.3" r=".7" fill="${p.earIn}"/>`;}
+  else if(b==="cat"){ears=`<polygon points="3,5 5,1 7,5" fill="${p.earOut}"/><polygon points="4,4.5 5,2 6,4.5" fill="${p.earIn}"/><polygon points="9,5 11,1 13,5" fill="${p.earOut}"/><polygon points="10,4.5 11,2 12,4.5" fill="${p.earIn}"/>`;head=`<ellipse cx="8" cy="9" rx="5" ry="4.2" fill="${p.body}"/><ellipse cx="8" cy="10.5" rx="3.4" ry="2.4" fill="${p.belly}"/>`;}
+  else if(b==="fox"){ears=`<polygon points="3,5 5,1.5 6.5,5" fill="${p.earOut}"/><polygon points="9.5,5 11,1.5 13,5" fill="${p.earOut}"/><polygon points="4,4.5 5,2.5 6,4.5" fill="${p.earIn}"/><polygon points="10,4.5 11,2.5 12,4.5" fill="${p.earIn}"/>`;head=`<polygon points="8,4 3.5,9 12.5,9" fill="${p.body}"/><ellipse cx="8" cy="10" rx="4.5" ry="3.6" fill="${p.body}"/><ellipse cx="8" cy="11" rx="3.2" ry="2.2" fill="${p.belly}"/>`;}
+  else if(b==="frog"){ears=`<circle cx="3.5" cy="9" r="1" fill="${p.earOut}" opacity=".7"/><circle cx="12.5" cy="9" r="1" fill="${p.earOut}" opacity=".7"/>`;head=`<ellipse cx="8" cy="9" rx="5.5" ry="4" fill="${p.body}"/><ellipse cx="8" cy="11" rx="4" ry="2.4" fill="${p.belly}"/>`;}
+  else if(b==="ninja"){ears=`<ellipse cx="5" cy="4" rx="1.4" ry="1.6" fill="${p.earOut}"/><ellipse cx="11" cy="4" rx="1.4" ry="1.6" fill="${p.earOut}"/>`;extras=`<rect x="2.5" y="6.2" width="11" height="1.8" fill="#1a1a1a"/>`;}
+  else if(b==="slim"){ears=`<ellipse cx="5" cy="4" rx="1.3" ry="1.5" fill="${p.earOut}"/><circle cx="5" cy="4.2" r=".8" fill="${p.earIn}"/><ellipse cx="11" cy="4" rx="1.3" ry="1.5" fill="${p.earOut}"/><circle cx="11" cy="4.2" r=".8" fill="${p.earIn}"/>`;head=`<ellipse cx="8" cy="8.5" rx="4.4" ry="4.2" fill="${p.body}"/><ellipse cx="8" cy="10" rx="3" ry="2.4" fill="${p.belly}"/>`;}
+  else if(b==="chubby"){ears=`<ellipse cx="4.5" cy="4" rx="1.8" ry="2" fill="${p.earOut}"/><circle cx="4.5" cy="4.2" r="1.1" fill="${p.earIn}"/><ellipse cx="11.5" cy="4" rx="1.8" ry="2" fill="${p.earOut}"/><circle cx="11.5" cy="4.2" r="1.1" fill="${p.earIn}"/>`;head=`<ellipse cx="8" cy="9" rx="5.6" ry="5" fill="${p.body}"/><ellipse cx="8" cy="10.5" rx="4" ry="3" fill="${p.belly}"/>`;}
+  else if(b==="round"){ears=`<ellipse cx="5" cy="4" rx="1.5" ry="1.6" fill="${p.earOut}"/><circle cx="5" cy="4.2" r=".9" fill="${p.earIn}"/><ellipse cx="11" cy="4" rx="1.5" ry="1.6" fill="${p.earOut}"/><circle cx="11" cy="4.2" r=".9" fill="${p.earIn}"/>`;head=`<circle cx="8" cy="9" r="5" fill="${p.body}"/><ellipse cx="8" cy="10.5" rx="3.6" ry="2.6" fill="${p.belly}"/>`;}
+  else {ears=`<ellipse cx="5" cy="4" rx="1.4" ry="1.6" fill="${p.earOut}"/><circle cx="5" cy="4.2" r=".9" fill="${p.earIn}"/><ellipse cx="11" cy="4" rx="1.4" ry="1.6" fill="${p.earOut}"/><circle cx="11" cy="4.2" r=".9" fill="${p.earIn}"/>`;}
+  if(b==="cat") tail=`<path d="M13,11 Q15,9 14,7" stroke="${p.tail}" stroke-width="1.2" fill="none" stroke-linecap="round"/>`;
+  else if(b==="fox") tail=`<ellipse cx="14" cy="11" rx="2.2" ry="1.4" fill="${p.tail}"/>`;
+  else if(b==="frog") tail="";
+  else if(b==="round") tail=`<path d="M13.5,11 Q15,10 14.5,12 Q14,13.5 13,12.5" stroke="${p.tail}" stroke-width=".8" fill="none"/>`;
+  else tail=`<path d="M13,11 Q15.5,11 15,8" stroke="${p.tail}" stroke-width=".8" fill="none"/>`;
+  const nose = (b==="frog")?`<ellipse cx="8" cy="9" rx=".8" ry=".5" fill="${p.nose}"/>`
+    :(b==="fox"||b==="cat")?`<polygon points="8,8.6 7.4,9.4 8.6,9.4" fill="${p.nose}"/>`
+    :`<circle cx="8" cy="9.2" r=".6" fill="${p.nose}"/>`;
+  return `<svg class="pet-svg idle" viewBox="0 0 16 16" shape-rendering="geometricPrecision" data-body="${b}" xmlns="http://www.w3.org/2000/svg">
+    ${tail}${ears}${head}${extras}${nose}${eyesSVG(b,p)}</svg>`;
+}
+
+// ===== 状态 / 控件 =====
+let bonkStyle = "soft";
+let bounceOn = true;
+let impactOn = true;
+document.getElementById("styleSeg").addEventListener("click",(e)=>{
+  const b=e.target.closest("button"); if(!b) return;
+  bonkStyle=b.dataset.style;
+  [...e.currentTarget.children].forEach(x=>x.classList.toggle("on",x===b));
+});
+document.getElementById("bounceOn").onchange=(e)=>bounceOn=e.target.checked;
+document.getElementById("impactOn").onchange=(e)=>impactOn=e.target.checked;
+
+// 通用：给某个 .pet-svg 播一次 bonk
+function playBonk(svg, dir){
+  if(!bounceOn) return;
+  svg.classList.remove("bonk-left","bonk-right","bonk-top","bonk-bottom","soft","firm","idle");
+  void svg.offsetWidth; // restart
+  svg.classList.add("bonk-"+dir, bonkStyle);
+  const done=()=>{ svg.classList.remove("bonk-"+dir,"soft","firm"); svg.classList.add("idle"); svg.removeEventListener("animationend",done); };
+  svg.addEventListener("animationend", done);
+}
+
+// ===== hero：跟随鼠标 + 撞边 =====
+const desk = document.getElementById("desk");
+const hero = document.getElementById("hero");
+const heroSvg = (()=>{ hero.insertAdjacentHTML("beforeend", petSVG(SKINS[0])); return hero.querySelector(".pet-svg"); })();
+const impactEl = document.getElementById("impact");
+const edges = { top:desk.querySelector(".edge.top"), bottom:desk.querySelector(".edge.bottom"), left:desk.querySelector(".edge.left"), right:desk.querySelector(".edge.right") };
+const statusEl = document.getElementById("status");
+const HW=72, HH=72;
+let wallState = { left:false,right:false,top:false,bottom:false }; // 防连发
+let inside=false;
+
+desk.addEventListener("mouseenter",()=>inside=true);
+desk.addEventListener("mouseleave",()=>{ inside=false; hero.style.opacity=0; });
+desk.addEventListener("mousemove",(e)=>{
+  hero.style.opacity=1;
+  const r=desk.getBoundingClientRect();
+  // 目标：让桌宠中心跟着光标（模拟 cursor_follow 把窗口底部中心钉到光标）
+  let wantX = e.clientX - r.left - HW/2;
+  let wantY = e.clientY - r.top  - HH/2;
+  const maxX = r.width - HW, maxY = r.height - HH;
+  const clampX = Math.max(0, Math.min(maxX, wantX));
+  const clampY = Math.max(0, Math.min(maxY, wantY));
+  hero.style.left = clampX+"px";
+  hero.style.top  = clampY+"px";
+
+  // 撞墙检测：want 超出边界 = 撞到那面墙
+  checkWall("left",  wantX < 0,      "right");   // 注意：被左墙挡 → 朝左撞 → bonk-left
+  checkWall("right", wantX > maxX,   "left");
+  checkWall("top",   wantY < 0,      "bottom");
+  checkWall("bottom",wantY > maxY,   "top");
+
+  statusEl.innerHTML = `想去: <b>(${wantX|0}, ${wantY|0})</b> · 实际(clamp 后): <b>(${clampX|0}, ${clampY|0})</b> · 漂移 = <b>0</b>（窗口锚点保持真值）`;
+});
+
+function checkWall(wall, hitting, _){
+  if(hitting && !wallState[wall]){
+    wallState[wall]=true;
+    edges[wall].classList.add("flash");
+    playBonk(heroSvg, wall);          // bonk-left / right / top / bottom
+    hero.classList.add("bonking");
+    if(impactOn) fireImpact(wall);
+    setTimeout(()=>hero.classList.remove("bonking"), 700);
+  } else if(!hitting && wallState[wall]){
+    wallState[wall]=false;
+    edges[wall].classList.remove("flash");
+  }
+}
+
+function fireImpact(wall){
+  // 把星星放在撞击的那一侧
+  const pos = {left:{left:"2px",top:"34px"},right:{left:"58px",top:"34px"},top:{left:"34px",top:"2px"},bottom:{left:"34px",top:"58px"}}[wall];
+  Object.assign(impactEl.style, pos);
+  impactEl.classList.remove("go"); void impactEl.offsetWidth; impactEl.classList.add("go");
+}
+
+// ===== 9 皮肤同屏 =====
+const petRow=document.getElementById("petRow");
+SKINS.forEach(skin=>{
+  const cell=document.createElement("div");
+  cell.className="pet-cell"; cell.dataset.skinId=skin.id;
+  cell.innerHTML = petSVG(skin)+`<div class="name">${skin.name}</div>`;
+  petRow.appendChild(cell);
+});
+const rowSvgs=[...petRow.querySelectorAll(".pet-svg")];
+
+document.querySelectorAll("[data-dir]").forEach(btn=>{
+  btn.onclick=()=>{
+    const d=btn.dataset.dir;
+    if(d==="all"){
+      const seq=["left","right","top","bottom"];
+      seq.forEach((dir,i)=>setTimeout(()=>rowSvgs.forEach(s=>playBonk(s,dir)), i*520));
+    } else {
+      rowSvgs.forEach(s=>playBonk(s,d));
+    }
+  };
+});
+</script>
+</body>
+</html>
