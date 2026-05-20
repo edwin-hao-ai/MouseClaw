@@ -1,76 +1,113 @@
-# Companion 动画手工验证清单 (v0.4+)
+# Companion 动画手工验证清单 (v0.4+ 全集)
 
 设计原型：[companion-animations-20260519.html](../../prototypes/companion-animations-20260519.html)
-实现 PR：commit 149e957 `feat(companion)`
+（已含 v0.4+ 全集补完状态的触发按钮）
+
+实现提交：
+- `149e957` 第一刀（眼球追 / 打字点头 / 贴近 / 闲置睡）
+- `ac85660` 点击 / drowsy / worried / picker
+- `c553d90` sleep-state companion gate 修复
+- `ef51002` 坐标系修复（Rust 算窗口本地坐标）
+- `a9deb63` 全集补完（爱心 / 伸懒腰 / 晕 / 抬头 / 小跳 / 亲密度 / 2h 提醒）
 
 ---
 
-## A · Chrome MCP E2E（已自动化 · 截图证据见同目录）
+## 状态全集（11 个 companion state + 3 个附加系统）
 
-Chrome DevTools MCP 跑 prototype HTML，9 款皮肤同屏验证：
+| # | 状态 / 功能 | 触发 | 视觉 | 优先级 |
+|---|------------|------|------|--------|
+| 1 | sleep | 键鼠静止 10s（深夜 5s） | 闭眼 + 瘫 + ZZZ | 最高 |
+| 2 | waking | sleep/drowsy → 醒 | 一次性伸懒腰拉伸回弹 | 2 |
+| 3 | dizzy | 鼠标速度 >2400px/s | 整体摇晃 + 眼睛转圈，不追鼠标 | 3 |
+| 4 | hop | 一段打字 burst 结束 | 小跳一下（"提交完成"近似） | 4 |
+| 5 | clicked | 点鼠标 <0.25s 内 | 双耳抽 + 微缩 | 5 |
+| 6 | worried | 连续狂敲/退格 ≥1.5s | 歪头担心 | 6 |
+| 7 | typing | sinceKey <0.4s | 220ms 节奏点头 | 7 |
+| 8 | excited | 光标 <30px | 上抬 + scale 1.08 | 8 |
+| 9 | alert | 光标 <80px | 抬头一点 | 9 |
+| 10 | glance | 过整点 40% 概率 | 抬头看一眼 2s（仅 idle 时） | 10 |
+| 11 | drowsy / idle | 默认态（深夜/白天） | 半垂慢摇 / 呼吸 | 最低 |
+| + | ❤️ 爱心 | 点桌宠 | 心上飘 700ms | （独立，非 state） |
+| + | 亲密度 | 互动累计 | level 1-3 眼睛微大 | （CSS class，静止时生效） |
+| + | 冷落委屈 | >3 天没互动 | 低头略暗 | （覆盖眼睛） |
+| + | LongFocus nudge | 连续专注 2h + 停顿 | 气泡"歇会儿" | （nudge 子系统，非 companion） |
 
-| # | 场景 | 期望 | 截图 |
-|---|------|------|------|
-| 1 | 初始无操作 → 全员 sleep | 9 只都闭眼 + ZZZ | [01-sleep-all-9-skins.png](01-sleep-all-9-skins.png) |
-| 2 | 鼠标移到右下 → 眼球追右 | 9 只瞳孔都偏 +x | [02-eyes-tracking-right.png](02-eyes-tracking-right.png) |
-| 3 | 鼠标移到左 → 眼球追左 | 9 只瞳孔都偏 -x（allLeft=true） | [03-eyes-tracking-left.png](03-eyes-tracking-left.png) |
-| 4 | 在 textarea 打字 → 全员点头 | 9 只都 "陪你打字" tag | [04-typing-all-9-nodding.png](04-typing-all-9-nodding.png) |
-| 5 | 鼠标贴近 classic → 兴奋 | 仅 classic 兴奋，其他 idle | [05-proximity-classic-excited.png](05-proximity-classic-excited.png) |
-| 6 | 强制全员入睡 → ZZZ 漂浮 | 9 只都 is-sleep | [06-forced-sleep-all-9.png](06-forced-sleep-all-9.png) |
-
-**所有皮肤 (classic / lab / field / ninja / cyber / golden / cat-gray / fox-red / frog-tree)
-都在每张截图中可见**，符合 CLAUDE.md "动画/陪伴效果必须适配所有皮肤" 硬规则。
+眼球追鼠标贯穿所有非 sleep/drowsy/dizzy/neglected 态（tanh 分量映射，X/Y 解耦）。
 
 ---
 
-## B · Tauri shell E2E（需手工跑，含 macOS 权限）
+## A · Prototype 自查（preview 面板 / `open` HTML）
 
-Chrome MCP 跑的是 prototype，不是真的 Tauri webview。**真 app 的验证**需要：
+prototype 现在有两排控制按钮。9 款皮肤同屏，逐个验证：
+
+- [ ] 移鼠标 → 9 只眼球都跟手追（左/右/上/下方向都对）
+- [ ] 代码框打字 → 9 只点头
+- [ ] 鼠标贴近某只 → 该只兴奋，其他不动
+- [ ] 停手 → 全员入睡 + ZZZ
+- [ ] **醒来伸懒腰** 按钮 → 9 只拉伸回弹
+- [ ] **甩动晕 ×_×** 按钮 → 9 只摇晃 + ×_× 眼
+- [ ] **回车小跳** 按钮 → 9 只跳一下
+- [ ] **整点抬头** 按钮 → 9 只抬头 2s
+- [ ] **深夜 drowsy** 按钮 → 9 只半垂慢摇
+- [ ] **冷落委屈** 按钮 → 9 只低头略暗
+- [ ] **亲密度 +1** 按钮 → 9 只眼睛逐级变大
+- [ ] 点任意桌宠头 → ❤️ 上飘
+
+> Chrome MCP 自动截图：本轮 **未跑**（chrome-devtools 端口 9222 未连接）。
+> prototype 在 preview 面板可直接交互验证。早期 6 张截图（01–06）覆盖
+> 原始 4-5 状态仍有效，见同目录。
+
+---
+
+## B · 真 Tauri app 实测（DMG / `bun tauri dev`）
+
+桌宠在屏幕右下角，**不用按快捷键**，idle 静默状态下：
+
+### 被动感知
+- [ ] 鼠标在屏幕各方向移动 → 眼球追（清晰可见 ~5px 偏移）
+- [ ] 9 款皮肤逐个切（tray → 选皮肤）→ 每款眼球都追
+
+### 主动反应
+- [ ] 点鼠标任意位置 → 桌宠耳朵抽一下
+- [ ] 任何 app 打字 → 节奏点头；打完一段停手 → 小跳
+- [ ] 鼠标快速大幅甩动 → 桌宠晕（摇晃 + ×_×）
+- [ ] 鼠标慢慢靠近桌宠 → 80px 抬头 / 30px 兴奋
+- [ ] 点桌宠本体 → ❤️ 上飘
+
+### 情境
+- [ ] 现在深夜（>23:00 或 <6:00）→ 桌宠 drowsy 半垂慢摇 + 5s 静止就睡
+- [ ] sleep 后动鼠标 → 先伸懒腰再恢复（不是瞬切）
+- [ ] 整点附近偶尔抬头看一眼（概率性，不保证每次）
+
+### 长期 / 累积
+- [ ] 多用几天，互动多了眼睛会略大（亲密度）
+- [ ] 连续专注工作 2h，在停下打字的瞬间 → "歇会儿" 提醒气泡
+- [ ] 超 3 天没碰 → 桌宠委屈低头（下次互动恢复）
+
+### 不打扰回归（关键）
+- [ ] 按快捷键进 listening/thinking/talk → companion 动画**不抢戏**
+- [ ] 系统"减少动态效果"开 → 所有 companion 动画静止（仅状态指示）
+
+### 隐私 / 性能
+- [ ] 待机 CPU < 1%（30 FPS tick）
+- [ ] 首次启动**不弹** Accessibility 权限（只用 CGEventSource，不读键内容）
+
+---
+
+## C · 已知边界 / 刻意不做（明确，不藏）
+
+- **精确 Enter / Backspace 检测**：刻意不做 —— 要读键盘**内容**，跨隐私红线。
+  回车用 burst-end 近似（hop）、退格用打字风暴近似（worried）替代。
+- **Windows / Linux**：companion.rs 非 macOS 分支返回零值，V2 各平台实现。
+- **多屏副屏**：`cursor_xy()` Y 翻转用主屏高度，桌宠在副屏时眼球追有 Y 偏移，follow-up。
+- **亲密度持久化**：localStorage（非 config.json）—— 丢了无所谓，纯视觉调味。
+
+---
+
+## D · 自动化兜底（全绿才算完）
 
 ```bash
-bun tauri dev
-```
-
-启动后用主屏：
-
-1. **眼球追鼠标**：
-   - 桌宠出现在屏幕右下角（默认锚点）
-   - 把鼠标移到屏幕左上 → 桌宠眼睛朝左上偏（瞳孔位移 ≤ 0.6 SVG px ≈ 4 屏幕 px @ size=64）
-   - 把鼠标移到桌宠正下方 → 眼睛朝下
-   - **9 款皮肤都要试一遍**：tray menu → 选皮肤 → 重复
-
-2. **打字陪伴**：
-   - 在任何 app（VSCode / Notes / Terminal 都行）打字
-   - 桌宠每 220ms 点头一次（CSS `mc-nod` 动画）
-   - 停手 0.5s 后立即停（无残留抖动）
-
-3. **闲置渐睡**：
-   - 10s 不动键鼠 → 桌宠 scaleY 0.88 + brightness 0.85 + 眼睛压成一字
-   - 移鼠标 / 按键立刻醒
-
-4. **贴近反应**：
-   - 鼠标 < 80px 抬头一点（companion-alert）
-   - 鼠标 < 30px 兴奋抬头 + scale 1.08（companion-excited）
-
-### 已知未做（明确）
-- ❌ Windows / Linux 端 companion.rs 都返回零值（`#[cfg(not(target_os = "macos"))]` 分支），
-  V1 macOS 优先，跨平台 V2
-- ❌ Tauri shell E2E 没有自动化（**用户手工跑**）—— 原因：当前 session 未启动 `bun tauri dev`，
-  且自动化 Tauri 透明窗口的 cursor / key 注入需要 Accessibility 权限。Chrome MCP 在 prototype HTML 上
-  覆盖了所有状态机分支 + 9 皮肤兼容，足以信任 React/CSS 层；剩下的是 Rust `companion::spawn` 在真
-  Tauri 上线后实际 emit。本地 cargo test 已验 emit payload 形状 + 事件名契约。
-- ❌ 多屏（external display）下 `cursor_xy()` 用主屏 height 翻转 Y —— 桌宠如果跑在副屏，
-  眼球追鼠标会有 Y 偏移。Y 翻转改成"当前光标所在屏的 frame" 是 follow-up。
-
-### 通过条件
-4 个场景全在视觉上成立 + reduced-motion 偏好开启时所有动画降级到无动 = 通过。
-
----
-
-## C · 自动化兜底
-
-```bash
-bash tests/acceptance/companion-animations-e2e.sh  # 20/20 PASS
-bunx vitest run                                     # 31/31
-cargo test --manifest-path src-tauri/Cargo.toml --lib  # 146/146
+bash tests/acceptance/companion-animations-e2e.sh   # 27/27 PASS
+bunx vitest run                                      # 69 passed
+cargo test --manifest-path src-tauri/Cargo.toml --lib  # 160 passed
 ```

@@ -165,6 +165,34 @@
   /* focus — locked in, slight squint via class on eyes */
   .pet-svg.focus { transform: translateY(1px); }
 
+  /* ───── v0.4+ 全集补完状态（与真 app PixelMouse.css 视觉对齐）───── */
+  /* waking — 醒来伸懒腰（一次性） */
+  @keyframes p-waking {
+    0%   { transform: translateY(4px) scaleY(0.85); }
+    35%  { transform: translateY(-4px) scaleY(1.16); }
+    60%  { transform: translateY(0) scaleY(0.96); }
+    100% { transform: translateY(0) scaleY(1); }
+  }
+  .pet-svg.waking { animation: p-waking 700ms cubic-bezier(.34,1.56,.64,1); }
+  /* dizzy — 鼠标甩动转圈 */
+  @keyframes p-dizzy { 0%,100%{transform:rotate(-7deg);} 50%{transform:rotate(7deg);} }
+  .pet-svg.dizzy { animation: p-dizzy 360ms ease-in-out infinite; }
+  /* hop — burst 结束小跳 */
+  @keyframes p-hop { 0%,100%{transform:translateY(0);} 40%{transform:translateY(-7px);} 60%{transform:translateY(-5px);} }
+  .pet-svg.hop { animation: p-hop 480ms cubic-bezier(.34,1.56,.64,1); }
+  /* glance — 整点抬头 */
+  @keyframes p-glance { 0%,100%{transform:rotate(0);} 25%,75%{transform:rotate(-2deg) translateY(-1px);} }
+  .pet-svg.glance { animation: p-glance 2s ease-in-out; }
+  /* drowsy — 深夜半垂 */
+  @keyframes p-drowsy { 0%,100%{transform:translateY(0);} 50%{transform:translateY(1px);} }
+  .pet-svg.drowsy { animation: p-drowsy 4s ease-in-out infinite; filter: brightness(0.9); }
+  /* neglected — 冷落委屈：低头略暗 */
+  .pet-svg.neglected { transform: translateY(2px) rotate(-1.5deg); filter: brightness(0.88) saturate(0.82); }
+  /* intimacy — 眼睛放大（演示用 data-intimacy 缩放 .eyes group） */
+  .pet-cell[data-intimacy="1"] .eyes { transform: scale(1.05); transform-origin:center; }
+  .pet-cell[data-intimacy="2"] .eyes { transform: scale(1.10); transform-origin:center; }
+  .pet-cell[data-intimacy="3"] .eyes { transform: scale(1.16); transform-origin:center; }
+
   /* ear twitch random */
   @keyframes ear-twitch {
     0%, 90%, 100% { transform: rotate(0); }
@@ -272,6 +300,18 @@
   <button id="btnAlert">围观（贴近反应）</button>
   <button id="btnReset">重置</button>
   <span class="hint">把鼠标移到桌宠上 → 距离 &lt;80px 抬头 · &lt;30px 兴奋。10s 不动会全员入睡。</span>
+</div>
+
+<div class="controls">
+  <span class="hint" style="color:var(--accent)">v0.4+ 全集补完：</span>
+  <button id="btnWaking">醒来伸懒腰</button>
+  <button id="btnDizzy">甩动晕 ×_×</button>
+  <button id="btnHop">回车小跳</button>
+  <button id="btnGlance">整点抬头</button>
+  <button id="btnDrowsy">深夜 drowsy</button>
+  <button id="btnNeglect">冷落委屈</button>
+  <button id="btnIntimacy">亲密度 +1（眼睛变大）</button>
+  <span class="hint">点桌宠头 → ❤️ 上飘（已在主交互里）</span>
 </div>
 
 <div class="status" id="status">state: <b>idle</b> · last input: <b>—</b> · cursor: <b>(–, –)</b></div>
@@ -495,7 +535,22 @@ document.addEventListener("click", (e) => {
 document.getElementById("btnSleep").onclick = () => { forceSleep = true; forceAlert = false; };
 document.getElementById("btnWake").onclick  = () => { forceSleep = false; lastInputAt = Date.now(); };
 document.getElementById("btnAlert").onclick = () => { forceAlert = true; setTimeout(()=>forceAlert=false, 2500); };
-document.getElementById("btnReset").onclick = () => { forceSleep=false; forceAlert=false; lastInputAt=Date.now(); };
+document.getElementById("btnReset").onclick = () => { forceSleep=false; forceAlert=false; lastInputAt=Date.now(); override.state=null; intimacyLevel=0; cells.forEach(c=>c.removeAttribute("data-intimacy")); };
+
+// v0.4+ 全集补完 override —— 一次性 / 持续状态，所有 9 只同步演示
+let override = { state: null, until: 0 };
+let intimacyLevel = 0;
+const fire = (state, ms) => { override = { state, until: Date.now() + ms }; lastInputAt = Date.now(); };
+document.getElementById("btnWaking").onclick  = () => fire("waking", 700);
+document.getElementById("btnDizzy").onclick   = () => fire("dizzy", 1600);
+document.getElementById("btnHop").onclick     = () => fire("hop", 480);
+document.getElementById("btnGlance").onclick  = () => fire("glance", 2000);
+document.getElementById("btnDrowsy").onclick  = () => fire("drowsy", 6000);
+document.getElementById("btnNeglect").onclick = () => fire("neglected", 6000);
+document.getElementById("btnIntimacy").onclick = () => {
+  intimacyLevel = Math.min(3, intimacyLevel + 1);
+  cells.forEach(c => c.setAttribute("data-intimacy", String(intimacyLevel)));
+};
 
 // ============================================================
 // 主循环 (60fps) — 更新每只桌宠的眼睛 + 状态 class
@@ -554,9 +609,24 @@ function updatePet(cell) {
   eyesG.innerHTML = eyesSVG;
 
   // 2) 状态 class
-  svg.classList.remove("idle","typing","alert","sleep","focus");
+  svg.classList.remove("idle","typing","alert","sleep","focus",
+    "waking","dizzy","hop","glance","drowsy","neglected");
   cell.classList.remove("is-sleep","is-alert","is-typing");
   let tag = "idle";
+
+  // v0.4+ 全集补完 override —— 按钮触发的瞬时态优先（带 until 时间戳）
+  if (override.state && Date.now() < override.until) {
+    svg.classList.add(override.state);
+    if (override.state === "dizzy") {
+      // 晕的时候眼睛不追，盖一层 ×_×
+      eyesG.innerHTML = `<text x="4" y="9" font-size="3" fill="${p.eye}">×</text><text x="9" y="9" font-size="3" fill="${p.eye}">×</text>`;
+    }
+    cell.querySelector("[data-tag]").textContent = {
+      waking:"伸懒腰", dizzy:"晕 ×_×", hop:"跳！", glance:"抬头看",
+      drowsy:"深夜困", neglected:"委屈…",
+    }[override.state] || override.state;
+    return;
+  }
 
   if (sleepy) {
     svg.classList.add("sleep");
