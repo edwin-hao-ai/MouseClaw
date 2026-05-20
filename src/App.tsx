@@ -122,6 +122,15 @@ export default function App() {
       .catch(() => { /* 浏览器 dev 模式 invoke 不可用 */ });
   }, []);
 
+  // v0.4.x · voice-confirm 期间让 overlay 可获键盘焦点 —— 用户能直接打字改识别文本。
+  // 离开 voice-confirm 立刻关掉，恢复非激活面板（不抢焦点）。
+  useEffect(() => {
+    if (view.kind === "voice-confirm") {
+      invoke("set_overlay_focusable", { focusable: true }).catch(() => {});
+      return () => { invoke("set_overlay_focusable", { focusable: false }).catch(() => {}); };
+    }
+  }, [view.kind]);
+
   // v0.4.0 · 监听模型下载进度 —— 聚合 ASR + 标点两条，算总 % 给桌宠 idle 气泡用
   useEffect(() => {
     interface PEvent {

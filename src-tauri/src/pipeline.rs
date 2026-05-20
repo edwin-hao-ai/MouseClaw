@@ -202,9 +202,39 @@ pub async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppStat
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
         emit_view(&app, &ViewKind::ModeBInserting { insert_text: text.clone() });
+
+        // v0.4.x · 续写前先把光标焦点还原到召唤时那个 app —— 倒数 / AI 处理期间
+        // 用户可能切走了。还原成功 = 光标回到原输入框；还原不了（app 关了 / 切到
+        // 别处拿不回） = 光标丢了 → 落剪贴板让用户自己 ⌘V，绝不盲插到错的地方。
+        let cursor_ok = restore_cursor_for_insert(&state).await;
+
+        if !cursor_ok {
+            // 光标丢了 → 剪贴板兜底
+            let copied = mode_b::set_clipboard(&text).is_ok();
+            let msg = if copied {
+                format!("📋 原输入框失焦了，内容已复制 · ⌘V 粘贴：\n{text}")
+            } else {
+                format!("⚠️ 原输入框失焦、且复制失败：\n{text}")
+            };
+            emit_view(&app, &ViewKind::Reply {
+                transcript, reply: msg, mode: ReplyMode::A, insert_text: None, streaming: false,
+            });
+            schedule_auto_hide(&app, &state, 8000);
+            return;
+        }
+
         if let Err(e) = mode_b::write_at_cursor(&text).await {
-            emit_view(&app, &ViewKind::Blocked { reason: format!("写入失败：{e}") });
-            schedule_auto_hide(&app, &state, 4000);
+            // 写入失败（终端等不可写 app）→ 也走剪贴板兜底，别只甩错误
+            let copied = mode_b::set_clipboard(&text).is_ok();
+            let msg = if copied {
+                format!("📋 没法直接写入（{e}），已复制 · ⌘V 粘贴：\n{text}")
+            } else {
+                format!("写入失败：{e}")
+            };
+            emit_view(&app, &ViewKind::Reply {
+                transcript, reply: msg, mode: ReplyMode::A, insert_text: None, streaming: false,
+            });
+            schedule_auto_hide(&app, &state, 8000);
             return;
         }
         emit_view(
@@ -237,6 +267,26 @@ pub async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppStat
 
 // ────────────────── Push-to-talk shortcut handling ──────────────────
 
+/// v0.4.x · Mode B 续写前还原光标焦点到召唤时的 app。
+/// 返回 true = 光标可用（原 app 仍在前台 / 成功 activate 回来）；
+/// false = 光标丢了（没抓到原 pid / activate 失败 / 还原后前台仍不对）→ 调用方走剪贴板兜底。
+#[cfg(target_os = "macos")]
+async fn restore_cursor_for_insert(state: &Arc<AppState>) -> bool {
+    let prev_pid = *state.prev_frontmost_pid.lock().unwrap();
+    let Some(pid) = prev_pid else { return false; };
+    if crate::frontmost::current_frontmost_pid() == Some(pid) {
+        return true; // 原 app 还在前台，光标没丢
+    }
+    // 用户切走了 → 尝试把原 app 拉回前台
+    if !crate::frontmost::activate_pid(pid) {
+        return false; // activate 失败（app 已关 / 拉不回）
+    }
+    tokio::time::sleep(Duration::from_millis(120)).await;
+    crate::frontmost::current_frontmost_pid() == Some(pid) // 再确认真的回来了
+}
+#[cfg(not(target_os = "macos"))]
+async fn restore_cursor_for_insert(_state: &Arc<AppState>) -> bool { true }
+
 /// 按下快捷键：起手录音 + 截图。
 pub async fn on_shortcut_press(app: AppHandle, state: Arc<AppState>) {
     bump_gen(&state);
@@ -244,6 +294,14 @@ pub async fn on_shortcut_press(app: AppHandle, state: Arc<AppState>) {
     // 已经在录音中（hold + auto-repeat 会再次 fire Press）→ 跳过
     if state.recorder.lock().unwrap().is_some() {
         return;
+    }
+
+    // v0.4.x · 抓住召唤瞬间的前台 app pid —— Mode B 续写要靠它把光标焦点还原回去
+    // （倒数 / AI 处理期间用户可能切走了）。拿不到也不致命，Mode B 会退回剪贴板。
+    #[cfg(target_os = "macos")]
+    {
+        let pid = crate::frontmost::current_frontmost_pid();
+        *state.prev_frontmost_pid.lock().unwrap() = pid;
     }
 
     // v0.2 · check sherpa streaming model

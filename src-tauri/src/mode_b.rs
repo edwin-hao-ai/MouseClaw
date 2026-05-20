@@ -140,6 +140,36 @@ pub async fn write_at_cursor(_text: &str) -> Result<()> {
     bail!("Mode B not implemented on non-macOS yet")
 }
 
+/// v0.4.x · 仅把 text 写进系统剪贴板（不 paste、不还原）—— Mode B 续写时
+/// 光标丢了 / 原窗口失焦无法直接插入的兜底：把内容留在剪贴板让用户自己 ⌘V。
+#[cfg(target_os = "macos")]
+pub fn set_clipboard(text: &str) -> Result<()> {
+    use cocoa::base::{id, nil};
+    use cocoa::foundation::{NSString, NSArray};
+    use objc::{class, msg_send, sel, sel_impl};
+    unsafe {
+        let pool: id = msg_send![class!(NSAutoreleasePool), new];
+        let res: Result<()> = (|| {
+            let pb: id = msg_send![class!(NSPasteboard), generalPasteboard];
+            if pb == nil { bail!("generalPasteboard nil"); }
+            let ns_type = NSString::alloc(nil).init_str("public.utf8-plain-text");
+            let _: i64 = msg_send![pb, clearContents];
+            let ns_text = NSString::alloc(nil).init_str(text);
+            let types = NSArray::arrayWithObject(nil, ns_type);
+            let _: bool = msg_send![pb, declareTypes: types owner: nil];
+            let ok: bool = msg_send![pb, setString: ns_text forType: ns_type];
+            let _: () = msg_send![ns_text, release];
+            let _: () = msg_send![ns_type, release];
+            if !ok { bail!("NSPasteboard setString failed"); }
+            Ok(())
+        })();
+        if pool != nil { let _: () = msg_send![pool, drain]; }
+        res
+    }
+}
+#[cfg(not(target_os = "macos"))]
+pub fn set_clipboard(_text: &str) -> Result<()> { bail!("set_clipboard only on macOS") }
+
 /// v0.3.1 · 流式语音输入用 —— 同步快速 paste，不走 clipboard 路径。
 /// 直接用 unicode keyboard event 注入，不污染剪贴板，跟 paste_via_clipboard 区分。
 /// 给 voice_ime streaming poller 每 150ms 调用，必须返回快（无 await）。

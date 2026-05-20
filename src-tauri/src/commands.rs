@@ -153,6 +153,21 @@ pub fn save_shortcut(
 /// 运行期切换桌宠皮肤 —— 托盘子菜单调它。
 /// 1) 持久化进 config.json
 /// 2) emit `skin-changed` 事件，前端立即换皮肤（不重启）
+/// v0.4.x · 临时让桌宠 overlay 可获键盘焦点 —— 仅 voice-confirm 期间开，让用户
+/// 能直接打字编辑识别出来的文本（overlay 平时是非激活面板，textarea 的 .focus()
+/// 只是 DOM 级，按键其实进了后台 app，根本编辑不了）。确认结束（发送/取消）后关掉，
+/// 恢复"不抢焦点"的默认气质。
+#[tauri::command]
+pub fn set_overlay_focusable(focusable: bool, app: AppHandle) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window("mouse") {
+        let _ = w.set_focusable(focusable);
+        if focusable {
+            let _ = w.set_focus();
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn save_skin(skin: String, app: AppHandle) -> Result<(), String> {
     let parsed = SkinId::from_str(&skin);

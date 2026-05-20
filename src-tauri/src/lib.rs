@@ -313,6 +313,7 @@ pub fn run() {
             commands::toggle_pin_session,
             commands::get_session_state,
             commands::open_session_panel,
+            commands::set_overlay_focusable,
             commands::save_shortcut,
             commands::cancel_pipeline,
             commands::toggle_recording,
