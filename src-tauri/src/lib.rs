@@ -11,6 +11,7 @@
 //!
 //! 完整架构见 `/Users/edwinhao/MouseClaw/CLAUDE.md`。
 
+pub mod ai_queue;
 pub mod anchor;
 pub mod audio;
 pub mod backend;

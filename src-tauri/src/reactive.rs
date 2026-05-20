@@ -18,6 +18,7 @@
 //! - T1     : 默认通过，前端表现 = 抖耳 ~400ms，零 UI
 //! - T2     : 内容看着可处理（URL / 代码 / 乱格式 / 长文本）→ 抖耳 + 弹 ribbon
 
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Mutex, OnceLock};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
@@ -48,6 +49,56 @@ pub fn emit_action_result(action: &str, ok: bool, summary: &str) {
     if let Err(e) = app.emit(EV_REACTIVE_RESULT, &payload) {
         eprintln!("[mouseclaw] 📋 reactive-result emit failed: {e}");
     }
+}
+
+// ───────────────────── 后台任务忙碌追踪 ─────────────────────
+//
+// 用户痛点（2026-05-20）：「点了纯文本然后切去做别的，不知道还在不在处理」。
+// 解：任何后台 AI 任务（reactive action / 未来 selection action）开始时 +1、结束时 -1，
+// 计数变化 emit bg-task-changed。前端据此在桌宠上显示"忙碌"指示，跨任何视图可见。
+//
+// 用 RAII guard 保证即使任务 panic / 早 return 也会 -1，不会卡在"永远忙碌"。
+
+pub const EV_BG_TASK_CHANGED: &str = "bg-task-changed";
+
+static BG_TASKS: AtomicU32 = AtomicU32::new(0);
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BgTaskPayload {
+    pub count: u32,
+}
+
+fn emit_bg_count() {
+    let count = BG_TASKS.load(Ordering::SeqCst);
+    if let Some(app) = APP_HANDLE.get() {
+        let _ = app.emit(EV_BG_TASK_CHANGED, &BgTaskPayload { count });
+    }
+}
+
+/// 后台任务计数 RAII guard —— `let _g = reactive::TaskGuard::start();` 放在任务起点，
+/// drop（函数返回 / panic / await 取消）时自动 -1。
+pub struct TaskGuard {
+    _private: (),
+}
+
+impl TaskGuard {
+    pub fn start() -> Self {
+        BG_TASKS.fetch_add(1, Ordering::SeqCst);
+        emit_bg_count();
+        TaskGuard { _private: () }
+    }
+}
+
+impl Drop for TaskGuard {
+    fn drop(&mut self) {
+        BG_TASKS.fetch_sub(1, Ordering::SeqCst);
+        emit_bg_count();
+    }
+}
+
+/// 当前后台任务数（测试 / 诊断用）。
+pub fn bg_task_count() -> u32 {
+    BG_TASKS.load(Ordering::SeqCst)
 }
 
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();

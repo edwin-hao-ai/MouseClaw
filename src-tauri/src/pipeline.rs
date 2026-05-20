@@ -98,6 +98,10 @@ pub async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppStat
     let app_chunks = app.clone();
     let transcript_chunks = transcript.clone();
     let mut last_emit = std::time::Instant::now() - Duration::from_secs(1);
+    // v0.4 · AI 任务串行队列 —— 若有 reactive action / 另一次召唤在跑，这里 await 等它完成。
+    //   ticket 持有到 ask_streaming 结束（drop 在本作用域末）。期间桌宠显示忙碌。
+    //   听写（fn IME）不走队列，不受影响。见 CLAUDE.md "AI 任务串行 + 听写即时"。
+    let _ai_ticket = crate::ai_queue::acquire().await;
     let reply = match backend::ask_streaming(
         active_backend,
         &prompt_with_context,
@@ -134,6 +138,9 @@ pub async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppStat
         }
     };
     println!("[mouseclaw] ✓ AI 返回 {} chars", reply.chars().count());
+    // AI 调用结束 → 立即放锁，让下一个排队任务能进来（Mode A/B 输出 / session 存盘
+    // 不需要 AI 锁，不该让它们继续阻塞队列）。
+    drop(_ai_ticket);
 
     // 4. Record turns into session history
     {

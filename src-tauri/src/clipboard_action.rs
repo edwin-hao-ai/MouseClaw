@@ -33,6 +33,10 @@ async fn run(action: &str) -> Result<String, String> {
     }
     let prompt = build_prompt(action, &text)
         .map_err(|e| e.to_string())?;
+    // v0.4 · AI 任务串行队列 —— 排队等轮到自己（桌宠在排队期间显示忙碌）。
+    //   ticket 持有到本函数结束自动释放，下一个 AI 任务才能进来。
+    //   见 CLAUDE.md "AI 任务串行 + 听写即时"硬规则。
+    let _ticket = crate::ai_queue::acquire().await;
     // v0.4 · 走统一后端接口，自动适配用户在 Onboarding 选的 CLI
     //   （Claude / Codex / OpenClaw / Hermes 都走同一份 action prompt）。
     //   见 CLAUDE.md "多后端 CLI 都要兼容"硬规则。

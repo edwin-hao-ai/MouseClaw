@@ -54,6 +54,10 @@ fn run_loop() {
     let mut last_text: Option<String> = None;
     let mut last_emit_at: Option<Instant> = None;
 
+    println!("[mouseclaw] 🔤 selection capture loop started (poll {POLL_INTERVAL_MS}ms, min {MIN_SELECTION_CHARS} chars)");
+    // 节流诊断：每 ~10s 最多打一次"无 AX 权限"，避免刷屏
+    let mut last_ax_warn: Option<Instant> = None;
+
     loop {
         std::thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
 
@@ -62,6 +66,11 @@ fn run_loop() {
         }
         // 没 AX 权限时直接 skip —— AX 调用会失败，但更省事是先查
         if !crate::permissions::check_accessibility() {
+            let warn_now = last_ax_warn.map_or(true, |t| t.elapsed() > Duration::from_secs(10));
+            if warn_now {
+                println!("[mouseclaw] 🔤 选词功能需要「辅助功能」权限 —— 系统设置 → 隐私与安全性 → 辅助功能 放行 MouseClaw");
+                last_ax_warn = Some(Instant::now());
+            }
             continue;
         }
 
@@ -76,7 +85,11 @@ fn run_loop() {
             last_text = None;
             continue;
         };
-        if text.chars().count() < MIN_SELECTION_CHARS { continue; }
+        let n = text.chars().count();
+        if n < MIN_SELECTION_CHARS {
+            continue;
+        }
+        println!("[mouseclaw] 🔤 selection detected: {n} chars");
 
         // 同内容 + cooldown 内 → skip
         if last_text.as_deref() == Some(text.as_str()) {

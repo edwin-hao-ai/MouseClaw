@@ -185,6 +185,29 @@ export default function App() {
 
   const dismissReactive = useCallback(() => setReactive(null), []);
 
+  // v0.4 fix (2026-05-20) · 视图离开 idle → 立即清掉 ribbon 状态。
+  // 否则用户点了 action 然后按 fn 切到语音输入法时，ribbon 不渲染了（view≠idle）但
+  // reactive 状态还在 → reactive-result 通知逻辑误判"ribbon 还在"跳过 transientAck →
+  // 用户啥反馈都看不到。清掉之后 reactiveRef 变 null，结果通过 transientAck 必达。
+  useEffect(() => {
+    if (view.kind !== "idle" && reactive) setReactive(null);
+  }, [view.kind, reactive]);
+
+  // v0.4 · 后台任务忙碌计数 —— 任何 reactive action 在跑时 > 0。
+  // 桌宠据此显示忙碌指示（跨任何视图可见），用户永远知道"还在处理"。
+  const [bgTaskCount, setBgTaskCount] = useState(0);
+  useEffect(() => {
+    interface BgPayload { count: number; }
+    let unlisten: (() => void) | null = null;
+    try {
+      const p = listen<BgPayload>("bg-task-changed", (e) => {
+        setBgTaskCount(e.payload.count);
+      });
+      p.then((fn) => { unlisten = fn; }).catch(() => {});
+    } catch {/* dev mode */}
+    return () => { if (unlisten) unlisten(); };
+  }, []);
+
   // v0.4 · Reactive 处理完通知 —— ribbon 可能已被 dismiss / 超时 / 切到别的视图，
   // 后端处理完时 emit reactive-result。这里：
   //   - 如果 ribbon 还在（reactive 非 null）→ ribbon 自己显示了 done/err，不重复打扰
@@ -549,6 +572,15 @@ export default function App() {
         {hearts.map((id) => (
           <span key={id} className="pet-heart" aria-hidden>❤️</span>
         ))}
+        {/* v0.4 · 后台任务忙碌指示 —— 任何视图可见，让用户知道"还在处理"。
+            三点跳跃 badge 贴在桌宠右下，不抢戏但能看到。 */}
+        {bgTaskCount > 0 && (
+          <span className="pet-busy-badge" aria-label="处理中" title="处理中…">
+            <span className="pet-busy-dot" />
+            <span className="pet-busy-dot" />
+            <span className="pet-busy-dot" />
+          </span>
+        )}
         <PetMenu
           open={petMenuOpen}
           onClose={() => setPetMenuOpen(false)}

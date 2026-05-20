@@ -240,6 +240,35 @@ rect 才能知道真正占用了多少像素。这是 jsdom + 真 webview 都验
 - 2026-05-19 reactive ribbon 显示不全，又一次想改 EXPANDED_SIZE
 - 2026-05-20 PetMenu 加教程项被剪 → 终于上自适应（这个规则就是这一天立的）
 
+## AI 任务串行 + 听写即时（硬规则 · v0.4+）
+
+**用户决策（2026-05-20）**：桌宠是一只，一次只做一件 AI 工作 —— **所有 AI 任务排队串行**，
+逐个做完，每个做完都通知用户；**语音输入法 fn 听写永远即时、不排队**（本地 sherpa 打字）。
+
+### 落地
+- `ai_queue.rs` · 全局 `tokio::Mutex` 串行锁 + 忙碌计数（`reactive::TaskGuard`）
+- 任何调 AI backend 的路径**必须**先 `let _ticket = ai_queue::acquire().await;`：
+  - reactive action（clipboard_action.rs）✓
+  - 主 pipeline（pipeline.rs，包住 `ask_streaming`，拿到 reply 后立刻 `drop(_ticket)`）✓
+  - 未来任何新 AI 流水线（selection action / 总结 / …）→ 同样必须套
+- 听写（voice_ime.rs）**不套** ticket —— 它是本地 ASR 打字，不是 AI 推理任务
+
+### 为什么不是别的方案
+- ❌ 并行：多个 claude 子进程 + 本地 ASR 抢 CPU → 用户实测卡顿
+- ❌ 忙时拒绝：用户要手动重试，烦
+- ✅ 排队："按了就一定会做、且不卡"，桌宠排队期间显示忙碌 badge
+
+### 忙碌可见性（强制）
+- 任何 AI 任务在跑 / 排队 → `bg-task-changed` 事件 → 前端桌宠右下角三点 badge（**任何视图可见**）
+- 任务完成 → `reactive-result`（reactive action）/ 主 pipeline 的 reply 视图 → **必须有反馈**
+- **硬规则**：用户永远不该处于"我点了但不知道在不在做 / 做完没"的状态。新 AI 流水线
+  上线前必须验证：①跑时有忙碌指示 ②完成有通知（即使用户已经切走视图）
+
+### 反例（PR 拒绝）
+- ❌ 新加一个"AI 总结剪贴板"功能，直接 spawn claude 不走 ai_queue → 跟主 pipeline 抢 CPU
+- ❌ 任务在后台跑但桌宠没有任何忙碌指示 → 用户以为没反应又点一次
+- ❌ 任务完成时只在某个特定视图才通知，用户切走就静默丢结果
+
 ## 多后端 CLI 兼容（硬规则 · v0.1.6+）
 
 **任何"调 AI 跑短任务"的新功能必须走 `backend.rs` 的统一抽象，不能硬编码 `claude` 二进制。**
