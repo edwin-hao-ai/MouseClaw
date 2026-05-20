@@ -23,10 +23,13 @@
 //!   不支持。改完词表 → 调 `transcribe_stream::reload_recognizer()` 让下次
 //!   transcribe 重新 init。**当前用户已经按住的快捷键不受影响**（OK trade-off）。
 
+use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use anyhow::{anyhow, Context, Result};
+use once_cell::sync::Lazy;
 
 /// 内置程序员词表 —— 编译进二进制，~2 KB。
 const BUILTIN_PROGRAMMER: &str = include_str!("../resources/vocab/programmer.txt");
@@ -92,6 +95,9 @@ pub fn regenerate_active(builtin_enabled: bool) -> Result<usize> {
             None => writeln!(f, "{}", word)?,
         }
     }
+    // v0.4.1 · 词表变了 → 清大小写还原缓存，下次 recase 用新词表重建。
+    // 放这儿覆盖所有重载路径（vocab_reload / set_builtin / 启动），无需改 commands.rs。
+    invalidate_casing_map();
     Ok(count)
 }
 
@@ -137,6 +143,166 @@ const USER_FILE_TEMPLATE: &str = "\
 #
 # 在下面写你的词：
 ";
+
+// ============================================================================
+// 英文大小写还原 (v0.4.1) —— 修 "中英混合英文全是大写字母"
+// ============================================================================
+//
+// 背景：sherpa zh-en zipformer 2023-02-20 的英文 BPE token 全是大写（▁OPEN ▁AI…），
+// 所以英文必然输出成 `OPENAI` / `OPEN AI` / `OPEN CLAW`。后处理还原成自然大小写：
+//   - 词表里的术语 → 用词表的正确大小写（OPENAI→OpenAI, USEEFFECT→useEffect, API→API）
+//   - 相邻全大写词尝试合并匹配复合术语（OPEN AI→OpenAI, OPEN CLAW→OpenClaw）
+//   - 代词 "I" 保持大写；其余未知英文 → 小写（比 ALLCAPS 自然太多）
+//   - 非英文（中文 / 数字 / 标点）原样保留
+//
+// 词表是单一信源：用户往术语表加词，既 boost 识别（hotwords）又修大小写。
+
+/// 缓存的还原表：casing_key(UPPERCASE 去非字母数字) → 正确大小写词。
+static CASING_MAP: Lazy<Mutex<Option<HashMap<String, String>>>> = Lazy::new(|| Mutex::new(None));
+
+/// 归一 key：取 ASCII 字母数字、转大写。"Next.js"→"NEXTJS"，"OpenAI"→"OPENAI"。
+fn casing_key(term: &str) -> String {
+    term.chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .flat_map(|c| c.to_uppercase())
+        .collect()
+}
+
+/// 从内置 + 用户词表建还原表。内置永远纳入（大小写还原无害，不像 hotwords 影响解码）。
+fn build_casing_map() -> HashMap<String, String> {
+    let mut entries: Vec<(String, Option<f32>)> = Vec::new();
+    collect_entries(BUILTIN_PROGRAMMER, &mut entries);
+    if let Ok(user) = user_file_path() {
+        if let Ok(text) = fs::read_to_string(&user) {
+            collect_entries(&text, &mut entries);
+        }
+    }
+    let mut map = HashMap::new();
+    for (w, _) in entries {
+        // 只收"含 ASCII 字母、不含空格"的英文词（中文术语 / 多词短语不参与英文 recase）
+        if w.contains(' ') || !w.chars().any(|c| c.is_ascii_alphabetic()) {
+            continue;
+        }
+        let key = casing_key(&w);
+        if !key.is_empty() {
+            // 用户词表后插 → 覆盖内置（同 regenerate_active 的"用户优先"）
+            map.insert(key, w);
+        }
+    }
+    map
+}
+
+/// 词表改了 → 清掉缓存，下次 recase 重建（跟 invalidate_recognizer 一起调）。
+pub fn invalidate_casing_map() {
+    *CASING_MAP.lock().unwrap() = None;
+}
+
+/// 把模型输出的全大写英文还原成自然大小写。中文 / 数字 / 标点原样保留。
+/// 纯字符串处理，~µs 级，可在流式 partial 热循环里调。
+pub fn recase_english(text: &str) -> String {
+    {
+        let mut g = CASING_MAP.lock().unwrap();
+        if g.is_none() {
+            *g = Some(build_casing_map());
+        }
+    }
+    let g = CASING_MAP.lock().unwrap();
+    recase_with_map(text, g.as_ref().unwrap())
+}
+
+enum Tok {
+    Word(String),  // 连续 ASCII 字母数字
+    Other(String), // 其余（空格 / 中文 / 标点）
+}
+
+fn tokenize(text: &str) -> Vec<Tok> {
+    let mut toks = Vec::new();
+    let mut cur = String::new();
+    let mut cur_word = false;
+    for c in text.chars() {
+        let is_word = c.is_ascii_alphanumeric();
+        if cur.is_empty() {
+            cur.push(c);
+            cur_word = is_word;
+        } else if is_word == cur_word {
+            cur.push(c);
+        } else {
+            toks.push(if cur_word { Tok::Word(std::mem::take(&mut cur)) } else { Tok::Other(std::mem::take(&mut cur)) });
+            cur.push(c);
+            cur_word = is_word;
+        }
+    }
+    if !cur.is_empty() {
+        toks.push(if cur_word { Tok::Word(cur) } else { Tok::Other(cur) });
+    }
+    toks
+}
+
+fn recase_single(w: &str, map: &HashMap<String, String>) -> String {
+    if let Some(term) = map.get(&casing_key(w)) {
+        return term.clone();
+    }
+    if w == "I" {
+        return "I".to_string(); // 代词保持大写
+    }
+    w.to_lowercase()
+}
+
+fn recase_with_map(text: &str, map: &HashMap<String, String>) -> String {
+    let toks = tokenize(text);
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < toks.len() {
+        match &toks[i] {
+            Tok::Other(s) => {
+                out.push_str(s);
+                i += 1;
+            }
+            Tok::Word(_) => {
+                // 贪心：先试把相邻"单空格分隔的全大写词"合并匹配复合术语（窗口 3→2→1）。
+                let mut matched = false;
+                for win in (1..=3usize).rev() {
+                    let mut words: Vec<&str> = Vec::new();
+                    let mut idx = i;
+                    let mut ok = true;
+                    for k in 0..win {
+                        match toks.get(idx) {
+                            Some(Tok::Word(w)) => words.push(w),
+                            _ => { ok = false; break; }
+                        }
+                        if k < win - 1 {
+                            match toks.get(idx + 1) {
+                                Some(Tok::Other(s)) if s == " " => {}
+                                _ => { ok = false; break; }
+                            }
+                            idx += 2;
+                        }
+                    }
+                    if !ok || words.len() != win {
+                        continue;
+                    }
+                    if win == 1 {
+                        break; // 单词走下面 recase_single，不在这儿匹配
+                    }
+                    let key: String = words.iter().flat_map(|w| w.chars()).filter(|c| c.is_ascii_alphanumeric()).flat_map(|c| c.to_uppercase()).collect();
+                    if let Some(term) = map.get(&key) {
+                        out.push_str(term);
+                        i = idx + 1; // 吃掉这些词 + 它们之间的空格
+                        matched = true;
+                        break;
+                    }
+                }
+                if !matched {
+                    if let Tok::Word(w) = &toks[i] {
+                        out.push_str(&recase_single(w, map));
+                    }
+                    i += 1;
+                }
+            }
+        }
+    }
+    out
+}
 
 #[cfg(test)]
 mod tests {
@@ -220,5 +386,62 @@ mod tests {
         // template 模板必须中英对照（用户文档）
         assert!(USER_FILE_TEMPLATE.contains("中文"));
         assert!(USER_FILE_TEMPLATE.contains("Example") || USER_FILE_TEMPLATE.contains("example"));
+    }
+
+    // ── recase 测试（用临时 map，不依赖磁盘 user.txt）──
+    fn test_map() -> HashMap<String, String> {
+        let mut m = HashMap::new();
+        for t in ["OpenAI", "OpenClaw", "useEffect", "API", "GitHub", "TypeScript", "Next.js"] {
+            m.insert(casing_key(t), t.to_string());
+        }
+        m
+    }
+
+    #[test]
+    fn recase_maps_known_single_term() {
+        assert_eq!(recase_with_map("OPENAI", &test_map()), "OpenAI");
+        assert_eq!(recase_with_map("USEEFFECT", &test_map()), "useEffect");
+        assert_eq!(recase_with_map("API", &test_map()), "API");
+    }
+
+    #[test]
+    fn recase_merges_split_compound() {
+        // 模型把 OpenAI / OpenClaw 拆成两词输出
+        assert_eq!(recase_with_map("OPEN AI", &test_map()), "OpenAI");
+        assert_eq!(recase_with_map("OPEN CLAW", &test_map()), "OpenClaw");
+    }
+
+    #[test]
+    fn recase_lowercases_unknown_keeps_pronoun_I() {
+        assert_eq!(recase_with_map("I LOVE CODING", &test_map()), "I love coding");
+    }
+
+    #[test]
+    fn recase_preserves_chinese_and_punct() {
+        // 中文原样，夹的英文术语还原，未知英文转小写
+        assert_eq!(
+            recase_with_map("帮我用 OPENAI 写一个 HELLO WORLD", &test_map()),
+            "帮我用 OpenAI 写一个 hello world"
+        );
+    }
+
+    #[test]
+    fn recase_mixed_term_and_words() {
+        assert_eq!(
+            recase_with_map("THE USEEFFECT HOOK", &test_map()),
+            "the useEffect hook"
+        );
+    }
+
+    #[test]
+    fn recase_dotted_term_via_collapsed_key() {
+        // 模型不输出点：NEXT JS → Next.js（key 都归一成 NEXTJS）
+        assert_eq!(recase_with_map("NEXT JS", &test_map()), "Next.js");
+    }
+
+    #[test]
+    fn recase_empty_and_pure_chinese_noop() {
+        assert_eq!(recase_with_map("", &test_map()), "");
+        assert_eq!(recase_with_map("今天天气不错。", &test_map()), "今天天气不错。");
     }
 }

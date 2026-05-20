@@ -504,13 +504,15 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
             };
             if partial == last_partial { continue; }
             last_partial = partial.clone();
+            // v0.4.1 · 先把模型的全大写英文还原成自然大小写（OPENAI→OpenAI），
+            // partial 也做，让"边说边出"的英文一开始就正常，不是最后一刻才变。
+            let recased = crate::vocab::recase_english(&partial);
             // v0.4.0 · 流式 partial 也加标点 —— 沿用 add_punctuation（~10ms, soft-fail）
-            // 让用户看到的"边说边出"文本带 。，？，而不是最后一刻才变 punctuated。
             // 短片段（< 4 字符）模型加标点效果差，跳过让 raw 出。
-            let display = if partial.chars().count() >= 4 {
-                crate::punctuation::add_punctuation(&partial)
+            let display = if recased.chars().count() >= 4 {
+                crate::punctuation::add_punctuation(&recased)
             } else {
-                partial.clone()
+                recased
             };
             // 桌宠头顶气泡实时显示新 partial —— 用户看到"边说边出"的视觉反馈
             crate::overlay::emit_view(
@@ -632,10 +634,18 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
         }
         println!("[mouseclaw] 🎙️ light cleaned → {cleaned:?}");
 
+        // v0.4.1 · 英文大小写还原 —— 模型英文输出全大写，这里用词表把术语还原成
+        // 正确大小写（OPENAI→OpenAI / OPEN CLAW→OpenClaw / USEEFFECT→useEffect），
+        // 其余未知英文转小写。中文/数字/标点不动。在加标点之前做。
+        let recased = crate::vocab::recase_english(&cleaned);
+        if recased != cleaned {
+            println!("[mouseclaw] 🔤 recased → {recased:?}");
+        }
+
         // v0.3.6 · 本地标点 —— sherpa CT-Transformer，~10ms 加 。，？
         // 失败兜底返回原文，永远不阻断主流程
-        let punctuated = crate::punctuation::add_punctuation(&cleaned);
-        if punctuated != cleaned {
+        let punctuated = crate::punctuation::add_punctuation(&recased);
+        if punctuated != recased {
             println!("[mouseclaw] 🎯 punctuated → {punctuated:?}");
         }
 
