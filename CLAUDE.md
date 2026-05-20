@@ -497,6 +497,15 @@ bash scripts/notarize-dmg.sh
 # (5) 更新 docs/version.json（latest / released_at / dmg_url / notes_zh / notes_en）
 # !! 这是最常忘的步骤 !! 不改的话现有用户永远收不到新版本提示
 
+# (5.5) ⚠️ 必做 · 更新 README + GitHub Pages 落地页的功能列表（2026-05-20 用户立规）
+#   每次 release 都要回看「自上个版本以来加了哪些用户可见功能」，逐条补进：
+#   - README.md：中文「v0.X 新功能」段 + English「v0.X highlights」段（两边都要！）
+#     · 功能数字别忘了同步（如皮肤 6 → 9）
+#   - docs/index.html 落地页：v0.X 功能卡片区 + 皮肤展示区（数量 / petSVG / 文案）
+#   漏掉的后果：官网 + README 还停在几个版本前，用户以为项目没动静。
+#   自检：把 `git log <上个tag>..HEAD --oneline | grep -iE "feat|design"` 过一遍，
+#        每个 feat 问「这个用户能感知吗？能 → 落地页/README 有没有写？」
+
 # (6) commit + tag + push
 git add -A && git commit -m "feat(vX.Y.Z): ..."
 git tag vX.Y.Z
