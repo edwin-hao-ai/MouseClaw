@@ -133,6 +133,8 @@ where
 {
     let mut cmd = tokio::process::Command::new(bin);
     cmd.env("PATH", crate::claude_cli::expanded_path());
+    // v0.4 · 降优先级 —— 保护并发时本地语音输入法 ASR 的 CPU（codex/openclaw/hermes 同理）
+    crate::claude_cli::lower_priority(&mut cmd);
     // v0.1.25 · ~/.mouseclaw/provider.env 里的 key 灌进子进程
     //   让 Codex / OpenClaw / Hermes 看到 OPENAI_API_KEY / AI_GATEWAY_API_KEY / etc.
     //   不用用户改 shell rc。已在 OS env 里的同名变量不覆盖（shell 优先）。

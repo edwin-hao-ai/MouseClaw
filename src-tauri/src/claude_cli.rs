@@ -268,6 +268,25 @@ pub struct CursorContext {
 /// `.env("PATH", ...)` 只影响**子进程**看到的 PATH，不影响 OS 找二进制 ——
 /// OS 在 spawn 之前已经用**当前进程**的 PATH 找 `claude` 了。所以必须先
 /// 自己用拓宽过的 PATH 找到二进制的绝对路径，再用绝对路径 spawn。
+/// 给 AI 子进程降优先级（nice +10），让本地 ASR（sherpa）/ UI 抢得到 CPU。
+///
+/// v0.4 fix (2026-05-20)：用户实测 AI 子进程（claude / codex …）默认优先级会把
+/// 语音输入法的实时解码饿到卡顿。nice +10 只在 CPU 紧张时让出 —— 空闲时 niced 进程
+/// 仍拿满 CPU，所以对单任务速度无影响，只在并发时保护听写流畅。
+#[cfg(unix)]
+pub fn lower_priority(cmd: &mut tokio::process::Command) {
+    unsafe {
+        cmd.pre_exec(|| {
+            // setpriority(PRIO_PROCESS, who=0=self, prio=10)；数值越大优先级越低。
+            // 失败也无所谓（返回 -1）—— 不影响子进程正常跑。
+            libc::setpriority(libc::PRIO_PROCESS, 0, 10);
+            Ok(())
+        });
+    }
+}
+#[cfg(not(unix))]
+pub fn lower_priority(_cmd: &mut tokio::process::Command) {}
+
 pub fn expanded_path() -> String {
     let current = std::env::var("PATH").unwrap_or_default();
     let home = std::env::var("HOME").unwrap_or_default();
@@ -400,6 +419,8 @@ where
 
     let mut cmd = tokio::process::Command::new(&claude_bin);
     cmd.env("PATH", expanded_path());
+    // v0.4 · 降优先级 —— 保护并发时本地语音输入法 ASR 的 CPU
+    lower_priority(&mut cmd);
     // v0.1.25 · provider.env 里的 ANTHROPIC_* / 自定义 base URL 也透给 Claude CLI
     crate::provider_env::apply_to(&mut cmd);
     // v0.1.21 · 工作区 cwd —— 让 Claude 知道在哪个项目里读/改文件

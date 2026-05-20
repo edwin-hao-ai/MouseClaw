@@ -471,12 +471,17 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
     // 这跟 Whisper 时代的 timing 一致 —— 用户看到流式视觉但写入是 batch 的。
     let state_stream = state.clone();
     let app_stream = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let mut ticker = tokio::time::interval(Duration::from_millis(150));
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    // v0.4 fix (2026-05-20) · 用专用 std::thread 而非 async_runtime::spawn 跑流式解码。
+    //   原因：sherpa s.accept/partial + add_punctuation 都是 CPU 密集**同步**调用，放在
+    //   tokio async 任务里会占住一个 worker 线程。当 AI 子进程（翻译 / 召唤）同时在跑、
+    //   抢 tokio runtime 时，worker 被饿死 → 听写 partial 卡住（用户实测"打开语音输入法
+    //   就卡住"）。挪到独立 OS 线程后，操作系统抢占式调度保证它永远能跑，不受 tokio 状态影响。
+    std::thread::Builder::new()
+        .name("mouseclaw-ime-poller".into())
+        .spawn(move || {
         let mut last_partial = String::new();
         loop {
-            ticker.tick().await;
+            std::thread::sleep(Duration::from_millis(150));
             if !state_stream.streaming_active.load(Ordering::SeqCst) {
                 break;
             }
@@ -514,7 +519,7 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
             );
         }
         println!("[mouseclaw] 🎙️ IME streaming poller exited (final paste in stop_and_paste)");
-    });
+    }).expect("spawn ime poller thread");
 
     // v0.1.13 安全 #3：记录当前前台 app 的 bundle id —— 录音中切走就取消
     let start_bundle = std::panic::catch_unwind(frontmost_bundle).unwrap_or_default();
