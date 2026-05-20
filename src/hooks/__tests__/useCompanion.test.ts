@@ -6,6 +6,7 @@
 import { describe, it, expect } from "vitest";
 import {
   deriveCompanionFrame,
+  updateDizzyEnergy,
   type CompanionCtx,
   IDLE_TO_SLEEP_SECS,
   TYPING_PULSE_SECS,
@@ -14,6 +15,9 @@ import {
   MAX_EYE_OFFSET,
   CLICK_FLASH_SECS,
   TYPING_STORM_DURATION_SECS,
+  DIZZY_SPEED_PX_S,
+  DIZZY_ENERGY_TRIGGER_SECS,
+  DIZZY_MAX_DT,
 } from "../useCompanion";
 
 const PET_CENTER = { x: 100, y: 100 };
@@ -263,5 +267,64 @@ describe("deriveCompanionFrame", () => {
     expect(deriveCompanionFrame(tick, PET_CENTER, ctx({ typingStormSecs: 0, nowHour: 12, dizzy: true, hop: true })).state).toBe("dizzy");
     expect(deriveCompanionFrame(tick, PET_CENTER, ctx({ typingStormSecs: 0, nowHour: 12, hop: true })).state).toBe("hop");
     expect(deriveCompanionFrame(tick, PET_CENTER, ctx({ typingStormSecs: 0, nowHour: 12 })).state).toBe("clicked");
+  });
+});
+
+// ─── dizzy 能量累积器（2026-05-20 修过敏 bug）───────────────
+describe("updateDizzyEnergy", () => {
+  const dt = 1 / 30; // 30fps
+
+  it("单帧高速不触发（正常移鼠标到目标点扫一下不该晕）", () => {
+    const r = updateDizzyEnergy(0, DIZZY_SPEED_PX_S + 2000, dt);
+    expect(r.trigger).toBe(false);
+    expect(r.energy).toBeCloseTo(dt, 5);
+  });
+
+  it("持续高速累积到阈值才触发（使劲甩 ~0.45s）", () => {
+    let energy = 0, fired = false, frames = 0;
+    while (frames < 60 && !fired) {
+      const r = updateDizzyEnergy(energy, DIZZY_SPEED_PX_S + 2000, dt);
+      energy = r.energy; fired = r.trigger; frames++;
+    }
+    expect(fired).toBe(true);
+    // 触发所需帧数 ≈ DIZZY_ENERGY_TRIGGER_SECS / dt
+    expect(frames).toBeGreaterThanOrEqual(Math.floor(DIZZY_ENERGY_TRIGGER_SECS / dt));
+    expect(frames).toBeLessThanOrEqual(Math.ceil(DIZZY_ENERGY_TRIGGER_SECS / dt) + 1);
+  });
+
+  it("触发后能量清零（避免连续重复触发）", () => {
+    // 先攒到接近阈值
+    let energy = DIZZY_ENERGY_TRIGGER_SECS - dt / 2;
+    const r = updateDizzyEnergy(energy, DIZZY_SPEED_PX_S + 2000, dt);
+    expect(r.trigger).toBe(true);
+    expect(r.energy).toBe(0);
+  });
+
+  it("低速时能量快速衰减（短暂高速余量不会拖到误触）", () => {
+    const r = updateDizzyEnergy(0.2, 100, dt); // 慢速
+    expect(r.energy).toBeLessThan(0.2);
+    expect(r.trigger).toBe(false);
+  });
+
+  it("能量不会衰减到负数", () => {
+    const r = updateDizzyEnergy(0.001, 0, dt);
+    expect(r.energy).toBe(0);
+  });
+
+  it("dt 异常大（标签页节流跳变）→ 跳过，不误判", () => {
+    const r = updateDizzyEnergy(0.3, 999999, DIZZY_MAX_DT + 0.5);
+    expect(r.trigger).toBe(false);
+    expect(r.energy).toBe(0.3); // 能量不变
+  });
+
+  it("正常缓慢移动永远不触发（防过敏回归）", () => {
+    let energy = 0;
+    // 模拟 5s 正常移动：速度在门槛以下波动
+    for (let i = 0; i < 150; i++) {
+      const speed = 1500 + Math.random() * 1500; // 1500–3000 < 4200 门槛
+      const r = updateDizzyEnergy(energy, speed, dt);
+      energy = r.energy;
+      expect(r.trigger).toBe(false);
+    }
   });
 });

@@ -55,6 +55,9 @@ mod imp {
     static LAST_CHANGE_COUNT: AtomicI64 = AtomicI64::new(-1);
     /// 我们已通知 feed_flow 进入 drag 态（dedup 防止 100ms 轮询期间重复触发）
     static DRAG_ENTER_SENT: AtomicBool = AtomicBool::new(false);
+    /// v0.4 fix (2026-05-20)：当前 drag 里被识别为支持类型的文件路径。
+    /// 鼠标松开时若光标在桌宠窗口内 → 直接喂这些文件（绕开 WKWebView 的 HTML 导航坑）。
+    static DRAG_FILES: Lazy<Mutex<Vec<std::path::PathBuf>>> = Lazy::new(|| Mutex::new(Vec::new()));
 
     pub fn install(app: AppHandle, state: Arc<AppState>) {
         *APP_REF.lock().unwrap() = Some((app, state));
@@ -98,11 +101,14 @@ mod imp {
         // v0.4 fix (2026-05-20)：只在拖的是**支持的文件类型**时才唤桌宠。
         // 用户反馈：拖文件是高频操作，多数时候并不想喂桌宠 —— 不该一拖就扑过来。
         // 读出真实文件路径，任一是 feed 支持类型（非 Reject）才触发。
-        let pb_has_supported = pasteboard_has_supported_file(pb);
+        let supported_files = extract_supported_files(pb);
+        let pb_has_supported = !supported_files.is_empty();
 
         if count != prev && left_down && pb_has_supported {
             // 新 drag session，是支持类型的文件 drag，鼠标还按着 → drag started
             if !DRAG_ENTER_SENT.swap(true, Ordering::SeqCst) {
+                // 缓存这批支持文件 —— 松手若在桌宠上就喂它们
+                *DRAG_FILES.lock().unwrap() = supported_files;
                 println!(
                     "[drag-detector] 🐕 supported-file drag started (pb changeCount {prev} → {count}) → approach"
                 );
@@ -112,31 +118,67 @@ mod imp {
             }
         }
 
-        // drag 结束：鼠标松开。LEAVE 不挑剔 pasteboard 类型 —— 一旦松开就退场。
-        // 如果 drop 落在 pet 上，mouse window 的 Tauri DragDrop handler 会先收到
-        // Drop 事件触发 on_files_dropped，feed_flow 的 200ms leave debounce 会把
-        // 我们这次 leave 撤回。
+        // drag 结束：鼠标松开。
+        // v0.4 fix (2026-05-20)：drop 统一由 drag_detector 处理，**不再依赖 WKWebView
+        // 的 DragDropEvent**（HTML 文件会被 webview 当成导航请求拦截，drop 喂不进去）。
+        // 松手时若光标在桌宠窗口内 + 有缓存的支持文件 → 直接 on_files_dropped；
+        // 否则当成 leave，桌宠回 anchor。lib.rs 的 Tauri DragDrop handler 已移除。
         if !left_down && DRAG_ENTER_SENT.swap(false, Ordering::SeqCst) {
-            println!("[drag-detector] 🐕 mouse released → notify leave");
+            let files = std::mem::take(&mut *DRAG_FILES.lock().unwrap());
             if let Some((app, state)) = APP_REF.lock().unwrap().clone() {
-                crate::feed_flow::on_drag_leave(&app, &state);
+                let over_pet = cursor_over_mouse_window(&app);
+                if over_pet && !files.is_empty() {
+                    println!("[drag-detector] 🐕 dropped on pet → feed {} file(s)", files.len());
+                    crate::feed_flow::on_files_dropped(app, state, files);
+                } else {
+                    println!("[drag-detector] 🐕 released away from pet → return to anchor");
+                    crate::feed_flow::on_drag_leave(&app, &state);
+                }
             }
         }
 
         let _: () = msg_send![pool, drain];
     }
 
-    /// drag pasteboard 是否含**支持类型**的文件（feed::classify != Reject）。
-    /// 先快速判 file-url 类型，再读出真实路径逐个 classify。
-    /// 任一支持即 true；全不支持 / 读不到路径 → false（不唤桌宠）。
-    unsafe fn pasteboard_has_supported_file(pb: id) -> bool {
-        // 1. 快筛：连 file-url 类型都没有，直接 false（文本 / 网址 drag）
-        if !has_file_url(pb) { return false; }
+    /// 光标此刻是否在桌宠 mouse 窗口的物理范围内（top-left 逻辑像素比较）。
+    /// 喂文件期间窗口是 320×320（FeedWaiting expand），命中区域足够宽松。
+    unsafe fn cursor_over_mouse_window(app: &AppHandle) -> bool {
+        use tauri::Manager;
+        let Some((cx, cy)) = global_cursor_top_left() else { return false; };
+        let Some(window) = app.get_webview_window("mouse") else { return false; };
+        let Ok(pos) = window.outer_position() else { return false; };
+        let Ok(size) = window.outer_size() else { return false; };
+        let scale = window.scale_factor().unwrap_or(1.0).max(0.5);
+        let wx = pos.x as f64 / scale;
+        let wy = pos.y as f64 / scale;
+        let ww = size.width as f64 / scale;
+        let wh = size.height as f64 / scale;
+        cx >= wx && cx <= wx + ww && cy >= wy && cy <= wy + wh
+    }
+
+    /// NSEvent.mouseLocation → top-left 逻辑像素（同 pet_passthrough 的算法）。
+    unsafe fn global_cursor_top_left() -> Option<(f64, f64)> {
+        use cocoa::foundation::NSPoint;
+        let cls: id = msg_send![class!(NSEvent), class];
+        let p: NSPoint = msg_send![cls, mouseLocation];
+        let screen: id = msg_send![class!(NSScreen), mainScreen];
+        if screen == nil { return None; }
+        let frame: cocoa::foundation::NSRect = msg_send![screen, frame];
+        Some((p.x, frame.size.height - p.y))
+    }
+
+    /// 读出 drag pasteboard 里所有**支持类型**的文件路径（feed::classify != Reject）。
+    /// 先快速判 file-url 类型，再读真实 NSURL 路径逐个 classify。
+    /// 全不支持 / 读不到 → 空 Vec（不唤桌宠）。
+    unsafe fn extract_supported_files(pb: id) -> Vec<std::path::PathBuf> {
+        let mut out = Vec::new();
+        // 1. 快筛：连 file-url 类型都没有，直接空（文本 / 网址 drag）
+        if !has_file_url(pb) { return out; }
         // 2. 读 NSURL 列表
         let nsurl_class: id = msg_send![class!(NSURL), class];
         let classes: id = msg_send![class!(NSArray), arrayWithObject: nsurl_class];
         let urls: id = msg_send![pb, readObjectsForClasses: classes options: nil];
-        if urls == nil { return false; }
+        if urls == nil { return out; }
         let n: NSUInteger = msg_send![urls, count];
         for i in 0..n {
             let url: id = msg_send![urls, objectAtIndex: i];
@@ -146,12 +188,12 @@ mod imp {
             let cstr: *const std::os::raw::c_char = msg_send![path_id, UTF8String];
             if cstr.is_null() { continue; }
             let path_str = std::ffi::CStr::from_ptr(cstr).to_string_lossy().into_owned();
-            let kind = crate::feed::classify(std::path::Path::new(&path_str));
-            if kind != crate::feed::FeedKind::Reject {
-                return true;
+            let path = std::path::PathBuf::from(&path_str);
+            if crate::feed::classify(&path) != crate::feed::FeedKind::Reject {
+                out.push(path);
             }
         }
-        false
+        out
     }
 
     /// drag pasteboard 是否包含 file URL UTI（快筛）

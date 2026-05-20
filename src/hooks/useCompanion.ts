@@ -43,8 +43,15 @@ export const DROWSY_HOUR_START = 23;
 export const DROWSY_HOUR_END = 6;        // exclusive
 // v0.4+ 全集补完（2026-05-20）
 export const WAKING_MS = 700;            // 醒来伸懒腰过渡时长
-export const DIZZY_SPEED_PX_S = 2400;    // 鼠标速度超这个 → 晕
-export const DIZZY_HOLD_MS = 800;        // 晕眩 hold 时长（让转圈动画跑完）
+// dizzy 用"能量累积 + 冷却"判定（2026-05-20 修过敏 bug）：
+//   - 单帧高速不算，必须**持续使劲甩** ≥ DIZZY_ENERGY_TRIGGER_SECS 才触发
+//   - 触发后进冷却，避免一直晃 + 眼睛跟随被反复打断
+export const DIZZY_SPEED_PX_S = 4200;    // "甩动"速度门槛（正常移鼠标到目标点不会持续超）
+export const DIZZY_ENERGY_TRIGGER_SECS = 0.45; // 需累积这么久的持续高速才晕
+export const DIZZY_ENERGY_DECAY = 2.0;   // 不再高速时能量衰减倍率（快速回落，防余量误触）
+export const DIZZY_COOLDOWN_MS = 1600;   // 晕完冷却，期间不再触发
+export const DIZZY_MAX_DT = 0.1;         // 单帧 dt 超这个视为节流跳变，跳过速度计算
+export const DIZZY_HOLD_MS = 700;        // 晕眩 hold 时长（让转圈动画跑完）
 export const HOP_MS = 480;               // burst 结束小跳时长
 export const HOP_MIN_BURST_SECS = 1.0;   // 至少连打 1s 才算一个 burst（结束才跳）
 export const GLANCE_MS = 2000;           // 整点抬头看一眼时长
@@ -179,6 +186,28 @@ function isDrowsyNow(): boolean {
 }
 
 /**
+ * dizzy 能量累积器（纯函数，可单测）。
+ *
+ * 每帧调一次：高速时能量按 dt 累加，否则按 DIZZY_ENERGY_DECAY 倍速衰减。
+ * 能量越过 DIZZY_ENERGY_TRIGGER_SECS 即"触发"——调用方据此点亮 dizzy + 清零能量 + 进冷却。
+ * dt 异常大（标签页节流跳变）时跳过本帧速度计算，避免一次大跳变误判为甩动。
+ *
+ * @returns { energy: 更新后的能量, trigger: 本帧是否达到触发阈值 }
+ */
+export function updateDizzyEnergy(
+  energy: number, speedPxPerSec: number, dt: number,
+): { energy: number; trigger: boolean } {
+  if (!(dt > 0) || dt > DIZZY_MAX_DT) return { energy, trigger: false };
+  let next = speedPxPerSec > DIZZY_SPEED_PX_S
+    ? energy + dt
+    : Math.max(0, energy - dt * DIZZY_ENERGY_DECAY);
+  if (next >= DIZZY_ENERGY_TRIGGER_SECS) {
+    return { energy: 0, trigger: true };  // 触发即清零
+  }
+  return { energy: next, trigger: false };
+}
+
+/**
  * Hook —— 订阅 Rust tick + 监听桌宠 DOM 位置，输出当前帧 + 维护瞬时态计时器。
  *
  * @param petElRef 桌宠根元素 ref（算 bounding rect 中心）
@@ -195,6 +224,8 @@ export function useCompanion(
   // 瞬时态计时器（performance.now() 时间戳，0=未激活）
   const wakingUntilRef = useRef(0);
   const dizzyUntilRef = useRef(0);
+  const dizzyEnergyRef = useRef(0);       // 甩动能量累积
+  const dizzyCooldownRef = useRef(0);     // 晕完冷却到的时间戳
   const hopUntilRef = useRef(0);
   const glanceUntilRef = useRef(0);
   // 跳变检测用
@@ -235,11 +266,16 @@ export function useCompanion(
         stormSecsRef.current = 0;
       }
 
-      // ── dizzy：鼠标速度（窗口本地坐标差 / dt）──
+      // ── dizzy：能量累积 + 冷却（必须持续使劲甩才触发，不被正常移动误触）──
       const last = lastPosRef.current;
-      if (last && dt > 0 && Number.isFinite(p.x) && Number.isFinite(p.y)) {
+      if (last && Number.isFinite(p.x) && Number.isFinite(p.y)) {
         const speed = Math.hypot(p.x - last.x, p.y - last.y) / dt;
-        if (speed > DIZZY_SPEED_PX_S) dizzyUntilRef.current = now + DIZZY_HOLD_MS;
+        const { energy, trigger } = updateDizzyEnergy(dizzyEnergyRef.current, speed, dt);
+        dizzyEnergyRef.current = energy;
+        if (trigger && now > dizzyCooldownRef.current) {
+          dizzyUntilRef.current = now + DIZZY_HOLD_MS;
+          dizzyCooldownRef.current = now + DIZZY_HOLD_MS + DIZZY_COOLDOWN_MS;
+        }
       }
       lastPosRef.current = { x: p.x, y: p.y };
 
