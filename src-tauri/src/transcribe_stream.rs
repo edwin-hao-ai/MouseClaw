@@ -93,6 +93,13 @@ pub fn kick_off_download_if_missing(app: AppHandle) {
         }
     }
 
+    // 模型已在磁盘上 → 立即后台预热 recognizer，别等用户首次按键才同步加载。
+    // （首次 OnlineRecognizer::create 要几百 ms ~ 数秒，卡在按键路径里会让第一次
+    //  按 fn 唤不出语音 / 与松开竞态丢首次录音 —— 这是 v0.4 首次触发延迟的根因）
+    if was_ready {
+        preload();
+    }
+
     // 永远走一遍 download() —— ready 时它会立即 emit "ok"（给 DownloaderView），
     // 不 ready 时正常跑下载链路。两路统一减少 bug。
     let display = spec.display.to_string();
@@ -102,6 +109,8 @@ pub fn kick_off_download_if_missing(app: AppHandle) {
                 *DOWNLOAD_STATE.lock().unwrap() = Some(ModelState::Ready);
                 if !was_ready {
                     println!("[mouseclaw] 🎤 {display} 下载完成");
+                    // 刚下完 → 预热，让用户紧接着的第一次按键就快
+                    preload();
                 }
             }
             Err(e) => {
@@ -111,6 +120,24 @@ pub fn kick_off_download_if_missing(app: AppHandle) {
             }
         }
     });
+}
+
+/// 启动 / 下载完成后调一次：在后台线程把 recognizer 加载进内存，
+/// 这样用户第一次按 fn / ⌘⇧Space 时 `StreamSession::new()` 是即时的，
+/// 不会同步卡在 `OnlineRecognizer::create`（首次几百 ms ~ 数秒）上。
+/// 失败不致命 —— 真正用到时 `ensure_loaded` 会再试一次并 surface 错误。
+pub fn preload() {
+    std::thread::Builder::new()
+        .name("mouseclaw-asr-warmup".into())
+        .spawn(|| {
+            if !is_ready() { return; }
+            // 已加载则 ensure_loaded 立即返回（guard.is_some()）
+            match ensure_loaded() {
+                Ok(()) => println!("[mouseclaw] 🎤 recognizer warmed up (startup preload)"),
+                Err(e) => eprintln!("[mouseclaw] 🎤 recognizer warm-up failed: {e:#}"),
+            }
+        })
+        .ok();
 }
 
 /// Lazy-load the OnlineRecognizer on first call.

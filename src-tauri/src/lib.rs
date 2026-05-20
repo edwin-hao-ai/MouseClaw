@@ -297,6 +297,17 @@ pub fn run() {
                         }
                         return;
                     }
+                    // 语音确认倒数期间临时注册的全局 Esc → 取消。
+                    // overlay 是非激活 NSPanel，物理 Esc 到不了 webview，必须全局捕获。
+                    // （注册/注销在 pipeline::voice_confirm_countdown 里，只在倒数那几秒生效）
+                    if sk.contains("Escape") {
+                        if event.state() == ShortcutState::Pressed {
+                            state.voice_confirm_action
+                                .store(crate::VC_CANCEL, std::sync::atomic::Ordering::SeqCst);
+                            println!("[mouseclaw] ⎋ voice-confirm Esc → 取消");
+                        }
+                        return;
+                    }
                     match event.state() {
                         ShortcutState::Pressed => {
                             println!("[mouseclaw] 🦞 shortcut PRESS: {shortcut:?}");

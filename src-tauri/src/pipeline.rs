@@ -465,6 +465,35 @@ pub async fn voice_confirm_countdown(
     state: &Arc<AppState>,
     initial_text: &str,
 ) -> Option<String> {
+    use std::str::FromStr;
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
+
+    // ⚠️ overlay 是非激活 NSPanel（focus:false）—— textarea 的 el.focus() 只是 DOM 级，
+    // 物理 Esc/Enter 键事件其实发给**前台 app**，到不了 webview，所以 onKeyDown 里的
+    // Esc 取消根本不触发，倒数照样自动发送（用户报：「按了 esc 还是会去执行」）。
+    // 解：倒数期间注册一个临时全局 Esc，由 lib.rs 的 shortcut handler 设 VC_CANCEL。
+    // 注册失败（极少数系统不让注册裸 Esc）则退回「点取消按钮」的老路径，不致命。
+    let esc = Shortcut::from_str("Escape").ok();
+    if let Some(s) = &esc {
+        match app.global_shortcut().register(s.clone()) {
+            Ok(()) => println!("[mouseclaw] voice-confirm: 临时全局 Esc 已注册"),
+            Err(e) => eprintln!("[mouseclaw] voice-confirm: Esc 注册失败（退回点取消）: {e}"),
+        }
+    }
+
+    let result = voice_confirm_loop(app, state, initial_text).await;
+
+    if let Some(s) = &esc {
+        let _ = app.global_shortcut().unregister(s.clone());
+    }
+    result
+}
+
+async fn voice_confirm_loop(
+    app: &AppHandle,
+    state: &Arc<AppState>,
+    initial_text: &str,
+) -> Option<String> {
     use std::sync::atomic::Ordering;
     use crate::{VC_PENDING, VC_SEND_NOW, VC_CANCEL, VC_HOLD};
 
