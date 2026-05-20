@@ -6,6 +6,59 @@ versioning follows [SemVer](https://semver.org/).
 
 ---
 
+## [0.4.0] · 2026-05-20
+
+桌宠从"会说话的工具"长成"有性格的伙伴"：陪伴向动画全集、撞墙回弹、Reactive 反应、
+喂文件、AI 实时活动、串行队列。安装包仍 12 MB。
+The pet grows from a talking tool into a companion with personality: full
+companion-animation set, edge bounce, reactive ribbon, file-feeding, live AI
+activity, serial task queue. Still a 12 MB DMG.
+
+### Added
+- **🐭 陪伴向动画全集 / Full companion-animation set** —— 眼球追鼠标、打字时点头陪伴、
+  贴近抬头/兴奋、闲置渐睡、点头浮爱心、亲密度成长（互动越多眼睛越大）、伸懒腰 / 晕 /
+  抬头 / 小跳、深夜 drowsy、长期冷落委屈。**9 款皮肤全部适配**（纯 palette/transform 驱动）。
+  Eyes track the cursor, nods while you type, perks up on hover, dozes off when idle,
+  floats a heart on pat, grows intimacy (bigger eyes), stretch/dizzy/glance/hop,
+  late-night drowsy, neglected sulk — all working across **all 9 skins**.
+- **🧱 撞墙回弹 / Edge bounce** —— 桌宠跟随光标 / 被拖动 / 气泡撞到屏幕边时，被挡在屏内
+  并朝那面墙做"软果冻挤压 + 回弹"，不再飘出屏幕或在边缘累积偏移。
+  When the pet follows the cursor, is dragged, or a bubble hits a screen edge, it stays
+  on-screen and does a soft squash-and-recoil against the wall.
+- **📋 Reactive 桌宠 / Reactive pet** —— 复制内容 → 桌宠抖耳 + 头顶 ribbon 弹快捷动作
+  （翻译 / 解释 / 📄 纯文本…），5s 自动消失或点了就做。处理完即使 ribbon 已消失也会通知。
+  Copy something → the pet twitches + a ribbon of quick actions pops above its head.
+- **🍽 喂文件 / Feed files** —— Finder 文件拖到桌宠嘴里 → 它"吞下" → 你接着说
+  "总结一下" → AI 读 PDF / 网页 / 代码 / 截图。Drag a file onto the pet, then ask about it.
+- **🧠 AI 实时活动 / Live AI activity** —— AI 处理期间气泡实时显示"正在思考 / 读文件 /
+  跑命令"，不再像卡死。Bubble shows what the AI is doing during long tasks.
+- **🔁 AI 任务串行队列 + 忙碌指示 / Serial AI queue + busy badge** —— 桌宠一次做一件 AI
+  工作，按下就排队、逐个做完都通知；语音听写永远即时、不排队。三点忙碌 badge 任何视图可见。
+  One AI task at a time, queued and each notified on done; voice typing never queues.
+- **✏️ 语音确认可编辑 / Editable voice confirm** —— 转写完进确认框可直接改字；续写若丢
+  光标自动落剪贴板兜底。Edit the transcript in place; insert-at-cursor falls back to clipboard.
+- **🛠 一键装 CLI / One-click CLI install** —— 托盘 / onboarding 一键装 agent-browser /
+  OfficeCLI，装完桌宠弹庆祝气泡。One-click install of agent-browser / OfficeCLI from the tray.
+- **🎓 learn-by-doing 教程 / Hands-on onboarding** —— onboarding 第 7/8 步带你真用一遍。
+- **🎨 9 款皮肤 / 9 skins** —— 新增 🐱 小灰猫 / 🦊 赤狐 / 🐸 树蛙（原 6 款 + 3 个非鼠物种）。
+  Added cat / fox / frog alongside the original six.
+
+### Changed
+- **📐 自适应 overlay 尺寸 / Content-driven overlay size** —— 气泡 / 菜单 / ribbon 按内容
+  自动量尺寸再设窗口，不再手调尺寸常量导致内容被裁。Bubbles/menus measure their content
+  and size the window to fit — no more hand-tuned size constants getting clipped.
+
+### Fixed
+- **桌宠"乱飘"根治 / No more random drifting** —— listening 跟随时禁用自适应（避免跟
+  cursor-follow 抢窗口），resize 用"权威锚点"防边缘 clamp 累积偏移。
+- 冷启动首次 fn 唤不出 / 桌宠不移到光标。First-fn-after-cold-start now works.
+- 语音听写在 AI 子进程并发时卡死 —— 解码挪出 tokio 专用线程 + AI 子进程降优先级。
+- Reactive 反馈环（处理完写回剪贴板不再触发 ribbon 重弹）。
+- 喂食取消 / drag-leave 顺序 + crash；多屏 y 翻转；pet_passthrough off-main crash。
+- loading / 气泡的"一圈黑色阴影"（阴影被自适应窗口裁切）。
+
+---
+
 ## [0.3.11] · 2026-05-19
 
 ### Changed

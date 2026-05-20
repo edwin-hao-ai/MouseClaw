@@ -1,11 +1,11 @@
 {
   "$comment": "MouseClaw 版本元信息 · App 启动时拉取此 URL 检查新版本。任何 release 后更新这里。",
-  "latest": "0.3.11",
+  "latest": "0.4.0",
   "min_supported": "0.1.0",
-  "released_at": "2026-05-19",
+  "released_at": "2026-05-20",
   "size_mb": 12,
-  "dmg_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/latest/download/MouseClaw_0.3.11_aarch64.dmg",
+  "dmg_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/latest/download/MouseClaw_0.4.0_aarch64.dmg",
   "release_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/latest",
-  "notes_zh": "🎙 语音确认大改：进确认就是输入框，光标在末尾可以直接接着说补充；倒数 3→6 秒，一打字自动暂停等你改完。+ 流式回答现在跟随最新内容自动滚到底（手动上滚暂停跟随）+ 桌宠 AI 流式时嘴一直在动 talk 动画 + markdown 风格收紧统一",
-  "notes_en": "🎙 Voice confirm reworked: textbox is the bubble — cursor at end, just keep typing to refine. Countdown 3→6s; typing pauses the countdown until you press Enter/Esc. + Streaming replies auto-follow latest tokens to the bottom + new talk sprite with moving mouth during AI streaming + tighter markdown styling."
+  "notes_zh": "🐭 桌宠长出性格：陪伴向动画全集（眼球追鼠标 / 打字陪伴 / 闲置渐睡 / 摸头浮爱心 / 亲密度成长，9 款皮肤全适配）+ 🧱 撞墙回弹（跟随/拖动/气泡撞屏幕边软果冻挤压回弹，不再乱飘）+ 📋 Reactive（复制内容头顶弹快捷动作）+ 🍽 拖文件喂桌宠 + 🧠 AI 实时活动显示 + 🔁 AI 任务串行队列 + 🎨 新增小灰猫/赤狐/树蛙共 9 款皮肤。",
+  "notes_en": "🐭 The pet grows a personality: full companion animations (eyes track cursor / nods while typing / dozes off when idle / heart on pat / intimacy growth — across all 9 skins) + 🧱 edge bounce (soft squash-and-recoil on screen edges, no more drifting) + 📋 reactive ribbon on copy + 🍽 drag files to feed it + 🧠 live AI activity + 🔁 serial AI task queue + 🎨 3 new skins (cat / fox / frog, 9 total)."
 }

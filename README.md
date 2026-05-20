@@ -48,11 +48,16 @@
 - **📦 DMG 12 MB**（之前 238 MB）—— 模型首启动按需下载，国内优先 hf-mirror.com / gh-proxy.com
 - **🌐 中文 + 英文双模型**：Onboarding 选语言，海外用户用英文模型（73 MB），中文用户用 zh-en bilingual（199 MB）
 - **📥 多镜像 fallback + 断点续传**：网络抖动自动切镜像 / 断网重启接着下 / 30s 速度<1KB/s 主动断开
-- **🎓 首次使用引导**：模型下完桌宠主动跳出 5 步教学 · PetMenu「📖 教我用」可重看
-- **✏️ 语音确认编辑**：转写完 3 秒倒数 · Esc 取消 / Enter 立即 / 点气泡进编辑 — 防止语音误识别浪费 token
-- **🍽 拖文件喂桌宠**：Finder 文件拖到老鼠嘴里 = AI 读 PDF/网页/截图/代码
+- **🐭 陪伴向动画全集**：眼球追鼠标 · 打字时点头陪伴 · 贴近抬头 · 闲置渐睡 · 摸头浮爱心 · 亲密度成长（互动越多眼睛越大）· 伸懒腰/晕/小跳/深夜困/冷落委屈 —— **9 款皮肤全适配**
+- **🧱 撞墙回弹**：桌宠跟随光标 / 被拖动 / 气泡撞到屏幕边时被挡在屏内 + 软果冻挤压回弹，不再飘出屏幕或乱飘
+- **📋 Reactive 反应**：复制内容 → 桌宠抖耳 + 头顶弹一排快捷动作（翻译 / 解释 / 📄 纯文本…），5 秒自动消失或点了就做
+- **🍽 拖文件喂桌宠**：Finder 文件拖到老鼠嘴里 → 它"吞下" → 你接着说"总结一下" = AI 读 PDF/网页/截图/代码
+- **🧠 AI 实时活动**：AI 处理期间气泡显示"正在思考 / 读文件 / 跑命令"，不再像卡死
+- **🔁 AI 任务串行队列**：一次做一件、排队逐个做完都通知；语音听写永远即时不排队；忙碌时桌宠右下角三点 badge
+- **🎓 首次使用引导**：模型下完桌宠主动跳出教学（含 learn-by-doing 真用一遍）· PetMenu「📖 教我用」可重看
+- **✏️ 语音确认可编辑**：转写完进确认框可直接改字 · Esc 取消 / Enter 立即 — 防止语音误识别浪费 token
 - **🦞 桌宠跟随光标**：托盘开关，老鼠在屏幕里跟着你的鼠标走
-- **🎨 6 款皮肤**：经典灰 / 小白鼠 / 田鼠 / 忍者 / 机械 / 金鼠
+- **🎨 9 款皮肤**：经典灰 / 小白鼠 / 田鼠 / 忍者 / 机械 / 金鼠 / 🐱 小灰猫 / 🦊 赤狐 / 🐸 树蛙
 
 ### 隐私
 
@@ -120,11 +125,16 @@ A pixel-art mouse that sleeps in the corner of your macOS screen.
 - **📦 12 MB DMG** (was 238 MB) — models download on first launch with multi-mirror fallback
 - **🌐 Chinese + English** — pick at Onboarding; English-only users get 73 MB model (vs 199 MB bilingual)
 - **📥 Resumable downloads** — auto-switch mirror on failure, resume from `.part` on crash/restart
-- **🎓 First-run tour** — pet teaches you in 5 steps after model downloads; "📖 Teach me" in pet menu to redo
-- **✏️ Voice confirmation** — 3-second countdown after transcription, Esc cancel / Enter send / click to edit (prevents token waste on misrecognized speech)
-- **🍽 Feed files** — drag PDF/page/screenshot/code onto pet, AI reads
+- **🐭 Full companion animations** — eyes track the cursor · nods while you type · perks up on hover · dozes off when idle · heart on pat · intimacy growth (bigger eyes the more you interact) · stretch/dizzy/hop/late-night-drowsy/neglected sulk — **across all 9 skins**
+- **🧱 Edge bounce** — following the cursor / dragged / bubble hitting a screen edge: the pet stays on-screen with a soft squash-and-recoil, no more drifting off
+- **📋 Reactive ribbon** — copy something → the pet twitches + a row of quick actions pops above its head (translate / explain / 📄 plain text…), auto-dismiss in 5s
+- **🍽 Feed files** — drag a file onto the pet, it "eats" it, then ask "summarize this" — AI reads PDF/page/screenshot/code
+- **🧠 Live AI activity** — bubble shows "thinking / reading file / running command" during long tasks, never looks frozen
+- **🔁 Serial AI queue** — one task at a time, queued & each notified on done; voice typing never queues; busy badge on the pet
+- **🎓 First-run tour** — pet teaches you after model downloads (with hands-on learn-by-doing); "📖 Teach me" in pet menu to redo
+- **✏️ Editable voice confirm** — edit the transcript in place after transcription, Esc cancel / Enter send (prevents token waste on misrecognized speech)
 - **🦞 Cursor follow** — pet follows your mouse around screen (toggle in tray)
-- **🎨 6 skins** — classic / white / brown / ninja / robot / gold
+- **🎨 9 skins** — classic / white / brown / ninja / robot / gold / 🐱 cat / 🦊 fox / 🐸 frog
 
 ### Privacy
 
