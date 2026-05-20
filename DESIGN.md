@@ -320,6 +320,40 @@ The pixel positions in `src/components/Mouse.tsx` are the **legal authoritative 
 | `hub` *(v0.1.14)* | `︶ ︶` (curved closed) | Sitting | None | Static gentle |
 | `paste` *(v0.1.14)* | `● ●` | Standing | White clipboard sprite in right paw | Brief flash |
 
+#### Companion Layer States *(v0.4+)*
+
+陪伴向"环境感知"层 —— 与上面的任务态解耦，只在 **idle 静默态**（`mouseStateFor(idle)→"sleep"`
+或 onboarding `listen`）叠加。任务进行中（think/write/talk/feed-*/jump/block/paste/type）不挂。
+驱动来源：`src/hooks/useCompanion.ts`（订阅 Rust `companion-tick` 30fps）。
+**全部走整体 `.mouse-svg` transform / filter，不碰 palette —— 9 款皮肤自动适配**（见硬规则）。
+
+优先级（高→低）：sleep > waking > dizzy > hop > clicked > worried > typing > excited > alert > glance > drowsy/idle。
+
+| State | 触发 | 视觉 | 动画 |
+|---|---|---|---|
+| `companion-typing` | 正在打字（sinceKey<0.4s） | 睁眼追鼠标 | 点头 `mc-nod` (220ms loop) |
+| `companion-alert` | 光标 <80px | 抬头 | translateY(-2px) scale(1.04) |
+| `companion-excited` | 光标 <30px | 兴奋上抬 | translateY(-3px) scale(1.08) |
+| `companion-clicked` | 点鼠标 <0.25s 内 | 耳朵抽 + 微缩 | `mc-ear-perk` + `mc-click-blink` (240ms) |
+| `companion-worried` | 连续狂敲/退格 ≥1.5s | 歪头担心 | `mc-worried-tilt` (1.4s loop, ±3°) |
+| `companion-sleep` | 键鼠静止 10s（深夜 5s） | 闭眼线 + 瘫 + ZZZ | scaleY 0.88 + brightness 0.85 |
+| `companion-drowsy` | 深夜 23:00–05:59 默认态 | 眼皮半垂（eyes scaleY 0.55） | `mc-drowsy-sway` (4s) + brightness 0.92 |
+| `companion-waking` | sleep/drowsy → 醒 | 伸懒腰 | `mc-waking` (700ms 拉伸回弹, 一次性) |
+| `companion-dizzy` | 持续甩鼠标 ≥0.45s（>4200px/s） | ×_× 转圈，不追鼠标 | `mc-dizzy` 摇晃 + `mc-dizzy-eyes` |
+| `companion-hop` | 一段打字 burst 结束 | 小跳 | `mc-hop` (480ms overshoot, 一次性) |
+| `companion-glance` | 过整点 40% 概率（仅 idle） | 抬头看一眼（眼朝上） | `mc-glance` (2s) |
+| `companion-neglected` | 冷落 >3 天 | 低头委屈 + 略暗 | translateY(1.5px) rotate(-1°) + 眼朝下 |
+| `intimacy-1/2/3` | 互动累计 50/200/600 次 | 眼睛逐级微大（scale 1.05/1.10/1.16） | 静止（CSS scale on .mc-eyes） |
+
+眼球追鼠标：贯穿所有非 sleep/drowsy/dizzy/neglected 态。`useCompanion` 算 `eyeOffset`（tanh
+分量映射 X/Y 解耦，最大 ±1.4 SVG 单位），PixelMouse 用 **SVG `transform` attribute**（user 单位，
+WebKit 可靠；CSS px 在 SVG group 上语义不一致）平移整个 `<g.mc-eyes>`。
+
+爱心 ❤️：点桌宠本体浮一颗心（`.pet-heart`，`pet-heart-float` 700ms 上飘淡出）—— 见 App.css，
+非 PixelMouse 内部 state。
+
+所有 companion 动画在 `prefers-reduced-motion: reduce` 下降级为无动画（仅保留状态指示）。
+
 #### Session Chain Indicator
 
 When continuing a session, a **3-pixel-wide horizontal green chain** appears 1 pixel above the mouse's head (rows -1 to 0, cols 6-10):

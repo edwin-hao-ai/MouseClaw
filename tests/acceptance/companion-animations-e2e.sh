@@ -85,6 +85,8 @@ check "Rust 单元测试 cargo test 全绿" \
 # ── 6. CLAUDE.md 规则文档化 ──
 check "CLAUDE.md 已收录 '动画/陪伴效果必须适配所有皮肤' 硬规则" \
   grep -q "动画/陪伴效果必须适配所有皮肤" CLAUDE.md
+check "DESIGN.md §3.1 已记录 companion 状态（硬规则：新动画状态必须进 DESIGN.md）" \
+  bash -c 'grep -q "Companion Layer States" DESIGN.md && grep -q "companion-dizzy" DESIGN.md && grep -q "companion-waking" DESIGN.md'
 
 echo "──────────────────────────"
 echo "Result: $pass passed, $fail failed"
