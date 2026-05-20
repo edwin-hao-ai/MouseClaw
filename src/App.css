@@ -120,3 +120,14 @@
 .session-chip-chain { color: #3fa66a; background: linear-gradient(135deg, #e6f4ec, #fff); }
 .session-chip-pin   { color: #5b8def; background: linear-gradient(135deg, #e8f0fe, #fff); }
 .session-chip-soft  { color: #d9952b; background: linear-gradient(135deg, #fff7e0, #fff); }
+
+.session-chip-clickable {
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.session-chip-clickable:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(43, 38, 34, 0.18);
+}
+.session-chip-clickable:active { transform: translateY(0); }

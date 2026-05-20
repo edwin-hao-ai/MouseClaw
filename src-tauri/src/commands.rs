@@ -549,6 +549,43 @@ pub async fn open_panel_window(
     }
 }
 
+/// v0.4.x · 点击桌宠头顶的「🔗 第 N 轮」链条 chip → 打开 Panel 看当前 session 完整对话。
+/// 跟 open_panel_window 区别：带完整 turns（不是只一对），让用户回看整段聊了啥。
+#[tauri::command]
+pub async fn open_session_panel(app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    use tauri::{WebviewWindowBuilder, WebviewUrl};
+    let (session_id, turns) = {
+        let store = state.sessions.lock().await;
+        (store.current_session(), store.snapshot_turns())
+    };
+    if turns.is_empty() {
+        return Ok(()); // 没上下文，不开空 panel
+    }
+    // 末尾一对作 fallback 显示；turns 给完整历史让 Panel 渲染整段
+    let transcript = turns.iter().rev()
+        .find(|t| matches!(t.role, crate::events::TurnRole::User))
+        .map(|t| t.text.clone()).unwrap_or_default();
+    let reply = turns.iter().rev()
+        .find(|t| matches!(t.role, crate::events::TurnRole::Assistant))
+        .map(|t| t.text.clone()).unwrap_or_default();
+    *state.pending_panel_context.lock().unwrap() = Some(crate::PendingPanelContext {
+        session_id, transcript, reply, turns: Some(turns),
+    });
+    crate::overlay::hide_overlay(&app);
+    if let Some(w) = app.get_webview_window("panel") {
+        let _ = w.show();
+        let _ = w.set_focus();
+        let _ = w.emit("panel-context-changed", ());
+        return Ok(());
+    }
+    WebviewWindowBuilder::new(&app, "panel", WebviewUrl::App("index.html?view=panel".into()))
+        .title("MouseClaw — 对话").inner_size(480.0, 560.0).min_inner_size(380.0, 380.0)
+        .resizable(true).decorations(true).focused(true)
+        .build()
+        .map(|w| { let _ = w.set_focus(); })
+        .map_err(|e| format!("打开 panel 窗口失败：{e:#}"))
+}
+
 /// PanelView 挂载时调用 —— 取走一次性上下文 + 清空 state
 #[tauri::command]
 pub fn take_panel_context(state: State<'_, Arc<AppState>>) -> Option<crate::PendingPanelContext> {

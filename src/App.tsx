@@ -103,10 +103,13 @@ export default function App() {
   //   其余时间 Rust 自动按 view.kind 处理。
   //   这是为了让 idle 静默时透明区域真的穿透到底层 app，但 React 临时弹的气泡也可点。
   useEffect(() => {
-    const hasReactUi = !!modelProgress || petMenuOpen || !!nudge || !!transientAck || !!reactive;
+    // v0.4.x · session chip（idle + 有上下文时显示在头顶）也算 React UI ——
+    // 否则窗口 hit-box 只在桌宠底部，chip 在上方会被穿透掉点不到（点击查看对话失效）。
+    const chipVisible = sessionState.continuing && !petMenuOpen && !nudge && !transientAck;
+    const hasReactUi = !!modelProgress || petMenuOpen || !!nudge || !!transientAck || !!reactive || chipVisible;
     if (view.kind !== "idle") return; // 非 idle 由 Rust emit_view 那侧管，前端不要干扰
     invoke("set_overlay_has_ui", { hasUi: hasReactUi }).catch(() => {});
-  }, [view.kind, modelProgress, petMenuOpen, nudge, transientAck, reactive]);
+  }, [view.kind, modelProgress, petMenuOpen, nudge, transientAck, reactive, sessionState.continuing]);
 
   // 启动时从 Rust 读当前皮肤（避免闪一下默认 classic 再切换）
   useEffect(() => {
@@ -631,23 +634,34 @@ export default function App() {
   );
 }
 
-/** v0.4.x · 桌宠头顶的 session 状态 chip —— 钉住 / 软提示 / 第 N 轮，三选一显示。 */
+/** v0.4.x · 桌宠头顶的 session 状态 chip —— 钉住 / 软提示 / 第 N 轮，三选一显示。
+ *  点击 → 打开 Panel 看当前 session 完整对话。 */
 function SessionChip({ s }: { s: SessionState }) {
   const zh = getCurrentLang().startsWith("zh");
   let text: string;
-  let cls = "session-chip";
+  let cls = "session-chip session-chip-clickable";
   if (s.pinned) {
     cls += " session-chip-pin";
     const label = s.pinnedLabel ? ` ${s.pinnedLabel}` : "";
     text = zh ? `📌 钉住${label} · 第 ${s.round} 轮` : `📌 Pinned${label} · turn ${s.round}`;
   } else if (s.softHint) {
     cls += " session-chip-soft";
-    text = zh ? "🔗 接着很久前的对话 · 双击快捷键重置" : "🔗 Continuing an old chat · double-tap to reset";
+    text = zh ? "🔗 接着很久前的 · 点看 / 双击重置" : "🔗 Old chat · click to view / dbl-tap reset";
   } else {
     cls += " session-chip-chain";
-    text = zh ? `🔗 第 ${s.round} 轮` : `🔗 turn ${s.round}`;
+    text = zh ? `🔗 第 ${s.round} 轮 · 点看对话` : `🔗 turn ${s.round} · click to view`;
   }
-  return <div className={cls}>{text}</div>;
+  const open = () => { invoke("open_session_panel").catch(() => {}); };
+  return (
+    <div
+      className={cls}
+      role="button"
+      tabIndex={0}
+      title={zh ? "点击查看完整对话" : "Click to view full conversation"}
+      onClick={open}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } }}
+    >{text}</div>
+  );
 }
 
 interface BubbleForProps {
@@ -802,6 +816,10 @@ function VoiceConfirmBubble({ transcript, remaining }: VoiceConfirmBubbleProps) 
 
   return (
     <div
+      // v0.4.x fix · 必须打 data-adaptive-measure —— useAdaptiveOverlay 只测带 .bubble/
+      // .stage-bubble 等 class 的元素，这个确认框是自定义 inline-style div，不打标记
+      // 的话自适应会把窗口缩到只剩桌宠，282 宽的确认框被裁出窗口 = 用户看不到确认/编辑。
+      data-adaptive-measure=""
       style={{
         background: "#fff",
         border: "1px solid #e8d8dc",
