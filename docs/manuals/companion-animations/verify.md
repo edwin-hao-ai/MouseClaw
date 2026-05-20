@@ -53,9 +53,17 @@ prototype 现在有两排控制按钮。9 款皮肤同屏，逐个验证：
 - [ ] **亲密度 +1** 按钮 → 9 只眼睛逐级变大
 - [ ] 点任意桌宠头 → ❤️ 上飘
 
-> Chrome MCP 自动截图：本轮 **未跑**（chrome-devtools 端口 9222 未连接）。
-> prototype 在 preview 面板可直接交互验证。早期 6 张截图（01–06）覆盖
-> 原始 4-5 状态仍有效，见同目录。
+> **Chrome 扩展 E2E 复验（2026-05-20）**：经本地 http server（file:// 被扩展拒）
+> 用 Claude-in-Chrome 加载 prototype，确认：
+> - 9 款皮肤齐全 ✅
+> - 7 个新状态按钮全部就位（醒来/晕/小跳/抬头/drowsy/委屈/亲密度）✅
+> - 点「深夜 drowsy」→ 9 只全员 drowsy（截图 07）✅
+> - 点「亲密度 +1」×3 → 9 只眼睛同步放大（DOM `data-intimacy=3` × 9 + 肉眼可见）✅
+>
+> **限制**：后台标签页 `requestAnimationFrame` 被 Chrome 节流，**瞬时态**
+> （waking 700ms / dizzy 1600ms / hop 480ms）窗口短于截图延迟，截不到静帧 ——
+> 这些由 69 个前端单测覆盖逻辑 + preview 面板/真 app 肉眼验证。长窗口态
+> （drowsy/neglected 6s）可截。早期 6 张截图（01–06）覆盖原始状态仍有效。
 
 ---
 
