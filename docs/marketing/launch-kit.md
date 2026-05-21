@@ -67,16 +67,16 @@ How it works:
   that bakes into the screenshot, so you can literally circle the
   thing you mean — works really well for "what is this in the photo"
   or "what's wrong with this paragraph".
-- Long-press fn turns the pet into a voice IME — you speak, Whisper
-  transcribes locally, and the text is written via
+- Long-press fn turns the pet into a voice IME — you speak, sherpa-onnx
+  transcribes locally (streaming Zipformer, zh-en), and the text is written via
   CGEventKeyboardSetUnicodeString directly to the focused field
   (bypasses the active IME, so 中文 input methods don't intercept).
 - ⌘⇧V opens a clipboard hub with everything you've copied, AES-256-GCM
   encrypted on disk, key in macOS Keychain.
 
-Stack: Tauri 2, Rust backend, React/TS for the webview, whisper.cpp
-with the base-q5_1 model bundled in the .app so first launch is offline.
-DMG is signed + notarized. Apple Silicon only for now.
+Stack: Tauri 2, Rust backend, React/TS for the webview, sherpa-onnx
+(streaming Zipformer zh-en + CT-Transformer punctuation) bundled in the
+.app so first launch is offline. DMG is signed + notarized. Apple Silicon only for now.
 
 Two things I'd love feedback on:
 1. The "cursor trail as context" interaction — I haven't seen it used
@@ -119,7 +119,7 @@ Hermes / OpenClaw) answers with the screenshot + your voice as context.
 
 What's in v0.1.25:
 - DMG is notarized (no Gatekeeper warning — just drag to Applications)
-- Whisper base model bundled (~60 MB total, first launch is offline)
+- sherpa-onnx speech models bundled (zh-en ASR + punctuation, first launch is offline)
 - 6 pet skins (classic gray / lab white / ninja / robot / golden / brown)
 - Voice IME: long-press fn → speak → text appears at your cursor in
   any app (bypasses IME so 中文 input methods don't intercept)
@@ -161,7 +161,7 @@ The three moments I'm proudest of:
 3. **Clipboard hub at ⌘⇧V** — every copy you've made, searchable,
    encrypted.
 
-Tech: Tauri 2 + Rust + whisper.cpp. DMG is signed + notarized so
+Tech: Tauri 2 + Rust + sherpa-onnx. DMG is signed + notarized so
 it installs like a normal app. Apple Silicon only.
 
 What I'd love feedback on:
@@ -229,7 +229,7 @@ typing "the third paragraph from the top".
 
 4/ Long-press the fn key and the pet becomes a voice IME.
 
-You speak. Whisper transcribes locally. Text appears at your cursor
+You speak. sherpa-onnx transcribes locally. Text appears at your cursor
 in any app — Messages, Notes, Slack, 飞书 — bypassing the active
 input method.
 
@@ -252,10 +252,10 @@ you should at least like looking at it.
 
 ———
 
-7/ Tech: Tauri 2 + Rust + whisper.cpp + four pluggable AI backends
+7/ Tech: Tauri 2 + Rust + sherpa-onnx + four pluggable AI backends
 (Claude Code / OpenAI Codex / OpenClaw / Hermes).
 
-DMG signed + notarized. Whisper base model bundled — first launch
+DMG signed + notarized. Speech models bundled — first launch
 is offline. Apple Silicon, Intel coming.
 
 ———
@@ -324,7 +324,7 @@ Free. Open source. Notarized so it installs like a normal app.
 
 ▼ Stack
 - Tauri 2 (Rust + WebView)
-- whisper.cpp (base model bundled · offline-capable)
+- sherpa-onnx (zh-en ASR + punctuation bundled · offline-capable)
 - AES-256-GCM clipboard encryption with macOS Keychain
 - Four pluggable backends: Claude Code CLI · OpenAI Codex · OpenClaw · Hermes Agent
 
@@ -363,7 +363,7 @@ MouseClaw 是一只 Mac 桌面 AI 桌宠 —— 按住快捷键、鼠标拖一�
 
 ▼ 技术栈
 - Tauri 2（Rust + WebView）
-- whisper.cpp（base 模型已打包·首启动 0 下载）
+- sherpa-onnx（zh-en ASR + 标点模型已打包·首启动 0 下载）
 - AES-256-GCM 剪贴板加密 + macOS Keychain
 - 4 个可选 AI 后端：Claude Code · OpenAI Codex · OpenClaw · Hermes
 
@@ -527,7 +527,7 @@ stay the same.
 
 - ✅ Notarized DMG (no Gatekeeper warning)
 - ✅ Open source on GitHub
-- ✅ Whisper model bundled (no first-launch download)
+- ✅ sherpa-onnx speech models bundled (no first-launch download)
 - ✅ AES-256-GCM clipboard encryption · key in macOS Keychain
 - ✅ Free · no account · no telemetry
 

@@ -19,7 +19,7 @@ killall mouseclaw
 | Session JSONL | `tail -f ~/.mouseclaw/sessions.jsonl` |
 | 配置（快捷键等） | `cat ~/.mouseclaw/config.json` |
 | 临时截图 | `ls -lt /tmp/mouseclaw-frame-*.png \| head` |
-| Whisper 模型 | `~/.mouseclaw/models/ggml-base-q5_1.bin` (59MB) |
+| sherpa ASR 模型 | `~/.mouseclaw/models/sherpa-zh-en/` (~189MB · encoder/decoder/joiner.onnx + tokens.txt) |
 
 ## Webview DevTools（看 React 状态/网络/console）
 
@@ -67,7 +67,7 @@ rm ~/.mouseclaw/config.json   # 下次启动默认 Cmd+Shift+Space
 
 | 权限 | 用途 | 重新打开 |
 |---|---|---|
-| 麦克风 | cpal 录音给 Whisper | 系统设置 → 隐私 → 麦克风 → 找 mouseclaw 打勾 |
+| 麦克风 | cpal 录音给 sherpa ASR | 系统设置 → 隐私 → 麦克风 → 找 mouseclaw 打勾 |
 | 屏幕录制 | `screencapture` 抓主屏 | 系统设置 → 隐私 → 屏幕录制 → 找 mouseclaw 打勾 |
 | 辅助功能 / Apple Events | osascript Cmd+V 写回光标 | 系统设置 → 隐私 → 辅助功能 → 找 mouseclaw 打勾 |
 
@@ -83,7 +83,7 @@ rm ~/.mouseclaw/config.json   # 下次启动默认 Cmd+Shift+Space
 ### 录音没反应 / 转写空
 1. 终端有 `captured N samples @ 16kHz (Ys)` 吗？
    - **N=0** 或 `recording was empty` → 麦克风权限被拒，或者 cpal 选错设备。
-   - **N>0 但 transcript 是 "(字幕:...)"** → Whisper 在静音上的幻觉，说明你没说话或者声音太小。
+   - **N>0 但 transcript 空 / 乱** → sherpa 在静音/噪声上识别不出，说明你没说话或者声音太小。
 
 ### Mode B 没写到光标
 1. 检查 `frontmost_app_name` 日志，是不是终端类（被黑名单了）
@@ -103,7 +103,7 @@ rm ~/.mouseclaw/config.json   # 下次启动默认 Cmd+Shift+Space
 
 ### 改了 Rust 没生效
 - `bun tauri dev` 会自动重编。如果没动，Ctrl+C 重启。
-- 大改 Cargo.toml 后第一次会很慢（whisper.cpp 全量重编 ~2 分钟）。
+- 大改 Cargo.toml 后第一次会很慢（sherpa-onnx 全量重编 ~2 分钟）。
 
 ### 改了 React 没生效
 - Vite hot reload 应该秒级。如果没动，刷新 webview（DevTools → 右键 → Reload）
@@ -113,15 +113,14 @@ rm ~/.mouseclaw/config.json   # 下次启动默认 Cmd+Shift+Space
 | 前缀 | 来源 |
 |---|---|
 | `[mouseclaw]` | 我们自己的 Rust 打印 |
-| `whisper_full_with_state:` | whisper.cpp 内部 |
+| `🎤 sherpa ...` | sherpa-onnx ASR 加载 / resampler 日志 |
 | `cargo:warning=` | 构建期 |
 | `error[E...]` | Rust 编译错（红） |
 
-## 调试 Whisper（不依赖 UI）
+## 调试 pipeline（不依赖 UI）
 
 ```bash
 cd /Users/edwinhao/MouseClaw/src-tauri
-cargo run --example whisper_smoke   # 合成音频
 cargo run --example smoke_pipeline  # 截屏 + Claude
 ```
 
@@ -144,6 +143,6 @@ ps aux | grep -i mouseclaw
 # 看 Tauri webview 进程组
 ps aux | grep -i "MouseClaw\|webview"
 
-# 看 Whisper 加载后的内存峰值
+# 看 sherpa ASR 模型加载后的内存峰值
 top -pid $(pgrep mouseclaw | head -1)
 ```

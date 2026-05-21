@@ -392,7 +392,7 @@ fn is_secure_input_active() -> bool {
 #[cfg(not(target_os = "macos"))]
 fn is_secure_input_active() -> bool { false }
 
-// ────────────────── 录音 → Whisper → paste 流程 ──────────────────
+// ────────────────── 录音 → sherpa ASR → paste 流程 ──────────────────
 
 fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
     // 已经在录音（被 ⌘⇧Space 占着）→ 跳过

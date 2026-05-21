@@ -8,7 +8,7 @@ fileMatchPattern: "*.rs"
 
 ## 技术栈（已锁定，不可更改）
 - **GUI**：Tauri 2
-- **录音转写**：cpal + whisper-rs + Whisper base 量化模型
+- **录音转写**：cpal + sherpa-onnx 流式 Zipformer（双语 zh-en）+ CT-Transformer 标点，全本地（v0.3 起删 Whisper）
 - **截屏**：macOS screencapture CLI（完整屏幕，不是 300×300 局部）
 - **AI 后端**：Claude Code CLI（v2.1.138+），**不暴露给用户选择**
 

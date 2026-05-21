@@ -17,7 +17,7 @@ export default function AboutView() {
           按快捷键召唤，截屏 + 语音 → AI，回答完自动消失。
         </p>
         <div className="about-meta">
-          <div>Tauri 2 · React · whisper.cpp · Claude Code CLI</div>
+          <div>Tauri 2 · React · sherpa-onnx · Claude Code CLI</div>
           <div>设计文档：<code>DESIGN.md</code></div>
         </div>
       </div>

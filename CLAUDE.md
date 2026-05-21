@@ -326,7 +326,7 @@ MouseClaw 支持 4 个 backend，用户在 Onboarding 里选一个：
 ## 技术选型（已锁定）
 
 - **GUI**：Tauri 2（理由：Webview 写"漂亮+流式文本"几乎零成本，纯 Rust GUI 在文本布局上是地狱）
-- **录音 → 转写**：cpal 录音 + whisper-rs（whisper.cpp Rust binding）+ Whisper base 量化模型
+- **录音 → 转写**：cpal 录音 + sherpa-onnx 流式 Zipformer（双语 zh-en transducer）+ CT-Transformer 标点，全本地（v0.3 起整套删除 Whisper）
 - **截屏**：macOS 用 `screencapture` CLI 取光标所在屏完整截图（不是 300×300 局部）
 - **AI 后端**：多后端抽象（`backend.rs`）—— Claude Code CLI（默认，最成熟）/
   OpenAI Codex CLI / OpenClaw CLI。用户在 Onboarding 选，存 config.json。
@@ -424,8 +424,8 @@ MouseClaw 是**纯后台进程**，平时完全"不存在"：
 
 ## 体积/性能目标（v0.1.4 修订 — 漂亮 > 轻量）
 
-- 安装包 < 30MB（不含 Whisper 模型）
-- 常驻内存 < 600MB（含 Whisper base 量化模型 ~142MB） / < 400MB（待机不含模型）
+- 安装包 < 30MB（不含 sherpa ASR 模型）
+- 常驻内存 < 600MB（含 sherpa-onnx zh-en ASR + CT-Transformer 标点模型） / < 400MB（待机不含模型）
 - 待机 CPU < 1%
 - 触发延迟（按键 → 老鼠出现）< 100ms
 
@@ -485,7 +485,9 @@ sed -i '' 's/^version = "0.1.25"/version = "0.1.26"/' src-tauri/Cargo.toml
 cargo check --manifest-path src-tauri/Cargo.toml --quiet
 bunx tsc --noEmit
 
-# (3) 打包（会触发 beforeBuildCommand：fetch whisper model + vite build）
+# (3) ⚠️ 先手动拉模型（不再自动 fetch）：把 sherpa ASR + 标点模型 curl 到 src-tauri/resources/
+bash scripts/fetch-sherpa-model.sh
+# 打包（beforeBuildCommand = bun run build = tsc + vite build）
 bun tauri build
 # 输出在 ~/.cargo/shared-target/release/bundle/dmg/MouseClaw_X.Y.Z_aarch64.dmg
 cp ~/.cargo/shared-target/release/bundle/dmg/MouseClaw_X.Y.Z_aarch64.dmg ./
@@ -598,14 +600,14 @@ ffmpeg -y -i demo-en.mp4 \
 4. **`WebviewWindowBuilder::new` 参数**：Tauri 2 需要 `&app`（引用），不是 `app`（值）。错了报 `expected &_, found AppHandle`
 5. **多窗口路由策略**：单 bundle + `?view=picker` query 在 `main.tsx` 分发到不同组件，比多 HTML 入口简单。已建立约定：`hub` / `panel` / `picker` / `history` / `about` / `status` / `draw`
 6. **网络问题（LibreSSL handshake failure）**：本地代理 / VPN 会偶发 `git push` 失败，**不要 retry-spam**，等 30-60 秒重试一次。`HTTPS_PROXY="" git push` 有时能绕过
-7. **Whisper 模型大文件**：57MB 不进 git（`/src-tauri/resources/ggml-*.bin` 在 gitignore）。用 `scripts/fetch-whisper-model.sh` 作为 `beforeBuildCommand` 钩子，每次构建前 curl 一份到 `src-tauri/resources/`。Tauri 把它打进 `MouseClaw.app/Contents/Resources/models/`，`transcribe.rs::try_seed_from_bundle` 在首次启动时拷到 `~/.mouseclaw/models/`
+7. **sherpa ASR + 标点模型大文件**：~189MB（zh-en ASR：encoder/decoder/joiner.onnx + tokens.txt）+ ~72MB（CT-Transformer 标点 int8）不进 git（`/src-tauri/resources/sherpa-zh-en/` + `/src-tauri/resources/sherpa-punct/` 在 gitignore）。**build 前手动**跑 `bash scripts/fetch-sherpa-model.sh`（不在 beforeBuildCommand 里，不会自动 fetch）curl 到 `src-tauri/resources/`。Tauri bundle.resources 把它们打进 `MouseClaw.app/Contents/Resources/models/sherpa-zh-en/`，`transcribe_stream.rs::try_seed_from_bundle()` 首次启动拷到 `~/.mouseclaw/models/sherpa-zh-en/`（v0.3 起整套删除 Whisper）
 8. **多 session 并行写代码**：经常出现 main 已被另一 session push 新 commit。本 session commit 前 `git fetch && git log origin/main -3` 查一下，必要时 `git pull --rebase`。**不要 force-push**
 9. **gitignore 过宽**：曾经 `marketing/` 一行把 `docs/marketing/` 也屏了。**规则要尽量加 `/` 前缀锚定根**（`/marketing/` 只挡根目录的 `marketing/`），下层同名目录就不会被波及
 10. **macOS 自启动真信源是 plist**：`tauri-plugin-autostart` 写到 `~/Library/LaunchAgents/com.edwinhao.mouseclaw.plist`，**真信源是这个 plist + 系统设置 → 登录项**。`config.json` 里的 `autostart: bool` 只是镜像，启动时双向同步：用户在系统设置里关掉 → app 启动时读真实状态回写 config
 11. **`--minimized` 自启动静默**：`std::env::args().any(|a| a == "--minimized")` 检测，自启动场景不弹任何窗口，只挂菜单栏
 12. **托盘 emoji 选 vs 真实形象**：macOS native menu 不能内联渲染 SVG/PNG。**多于 6 个选项时改成一个「打开 picker 窗口」入口**，把选择交给真窗口（v0.1.26 桌宠选择器就是这么做的）
 13. **PixelMouse size prop**：曾经写死 `32 | 48 | 64 | 96 | 128`，遇到 size={22} 报错。**改成 `number`** 留弹性
-14. **bundle.resources 资源访问**：app bundle 里的资源在 `current_exe()/../../Resources/`，例如 whisper 模型在 `MouseClaw.app/Contents/Resources/models/ggml-base-q5_1.bin`。dev 模式（`bun tauri dev`）走 `CARGO_MANIFEST_DIR` 兜底
+14. **bundle.resources 资源访问**：app bundle 里的资源在 `current_exe()/../../Resources/`，例如 sherpa ASR 模型在 `MouseClaw.app/Contents/Resources/models/sherpa-zh-en/`。dev 模式（`bun tauri dev`）走 `CARGO_MANIFEST_DIR` 兜底
 15. **公证服务偶发慢**：3 分钟内通常完成，最长 10 分钟。**没动也别 kill** —— 重启会被记重复提交，反而更慢
 16. **release 文件改名**：版本号变了 dmg 文件名也变，别忘了同步 `version.json` 的 `dmg_url`、`landing-kit.md` 里的引用、README 截图引用
 

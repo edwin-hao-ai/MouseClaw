@@ -85,14 +85,8 @@ check "lib.rs spawn cursor follow loop"               "grep -q 'spawn_follow_loo
 check "overlay::reposition_to_cursor 存在"           "grep -q 'pub fn reposition_to_cursor' src-tauri/src/overlay.rs"
 check "emit_view 进非 listening 状态时停止跟随"      "grep -q 'should_follow = matches!' src-tauri/src/overlay.rs"
 
-echo "── v0.1.8 P3 · Whisper 模型可切换 ──"
-check "config 有 WhisperModel 枚举"                  "grep -q 'pub enum WhisperModel' src-tauri/src/config.rs"
-check "默认 Small"                                    "grep -q 'WhisperModel::Small' src-tauri/src/config.rs"
-check "CURRENT_CONFIG_VERSION = 14"                    "grep -q 'CURRENT_CONFIG_VERSION: u32 = 14' src-tauri/src/config.rs"
-check "save_whisper_model 命令"                       "grep -q 'pub fn save_whisper_model' src-tauri/src/commands.rs"
-check "托盘有「🎙️ 语音模型」子菜单"                  "grep -q 'whisper-submenu' src-tauri/src/tray.rs"
-check "tray 处理 whisper:* event"                     "grep -q 'strip_prefix(\"whisper:\")' src-tauri/src/tray.rs"
-check "transcribe::set_active_model 存在"             "grep -q 'pub fn set_active_model' src-tauri/src/transcribe.rs"
+# v0.3 · 「Whisper 模型可切换」整套删除（sherpa-onnx zh-en 唯一 ASR，模型打进 bundle，
+# 无 model picker）—— 原 v0.1.8 P3 的 7 条 check 一并移除。
 
 echo "── v0.1.9 · Bug 修 + markdown ──"
 check "bubble-scroll 加了 display:block 强制"        "grep -q 'display: block !important' src/components/Bubble.css"
@@ -116,9 +110,9 @@ check "Onboarding 用 useT"                           "grep -q 'useT' src/compon
 check "StatusView 用 useT"                           "grep -q 'useT' src/StatusView.tsx"
 check "Bubble 用 useT"                               "grep -q 'useT' src/components/Bubble.tsx"
 
-echo "── v0.1.10 · Whisper i18n + Tidy-up + Hub UI ──"
-check "Whisper 用 ui_lang 决定语言"               "grep -q 'ui_lang' src-tauri/src/transcribe.rs"
-check "中文加简体引导 prompt"                       "grep -q '以下是普通话的句子' src-tauri/src/transcribe.rs"
+echo "── v0.1.10 · Tidy-up + Hub UI ──"
+# v0.3 · 原「Whisper 用 ui_lang 决定语言 / 简体引导 prompt」2 条 check 移除 ——
+# sherpa-onnx zh-en Zipformer 原生输出简体，无 ui_lang/initial_prompt 机制。
 check "tidy_up 模块存在"                          "test -f src-tauri/src/tidy_up.rs"
 check "tidy_up_enabled 在 config"                "grep -q 'tidy_up_enabled' src-tauri/src/config.rs"
 check "pipeline 调用 tidy"                        "grep -q 'tidy_up::tidy' src-tauri/src/pipeline.rs"

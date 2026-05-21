@@ -1,6 +1,6 @@
 //! Streaming ASR via sherpa-onnx + Zipformer-transducer (v0.2).
 //!
-//! Replaces Whisper batch transcription (transcribe.rs is being deleted).
+//! Replaced Whisper batch transcription (transcribe.rs deleted in v0.3).
 //! Designed for real-time "边说边出字" — partials emit every ~200ms while
 //! user holds the shortcut, final pulled on release.
 //!

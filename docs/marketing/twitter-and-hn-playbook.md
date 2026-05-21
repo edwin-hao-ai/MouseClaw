@@ -106,7 +106,7 @@ Tweet 8 · THE BONUS
    - Listen carefully — this is where most people hit the like + reply.
 
 Tweet 9 · TECH STACK + TRUST
-   - For HN crowd cross-pollinating. "Tauri 2 + Rust + whisper.cpp.
+   - For HN crowd cross-pollinating. "Tauri 2 + Rust + sherpa-onnx.
      Signed + notarized."
    - Mention the OSS + free + privacy angle.
 

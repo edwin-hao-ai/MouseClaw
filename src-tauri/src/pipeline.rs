@@ -1,4 +1,4 @@
-//! 核心 pipeline：截屏 + Whisper 转写 + AI 调用 + 输出模式（A/B）。
+//! 核心 pipeline：截屏 + sherpa-onnx 流式转写 + AI 调用 + 输出模式（A/B）。
 //! Push-to-talk 语义：按住快捷键 = 录音 + 截图；松开 = 转写 + 跑 pipeline。
 //!
 //! 之前是 toggle press（按一下开始、再按一下结束），用户反馈录音状态容易卡住，
@@ -425,7 +425,7 @@ pub async fn on_shortcut_press(app: AppHandle, state: Arc<AppState>) {
     });
 }
 
-/// 松开快捷键：停止录音 + 收尾轨迹 + Whisper 转写 + 跑 pipeline。
+/// 松开快捷键：停止录音 + 收尾轨迹 + sherpa 流式转写 + 跑 pipeline。
 pub async fn on_shortcut_release(app: AppHandle, state: Arc<AppState>) {
     let recorder = {
         let mut g = state.recorder.lock().unwrap();

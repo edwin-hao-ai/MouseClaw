@@ -18,7 +18,8 @@ use anyhow::{anyhow, Context, Result};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use sherpa_onnx::LinearResampler;
 
-pub const WHISPER_SR: u32 = 16_000;
+/// sherpa-onnx zh-en Zipformer 要求 16 kHz 单声道输入。
+pub const ASR_SR: u32 = 16_000;
 pub const MAX_SECONDS: usize = 600;
 
 pub struct Recorder {
@@ -133,10 +134,10 @@ impl Recorder {
             .map_err(|e| anyhow!(e))?;
 
         // v0.4.1 · 知道 source_rate 后建抗混叠重采样器（≠16k 才需要）。
-        let resampler = if source_rate != WHISPER_SR {
-            match LinearResampler::create(source_rate as i32, WHISPER_SR as i32) {
+        let resampler = if source_rate != ASR_SR {
+            match LinearResampler::create(source_rate as i32, ASR_SR as i32) {
                 Some(rs) => {
-                    println!("[mouseclaw] 🎤 anti-aliased resampler {source_rate}→{WHISPER_SR} Hz");
+                    println!("[mouseclaw] 🎤 anti-aliased resampler {source_rate}→{ASR_SR} Hz");
                     Some(rs)
                 }
                 None => {

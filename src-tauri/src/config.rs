@@ -10,10 +10,8 @@ use serde::{Deserialize, Serialize};
 use crate::backend::Backend;
 use crate::skins::SkinId;
 
-/// 可选 Whisper 模型 —— 用户在托盘 / config 切。
-/// 体积 / 中文质量 / 速度的取舍详见 transcribe.rs 顶部注释。
-// v0.3 · WhisperModel deleted alongside Whisper. sherpa-onnx zh-en is the
-// sole ASR backend. No user-facing model picker needed — model is bundled.
+// v0.3 · WhisperModel + 模型切换器整套删除（Whisper 已退役）。sherpa-onnx zh-en
+// 是唯一 ASR backend，模型打进 bundle，无需用户可选 model picker。
 
 /// Bump this whenever shortcut choices / config schema change in a way that
 /// invalidates user's saved choice. Old configs auto-trigger re-Onboarding.

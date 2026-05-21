@@ -522,7 +522,7 @@ Internal layout:
 |---|---|
 | Idle (no shortcut pressed) | Sleeping mouse, bottom-right corner, only tail visible (clip-path) |
 | Listening (recording) | Mouse at trigger position, listen state, bubble: "听着呢" + voice bars |
-| Whisper transcribing | Mouse listen → think transition, bubble: italic transcript appearing |
+| ASR transcribing | Mouse listen → think transition, bubble: italic transcript appearing |
 | Claude thinking | Mouse think state, bubble: same transcript + dim pulsing |
 | Claude streaming | Bubble grows with tokens + pink stream-cursor `▮` |
 | Done (Mode A) | Jump animation 1×, bubble swaps to success variant, 3s auto-dismiss |

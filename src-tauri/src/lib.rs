@@ -6,7 +6,7 @@
 //!   - `commands`    —— 所有 #[tauri::command]
 //!   - `backend`     —— 多 AI 后端抽象（Claude / Codex / OpenClaw CLI）
 //!   - `claude_cli`  —— Claude Code CLI 流式调用
-//!   - `audio` / `transcribe` —— cpal 录音 + Whisper 转写
+//!   - `audio` / `transcribe_stream` —— cpal 录音 + sherpa-onnx 流式转写
 //!   - `screenshot` / `mode_b` / `permissions` / `sessions` / `config` / `tray` / `events`
 //!
 //! 完整架构见 `/Users/edwinhao/MouseClaw/CLAUDE.md`。

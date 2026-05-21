@@ -1,9 +1,9 @@
 /**
- * Listening-state input — temporary stand-in for Whisper voice capture.
+ * Listening-state input — temporary stand-in for voice capture.
  * Same visual envelope as Bubble (white pill, pointer-down), but with a
  * text input + submit button instead of static body text.
  *
- * Day 3+ replaces this with a real microphone widget driven by cpal+Whisper.
+ * Day 3+ replaces this with a real microphone widget driven by cpal + sherpa-onnx.
  */
 import { useState } from "react";
 import "./Bubble.css";
