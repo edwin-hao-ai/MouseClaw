@@ -58,6 +58,10 @@ pub mod voice_correct;
 pub mod vocab;
 // transcribe (Whisper) deleted in v0.3 — superseded by transcribe_stream (sherpa-onnx)
 pub mod tray;
+pub mod tray_menu;
+pub mod tray_handlers;
+pub mod tray_actions;
+pub mod tray_windows;
 
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU64};
