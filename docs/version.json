@@ -1,11 +1,11 @@
 {
   "$comment": "MouseClaw 版本元信息 · App 启动时拉取此 URL 检查新版本。任何 release 后更新这里。",
-  "latest": "0.4.2",
+  "latest": "0.4.3",
   "min_supported": "0.1.0",
   "released_at": "2026-05-21",
   "size_mb": 12,
-  "dmg_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/latest/download/MouseClaw_0.4.2_aarch64.dmg",
+  "dmg_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/latest/download/MouseClaw_0.4.3_aarch64.dmg",
   "release_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/latest",
-  "notes_zh": "⚡ 语音输入提速：本地转写 + 标点改多线程推理，松手后出字更跟手 + ⌨️ 托盘新增统一快捷键设置：召唤 AI 快捷键（之前只能在 onboarding 设）和语音触发键一处切换、热切换不用重启 + 🐭 修连续语音输入时桌宠被拽回角落的跳动。安装包仍 12 MB。",
-  "notes_en": "⚡ Faster dictation: multi-threaded local ASR + punctuation for snappier output on release + ⌨️ Unified shortcut settings in the tray: switch the summon hotkey (was onboarding-only) and the voice trigger key in one place, hot-swapped with no restart + 🐭 Fixed the pet jumping back to its corner during rapid dictation. Still a 12 MB DMG."
+  "notes_zh": "🐭 桌宠菜单方向感知：在屏幕角落（尤其右下/左下）点出菜单时，菜单会往屏幕内侧自动翻转展开（贴右→往左、贴左→往右），不再被屏幕边切掉一截；同时桌宠不再被菜单撑大窗口时拽回角落乱跳。安装包仍 12 MB。",
+  "notes_en": "🐭 Edge-aware pet menu: when the pet sits in a screen corner (esp. bottom-right/left), the menu now flips toward the screen interior (anchored right→opens left, left→opens right) instead of getting clipped, and the pet no longer jumps when the menu expands the overlay window. Still a 12 MB DMG."
 }

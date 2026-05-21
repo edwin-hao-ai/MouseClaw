@@ -6,6 +6,20 @@ versioning follows [SemVer](https://semver.org/).
 
 ---
 
+## [0.4.3] · 2026-05-21
+
+修桌宠贴屏幕角落点开菜单时的两个老问题：菜单被切 + 桌宠跳。安装包仍 12 MB。
+Fixes two long-standing issues when opening the pet menu in a screen corner:
+the menu getting clipped + the pet jumping. Still a 12 MB DMG.
+
+### Fixed
+- **🐭 桌宠菜单贴边不再被切 / 桌宠不跳 / Pet menu no longer clipped or jumpy at edges**
+  —— 桌宠在屏幕角落（尤其右下 / 左下）点出菜单时，菜单会往屏幕内侧自动翻转展开
+  （贴右→往左、贴左→往右），不再被屏幕边切掉一截；同时桌宠不再被窗口撑大时的整窗
+  clamp 拽回角落乱跳。The pet menu now flips toward the screen interior when the pet is
+  near an edge (anchored right→opens left, left→opens right) instead of being clipped,
+  and the pet no longer jumps when the menu expands the overlay window.
+
 ## [0.4.2] · 2026-05-21
 
 语音输入更快、快捷键设置更顺手：本地转写 + 标点改多线程推理（出字更跟手），托盘新增
