@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PetMenu 边界方向感知 · 20260521</title>
+<style>
+  /* ── DESIGN.md tokens（菜单复用 PetMenu.css 的玻璃风格值）── */
+  :root {
+    --menu-bg: #ffffff;
+    --menu-fg: #1a1a2e;
+    --menu-radius: 14px;
+    --menu-width: 220px;
+    --menu-border: 1px solid rgba(0,0,0,0.08);
+    --menu-shadow: 0 1px 3px rgba(0,0,0,0.10), 0 8px 16px rgba(0,0,0,0.12), 0 24px 48px rgba(0,0,0,0.18);
+    --pet-px: 4px; /* 像素老鼠单元 */
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; height: 100vh; overflow: hidden;
+    font: 14px/1.5 -apple-system, "PingFang SC", system-ui, sans-serif;
+    color: #e8e8f0;
+    background: linear-gradient(135deg, #2b2d42 0%, #1a1a2e 100%);
+  }
+  /* mock 桌面：一个 IDE 窗口垫底，证明菜单叠加效果 */
+  .desktop {
+    position: absolute; inset: 0;
+  }
+  .mock-window {
+    position: absolute; left: 6%; top: 10%; width: 60%; height: 64%;
+    background: #11131c; border-radius: 10px; border: 1px solid #333;
+    box-shadow: 0 20px 60px rgba(0,0,0,.5); overflow: hidden;
+  }
+  .mock-titlebar { height: 28px; background: #1d1f2b; display:flex; align-items:center; gap:6px; padding:0 10px; }
+  .dot { width:10px; height:10px; border-radius:50%; }
+  .mock-code { padding: 12px 14px; font: 12px/1.7 ui-monospace, Menlo, monospace; color:#7a86b8; }
+  .mock-code .k { color:#c792ea; } .mock-code .s { color:#c3e88d; } .mock-code .c { color:#546178; }
+
+  /* ── 可见 frame 边界（模拟 visibleFrame，菜单不该越过这条线）── */
+  .screen-frame {
+    position: absolute; inset: 24px; border: 1px dashed rgba(255,255,255,.18);
+    border-radius: 8px; pointer-events: none;
+  }
+  .frame-label { position:absolute; top:-10px; left:12px; font-size:11px; color:rgba(255,255,255,.4); background:#1a1a2e; padding:0 6px; }
+
+  /* ── 控制条 ── */
+  .controls {
+    position: absolute; top: 30px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 8px; flex-wrap: wrap; justify-content:center;
+    background: rgba(0,0,0,.35); padding: 10px 14px; border-radius: 12px;
+    backdrop-filter: blur(8px); z-index: 100; max-width: 92vw;
+  }
+  .controls button {
+    font: 12px/1 system-ui; padding: 8px 12px; border-radius: 8px;
+    border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06);
+    color: #e8e8f0; cursor: pointer;
+  }
+  .controls button.active { background: #ffd166; color:#1a1a2e; border-color:#ffd166; font-weight:700; }
+  .controls .grp { display:flex; gap:6px; align-items:center; padding:0 6px; border-right:1px solid rgba(255,255,255,.12); }
+  .controls .grp:last-child { border-right:none; }
+  .controls .lbl { font-size:11px; color:rgba(255,255,255,.5); }
+
+  /* ── 桌宠 + 菜单容器（绝对定位到屏幕某点）── */
+  .pet-anchor { position: absolute; width: 80px; height: 80px; transition: left .45s cubic-bezier(.2,.7,.3,1), top .45s cubic-bezier(.2,.7,.3,1); }
+  .pet { width: 80px; height: 80px; image-rendering: pixelated; }
+
+  /* 菜单：默认（旧逻辑）居中于桌宠上方 */
+  .pet-menu {
+    position: absolute; width: var(--menu-width);
+    background: var(--menu-bg); color: var(--menu-fg);
+    border-radius: var(--menu-radius); border: var(--menu-border); box-shadow: var(--menu-shadow);
+    padding: 6px; z-index: 10;
+    animation: menu-in 180ms cubic-bezier(.2,.7,.3,1) both;
+  }
+  /* JS 给 .pet-menu 设 data-h / data-v 决定展开方向 + tail 位置 */
+  .pet-menu[data-v="up"]   { bottom: 90px; top: auto; }
+  .pet-menu[data-v="down"] { top: 90px; bottom: auto; }
+  .pet-menu[data-h="center"]{ left: 50%; transform: translateX(-50%); }
+  .pet-menu[data-h="left"]  { left: 40px; transform: none; }   /* 菜单左边缘≈桌宠中心 → 往右展开 */
+  .pet-menu[data-h="right"] { right: 40px; left:auto; transform: none; } /* 往左展开 */
+
+  @keyframes menu-in { from { opacity:0; transform: translateY(6px) scale(.96); } }
+  .pet-menu[data-h="center"] { animation-name: menu-in-center; }
+  @keyframes menu-in-center { from { opacity:0; transform: translateX(-50%) translateY(6px) scale(.96); } to { opacity:1; transform: translateX(-50%); } }
+
+  /* tail 指向桌宠 */
+  .pet-menu::after {
+    content:""; position:absolute; width:12px; height:12px; background:var(--menu-bg);
+    transform: rotate(45deg);
+  }
+  .pet-menu[data-v="up"]::after   { bottom:-6px; border-right:var(--menu-border); border-bottom:var(--menu-border); }
+  .pet-menu[data-v="down"]::after { top:-6px; border-left:var(--menu-border); border-top:var(--menu-border); }
+  .pet-menu[data-h="center"]::after { left:50%; margin-left:-6px; }
+  .pet-menu[data-h="left"]::after   { left:34px; }
+  .pet-menu[data-h="right"]::after  { right:34px; }
+
+  .mi { display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:9px; cursor:pointer; }
+  .mi:hover { background:#f0f0f6; }
+  .mi .ico { width:18px; text-align:center; }
+  .mi .lab { flex:1; }
+  .mi .kbd { font-size:11px; color:#8a8aa0; background:#f0f0f6; padding:2px 6px; border-radius:5px; }
+  .divider { height:1px; background:rgba(0,0,0,.08); margin:5px 8px; }
+
+  /* 越界高亮：菜单超出 frame 的部分用红边提示 */
+  .clip-warn { outline: 2px solid #ff5d5d; outline-offset: 2px; }
+  .badge { position:absolute; bottom: 12px; left:50%; transform:translateX(-50%); font-size:12px; color:#ffd166; background:rgba(0,0,0,.4); padding:6px 12px; border-radius:8px; z-index:100; }
+</style>
+</head>
+<body>
+  <div class="desktop">
+    <div class="mock-window">
+      <div class="mock-titlebar"><span class="dot" style="background:#ff5f56"></span><span class="dot" style="background:#ffbd2e"></span><span class="dot" style="background:#27c93f"></span></div>
+      <div class="mock-code">
+        <div><span class="c">// 用户正在写代码，桌宠浮在角落</span></div>
+        <div><span class="k">fn</span> main() {</div>
+        <div>&nbsp;&nbsp;<span class="k">let</span> claw = <span class="s">"🦞"</span>;</div>
+        <div>}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="screen-frame"><span class="frame-label">visibleFrame（菜单不该越过虚线）</span></div>
+
+  <div class="controls">
+    <div class="grp">
+      <span class="lbl">桌宠位置</span>
+      <button data-pos="br" class="active">右下</button>
+      <button data-pos="bl">左下</button>
+      <button data-pos="tr">右上</button>
+      <button data-pos="tl">左上</button>
+      <button data-pos="bc">底部居中</button>
+      <button data-pos="cc">正中</button>
+    </div>
+    <div class="grp">
+      <span class="lbl">逻辑</span>
+      <button data-mode="aware" class="active">① 方向感知（新）</button>
+      <button data-mode="center">旧（居中切边）</button>
+    </div>
+  </div>
+
+  <div class="pet-anchor" id="anchor">
+    <svg class="pet" viewBox="0 0 20 20" shape-rendering="crispEdges" aria-hidden="true">
+      <!-- classic 灰鼠极简像素 -->
+      <g fill="#9aa0aa">
+        <rect x="3" y="2" width="3" height="3"/><rect x="14" y="2" width="3" height="3"/>
+        <rect x="4" y="4" width="12" height="9" rx="1"/>
+        <rect x="3" y="7" width="14" height="7"/>
+      </g>
+      <rect x="6" y="7" width="2" height="2" fill="#1a1a1a"/>
+      <rect x="12" y="7" width="2" height="2" fill="#1a1a1a"/>
+      <rect x="9" y="10" width="2" height="2" fill="#ff9eb5"/>
+      <rect x="15" y="13" width="4" height="2" fill="#9aa0aa"/>
+    </svg>
+    <div class="pet-menu" id="menu" data-v="up" data-h="center">
+      <div class="mi"><span class="ico">🎤</span><span class="lab">召唤我</span><span class="kbd">⌘⇧Space</span></div>
+      <div class="mi"><span class="ico">📜</span><span class="lab">历史记录</span></div>
+      <div class="mi"><span class="ico">📖</span><span class="lab">教我用 MouseClaw</span></div>
+      <div class="divider"></div>
+      <div class="mi"><span class="ico">🍖</span><span class="lab">喂食</span></div>
+      <div class="mi"><span class="ico">💤</span><span class="lab">打盹 15 分钟</span></div>
+      <div class="divider"></div>
+      <div class="mi"><span class="ico">🎨</span><span class="lab">换皮肤</span></div>
+      <div class="mi"><span class="ico">⚙️</span><span class="lab">设置</span></div>
+    </div>
+  </div>
+
+  <div class="badge" id="badge"></div>
+
+<script>
+  const anchor = document.getElementById('anchor');
+  const menu = document.getElementById('menu');
+  const badge = document.getElementById('badge');
+  let pos = 'br', mode = 'aware';
+
+  const MENU_W = 220, MENU_H = 300; // 估算菜单尺寸（实际由自适应测量）
+  const PET = 80;
+
+  function frameRect() {
+    const f = document.querySelector('.screen-frame').getBoundingClientRect();
+    return f;
+  }
+
+  // 把桌宠放到 frame 内的某个位置（模拟 idle anchor）
+  function placePet() {
+    const f = frameRect();
+    const pad = 12;
+    let x, y;
+    const W = window.innerWidth, H = window.innerHeight;
+    switch (pos) {
+      case 'br': x = f.right - PET - pad;  y = f.bottom - PET - pad; break;
+      case 'bl': x = f.left + pad;         y = f.bottom - PET - pad; break;
+      case 'tr': x = f.right - PET - pad;  y = f.top + pad;          break;
+      case 'tl': x = f.left + pad;         y = f.top + pad;          break;
+      case 'bc': x = (W-PET)/2;            y = f.bottom - PET - pad; break;
+      case 'cc': x = (W-PET)/2;            y = (H-PET)/2;            break;
+    }
+    anchor.style.left = x + 'px';
+    anchor.style.top  = y + 'px';
+  }
+
+  // 核心：根据桌宠中心相对 frame 的位置，决定菜单展开方向
+  function orientMenu() {
+    const f = frameRect();
+    const a = anchor.getBoundingClientRect();
+    const petCx = a.left + PET/2;
+    const petCy = a.top + PET/2;
+
+    if (mode === 'center') {
+      // 旧逻辑：永远居中 + 往上
+      menu.dataset.h = 'center';
+      menu.dataset.v = 'up';
+    } else {
+      // ① 方向感知：菜单往屏幕内侧展开
+      // 水平：桌宠中心距右边不够放半个菜单 → 往左展开(right锚)；距左边不够 → 往右(left锚)；否则居中
+      const spaceRight = f.right - petCx;
+      const spaceLeft  = petCx - f.left;
+      if (spaceRight < MENU_W/2 + 8)      menu.dataset.h = 'right';
+      else if (spaceLeft < MENU_W/2 + 8)  menu.dataset.h = 'left';
+      else                                 menu.dataset.h = 'center';
+      // 垂直：上方空间不够 → 往下展开
+      const spaceUp = petCy - f.top;
+      menu.dataset.v = (spaceUp < MENU_H + 20) ? 'down' : 'up';
+    }
+
+    // 检测菜单是否越界（红边警示）
+    requestAnimationFrame(() => {
+      const m = menu.getBoundingClientRect();
+      const clipped = m.left < f.left - 1 || m.right > f.right + 1 || m.top < f.top - 1 || m.bottom > f.bottom + 1;
+      menu.classList.toggle('clip-warn', clipped);
+      badge.textContent = clipped
+        ? '⚠️ 菜单越过 visibleFrame —— 这部分在真实屏幕上会被切掉 / 看不到'
+        : '✅ 菜单完整在屏内（h=' + menu.dataset.h + ', v=' + menu.dataset.v + '）';
+      badge.style.color = clipped ? '#ff8a8a' : '#7ee787';
+    });
+  }
+
+  function refresh() { placePet(); orientMenu(); }
+
+  document.querySelectorAll('[data-pos]').forEach(b => b.addEventListener('click', () => {
+    pos = b.dataset.pos;
+    document.querySelectorAll('[data-pos]').forEach(x => x.classList.toggle('active', x===b));
+    refresh();
+  }));
+  document.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => {
+    mode = b.dataset.mode;
+    document.querySelectorAll('[data-mode]').forEach(x => x.classList.toggle('active', x===b));
+    refresh();
+  }));
+  window.addEventListener('resize', refresh);
+  refresh();
+</script>
+</body>
+</html>
