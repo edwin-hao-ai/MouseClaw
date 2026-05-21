@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>MouseClaw · 起名 + 性格 picker · 2026-05-21</title>
+<style>
+  /* ===== DESIGN.md §9 cheatsheet tokens（单一信源,勿硬编码） ===== */
+  :root {
+    --surface-deep: #0a0e1a;
+    --surface-glass: rgba(255,255,255,0.06);
+    --bubble-bg: rgba(255,255,255,0.97);
+    --panel-bg: rgba(252,252,254,0.98);
+    --bubble-border: rgba(0,0,0,0.10);
+    --text-primary: #1a1a1a;
+    --text-on-dark: #f5f5f7;
+    --text-dim: #a1a1a8;
+    --accent-primary: #ff6b9d;
+    --accent-soft: #ff9bb8;
+    --accent-gradient: linear-gradient(135deg, #ff6b9d, #ff9bb8);
+    --success: #5cd6a0;
+    --warn: #ffd166;
+    --danger: #ff5f57;
+    --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --radius-pill: 999px; --radius-sm:6px; --radius-md:8px; --radius-lg:10px;
+    --radius-xl:12px; --radius-3xl:16px; --radius-4xl:24px;
+    --shadow-panel: 0 24px 64px rgba(0,0,0,0.4), 0 4px 12px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.9);
+    --shadow-bubble: 0 12px 32px rgba(0,0,0,0.35), 0 2px 6px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.7);
+    --shadow-mouse: drop-shadow(0 4px 8px rgba(0,0,0,0.4));
+    --shadow-focus-ring: 0 0 0 4px rgba(255,107,157,0.15);
+    /* type scale */
+    --text-headline:22px; --text-title:16px; --text-body-lg:14px; --text-body:13px;
+    --text-body-sm:12px; --text-meta:11px; --text-micro:10px;
+    /* spacing (8px grid) */
+    --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;
+    /* motion */
+    --ease-default: ease-in-out;
+    --ease-spring: cubic-bezier(0.34,1.56,0.64,1);
+    --ease-tap: cubic-bezier(0.2,0,0,1);
+  }
+  * { box-sizing: border-box; }
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:var(--font-system);
+    /* mock desktop behind the overlay —— 看老鼠叠加在真实场景上的效果 */
+    background:
+      radial-gradient(1200px 700px at 70% -10%, #2b3350, transparent),
+      linear-gradient(135deg,#0c1020,#141a2e 60%,#0a0e1a);
+    color:var(--text-on-dark);
+    min-height:100vh; padding:28px 24px 60px;
+  }
+  .pixel{shape-rendering:crispEdges; image-rendering:pixelated;}
+  .doc-head{max-width:980px;margin:0 auto 22px;}
+  .doc-head h1{font-size:var(--text-headline);font-weight:700;letter-spacing:-0.02em;margin:0 0 6px;}
+  .doc-head p{margin:0;color:rgba(245,245,247,0.55);font-size:var(--text-body);max-width:760px;line-height:1.6;}
+  .doc-head .pill{display:inline-block;font-size:var(--text-meta);font-weight:600;color:var(--accent-soft);
+    border:1px solid rgba(255,107,157,0.3);border-radius:var(--radius-pill);padding:2px 10px;margin-bottom:10px;}
+
+  /* mock 桌面窗口（底图） */
+  .desktop{max-width:980px;margin:0 auto;position:relative;}
+  .mock-win{
+    background:rgba(20,24,40,0.7);border:1px solid rgba(255,255,255,0.07);
+    border-radius:var(--radius-lg);overflow:hidden;backdrop-filter:blur(20px);
+    box-shadow:0 30px 80px rgba(0,0,0,0.5);
+  }
+  .mock-bar{display:flex;gap:7px;align-items:center;padding:10px 14px;background:rgba(255,255,255,0.04);
+    border-bottom:1px solid rgba(255,255,255,0.06);}
+  .mock-bar i{width:11px;height:11px;border-radius:50%;display:inline-block;}
+  .mock-bar .r{background:#ff5f57;} .mock-bar .y{background:#febc2e;} .mock-bar .g{background:#28c840;}
+  .mock-bar span{margin-left:10px;color:var(--text-dim);font-size:var(--text-meta);}
+  .mock-body{padding:18px 20px;font-family:ui-monospace,monospace;font-size:var(--text-body-sm);
+    color:#6b7895;line-height:1.7;min-height:160px;}
+  .mock-body .k{color:#c792ea;} .mock-body .s{color:#c3e88d;} .mock-body .c{color:#546178;}
+
+  /* ===== 玻璃 picker panel（overlay 自适应窗口的内容） ===== */
+  .panel{
+    position:relative;margin:26px auto 0;max-width:560px;
+    background:var(--panel-bg);border-radius:var(--radius-4xl);
+    box-shadow:var(--shadow-panel);backdrop-filter:blur(40px);
+    color:var(--text-primary);padding:var(--space-6);
+  }
+  .panel h2{font-size:var(--text-title);font-weight:700;margin:0 0 4px;letter-spacing:-0.01em;}
+  .panel .sub{font-size:var(--text-body-sm);color:#6b6b75;margin:0 0 18px;}
+
+  /* skin strip */
+  .strip-label,.field-label{font-size:var(--text-meta);font-weight:600;color:#8a8a92;
+    text-transform:uppercase;letter-spacing:0.08em;margin:0 0 8px;}
+  .skin-strip{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px;}
+  .skin-chip{width:46px;height:46px;border-radius:var(--radius-md);display:grid;place-items:center;
+    background:#f3f3f6;border:2px solid transparent;cursor:pointer;transition:transform .15s var(--ease-tap),border-color .15s;}
+  .skin-chip:hover{transform:translateY(-2px);}
+  .skin-chip.sel{border-color:var(--accent-primary);box-shadow:var(--shadow-focus-ring);background:#fff;}
+  .skin-chip svg{filter:var(--shadow-mouse);}
+
+  /* stage with selected pet + intro bubble */
+  .stage{position:relative;background:linear-gradient(180deg,#fbfbfd,#f1f1f5);
+    border-radius:var(--radius-3xl);padding:20px 16px 22px;margin-bottom:20px;
+    display:flex;flex-direction:column;align-items:center;gap:10px;overflow:hidden;}
+  .stage .bubble{
+    background:var(--bubble-bg);border:1px solid var(--bubble-border);border-radius:var(--radius-xl);
+    box-shadow:var(--shadow-bubble);padding:11px 14px 10px;font-size:var(--text-body);
+    color:var(--text-primary);max-width:300px;text-align:center;position:relative;
+    animation:bubble-pop .2s var(--ease-default);line-height:1.5;
+  }
+  .stage .bubble::after{content:"";position:absolute;bottom:-7px;left:50%;margin-left:-7px;
+    width:14px;height:14px;background:var(--bubble-bg);border-right:1px solid var(--bubble-border);
+    border-bottom:1px solid var(--bubble-border);transform:rotate(45deg);}
+  .stage .pet{filter:var(--shadow-mouse);}
+  @keyframes bubble-pop{from{opacity:0;transform:translateY(4px) scale(.96);}to{opacity:1;transform:none;}}
+
+  /* name input */
+  .field{margin-bottom:20px;}
+  .name-input{width:100%;font-family:var(--font-system);font-size:var(--text-body-lg);font-weight:500;
+    padding:11px 14px;border-radius:var(--radius-md);border:1px solid #e0e0e6;background:#fff;color:var(--text-primary);
+    outline:none;transition:box-shadow .15s,border-color .15s;}
+  .name-input:focus{border-color:var(--accent-primary);box-shadow:0 0 0 3px rgba(255,107,157,0.15);}
+
+  /* personality grid */
+  .persona-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;}
+  .persona{
+    text-align:left;background:#f7f7fa;border:1.5px solid transparent;border-radius:var(--radius-lg);
+    padding:10px 12px;cursor:pointer;transition:transform .12s var(--ease-tap),border-color .12s,background .12s;
+  }
+  .persona:hover{transform:translateY(-2px);background:#fff;}
+  .persona.sel{border-color:var(--accent-primary);background:#fff;box-shadow:var(--shadow-focus-ring);}
+  .persona .pname{font-size:var(--text-body);font-weight:700;color:var(--text-primary);margin-bottom:2px;}
+  .persona .pname .emo{margin-right:5px;}
+  .persona .preview{font-size:var(--text-body-sm);color:#7a7a85;line-height:1.45;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .persona.custom{grid-column:1/-1;}
+  .custom-input{width:100%;margin-top:8px;font-size:var(--text-body-sm);padding:8px 10px;border-radius:var(--radius-sm);
+    border:1px solid #e0e0e6;outline:none;display:none;}
+  .persona.custom.sel .custom-input{display:block;}
+
+  .qhint{margin-top:14px;font-size:var(--text-body-sm);color:#9a9aa2;text-align:center;line-height:1.5;}
+  .qhint b{color:#6b6b75;font-weight:600;}
+
+  /* discoverability note */
+  .note{max-width:560px;margin:18px auto 0;font-size:var(--text-body-sm);color:rgba(245,245,247,0.5);
+    line-height:1.65;border-left:2px solid rgba(255,107,157,0.4);padding:6px 0 6px 12px;}
+  .note b{color:rgba(245,245,247,0.78);}
+
+  /* idle bob + subtle ear twitch — 走整体 transform/独立 ear 组,9 皮肤通用 */
+  .mouse-svg{display:block;animation:idle-bob 2.6s var(--ease-default) infinite;}
+  @keyframes idle-bob{0%,100%{transform:translateY(0);}50%{transform:translateY(-2px);}}
+  .mc-ear-l{animation:earL 3.4s var(--ease-default) infinite;}
+  .mc-ear-r{animation:earR 3.4s var(--ease-default) infinite;}
+  @keyframes earL{0%,86%,100%{transform:rotate(0);}90%{transform:rotate(-10deg);}94%{transform:rotate(6deg);}}
+  @keyframes earR{0%,80%,100%{transform:rotate(0);}84%{transform:rotate(9deg);}88%{transform:rotate(-6deg);}}
+  @media (prefers-reduced-motion: reduce){
+    .mouse-svg,.mc-ear-l,.mc-ear-r{animation:none!important;}
+  }
+</style>
+</head>
+<body>
+  <div class="doc-head">
+    <span class="pill">PROTOTYPE · P1 起名 + 性格 · 2026-05-21</span>
+    <h1>认识一下你的桌宠</h1>
+    <p>给桌宠起名 + 选性格。性格只改语气、不改答案对错(硬约束)。下方 9 款皮肤同屏 ——
+       换皮肤、改名、切性格都即时反映在头顶气泡。每个性格卡里是它对同一句
+       <b>「帮我看下这段代码 🐛」</b>的不同回法,让你凭体感选,不用读说明书。</p>
+  </div>
+
+  <div class="desktop">
+    <!-- 底图:mock 代码编辑器,让你看到老鼠叠加在真实工作场景上 -->
+    <div class="mock-win">
+      <div class="mock-bar"><i class="r"></i><i class="y"></i><i class="g"></i><span>main.rs — mouseclaw</span></div>
+      <div class="mock-body">
+        <div><span class="k">fn</span> build_prompt(bundle: <span class="k">&ContextBundle</span>) -> String {</div>
+        <div>&nbsp;&nbsp;<span class="c">// 视觉 + 音频 + 记忆 三路合流</span></div>
+        <div>&nbsp;&nbsp;<span class="k">let</span> mem = bundle.memory.unwrap_or(<span class="s">""</span>);</div>
+        <div>&nbsp;&nbsp;format!(<span class="s">"{}\n[记忆]\n{}"</span>, bundle.transcript, mem)</div>
+        <div>}</div>
+      </div>
+    </div>
+
+    <!-- overlay picker panel -->
+    <div class="panel">
+      <h2>给我起个名字 + 选个性格</h2>
+      <p class="sub">这只会成为「你的」桌宠 —— 名字会出现在托盘菜单和它的自我介绍里。</p>
+
+      <div class="strip-label">选皮肤(9 款 · 点一下切换)</div>
+      <div class="skin-strip" id="strip"></div>
+
+      <div class="stage">
+        <div class="bubble" id="introBubble">…</div>
+        <div class="pet" id="bigPet"></div>
+      </div>
+
+      <div class="field">
+        <div class="field-label">名字</div>
+        <input class="name-input" id="nameInput" placeholder="给我起个名字…(留空我就先没名字)" maxlength="12" />
+      </div>
+
+      <div class="field-label">性格(9 款 + 自定义)</div>
+      <div class="persona-grid" id="grid"></div>
+
+      <div class="qhint">它们都在回答同一句 <b>「帮我看下这段代码 🐛」</b> —— 选你最想每天听到的那种语气。</div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>可发现性(UX):</b> 这个面板从托盘菜单「召唤 {名字} / 设置」进入(复用已有 picker 窗口)。
+    首次完成一次任务后,气泡里只<b>一次性</b>轻提示「我还没名字,点托盘可以给我起名 🐭」—— 不弹窗、不抢焦点、可忽略。
+  </div>
+
+<script>
+const NS="http://www.w3.org/2000/svg";
+/* —— skins.ts 的 9 款皮肤(palette 一字不改) —— */
+const SKINS=[
+ {id:"classic",name:"经典灰",body:"standard",palette:{body:"#cfcfcf",belly:"#ffffff",earIn:"#ff9bb8",earOut:"#cfcfcf",eye:"#1a1a1a",nose:"#d63d6a",tail:"#8a8a8a",paw:"#ffffff"}},
+ {id:"lab",name:"小白鼠",body:"slim",palette:{body:"#fafafa",belly:"#ffffff",earIn:"#ffb3c8",earOut:"#e8e3dc",eye:"#ff5f57",nose:"#ff6b9d",tail:"#ffb3c8",paw:"#ffffff"}},
+ {id:"field",name:"田鼠",body:"chubby",palette:{body:"#a47148",belly:"#e8d5b0",earIn:"#d6a07a",earOut:"#7a4e2e",eye:"#1a1a1a",nose:"#5a2e10",tail:"#7a4e2e",paw:"#d6a07a"}},
+ {id:"ninja",name:"忍者鼠",body:"ninja",palette:{body:"#3a3a42",belly:"#5a5a64",earIn:"#1a1a1a",earOut:"#2a2a30",eye:"#ffd166",nose:"#1a1a1a",tail:"#2a2a30",paw:"#1a1a1a"}},
+ {id:"cyber",name:"机械鼠",body:"robot",palette:{body:"#c0c8d0",belly:"#e8eef4",earIn:"#00e5ff",earOut:"#7a8290",eye:"#00e5ff",nose:"#00e5ff",tail:"#7a8290",paw:"#5a6270"}},
+ {id:"golden",name:"金鼠",body:"round",palette:{body:"#e8c87a",belly:"#fff4d6",earIn:"#d68a40",earOut:"#c8a050",eye:"#3a2818",nose:"#a06028",tail:"#c8a050",paw:"#fff4d6"}},
+ {id:"cat-gray",name:"小灰猫",body:"cat",palette:{body:"#a8a8a8",belly:"#f4f4f4",earIn:"#ff9bb8",earOut:"#7a7a7a",eye:"#3fa66a",nose:"#d63d6a",tail:"#7a7a7a",paw:"#a8a8a8"}},
+ {id:"fox-red",name:"赤狐",body:"fox",palette:{body:"#d96e2c",belly:"#fff4ec",earIn:"#1a1a1a",earOut:"#a04a18",eye:"#1a1a1a",nose:"#1a1a1a",tail:"#fff4ec",paw:"#1a1a1a"}},
+ {id:"frog-tree",name:"树蛙",body:"frog",palette:{body:"#7ab84a",belly:"#f4e890",earIn:"#ffffff",earOut:"#5a8a30",eye:"#d63d6a",nose:"#5a8a30",tail:"#5a8a30",paw:"#f4e890"}},
+];
+
+/* —— PixelMouse.tsx 的 1:1 vanilla 移植(viewBox -1 -3 18 18) —— */
+function R(parent,x,y,w,h,fill,op){const r=document.createElementNS(NS,"rect");
+  r.setAttribute("x",x);r.setAttribute("y",y);r.setAttribute("width",w);r.setAttribute("height",h);
+  r.setAttribute("fill",fill);if(op!=null)r.setAttribute("opacity",op);parent.appendChild(r);return r;}
+function G(parent,cls,origin){const g=document.createElementNS(NS,"g");if(cls)g.setAttribute("class",cls);
+  if(origin)g.style.transformOrigin=origin;parent.appendChild(g);return g;}
+
+function Ears(svg,s){const p=s.palette,b=s.body;
+  if(b==="robot"){const l=G(svg,"mc-ear mc-ear-l","4.5px 2px");R(l,4,-1,1,3,p.earOut);R(l,4,-2,1,1,p.earIn);
+    const r=G(svg,"mc-ear mc-ear-r","11.5px 2px");R(r,11,-1,1,3,p.earOut);R(r,11,-2,1,1,p.earIn);return;}
+  if(b==="cat"){const l=G(svg,"mc-ear mc-ear-l","3.5px 3px");R(l,2,0,1,3,p.earOut);R(l,3,1,1,2,p.earOut);R(l,4,2,1,1,p.earOut);R(l,3,2,1,1,p.earIn);
+    const r=G(svg,"mc-ear mc-ear-r","12.5px 3px");R(r,13,0,1,3,p.earOut);R(r,12,1,1,2,p.earOut);R(r,11,2,1,1,p.earOut);R(r,12,2,1,1,p.earIn);return;}
+  if(b==="fox"){const l=G(svg,"mc-ear mc-ear-l","3.5px 3px");R(l,2,-1,1,4,p.earOut);R(l,3,0,1,3,p.earOut);R(l,4,1,1,2,p.earOut);R(l,3,1,1,2,p.earIn);
+    const r=G(svg,"mc-ear mc-ear-r","12.5px 3px");R(r,13,-1,1,4,p.earOut);R(r,12,0,1,3,p.earOut);R(r,11,1,1,2,p.earOut);R(r,12,1,1,2,p.earIn);return;}
+  if(b==="frog"){const l=G(svg,"mc-ear mc-ear-l mc-ear-frog","4.5px 1.5px");R(l,3,0,3,3,p.body);R(l,4,1,1,1,p.earIn);R(l,4,0,1,1,p.earOut);
+    const r=G(svg,"mc-ear mc-ear-r mc-ear-frog","11.5px 1.5px");R(r,10,0,3,3,p.body);R(r,11,1,1,1,p.earIn);R(r,11,0,1,1,p.earOut);return;}
+  if(b==="chubby"){const l=G(svg,"mc-ear mc-ear-l","3px 3.5px");R(l,2,0,3,3,p.earOut);R(l,1,1,4,3,p.earOut);R(l,3,1,1,2,p.earIn);
+    const r=G(svg,"mc-ear mc-ear-r","13px 3.5px");R(r,11,0,3,3,p.earOut);R(r,11,1,4,3,p.earOut);R(r,12,1,1,2,p.earIn);return;}
+  const l=G(svg,"mc-ear mc-ear-l","4px 3px");R(l,3,1,2,2,p.earOut);R(l,2,2,3,2,p.earOut);R(l,3,2,1,1,p.earIn);
+  const r=G(svg,"mc-ear mc-ear-r","12px 3px");R(r,11,1,2,2,p.earOut);R(r,11,2,3,2,p.earOut);R(r,12,2,1,1,p.earIn);}
+
+function Body(svg,s){const p=s.palette,b=s.body;
+  if(b==="cat"){R(svg,3,3,10,1,p.body);R(svg,2,4,12,3,p.body);R(svg,3,7,10,1,p.body);R(svg,5,8,6,2,p.belly);
+    R(svg,3,8,2,2,p.body);R(svg,11,8,2,2,p.body);R(svg,4,10,8,1,p.body);
+    R(svg,0,6,2,1,p.body,0.7);R(svg,0,7,2,1,p.body,0.5);R(svg,14,6,2,1,p.body,0.7);R(svg,14,7,2,1,p.body,0.5);return;}
+  if(b==="fox"){R(svg,3,3,10,1,p.body);R(svg,2,4,12,3,p.body);R(svg,3,7,10,1,p.body);R(svg,6,7,4,1,p.belly);
+    R(svg,5,8,6,3,p.belly);R(svg,3,8,2,2,p.body);R(svg,11,8,2,2,p.body);R(svg,4,10,8,1,p.body);return;}
+  if(b==="frog"){R(svg,2,3,12,1,p.body);R(svg,1,4,14,4,p.body);R(svg,2,8,12,2,p.body);R(svg,4,6,8,4,p.belly);
+    R(svg,6,9,4,1,p.body);R(svg,5,10,6,1,p.body);return;}
+  if(b==="slim"){R(svg,4,3,8,1,p.body);R(svg,3,4,10,3,p.body);R(svg,4,7,8,1,p.body);R(svg,6,8,4,2,p.belly);
+    R(svg,4,8,2,2,p.body);R(svg,10,8,2,2,p.body);R(svg,5,10,6,1,p.body);return;}
+  if(b==="round"){R(svg,3,3,10,1,p.body);R(svg,2,4,12,3,p.body);R(svg,3,7,10,1,p.body);R(svg,4,8,8,3,p.belly);
+    R(svg,3,8,1,3,p.body);R(svg,12,8,1,3,p.body);return;}
+  R(svg,3,3,10,1,p.body);R(svg,2,4,12,3,p.body);R(svg,3,7,10,1,p.body);R(svg,5,8,6,2,p.belly);
+  R(svg,3,8,2,2,p.body);R(svg,11,8,2,2,p.body);R(svg,4,10,8,1,p.body);}
+
+function Mask(svg,s){if(s.body!=="ninja")return;const p=s.palette;
+  R(svg,2,5,12,1,"#1a1a1a");R(svg,0,5,2,1,p.earIn);R(svg,14,5,2,1,p.earIn);}
+
+function Tail(g,s){const p=s.palette,b=s.body;
+  if(b==="round"){R(g,13,9,1,1,p.tail);R(g,14,8,1,2,p.tail);R(g,15,7,1,1,p.tail);R(g,14,6,2,1,p.tail);return;}
+  if(b==="robot"){R(g,13,9,2,1,p.tail);R(g,15,8,1,1,p.tail);return;}
+  if(b==="cat"){R(g,13,9,1,1,p.tail);R(g,14,8,1,1,p.tail);R(g,15,7,1,2,p.tail);R(g,15,5,1,2,p.tail);R(g,14,4,1,1,p.tail);return;}
+  if(b==="fox"){R(g,13,6,3,4,p.body);R(g,14,5,2,1,p.body);R(g,15,9,1,2,p.tail);R(g,14,10,2,1,p.tail);return;}
+  if(b==="frog")return;
+  R(g,13,9,1,1,p.tail);R(g,14,7,1,3,p.tail);}
+
+function Eyes(g,state,s){const e=s.palette.eye;
+  if(state==="sleep"||state==="write"){R(g,5,6,1,1,e);R(g,10,6,1,1,e);return;}
+  if(state==="hub"){R(g,5,6,1,1,e);R(g,6,5,1,1,e);R(g,9,5,1,1,e);R(g,10,6,1,1,e);return;}
+  R(g,5,5,1,2,e);R(g,10,5,1,2,e);} /* listen/think alert */
+
+function Extras(svg,state,s){
+  if(state==="listen"){R(svg,7,9,2,1,s.palette.eye);return;}
+  if(state==="think"){R(svg,11,-2,1,1,"var(--accent-primary)");R(svg,13,-2,1,1,"var(--accent-primary)");R(svg,15,-2,1,1,"var(--accent-primary)");}}
+
+function buildMouse(skinId,opts){opts=opts||{};const s=SKINS.find(x=>x.id===skinId)||SKINS[0];
+  const state=opts.state||"listen",size=opts.size||96;
+  const wrap=document.createElement("div");wrap.className="mouse-wrap mouse-"+state+" mouse-skin-"+s.id;
+  wrap.style.width=size+"px";wrap.style.height=size+"px";
+  const svg=document.createElementNS(NS,"svg");svg.setAttribute("viewBox","-1 -3 18 18");
+  svg.setAttribute("width",size);svg.setAttribute("height",size);svg.setAttribute("class","mouse-svg pixel");
+  svg.setAttribute("role","img");svg.setAttribute("aria-label","MouseClaw "+s.name+" "+state);
+  Ears(svg,s);Mask(svg,s);Body(svg,s);
+  const tg=G(svg,"mc-tail","13px 9px");Tail(tg,s);
+  const eg=G(svg,"mc-eyes");Eyes(eg,state,s);
+  Extras(svg,state,s);
+  R(svg,4,11,2,1,s.palette.paw);R(svg,10,11,2,1,s.palette.paw);
+  const nose=R(svg,7,7,2,1,s.palette.nose);nose.setAttribute("class","mc-nose");
+  wrap.appendChild(svg);return wrap;}
+
+/* —— 9 性格预设:同问「帮我看下这段代码 🐛」不同答 + 自我介绍语气 —— */
+const PERSONAS=[
+ {id:"warm",emo:"🤗",name:"暖心陪伴",tag:"默认",preview:"好呀,我们一起看看~ 别担心,小问题 😊",intro:n=>`嗨,我是「${n}」,以后我陪你一起做事 ✨`},
+ {id:"snarky",emo:"😏",name:"毒舌助理",preview:"又写出 bug 了?行吧,让本鼠瞧瞧你这次写了啥。",intro:n=>`本鼠「${n}」。有事说事,别墨迹 —— 活我照干漂亮。`},
+ {id:"minimal",emo:"⚡",name:"极简话少",preview:"贴代码。",intro:n=>`${n}。说需求。`},
+ {id:"companion",emo:"💬",name:"话痨陪伴",preview:"来啦来啦!我最爱抓 bug 了,在哪一行?给我看给我看~",intro:n=>`我是「${n}」!终于等到你啦,今天想做点什么呀?`},
+ {id:"pro",emo:"💼",name:"干练秘书",preview:"发我代码段。我先定位问题,再给出修改方案和理由。",intro:n=>`您好,我是「${n}」。需要什么,直接说,我来安排。`},
+ {id:"cheerful",emo:"🎉",name:"元气满满",preview:"包在我身上!冲鸭,看哪个 bug 还敢嚣张 💪",intro:n=>`我是「${n}」!满电状态,随时开干,冲冲冲!`},
+ {id:"calm",emo:"🧘",name:"沉稳冷静",preview:"好的。别急,我们一行一行慢慢看。",intro:n=>`我是「${n}」。无论多急的事,我们都能稳稳处理。`},
+ {id:"curious",emo:"🔍",name:"好奇宝宝",preview:"哦?什么 bug?你期望它怎样、实际又怎样?背景能说说吗?",intro:n=>`我是「${n}」!好奇你在做什么项目~ 我们边做边聊?`},
+ {id:"tsundere",emo:"😤",name:"傲娇",preview:"哼,又要我帮忙…才、才不是特意等你呢,代码拿来吧。",intro:n=>`我是「${n}」。别、别误会,我只是刚好有空才帮你的!`},
+ {id:"custom",emo:"✍️",name:"自定义",preview:"(写一句话描述你想要的语气,例如「像猫一样慵懒但靠谱」)",intro:n=>`我是「${n}」,语气由你定义。`},
+];
+
+let curSkin="classic", curPersona="warm";
+const stripEl=document.getElementById("strip");
+const gridEl=document.getElementById("grid");
+const bigPet=document.getElementById("bigPet");
+const introBubble=document.getElementById("introBubble");
+const nameInput=document.getElementById("nameInput");
+let customText="";
+
+function curName(){return (nameInput.value.trim())|| "(还没名字)";}
+
+function renderBig(){
+  bigPet.innerHTML="";
+  const state = curPersona==="minimal"?"sleep":(curPersona==="calm"?"hub":"listen");
+  bigPet.appendChild(buildMouse(curSkin,{state,size:104}));
+  const p=PERSONAS.find(x=>x.id===curPersona);
+  const name=nameInput.value.trim();
+  if(!name){introBubble.textContent="我还没有名字… 给我起一个?";}
+  else{introBubble.textContent=p.intro(name);}
+  // re-trigger pop
+  introBubble.style.animation="none";void introBubble.offsetWidth;introBubble.style.animation="";
+}
+
+function renderStrip(){
+  stripEl.innerHTML="";
+  SKINS.forEach(sk=>{
+    const c=document.createElement("div");
+    c.className="skin-chip"+(sk.id===curSkin?" sel":"");
+    c.title=sk.name;
+    c.appendChild(buildMouse(sk.id,{state:"listen",size:34}));
+    c.onclick=()=>{curSkin=sk.id;renderStrip();renderBig();};
+    stripEl.appendChild(c);
+  });
+}
+
+function renderGrid(){
+  gridEl.innerHTML="";
+  PERSONAS.forEach(p=>{
+    const el=document.createElement("div");
+    el.className="persona"+(p.id==="custom"?" custom":"")+(p.id===curPersona?" sel":"");
+    const tag=p.tag?` <span style="font-size:var(--text-micro);color:var(--accent-primary);font-weight:700;">· ${p.tag}</span>`:"";
+    el.innerHTML=`<div class="pname"><span class="emo">${p.emo}</span>${p.name}${tag}</div>
+      <div class="preview">${p.id==="custom"&&customText?customText:p.preview}</div>`;
+    if(p.id==="custom"){
+      const inp=document.createElement("input");inp.className="custom-input";inp.placeholder="一句话定义语气…";
+      inp.value=customText;inp.oninput=e=>{customText=e.target.value;};
+      el.appendChild(inp);
+    }
+    el.onclick=(e)=>{if(e.target.classList.contains("custom-input"))return;curPersona=p.id;renderGrid();renderBig();};
+    gridEl.appendChild(el);
+  });
+}
+
+nameInput.addEventListener("input",renderBig);
+renderStrip();renderGrid();renderBig();
+</script>
+</body>
+</html>
+</content>
