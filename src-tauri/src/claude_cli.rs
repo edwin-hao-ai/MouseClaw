@@ -228,7 +228,24 @@ pub const NO_OFFICE_CAPABILITY_PROMPT: &str = r#"
 /// 按本机已安装的能力拼出最终 system prompt。
 /// macOS 上永远注入 computer-use prompt；浏览器 / Office 层按可用性各自分支。
 pub fn system_prompt() -> String {
-    let mut p = APPEND_SYSTEM_PROMPT.to_string();
+    // v0.4.4 · 身份(名字)+ 性格头注入 —— 所有 4 个 backend 共用此函数,自动生效。
+    // 性格只改语气,硬约束兜底不让它侵蚀任务正确性/完整性。
+    let cfg = crate::config::Config::load();
+    let name = cfg
+        .pet_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("MouseClaw");
+    let persona = cfg
+        .personality
+        .prompt_fragment(cfg.personality_custom.as_deref());
+    let mut p = format!(
+        "你的名字是「{name}」,是用户的桌面助手桌宠。\n{persona}\n\
+         【硬约束】性格只影响语气和措辞,绝不影响答案的正确性、完整性、是否执行任务。\
+         该写到光标 / 该调工具就照做,语气归语气、任务归任务。\n\n"
+    );
+    p.push_str(APPEND_SYSTEM_PROMPT);
     // v0.1.19 · macOS 系统级 computer use 永远开（Claude 默认就有 Bash 工具）
     #[cfg(target_os = "macos")]
     {

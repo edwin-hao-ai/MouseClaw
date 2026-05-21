@@ -15,6 +15,24 @@ export const zh: Strings = {
   "common.loading": "加载中…",
   "common.recommended": "推荐",
 
+  // 桌宠身份:起名 + 性格 (v0.4.4)
+  "picker.identity.heading": "给它起名 + 选性格",
+  "picker.identity.name_label": "名字",
+  "picker.identity.name_placeholder": "给我起个名字…(留空我就先没名字)",
+  "picker.identity.personality_label": "性格",
+  "picker.identity.persona_hint": "它们都在回答同一句「帮我看下这段代码 🐛」—— 选你最想每天听到的语气。",
+  "picker.identity.custom_placeholder": "一句话定义语气,例如「像猫一样慵懒但靠谱」",
+  "persona.warm.name": "🤗 暖心陪伴",      "persona.warm.preview": "好呀,我们一起看看~ 别担心,小问题 😊",
+  "persona.snarky.name": "😏 毒舌助理",    "persona.snarky.preview": "又写出 bug 了?行吧,让本鼠瞧瞧你这次写了啥。",
+  "persona.minimal.name": "⚡ 极简话少",   "persona.minimal.preview": "贴代码。",
+  "persona.companion.name": "💬 话痨陪伴", "persona.companion.preview": "来啦来啦!我最爱抓 bug 了,在哪一行?给我看给我看~",
+  "persona.pro.name": "💼 干练秘书",       "persona.pro.preview": "发我代码段。我先定位问题,再给出修改方案和理由。",
+  "persona.cheerful.name": "🎉 元气满满",  "persona.cheerful.preview": "包在我身上!冲鸭,看哪个 bug 还敢嚣张 💪",
+  "persona.calm.name": "🧘 沉稳冷静",      "persona.calm.preview": "好的。别急,我们一行一行慢慢看。",
+  "persona.curious.name": "🔍 好奇宝宝",   "persona.curious.preview": "哦?什么 bug?你期望它怎样、实际又怎样?",
+  "persona.tsundere.name": "😤 傲娇",      "persona.tsundere.preview": "哼,又要我帮忙…才、才不是特意等你呢,代码拿来吧。",
+  "persona.custom.name": "✍️ 自定义",      "persona.custom.preview": "写一句话描述你想要的语气。",
+
   // 桌宠
   "bubble.expand_to_panel": "💬 继续追问",
   "bubble.scroll_to_top": "▲ 回到开头",

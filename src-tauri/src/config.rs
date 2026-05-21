@@ -95,6 +95,87 @@ impl PetAnchor {
     }
 }
 
+/// 桌宠性格预设 (v0.4.4) —— 只改 AI 回复的语气/措辞,**不改**答案正确性、
+/// 完整性、是否执行任务(硬约束写在 system_prompt 里)。9 款 + 自定义。
+/// 设计见 docs/design/pet-identity-and-memory-20260521.md §1。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum Personality {
+    #[default]
+    Warm,      // 暖心陪伴(默认 —— 最不容易出错的语气)
+    Snarky,    // 毒舌助理
+    Minimal,   // 极简话少
+    Companion, // 话痨陪伴
+    Pro,       // 干练秘书
+    Cheerful,  // 元气满满
+    Calm,      // 沉稳冷静
+    Curious,   // 好奇宝宝
+    Tsundere,  // 傲娇
+    Custom,    // 用户自定义一句话(personality_custom)
+}
+
+impl Personality {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Personality::Warm => "warm",
+            Personality::Snarky => "snarky",
+            Personality::Minimal => "minimal",
+            Personality::Companion => "companion",
+            Personality::Pro => "pro",
+            Personality::Cheerful => "cheerful",
+            Personality::Calm => "calm",
+            Personality::Curious => "curious",
+            Personality::Tsundere => "tsundere",
+            Personality::Custom => "custom",
+        }
+    }
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "snarky" => Personality::Snarky,
+            "minimal" => Personality::Minimal,
+            "companion" => Personality::Companion,
+            "pro" => Personality::Pro,
+            "cheerful" => Personality::Cheerful,
+            "calm" => Personality::Calm,
+            "curious" => Personality::Curious,
+            "tsundere" => Personality::Tsundere,
+            "custom" => Personality::Custom,
+            _ => Personality::Warm,
+        }
+    }
+    pub fn all() -> &'static [Personality] {
+        &[
+            Personality::Warm, Personality::Snarky, Personality::Minimal,
+            Personality::Companion, Personality::Pro, Personality::Cheerful,
+            Personality::Calm, Personality::Curious, Personality::Tsundere,
+            Personality::Custom,
+        ]
+    }
+    /// 注入 system_prompt 的语气片段(zh —— 与 APPEND_SYSTEM_PROMPT 同语言)。
+    /// `custom` 用用户写的那句话;空则退回暖心。
+    pub fn prompt_fragment(&self, custom: Option<&str>) -> String {
+        let line = match self {
+            Personality::Warm => "语气:温柔、鼓励、有耐心,像贴心的朋友。",
+            Personality::Snarky => "语气:一边吐槽一边把活干漂亮,损得有爱、不刻薄。",
+            Personality::Minimal => "语气:极简,只给结论,不寒暄不展开,能一句不两句。",
+            Personality::Companion => "语气:话痨陪伴,爱接话、给情绪反应,把每次交互当聊天。",
+            Personality::Pro => "语气:高效专业,像资深同事,先给方案再给理由。",
+            Personality::Cheerful => "语气:元气满满、正能量,完成任务时为用户欢呼打气。",
+            Personality::Calm => "语气:沉稳冷静、禅系、不慌,再急的事也稳稳地说。",
+            Personality::Curious => "语气:好奇,爱追问背景、给替代方案,带点玩心。",
+            Personality::Tsundere => "语气:傲娇 —— 嘴上嫌弃(\"才不是为你\"),手上活照样干到位。",
+            Personality::Custom => {
+                let c = custom.map(str::trim).filter(|s| !s.is_empty());
+                return match c {
+                    Some(c) => format!("语气(用户自定义):{c}"),
+                    None => "语气:温柔、鼓励、有耐心,像贴心的朋友。".to_string(),
+                };
+            }
+        };
+        line.to_string()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// Canonical shortcut string, e.g. "Super+Shift+Space" / "Alt+Space".
@@ -171,6 +252,17 @@ pub struct Config {
     /// launching the app re-opens the Onboarding window instead.
     #[serde(default)]
     pub onboarded: bool,
+    /// v0.4.4 · 用户给桌宠起的名字。None / 空 = 还没起名,AI 用通用自称「MouseClaw」。
+    /// 纯增量可选字段 —— **不** bump CURRENT_CONFIG_VERSION(bump 会强制老用户重走
+    /// Onboarding,对加字段毫无必要)。老 config 无此字段 → serde default → None。
+    #[serde(default)]
+    pub pet_name: Option<String>,
+    /// v0.4.4 · 桌宠性格预设(只改语气,不改答案对错)。默认 Warm。
+    #[serde(default)]
+    pub personality: Personality,
+    /// v0.4.4 · personality == Custom 时用户写的一句话语气描述。
+    #[serde(default)]
+    pub personality_custom: Option<String>,
     /// Schema version. Saved configs older than CURRENT_CONFIG_VERSION get
     /// treated as not-onboarded so the user re-picks a shortcut.
     /// Pre-versioned configs default to 1 (the legacy schema).
@@ -209,6 +301,9 @@ impl Default for Config {
             pet_custom_position: None,
             tts_enabled: false,
             onboarded: false,
+            pet_name: None,
+            personality: Personality::default(),
+            personality_custom: None,
             version: CURRENT_CONFIG_VERSION,
         }
     }

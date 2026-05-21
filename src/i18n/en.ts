@@ -15,6 +15,24 @@ export const en: Strings = {
   "common.loading": "Loading…",
   "common.recommended": "Recommended",
 
+  // Pet identity: name + personality (v0.4.4)
+  "picker.identity.heading": "Name it + pick a personality",
+  "picker.identity.name_label": "Name",
+  "picker.identity.name_placeholder": "Give me a name… (leave blank for none)",
+  "picker.identity.personality_label": "Personality",
+  "picker.identity.persona_hint": "Each answers the same \"Take a look at this code 🐛\" — pick the tone you'd like to hear every day.",
+  "picker.identity.custom_placeholder": "Describe the tone in one line, e.g. \"lazy like a cat but reliable\"",
+  "persona.warm.name": "🤗 Warm",        "persona.warm.preview": "Sure, let's look together~ Don't worry, small fix 😊",
+  "persona.snarky.name": "😏 Snarky",    "persona.snarky.preview": "Another bug? Fine, let me see what you wrote this time.",
+  "persona.minimal.name": "⚡ Minimal",   "persona.minimal.preview": "Paste the code.",
+  "persona.companion.name": "💬 Chatty",  "persona.companion.preview": "Ooh ooh! I love hunting bugs, which line? Show me show me~",
+  "persona.pro.name": "💼 Pro",          "persona.pro.preview": "Send the snippet. I'll locate the issue, then give a fix with reasoning.",
+  "persona.cheerful.name": "🎉 Cheerful", "persona.cheerful.preview": "On it! Let's go, no bug stands a chance 💪",
+  "persona.calm.name": "🧘 Calm",        "persona.calm.preview": "Okay. No rush, let's go line by line.",
+  "persona.curious.name": "🔍 Curious",  "persona.curious.preview": "Oh? What bug? What did you expect vs. what happened?",
+  "persona.tsundere.name": "😤 Tsundere", "persona.tsundere.preview": "Hmph, need my help again… i-it's not like I waited for you. Hand it over.",
+  "persona.custom.name": "✍️ Custom",     "persona.custom.preview": "Write one line describing the tone you want.",
+
   // Bubble
   "bubble.expand_to_panel": "💬 Continue chat",
   "bubble.scroll_to_top": "▲ Back to top",

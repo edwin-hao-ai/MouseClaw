@@ -331,6 +331,8 @@ pub fn run() {
             commands::restart_app,
             commands::save_skin,
             commands::get_skin,
+            commands::get_pet_identity,
+            commands::save_pet_identity,
             commands::enable_browser_automation,
             commands::capability_status,
             commands::install_cli,

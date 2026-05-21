@@ -52,7 +52,17 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
          "🚀 开机自启动")
     };
 
-    let summon  = MenuItem::with_id(app, "summon",  s_summon,  true, None::<&str>)?;
+    // v0.4.4 · 有名字时托盘显示「召唤 {name}」,让身份在最常见入口可见。
+    let summon_label = match crate::config::Config::load()
+        .pet_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(name) => if en { format!("🦞 Summon {name}") } else { format!("🦞 召唤{name}") },
+        None => s_summon.to_string(),
+    };
+    let summon  = MenuItem::with_id(app, "summon",  &summon_label,  true, None::<&str>)?;
     let history = MenuItem::with_id(app, "history", s_history, true, None::<&str>)?;
     // v0.1.17 · 显式剪贴板入口（解决 ⌘⇧V 发现性问题）
     let clipboard_item = MenuItem::with_id(app, "open-clipboard", s_clipboard, true, None::<&str>)?;

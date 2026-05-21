@@ -193,6 +193,81 @@
   background: #ece4d2;
 }
 
+/* v0.4.4 · 起名 + 性格（沿用 picker 既有暖色调色，与本文件其余样式一致） */
+.picker-identity {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #ece6dd;
+}
+.picker-id-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #8a8178;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.picker-name-input {
+  width: 100%;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 9px 11px;
+  border-radius: 8px;
+  border: 1px solid #e0d6c2;
+  background: #fff;
+  color: #2b2622;
+  outline: none;
+}
+.picker-name-input:focus {
+  border-color: #d63d6a;
+  box-shadow: 0 0 0 3px rgba(214,61,106,0.12);
+}
+.persona-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.persona-item {
+  text-align: left;
+  background: #f9f5ee;
+  border: 1.5px solid transparent;
+  border-radius: 10px;
+  padding: 7px 9px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: #2b2622;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.persona-item:hover { background: #fff; }
+.persona-item.sel {
+  border-color: #d63d6a;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(214,61,106,0.10);
+}
+.persona-preview {
+  font-size: 12px;
+  color: #5a5048;
+  line-height: 1.45;
+  background: #faf7f2;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.persona-custom-input {
+  width: 100%;
+  font: inherit;
+  font-size: 12px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  border: 1px solid #e0d6c2;
+  outline: none;
+}
+
 .picker-footer {
   font-size: 11px;
   color: #8a8178;
