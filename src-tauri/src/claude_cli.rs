@@ -405,8 +405,14 @@ fn build_prompt(
         out.push_str("你的回答应该围绕粉红色标注覆盖的内容展开。");
         out
     }).unwrap_or_default();
+    // v0.4.4 · 长期记忆注入 —— 视觉(app)+ 音频(transcript)→ 本地检索相关记忆。
+    // 走 build_prompt 这一层 → 4 个 backend(含未来直连 LLM)自动都带记忆,
+    // 不动 ask_streaming / 各 backend 签名。禁用 / 暂停 / 空库时为空串。
+    let memory_line = crate::memory::retrieve_block(transcript, frontmost_app)
+        .map(|m| format!("\n\n{m}"))
+        .unwrap_or_default();
     format!(
-        "{transcript}\n\n截图位置：{}{cursor_line}{context_line}{workspace_line}{trail_line}",
+        "{transcript}\n\n截图位置：{}{cursor_line}{context_line}{workspace_line}{trail_line}{memory_line}",
         image_path.display()
     )
 }

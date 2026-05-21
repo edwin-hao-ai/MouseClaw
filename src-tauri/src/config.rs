@@ -263,6 +263,13 @@ pub struct Config {
     /// v0.4.4 · personality == Custom 时用户写的一句话语气描述。
     #[serde(default)]
     pub personality_custom: Option<String>,
+    /// v0.4.4 · 长期记忆总开关。默认**开** —— 空库时价值看不出,默认开 + 首次透明
+    /// 告知「本地存、随时删」+ 一键关(memory_paused / 这个开关)。
+    #[serde(default = "default_memory_enabled")]
+    pub memory_enabled: bool,
+    /// v0.4.4 · 暂停记忆(= ChatGPT 的 Temporary):本次召唤既不读也不写记忆。默认 false。
+    #[serde(default)]
+    pub memory_paused: bool,
     /// Schema version. Saved configs older than CURRENT_CONFIG_VERSION get
     /// treated as not-onboarded so the user re-picks a shortcut.
     /// Pre-versioned configs default to 1 (the legacy schema).
@@ -281,6 +288,7 @@ fn default_vocab_builtin_enabled() -> bool { true }
 fn default_voice_ime() -> bool { true }
 fn default_voice_ime_trigger() -> String { "fn".into() }
 fn default_autostart() -> bool { true }
+fn default_memory_enabled() -> bool { true }
 
 impl Default for Config {
     fn default() -> Self {
@@ -304,6 +312,8 @@ impl Default for Config {
             pet_name: None,
             personality: Personality::default(),
             personality_custom: None,
+            memory_enabled: default_memory_enabled(),
+            memory_paused: false,
             version: CURRENT_CONFIG_VERSION,
         }
     }

@@ -36,6 +36,7 @@ pub mod pet_passthrough;
 pub mod overlay_size;
 pub mod commands;
 pub mod config;
+pub mod memory;
 pub mod events;
 pub mod feed;
 pub mod feed_flow;
@@ -333,6 +334,14 @@ pub fn run() {
             commands::get_skin,
             commands::get_pet_identity,
             commands::save_pet_identity,
+            memory::memory_list_turns,
+            memory::memory_get_profile,
+            memory::memory_delete_turn,
+            memory::memory_delete_profile_item,
+            memory::memory_clear_all,
+            memory::memory_get_settings,
+            memory::memory_set_paused,
+            memory::memory_set_enabled,
             commands::enable_browser_automation,
             commands::capability_status,
             commands::install_cli,
@@ -391,6 +400,11 @@ pub fn run() {
             println!("[mouseclaw] activation policy = Accessory (no dock icon)");
             println!("[mouseclaw] 后端 = {}", cfg.backend.display_name());
             emit_view(&app.handle(), &ViewKind::Idle);
+
+            // v0.4.4 · 长期记忆建库(失败只 log,不拖垮启动)。
+            if let Err(e) = memory::init() {
+                eprintln!("[mouseclaw] memory init failed (记忆功能本次禁用): {e:#}");
+            }
 
             // Tray always available (escape valve before/during onboarding)
             // v0.1.8 启动 cursor-follow 后台任务（30fps；由 AtomicBool 控制开 / 关）

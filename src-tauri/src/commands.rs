@@ -127,6 +127,8 @@ pub fn save_shortcut(
         pet_name: prev.pet_name,
         personality: prev.personality,
         personality_custom: prev.personality_custom,
+        memory_enabled: prev.memory_enabled,
+        memory_paused: prev.memory_paused,
         onboarded: true,
         version: config::CURRENT_CONFIG_VERSION,
     };

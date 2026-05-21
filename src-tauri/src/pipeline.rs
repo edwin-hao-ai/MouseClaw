@@ -176,6 +176,18 @@ pub async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppStat
         let _ = app.emit(crate::events::EV_SESSION_STATE, snap);
     }
 
+    // 4b. v0.4.4 · 记入长期记忆(原始 turn,零额外 LLM)。禁用/暂停时 record_turn 内部直接 no-op。
+    {
+        let app_name = frontmost.as_deref();
+        let shot = img_path.to_string_lossy().to_string();
+        crate::memory::record_turn("user", &transcript, app_name, Some(&shot));
+        crate::memory::record_turn("assistant", &reply, app_name, None);
+    }
+    // 攒够未消化轮次且当前空闲 → 后台蒸馏画像(进化)。走 ai_queue 串行,失败静默。
+    if crate::memory::unprocessed_count() >= 6 && !crate::ai_queue::is_busy() {
+        tauri::async_runtime::spawn(async { let _ = crate::memory::run_reflection().await; });
+    }
+
     // 5. Mode detection — [INSERT_AT_CURSOR] marker → Mode B (write at cursor)
     let insert_text = crate::claude_cli::parse_insert_directive(&reply);
     let (mode, final_insert) = match insert_text {
