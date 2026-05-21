@@ -139,6 +139,14 @@ pub struct Config {
     /// 默认关 = 安静。开启从托盘「🔊 桌宠开口说话」即可。
     #[serde(default)]
     pub tts_enabled: bool,
+    /// v0.4.x · 桌宠音效 —— 程序化 chiptune（睡觉鼾声 / 完成提示音 / 撞墙等）。
+    /// 前端 petAudio 用 Web Audio 实时合成，按皮肤物种换嗓音；这俩字段只是开关 + 音量。
+    /// 默认开 + 音量 0.45（很轻）—— 用户在托盘「🔉 桌宠音效」一键关。
+    /// 不 bump CURRENT_CONFIG_VERSION：serde default 兜底，老 config 无痛升级、不重走 Onboarding。
+    #[serde(default = "default_sfx_enabled")]
+    pub sfx_enabled: bool,
+    #[serde(default = "default_sfx_volume")]
+    pub sfx_volume: f32,
     /// 长按 fn → 语音输入到光标（v0.1.11 voice IME）
     /// 默认开 —— 用户长按 fn 才触发，短按 fn 仍走 macOS 原生行为
     #[serde(default = "default_voice_ime")]
@@ -189,6 +197,8 @@ fn default_vocab_builtin_enabled() -> bool { true }
 fn default_voice_ime() -> bool { true }
 fn default_voice_ime_trigger() -> String { "fn".into() }
 fn default_autostart() -> bool { true }
+fn default_sfx_enabled() -> bool { true }
+fn default_sfx_volume() -> f32 { 0.45 }
 
 impl Default for Config {
     fn default() -> Self {
@@ -208,6 +218,8 @@ impl Default for Config {
             pet_anchor: PetAnchor::default(),
             pet_custom_position: None,
             tts_enabled: false,
+            sfx_enabled: default_sfx_enabled(),
+            sfx_volume: default_sfx_volume(),
             onboarded: false,
             version: CURRENT_CONFIG_VERSION,
         }

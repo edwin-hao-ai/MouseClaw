@@ -27,6 +27,8 @@ import { ReactiveOverlay, type ReactivePayload } from "./components/ReactiveOver
 import { useCompanion } from "./hooks/useCompanion";
 import { useIntimacy } from "./hooks/useIntimacy";
 import { useAdaptiveOverlay } from "./hooks/useAdaptiveOverlay";
+import { usePetSounds } from "./hooks/usePetSounds";
+import * as petAudio from "./audio/petAudio";
 
 const PREVIEW_LONG = "这篇 Nature 文章讨论 2026 年 AI 加速材料发现的三个突破：室温超导候选材料、新型电池电解液、碳捕获催化剂。核心机制是自动化实验室加大模型生成假设的迭代闭环。";
 
@@ -238,6 +240,18 @@ export default function App() {
     } catch {/* dev mode */}
     return () => { if (unlisten) unlisten(); if (bonkClearRef.current) window.clearTimeout(bonkClearRef.current); };
   }, [triggerBonk]);
+
+  // 音效 —— 把桌宠状态机接到 petAudio（程序化合成，按皮肤物种换嗓音）。
+  // 见 hooks/usePetSounds.ts + docs/prototypes/skin-system-audio-20260521.html。
+  usePetSounds({
+    skin,
+    mouseState: mouseStateFor(view),
+    companionState: companion.state,
+    continuing,
+    intimacyLevel: intimacy.level,
+    bonkActive: bonkDir !== null,
+    nudgeActive: nudge !== null,
+  });
 
   // v0.4 · 后台任务忙碌计数 —— 任何 reactive action 在跑时 > 0。
   // 桌宠据此显示忙碌指示（跨任何视图可见），用户永远知道"还在处理"。
@@ -648,8 +662,9 @@ export default function App() {
     // v0.4+ · 点桌宠 → 浮爱心 + 记一次亲密互动（菜单仍照常开合）
     popHeart();
     intimacy.bumpInteract();
+    petAudio.playEvent("squeak", skin); // 直接点桌宠才吱（不跟桌面点击 companion=clicked 混）
     setPetMenuOpen(prev => !prev);
-  }, [view.kind, popHeart, intimacy]);
+  }, [view.kind, popHeart, intimacy, skin]);
 
   return (
     <div ref={stageRootRef} className="stage stage-mouse-bubble">

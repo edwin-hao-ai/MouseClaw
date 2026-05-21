@@ -124,6 +124,8 @@ pub fn save_shortcut(
         pet_anchor: prev.pet_anchor,
         pet_custom_position: prev.pet_custom_position,
         tts_enabled: prev.tts_enabled,
+        sfx_enabled: prev.sfx_enabled,
+        sfx_volume: prev.sfx_volume,
         onboarded: true,
         version: config::CURRENT_CONFIG_VERSION,
     };
@@ -190,6 +192,20 @@ pub fn save_skin(skin: String, app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn get_skin() -> String {
     config::Config::load().skin.as_str().to_string()
+}
+
+/// v0.4.x · 桌宠音效配置（开关 + 音量）—— 前端 petAudio 启动读一次，
+/// 之后托盘切换会 emit `sfx-changed` 让活着的 webview 实时更新。
+#[derive(Clone, serde::Serialize)]
+pub struct SfxConfig {
+    pub enabled: bool,
+    pub volume: f32,
+}
+
+#[tauri::command]
+pub fn get_sfx_config() -> SfxConfig {
+    let c = config::Config::load();
+    SfxConfig { enabled: c.sfx_enabled, volume: c.sfx_volume }
 }
 
 /// v0.3.6 · 用户拖动桌宠到任意位置后调用 —— 保存窗口左上角坐标。
