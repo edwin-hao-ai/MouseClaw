@@ -1,15 +1,36 @@
-//! 多 AI 后端抽象 —— Claude Code CLI / Codex CLI / OpenClaw CLI 三选一。
+//! 多 AI 后端抽象 —— 用户在 Onboarding 选一个，存进 `~/.mouseclaw/config.json`。
 //!
-//! 用户在 Onboarding 里选一个，存进 `~/.mouseclaw/config.json` 的 `backend` 字段。
 //! 所有后端走统一契约：`(截图路径 + 文字 prompt) → 流式文本块`。
 //!
-//! - **ClaudeCli**（默认，最成熟）：`claude -p --output-format stream-json`，
-//!   见 claude_cli.rs。原生 agentic + 读图。
-//! - **CodexCli**：`codex exec`，逐行 stream stdout。需用户装 OpenAI Codex CLI。
-//! - **OpenclawCli**：`openclaw agent --local -m`，需用户配好 provider key。
+//! - **ClaudeCli**（默认，最成熟）：`claude -p --output-format stream-json`，见 claude_cli.rs。
+//!   原生 agentic + 读图 + 细粒度 thinking/tool 事件（唯一有 on_status 的后端）。
+//! - 其余后端都是「spawn 一个非交互 CLI，逐行读 stdout 累计」的统一实现：截图路径写进
+//!   prompt（各 CLI 的 Read/Bash 工具能读到），不走 stream-json。每个后端只差「二进制名 +
+//!   一次性调用参数」，集中在 `Backend::oneshot_args` 一处维护：
 //!
-//! 设计取舍：Claude 路径完整可用；Codex / OpenClaw 是真实调用但依赖用户环境，
-//! 没装/没配就在选择时报清晰错误 —— 抽象层在，用户随时能接。
+//!   | 后端 | 二进制 | 一次性参数（验证日期 2026-05-21） |
+//!   |---|---|---|
+//!   | CodexCli        | codex    | `exec --skip-git-repo-check <prompt>` |
+//!   | OpenclawCli     | openclaw | `agent --local -m <prompt>` |
+//!   | HermesAgent     | hermes   | `-z <prompt>` |
+//!   | OpenCodeCli     | opencode | `run <prompt>` |
+//!   | GeminiCli       | gemini   | `-p <prompt>` |
+//!   | CopilotCli      | copilot  | `-p <prompt> -s --allow-all-tools` |
+//!   | KiroCli         | kiro-cli | `chat --no-interactive --trust-all-tools <prompt>` |
+//!   | ClineCli        | cline    | `-y <prompt>` |
+//!   | KimiCli         | kimi     | `--quiet -p <prompt>` |
+//!   | VibeCli         | vibe     | `--prompt <prompt>` |
+//!   | PiAgent         | pi       | `-p <prompt>` |
+//!   | AntigravityCli  | agy      | `-p <prompt> --dangerously-skip-permissions` |
+//!
+//! 设计取舍：Claude 路径完整可用；其余是真实调用但依赖用户环境，没装/没配就在选择时
+//! 报清晰错误（带 install_cmd）—— 抽象层在，用户随时能接。
+//!
+//! 加新后端的 checklist（CLAUDE.md「多后端 CLI 兼容」硬规则）：
+//!   1. `Backend` 加变体 → 编译器会把所有 match 标红，逐个补 display_name / binary_name /
+//!      from_choice / install_url / install_cmd / oneshot_args
+//!   2. 前端 `src/types.ts` 的 `BackendChoice` + `Onboarding.tsx` 的 BACKENDS_META / backendDesc
+//!   3. 不用为新后端写独立 streaming fn —— oneshot_args 出参数，generic_streaming 跑
 
 use std::path::Path;
 use std::process::Stdio;
@@ -27,6 +48,16 @@ pub enum Backend {
     CodexCli,
     OpenclawCli,
     HermesAgent, // v0.1.23 · Nous Research 的 Hermes Agent
+    // v0.4.4 (2026-05-21) · 一次补齐主流 CLI agent
+    OpenCodeCli,    // OpenCode (SST) · `opencode run`
+    GeminiCli,      // Google Gemini CLI · `gemini -p`
+    CopilotCli,     // GitHub Copilot CLI · `copilot -p`
+    KiroCli,        // Kiro CLI (AWS) · `kiro-cli chat --no-interactive`
+    ClineCli,       // Cline CLI · `cline -y`
+    KimiCli,        // Kimi Code CLI (Moonshot) · `kimi --quiet -p`
+    VibeCli,        // Mistral Vibe · `vibe --prompt`
+    PiAgent,        // Pi Coding Agent · `pi -p`
+    AntigravityCli, // Google Antigravity CLI · `agy -p`
 }
 
 impl Default for Backend {
@@ -36,13 +67,22 @@ impl Default for Backend {
 }
 
 impl Backend {
-    /// 给 Onboarding UI 用的中文展示名。
+    /// Onboarding UI 用的展示名（兼作错误信息里的「是哪个 CLI 挂了」）。
     pub fn display_name(&self) -> &'static str {
         match self {
             Backend::ClaudeCli => "Claude Code CLI",
             Backend::CodexCli => "OpenAI Codex CLI",
             Backend::OpenclawCli => "OpenClaw CLI",
             Backend::HermesAgent => "Hermes Agent (Nous Research)",
+            Backend::OpenCodeCli => "OpenCode",
+            Backend::GeminiCli => "Gemini CLI",
+            Backend::CopilotCli => "GitHub Copilot CLI",
+            Backend::KiroCli => "Kiro CLI",
+            Backend::ClineCli => "Cline CLI",
+            Backend::KimiCli => "Kimi Code CLI",
+            Backend::VibeCli => "Mistral Vibe CLI",
+            Backend::PiAgent => "Pi Coding Agent",
+            Backend::AntigravityCli => "Antigravity CLI",
         }
     }
 
@@ -53,46 +93,121 @@ impl Backend {
             Backend::CodexCli => "codex",
             Backend::OpenclawCli => "openclaw",
             Backend::HermesAgent => "hermes",
+            Backend::OpenCodeCli => "opencode",
+            Backend::GeminiCli => "gemini",
+            Backend::CopilotCli => "copilot",
+            Backend::KiroCli => "kiro-cli",
+            Backend::ClineCli => "cline",
+            Backend::KimiCli => "kimi",
+            Backend::VibeCli => "vibe",
+            Backend::PiAgent => "pi",
+            Backend::AntigravityCli => "agy",
         }
     }
 
-    /// 从前端传来的字符串解析（Onboarding 选项 id）。
+    /// 从前端传来的字符串解析（Onboarding 选项 id）。未知 → 回落 Claude。
     pub fn from_choice(s: &str) -> Backend {
         match s {
             "codex-cli" | "codex" => Backend::CodexCli,
             "openclaw-cli" | "openclaw" => Backend::OpenclawCli,
             "hermes-agent" | "hermes" => Backend::HermesAgent,
+            "opencode-cli" | "open-code-cli" | "opencode" => Backend::OpenCodeCli,
+            "gemini-cli" | "gemini" => Backend::GeminiCli,
+            "copilot-cli" | "copilot" | "vscode-copilot" => Backend::CopilotCli,
+            "kiro-cli" | "kiro" => Backend::KiroCli,
+            "cline-cli" | "cline" => Backend::ClineCli,
+            "kimi-cli" | "kimi" => Backend::KimiCli,
+            "vibe-cli" | "vibe" => Backend::VibeCli,
+            "pi-agent" | "pi" => Backend::PiAgent,
+            "antigravity-cli" | "antigravity" | "agy" => Backend::AntigravityCli,
             _ => Backend::ClaudeCli,
         }
     }
 
     /// 安装指引 URL —— Onboarding 检测到没装时给用户的"去装"链接。
-    /// 选 npm registry / 官方仓库，是用户最容易跟着抄的那一行。
     pub fn install_url(&self) -> &'static str {
         match self {
             Backend::ClaudeCli   => "https://www.anthropic.com/claude-code",
             Backend::CodexCli    => "https://www.npmjs.com/package/@openai/codex",
             Backend::OpenclawCli => "https://www.npmjs.com/package/openclaw",
             Backend::HermesAgent => "https://github.com/NousResearch/hermes-agent",
+            Backend::OpenCodeCli => "https://opencode.ai",
+            Backend::GeminiCli   => "https://github.com/google-gemini/gemini-cli",
+            Backend::CopilotCli  => "https://github.com/features/copilot/cli",
+            Backend::KiroCli     => "https://kiro.dev/docs/cli/",
+            Backend::ClineCli    => "https://cline.bot/cli",
+            Backend::KimiCli     => "https://github.com/MoonshotAI/kimi-cli",
+            Backend::VibeCli     => "https://github.com/mistralai/mistral-vibe",
+            Backend::PiAgent     => "https://pi.dev",
+            Backend::AntigravityCli => "https://antigravity.google/docs/cli-using",
         }
     }
 
-    /// 一行能跑的安装命令 —— 直接复制到 Terminal 用。
+    /// 一行能跑的安装命令 —— 直接复制到 Terminal 用（验证日期 2026-05-21）。
     pub fn install_cmd(&self) -> &'static str {
         match self {
             Backend::ClaudeCli   => "npm i -g @anthropic-ai/claude-code",
             Backend::CodexCli    => "npm i -g @openai/codex",
             Backend::OpenclawCli => "npm i -g openclaw",
             Backend::HermesAgent => "curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash",
+            Backend::OpenCodeCli => "curl -fsSL https://opencode.ai/install | bash",
+            Backend::GeminiCli   => "npm i -g @google/gemini-cli",
+            Backend::CopilotCli  => "npm i -g @github/copilot",
+            Backend::KiroCli     => "curl -fsSL https://cli.kiro.dev/install | bash",
+            Backend::ClineCli    => "npm i -g cline",
+            Backend::KimiCli     => "curl -LsSf https://code.kimi.com/install.sh | bash",
+            Backend::VibeCli     => "uv tool install mistral-vibe",
+            Backend::PiAgent     => "npm i -g @mariozechner/pi-coding-agent",
+            Backend::AntigravityCli => "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+        }
+    }
+
+    /// 一次性（非流式）调用的命令参数。`prompt` 已拼好（流式路径含 system + 截图路径；
+    /// 纯文本路径就是 reactive action 的 prompt）。Claude 这里给的是它的纯文本 `-p` 形态，
+    /// 它的 stream-json 流式路径不走这里（见 claude_cli::ask_claude_streaming）。
+    ///
+    /// **没有 wildcard arm** —— 加新 Backend 变体时编译器强制在此补一行（参数即"协议"）。
+    fn oneshot_args(&self, prompt: &str) -> Vec<String> {
+        let p = prompt.to_string();
+        match self {
+            Backend::ClaudeCli => vec![
+                "-p".into(), p,
+                "--permission-mode".into(), "auto".into(),
+                "--allowedTools".into(), "".into(),
+            ],
+            Backend::CodexCli => vec!["exec".into(), "--skip-git-repo-check".into(), p],
+            Backend::OpenclawCli => vec!["agent".into(), "--local".into(), "-m".into(), p],
+            Backend::HermesAgent => vec!["-z".into(), p],
+            Backend::OpenCodeCli => vec!["run".into(), p],
+            Backend::GeminiCli => vec!["-p".into(), p],
+            // -s 静默：抑制 model 元信息行，stdout 只剩干净答案（官方文档推荐用于脚本捕获）；
+            // --allow-all-tools 让非交互下不卡权限
+            Backend::CopilotCli => vec!["-p".into(), p, "-s".into(), "--allow-all-tools".into()],
+            Backend::KiroCli => vec![
+                "chat".into(), "--no-interactive".into(), "--trust-all-tools".into(), p,
+            ],
+            Backend::ClineCli => vec!["-y".into(), p],
+            // --quiet = --print --output-format text --final-message-only（只要最终答案）
+            Backend::KimiCli => vec!["--quiet".into(), "-p".into(), p],
+            Backend::VibeCli => vec!["--prompt".into(), p],
+            Backend::PiAgent => vec!["-p".into(), p],
+            Backend::AntigravityCli => vec![
+                "-p".into(), p, "--dangerously-skip-permissions".into(),
+            ],
         }
     }
 }
 
-/// 统一流式调用入口 —— 按 backend 分发到对应 CLI。
-/// `on_chunk` 收到的是**累计**文本（不是单 delta），调用方直接 emit 即可。
-/// `on_chunk`：累计**最终答案**文本。`on_status`：处理期间的**实时活动**
-/// （Claude CLI 的 thinking_delta / tool_use），让用户知道没卡死。
-/// 没有细粒度事件的后端（Codex/OpenClaw/Hermes）不调 on_status。
+/// 找后端二进制，没找到时把 install_cmd 拼进错误里（用户能直接照抄）。
+fn find_backend_binary(backend: Backend) -> Result<std::path::PathBuf> {
+    crate::claude_cli::find_binary(backend.binary_name())
+        .map_err(|e| anyhow::anyhow!("{e}\n装一下：{}", backend.install_cmd()))
+}
+
+/// 统一流式调用入口 —— 按 backend 分发。
+/// `on_chunk`：累计**最终答案**文本，调用方直接 emit。`on_status`：处理期间的**实时活动**
+/// （只有 Claude CLI 的 stream-json 有 thinking_delta / tool_use），让用户知道没卡死。
+/// 其余后端没有细粒度事件，不调 on_status。
 pub async fn ask_streaming<F, G>(
     backend: Backend,
     transcript: &str,
@@ -113,23 +228,19 @@ where
                 transcript, image, frontmost, cursor, trail_summary, on_chunk, on_status
             ).await
         }
-        Backend::CodexCli => { let _ = on_status; codex_streaming(
-            transcript, image, frontmost, cursor, trail_summary, on_chunk
-        ).await },
-        Backend::OpenclawCli => {
+        // 其余所有后端：统一的「spawn 非交互 CLI，逐行累计 stdout」路径。
+        _ => {
             let _ = on_status;
-            openclaw_streaming(transcript, image, frontmost, cursor, trail_summary, on_chunk).await
-        }
-        Backend::HermesAgent => {
-            let _ = on_status;
-            hermes_streaming(transcript, image, frontmost, cursor, trail_summary, on_chunk).await
+            generic_streaming(
+                backend, transcript, image, frontmost, cursor, trail_summary, on_chunk
+            ).await
         }
     }
 }
 
 /// 通用的「spawn 一个 CLI，逐行读 stdout，累计回调」流式实现。
-/// Codex / OpenClaw 都不像 Claude 那样有 stream-json，直接把每行 stdout
-/// 当作纯文本累加 —— 简单且对任何输出格式都鲁棒。
+/// 非 Claude 后端都不像 Claude 那样有 stream-json，直接把每行 stdout 当纯文本累加 ——
+/// 简单且对任何输出格式都鲁棒。
 async fn spawn_and_stream<F>(
     bin: &Path,
     args: &[&str],
@@ -140,10 +251,10 @@ where
 {
     let mut cmd = tokio::process::Command::new(bin);
     cmd.env("PATH", crate::claude_cli::expanded_path());
-    // v0.4 · 降优先级 —— 保护并发时本地语音输入法 ASR 的 CPU（codex/openclaw/hermes 同理）
+    // v0.4 · 降优先级 —— 保护并发时本地语音输入法 ASR 的 CPU（所有外部 AI 子进程同理）
     crate::claude_cli::lower_priority(&mut cmd);
     // v0.1.25 · ~/.mouseclaw/provider.env 里的 key 灌进子进程
-    //   让 Codex / OpenClaw / Hermes 看到 OPENAI_API_KEY / AI_GATEWAY_API_KEY / etc.
+    //   让各后端看到 OPENAI_API_KEY / AI_GATEWAY_API_KEY / GEMINI_API_KEY / etc.
     //   不用用户改 shell rc。已在 OS env 里的同名变量不覆盖（shell 优先）。
     crate::provider_env::apply_to(&mut cmd);
     // v0.1.21 · 工作区 cwd
@@ -193,46 +304,22 @@ where
     Ok(out)
 }
 
-/// OpenAI Codex CLI：`codex exec <prompt>` 非交互模式，逐行 stream stdout。
-/// 截图路径写进 prompt，Codex 的沙箱有文件读权限能读到。
 /// 纯文本 → 文本 单次调用 —— 给 reactive ribbon 的 action（清理 / 翻译 / 解释 / 回信）用。
-/// 不传截图，不开 streaming，等所有输出收完一次性返回。各后端用各自的 CLI 但参数对齐。
+/// 不传截图，不开 streaming，等所有输出收完一次性返回。各后端用各自 CLI 但参数对齐。
 ///
 /// 设计原则（CLAUDE.md "多后端 CLI 都要兼容"硬规则）：每次新加一种短任务流水线
-/// （比如 reactive action / 未来的 selection action）**必须**走这个统一接口而不是
-/// 硬编码 `claude` 二进制 —— 否则 Codex / OpenClaw / Hermes 用户拿不到那个功能。
+/// **必须**走这个统一接口而不是硬编码 `claude` 二进制 —— 否则非 Claude 用户拿不到那功能。
 pub async fn ask_text_only(backend: Backend, prompt: &str) -> Result<String> {
-    let (bin, args): (std::path::PathBuf, Vec<String>) = match backend {
-        Backend::ClaudeCli => {
-            let bin = crate::claude_cli::find_binary("claude")
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
-            (bin, vec![
-                "-p".into(), prompt.into(),
-                "--permission-mode".into(), "auto".into(),
-                "--allowedTools".into(), "".into(),
-            ])
-        }
-        Backend::CodexCli => {
-            let bin = crate::claude_cli::find_binary("codex")
-                .map_err(|e| anyhow::anyhow!("{e}\n装一下：npm install -g @openai/codex"))?;
-            (bin, vec!["exec".into(), "--skip-git-repo-check".into(), prompt.into()])
-        }
-        Backend::OpenclawCli => {
-            let bin = crate::claude_cli::find_binary("openclaw")
-                .map_err(|e| anyhow::anyhow!("{e}\n装一下：npm install -g openclaw"))?;
-            (bin, vec!["agent".into(), "--local".into(), "-m".into(), prompt.into()])
-        }
-        Backend::HermesAgent => {
-            let bin = crate::claude_cli::find_binary("hermes")
-                .map_err(|e| anyhow::anyhow!("{e}\n装一下：curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash"))?;
-            (bin, vec!["-z".into(), prompt.into()])
-        }
-    };
+    let bin = find_backend_binary(backend)?;
+    let args = backend.oneshot_args(prompt);
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     spawn_and_stream(&bin, &arg_refs, |_| {}).await
 }
 
-async fn codex_streaming<F>(
+/// 非 Claude 后端的多模态长任务：截图路径写进 prompt（各 CLI 的 Read/Bash 工具读到），
+/// system_prompt + build_prompt 拼好后逐行 stream stdout 累计。
+async fn generic_streaming<F>(
+    backend: Backend,
     transcript: &str,
     image: &Path,
     frontmost: Option<&str>,
@@ -243,62 +330,16 @@ async fn codex_streaming<F>(
 where
     F: FnMut(&str),
 {
-    let bin = crate::claude_cli::find_binary("codex")
-        .map_err(|e| anyhow::anyhow!("{e}\n装一下：npm install -g @openai/codex"))?;
+    let bin = find_backend_binary(backend)?;
+    // system_prompt() 对所有后端共用（改文案自动对全部生效）
     let prompt = format!(
         "{}\n\n{}",
         crate::claude_cli::system_prompt(),
         crate::claude_cli::build_prompt_pub(transcript, image, frontmost, cursor, trail_summary)
     );
-    spawn_and_stream(&bin, &["exec", "--skip-git-repo-check", &prompt], on_chunk).await
-}
-
-/// OpenClaw CLI：`openclaw agent --local -m <prompt>` 跑一个 agent turn。
-/// `--local` 要求用户 shell 里有 model provider API key。
-async fn openclaw_streaming<F>(
-    transcript: &str,
-    image: &Path,
-    frontmost: Option<&str>,
-    cursor: Option<&CursorContext>,
-    trail_summary: Option<&str>,
-    on_chunk: F,
-) -> Result<String>
-where
-    F: FnMut(&str),
-{
-    let bin = crate::claude_cli::find_binary("openclaw")
-        .map_err(|e| anyhow::anyhow!("{e}\n装一下：npm install -g openclaw"))?;
-    let prompt = format!(
-        "{}\n\n{}",
-        crate::claude_cli::system_prompt(),
-        crate::claude_cli::build_prompt_pub(transcript, image, frontmost, cursor, trail_summary)
-    );
-    spawn_and_stream(&bin, &["agent", "--local", "-m", &prompt], on_chunk).await
-}
-
-/// Hermes Agent (Nous Research) · `hermes -z "<prompt>"` 单次模式
-/// 不走 stream-json，stdout 是纯文本，spawn_and_stream 逐行累计即可
-async fn hermes_streaming<F>(
-    transcript: &str,
-    image: &Path,
-    frontmost: Option<&str>,
-    cursor: Option<&CursorContext>,
-    trail_summary: Option<&str>,
-    on_chunk: F,
-) -> Result<String>
-where
-    F: FnMut(&str),
-{
-    let bin = crate::claude_cli::find_binary("hermes")
-        .map_err(|e| anyhow::anyhow!("{e}\n装一下：curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash"))?;
-    let prompt = format!(
-        "{}\n\n{}",
-        crate::claude_cli::system_prompt(),
-        crate::claude_cli::build_prompt_pub(transcript, image, frontmost, cursor, trail_summary)
-    );
-    // -z = 单次 stdin→stdout 干净输出（适合脚本管道）
-    // --ignore-rules 跟我们的 system_prompt 不冲突，保留 hermes 自身的 tool 能力
-    spawn_and_stream(&bin, &["-z", &prompt], on_chunk).await
+    let args = backend.oneshot_args(&prompt);
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    spawn_and_stream(&bin, &arg_refs, on_chunk).await
 }
 
 #[cfg(test)]
@@ -314,6 +355,20 @@ mod tests {
         assert_eq!(Backend::from_choice("hermes-agent"), Backend::HermesAgent);
         assert_eq!(Backend::from_choice("hermes"), Backend::HermesAgent);
         assert_eq!(Backend::from_choice("claude-cli"), Backend::ClaudeCli);
+        // v0.4.4 新增后端
+        assert_eq!(Backend::from_choice("opencode-cli"), Backend::OpenCodeCli);
+        assert_eq!(Backend::from_choice("opencode"), Backend::OpenCodeCli);
+        assert_eq!(Backend::from_choice("gemini-cli"), Backend::GeminiCli);
+        assert_eq!(Backend::from_choice("gemini"), Backend::GeminiCli);
+        assert_eq!(Backend::from_choice("copilot-cli"), Backend::CopilotCli);
+        assert_eq!(Backend::from_choice("vscode-copilot"), Backend::CopilotCli);
+        assert_eq!(Backend::from_choice("kiro-cli"), Backend::KiroCli);
+        assert_eq!(Backend::from_choice("cline"), Backend::ClineCli);
+        assert_eq!(Backend::from_choice("kimi"), Backend::KimiCli);
+        assert_eq!(Backend::from_choice("vibe"), Backend::VibeCli);
+        assert_eq!(Backend::from_choice("pi-agent"), Backend::PiAgent);
+        assert_eq!(Backend::from_choice("antigravity"), Backend::AntigravityCli);
+        assert_eq!(Backend::from_choice("agy"), Backend::AntigravityCli);
     }
 
     #[test]
@@ -329,10 +384,38 @@ mod tests {
 
     #[test]
     fn binary_names_are_distinct() {
-        assert_eq!(Backend::ClaudeCli.binary_name(), "claude");
-        assert_eq!(Backend::CodexCli.binary_name(), "codex");
-        assert_eq!(Backend::OpenclawCli.binary_name(), "openclaw");
-        assert_eq!(Backend::HermesAgent.binary_name(), "hermes");
+        let all = [
+            Backend::ClaudeCli, Backend::CodexCli, Backend::OpenclawCli, Backend::HermesAgent,
+            Backend::OpenCodeCli, Backend::GeminiCli, Backend::CopilotCli, Backend::KiroCli,
+            Backend::ClineCli, Backend::KimiCli, Backend::VibeCli, Backend::PiAgent,
+            Backend::AntigravityCli,
+        ];
+        let mut names: Vec<&str> = all.iter().map(|b| b.binary_name()).collect();
+        let n = names.len();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), n, "binary names must be unique");
+        assert_eq!(Backend::KiroCli.binary_name(), "kiro-cli");
+        assert_eq!(Backend::AntigravityCli.binary_name(), "agy");
+    }
+
+    #[test]
+    fn install_cmd_and_url_non_empty_for_all() {
+        let all = [
+            Backend::ClaudeCli, Backend::CodexCli, Backend::OpenclawCli, Backend::HermesAgent,
+            Backend::OpenCodeCli, Backend::GeminiCli, Backend::CopilotCli, Backend::KiroCli,
+            Backend::ClineCli, Backend::KimiCli, Backend::VibeCli, Backend::PiAgent,
+            Backend::AntigravityCli,
+        ];
+        for b in all {
+            assert!(!b.install_cmd().is_empty(), "{:?} install_cmd empty", b);
+            assert!(b.install_url().starts_with("https://"), "{:?} bad url", b);
+            assert!(!b.display_name().is_empty(), "{:?} display_name empty", b);
+            // oneshot_args 末位必须是 prompt（防止哪个后端把 prompt 漏在中间被吞）
+            let args = b.oneshot_args("PROMPT_SENTINEL");
+            assert!(args.iter().any(|a| a == "PROMPT_SENTINEL"),
+                "{:?} oneshot_args 丢了 prompt", b);
+        }
     }
 
     #[test]
@@ -341,21 +424,34 @@ mod tests {
         assert_eq!(json, "\"codex-cli\"");
         let back: Backend = serde_json::from_str("\"openclaw-cli\"").unwrap();
         assert_eq!(back, Backend::OpenclawCli);
+        // 新后端的 kebab-case 也要对齐前端 BackendChoice
+        assert_eq!(serde_json::to_string(&Backend::OpenCodeCli).unwrap(), "\"open-code-cli\"");
+        assert_eq!(serde_json::to_string(&Backend::AntigravityCli).unwrap(), "\"antigravity-cli\"");
     }
 
-    /// 编译期保证 ask_text_only 覆盖了所有 Backend 变体 ——
-    /// 加新 backend 时 match 漏掉一个就会触发 unreachable_patterns，
-    /// 强制开发者补齐文本路径（CLAUDE.md "多后端 CLI 都要兼容"硬规则）。
+    /// 编译期保证 oneshot_args / ask_text_only 覆盖了所有 Backend 变体 ——
+    /// 加新 backend 时 match 漏掉一个就会触发 non-exhaustive，强制开发者补齐
+    /// （CLAUDE.md "多后端 CLI 都要兼容"硬规则）。
     #[test]
     fn ask_text_only_covers_all_backends() {
         fn _assert_exhaustive(b: Backend) {
             #[allow(clippy::let_underscore_future)]
             let _ = async move {
+                // 无 wildcard 的 match —— 漏变体编译失败
                 let _ = match b {
-                    Backend::ClaudeCli => crate::backend::ask_text_only(b, "x"),
-                    Backend::CodexCli => crate::backend::ask_text_only(b, "x"),
-                    Backend::OpenclawCli => crate::backend::ask_text_only(b, "x"),
-                    Backend::HermesAgent => crate::backend::ask_text_only(b, "x"),
+                    Backend::ClaudeCli
+                    | Backend::CodexCli
+                    | Backend::OpenclawCli
+                    | Backend::HermesAgent
+                    | Backend::OpenCodeCli
+                    | Backend::GeminiCli
+                    | Backend::CopilotCli
+                    | Backend::KiroCli
+                    | Backend::ClineCli
+                    | Backend::KimiCli
+                    | Backend::VibeCli
+                    | Backend::PiAgent
+                    | Backend::AntigravityCli => crate::backend::ask_text_only(b, "x"),
                 }.await;
             };
         }

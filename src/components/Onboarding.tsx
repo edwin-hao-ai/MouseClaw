@@ -69,6 +69,15 @@ function buildOptions(t: ReturnType<typeof useT>) {
 const BACKENDS_META: Array<{ id: BackendChoice; label: string; descKey: string; tag?: string }> = [
   { id: "claude-cli", label: "Claude Code CLI", descKey: "claude", tag: "common.recommended" },
   { id: "codex-cli",  label: "OpenAI Codex CLI", descKey: "codex" },
+  { id: "gemini-cli", label: "Gemini CLI", descKey: "gemini" },
+  { id: "copilot-cli", label: "GitHub Copilot CLI", descKey: "copilot" },
+  { id: "opencode-cli", label: "OpenCode", descKey: "opencode-sst" },
+  { id: "cline-cli", label: "Cline CLI", descKey: "cline" },
+  { id: "kimi-cli", label: "Kimi Code CLI", descKey: "kimi" },
+  { id: "kiro-cli", label: "Kiro CLI", descKey: "kiro" },
+  { id: "antigravity-cli", label: "Antigravity CLI", descKey: "antigravity" },
+  { id: "vibe-cli", label: "Mistral Vibe CLI", descKey: "vibe" },
+  { id: "pi-agent", label: "Pi Coding Agent", descKey: "pi" },
   { id: "openclaw-cli", label: "OpenClaw CLI",  descKey: "openclaw" },
   { id: "hermes-agent", label: "Hermes Agent (Nous Research)", descKey: "hermes" },
 ];
@@ -93,6 +102,42 @@ function backendDesc(id: BackendChoice, t: ReturnType<typeof useT>): string {
       return en
         ? "Hermes -z one-shot mode. Self-improving agent from Nous Research. Needs hermes installed + setup."
         : "hermes -z 单次模式。Nous Research 的自学习 agent。需先装 hermes 并配 provider key。";
+    case "gemini-cli":
+      return en
+        ? "gemini -p headless mode. Google's open-source CLI. Needs npm i -g @google/gemini-cli + a Gemini key."
+        : "gemini -p 无头模式。Google 官方开源 CLI。需 npm i -g @google/gemini-cli 并配 Gemini key。";
+    case "copilot-cli":
+      return en
+        ? "copilot -p (the standalone GitHub Copilot CLI, not the VS Code extension). Needs npm i -g @github/copilot + Copilot subscription."
+        : "copilot -p（GitHub 官方独立 Copilot CLI，非 VS Code 插件）。需 npm i -g @github/copilot 并有 Copilot 订阅。";
+    case "opencode-cli":
+      return en
+        ? "opencode run, SST's terminal agent. Install via opencode.ai/install. Pick a provider/model in its config."
+        : "opencode run，SST 出品的终端 agent。装：opencode.ai/install。在它配置里选 provider/model。";
+    case "cline-cli":
+      return en
+        ? "cline -y headless mode. The autonomous agent's standalone CLI. Needs npm i -g cline + a provider key."
+        : "cline -y 无头模式。Cline 自主 agent 的独立 CLI。需 npm i -g cline 并配 provider key。";
+    case "kimi-cli":
+      return en
+        ? "kimi --quiet -p print mode. Moonshot AI's Kimi Code CLI. Install via code.kimi.com + a Kimi key."
+        : "kimi --quiet -p 打印模式。Moonshot 月之暗面的 Kimi Code CLI。装：code.kimi.com 并配 Kimi key。";
+    case "kiro-cli":
+      return en
+        ? "kiro-cli chat --no-interactive. AWS's agentic CLI. Install via cli.kiro.dev + sign in / API key."
+        : "kiro-cli chat --no-interactive。AWS 的 agent CLI。装：cli.kiro.dev 并登录 / 配 API key。";
+    case "antigravity-cli":
+      return en
+        ? "agy -p mode. Google's Antigravity CLI (successor to Gemini CLI, May 2026). Install via antigravity.google/cli."
+        : "agy -p 模式。Google Antigravity CLI（2026-05 接替 Gemini CLI）。装：antigravity.google/cli。";
+    case "vibe-cli":
+      return en
+        ? "vibe --prompt mode. Mistral's open-source CLI (Devstral). Install via uv tool install mistral-vibe + Mistral key."
+        : "vibe --prompt 模式。Mistral 开源 CLI（Devstral）。装：uv tool install mistral-vibe 并配 Mistral key。";
+    case "pi-agent":
+      return en
+        ? "pi -p print mode. Lightweight 4-tool coding agent. Needs npm i -g @mariozechner/pi-coding-agent + a provider key."
+        : "pi -p 打印模式。轻量四工具编码 agent。需 npm i -g @mariozechner/pi-coding-agent 并配 provider key。";
   }
 }
 
@@ -158,10 +203,10 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     return () => clearInterval(timer);
   }, [step, refreshPerms]);
 
-  // v0.1.28 · 进 step 2 时并发检测 4 个 backend CLI 是否装在 PATH
+  // v0.1.28 · 进 step 2 时并发检测全部 backend CLI 是否装在 PATH（v0.4.4 扩到 13 个）
   useEffect(() => {
     if (step !== 2) return;
-    const ids: BackendChoice[] = ["claude-cli", "codex-cli", "openclaw-cli", "hermes-agent"];
+    const ids: BackendChoice[] = BACKENDS_META.map(b => b.id);
     // mark all as loading first so UI doesn't flicker
     setBackendStatus(Object.fromEntries(ids.map(id => [id, "loading" as const])));
     ids.forEach((id) => {
@@ -247,7 +292,14 @@ export function Onboarding({ onComplete }: OnboardingProps) {
           {t("onboarding.backend.subtitle")}<br />
           {t("onboarding.backend.uncertain_hint")}
         </p>
-        <div className="ob-options" role="radiogroup" aria-label={t("onboarding.backend.title")}>
+        {/* v0.4.4 · 13 个后端会超出 700×760 窗口高度 —— 把列表框成可滚动区，
+            标题 + 副标题 + 底部「下一步」CTA 始终可见，推荐项（Claude）在滚动顶部默认露出。 */}
+        <div
+          className="ob-options"
+          role="radiogroup"
+          aria-label={t("onboarding.backend.title")}
+          style={{ maxHeight: "44vh", overflowY: "auto", paddingRight: 4 }}
+        >
           {BACKENDS_META.map(b => {
             const st = backendStatus[b.id];
             const isLoading = st === "loading";
