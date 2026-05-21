@@ -55,23 +55,27 @@
 }
 .bubble-scroll::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.4); }
 
+/* v0.4.x · 滚动区定位锚 —— fade / ▲▼ 按钮以滚动视口为参照（chip 行之下），
+   不再以整个气泡顶部为锚（那样有 chip 时会浮到 chip 行上 → ▲ 压住「新对话」、
+   fade 盖不住被裁的正文行 → 漏出游离句号）。 */
+.bubble-scrollwrap { position: relative; }
+
 /* v0.3.7 · scrollable bubble 的顶部 / 底部渐变 fade —— 当有内容被滚走时给视觉提示，
-   避免用户以为气泡内容截断了。fade 颜色用 currentColor 跟 variant 的渐变协调。 */
+   避免用户以为气泡内容截断了。fade 颜色用 currentColor 跟 variant 的渐变协调。
+   v0.4.x · 锚到 .bubble-scrollwrap（= 滚动视口）的真实顶/底，盖住被裁的正文。 */
 .bubble-fade-top, .bubble-fade-bottom {
   position: absolute;
-  left: 1px; right: 1px;
+  left: 0; right: 4px; /* right:4px 对齐 .bubble-scroll 的 padding-right，不盖住滚动条 */
   height: 18px;
   pointer-events: none;
   z-index: 2;
 }
 .bubble-fade-top {
-  top: 1px;
+  top: 0;
   background: linear-gradient(to bottom, var(--bubble-bg) 0%, transparent 100%);
-  border-top-left-radius: var(--radius-xl);
-  border-top-right-radius: var(--radius-xl);
 }
 .bubble-fade-bottom {
-  bottom: 1px;
+  bottom: 0;
   background: linear-gradient(to top, var(--bubble-bg) 0%, transparent 100%);
 }
 /* variant 的 fade 用 variant 的实际背景色（success/warn/danger） */
@@ -86,7 +90,8 @@
    位置在 bubble 右上角，圆形小 chip 避免遮挡正文。 */
 .bubble-scroll-top {
   position: absolute;
-  top: 6px; right: 8px;
+  /* v0.4.x · 锚到滚动视口右上（chip 行之下），不再压住 chip 里的「✨ 新对话」按钮 */
+  top: 2px; right: 10px;
   z-index: 3;
   width: 22px; height: 22px;
   padding: 0;
@@ -105,7 +110,8 @@
 /* v0.3.11 · 流式跟随最新按钮 —— 用户在流式期间向上滚后出现，提示"还可以回到底" */
 .bubble-scroll-bottom {
   position: absolute;
-  right: 10px; bottom: 10px;
+  /* v0.4.x · 锚到滚动视口右下（相对 .bubble-scrollwrap） */
+  right: 10px; bottom: 6px;
   z-index: 3;
   width: 24px; height: 24px;
   padding: 0;
@@ -201,10 +207,11 @@
 /* v0.3.11 · 统一 markdown 风格 ——
    不管 scrollable 与否都把首末 margin 砍到 0；列表 / 段落 / 标题间距更紧凑，
    流式 + scroll + 底部"继续追问"叠在一起时不再有空行落差。 */
-.bubble-md { line-height: 1.55; }
+/* v0.4.x · 间距对齐 Panel 的 .turn-md，列表 / 段落更透气（之前过紧，长回复贴成一坨） */
+.bubble-md { line-height: 1.6; }
 .bubble-md > :first-child { margin-top: 0 !important; }
 .bubble-md > :last-child { margin-bottom: 0 !important; }
-.bubble-md p { margin: 0.35em 0; }
+.bubble-md p { margin: 0.5em 0; }
 .bubble-md strong { font-weight: 700; color: var(--ink, #2b2622); }
 .bubble-md em { font-style: italic; }
 .bubble-md code {
@@ -219,9 +226,9 @@
   line-height: 1.4;
 }
 .bubble-md pre code { background: transparent; padding: 0; }
-.bubble-md ul, .bubble-md ol { margin: 0.35em 0; padding-left: 1.3em; }
-.bubble-md li { margin: 0.1em 0; }
-.bubble-md li > p { margin: 0.15em 0; } /* 嵌套段落不要再撑出空行 */
+.bubble-md ul, .bubble-md ol { margin: 0.5em 0; padding-left: 1.5em; }
+.bubble-md li { margin: 0.25em 0; }
+.bubble-md li > p { margin: 0.2em 0; } /* 嵌套段落不要再撑出空行 */
 .bubble-md a { color: var(--text-link, #5b8def); text-decoration: underline; }
 .bubble-md h1, .bubble-md h2, .bubble-md h3, .bubble-md h4 {
   margin: 0.55em 0 0.25em; font-weight: 700; line-height: 1.3;

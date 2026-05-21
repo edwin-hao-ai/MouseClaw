@@ -134,48 +134,53 @@ export function Bubble({
           )}
         </div>
       )}
-      {scrollable && showFadeTop && (
-        <div className="bubble-fade-top" aria-hidden />
-      )}
-      {scrollable && showFadeTop && (
-        <button
-          type="button"
-          className="bubble-scroll-top"
-          onClick={scrollToTop}
-          aria-label={t("bubble.scroll_to_top")}
-          title={t("bubble.scroll_to_top")}
-        >▲</button>
-      )}
-      <div ref={scrollRef} className={`bubble-body ${scrollable ? "bubble-scroll" : ""}`}>
-        {markdown && html != null ? (
-          <div className="bubble-text bubble-md" dangerouslySetInnerHTML={{ __html: html }} />
-        ) : (
-          <span className="bubble-text">{text}</span>
+      {/* v0.4.x · 滚动区包一层定位 wrapper —— fade / ▲▼ 按钮以「滚动视口真实顶部」为锚，
+          而不是整个气泡顶部。否则有 session chip 时它们会浮到 chip 行上（▲ 压住「新对话」、
+          fade 盖不住被裁的正文 → 漏出游离句号）。chip 在 wrapper 之外，互不干扰。 */}
+      <div className="bubble-scrollwrap">
+        {scrollable && showFadeTop && (
+          <div className="bubble-fade-top" aria-hidden />
         )}
-        {voiceBars && (
-          <span className="voicebars" aria-hidden>
-            <span /><span /><span /><span />
-          </span>
+        {scrollable && showFadeTop && (
+          <button
+            type="button"
+            className="bubble-scroll-top"
+            onClick={scrollToTop}
+            aria-label={t("bubble.scroll_to_top")}
+            title={t("bubble.scroll_to_top")}
+          >▲</button>
         )}
-        {loading && (
-          <span className="loading-dots" aria-label={t("bubble.thinking")} role="status">
-            <span /><span /><span />
-          </span>
+        <div ref={scrollRef} className={`bubble-body ${scrollable ? "bubble-scroll" : ""}`}>
+          {markdown && html != null ? (
+            <div className="bubble-text bubble-md" dangerouslySetInnerHTML={{ __html: html }} />
+          ) : (
+            <span className="bubble-text">{text}</span>
+          )}
+          {voiceBars && (
+            <span className="voicebars" aria-hidden>
+              <span /><span /><span /><span />
+            </span>
+          )}
+          {loading && (
+            <span className="loading-dots" aria-label={t("bubble.thinking")} role="status">
+              <span /><span /><span />
+            </span>
+          )}
+          {streaming && <span className="stream-cursor" aria-hidden>▮</span>}
+        </div>
+        {scrollable && showFadeBottom && (
+          <div className="bubble-fade-bottom" aria-hidden />
         )}
-        {streaming && <span className="stream-cursor" aria-hidden>▮</span>}
+        {scrollable && streaming && showFadeBottom && (
+          <button
+            type="button"
+            className="bubble-scroll-bottom"
+            onClick={scrollToBottom}
+            aria-label="跟随最新"
+            title="跟随最新"
+          >▼</button>
+        )}
       </div>
-      {scrollable && showFadeBottom && (
-        <div className="bubble-fade-bottom" aria-hidden />
-      )}
-      {scrollable && streaming && showFadeBottom && (
-        <button
-          type="button"
-          className="bubble-scroll-bottom"
-          onClick={scrollToBottom}
-          aria-label="跟随最新"
-          title="跟随最新"
-        >▼</button>
-      )}
       {loading && <span className="bubble-shimmer" aria-hidden />}
       {expandable && (
         <button
