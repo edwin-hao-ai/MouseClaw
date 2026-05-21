@@ -1,7 +1,7 @@
 //! Voice IME · fn 长按触发的语音输入法（v0.1.11）
 //!
 //! 用户的 daily-use 高频功能：按住 fn 说话 → 松开 → 文字直接写到光标。
-//! 不调 AI，纯 Whisper 转写（+ light_clean）→ mode_b paste。
+//! 不调 AI，纯 sherpa-onnx 流式转写（+ light_clean）→ mode_b paste。
 //!
 //! ## 为什么不能用 tauri-plugin-global-shortcut
 //! fn 是 macOS 特殊键（NSEventModifierFlagFunction = 1 << 23），不是普通的
@@ -381,7 +381,7 @@ fn handle_fn_events(rx: std::sync::mpsc::Receiver<ImeEvent>, app: AppHandle, sta
 }
 
 /// 检测前台 app 是否有 SecureKeyboardEntry（密码输入框/终端 sudo 等）
-/// 避免在密码框走 voice IME 把密码暴露给 Whisper / 屏幕。
+/// 避免在密码框走 voice IME 把密码暴露给 ASR / 屏幕。
 #[cfg(target_os = "macos")]
 fn is_secure_input_active() -> bool {
     extern "C" {
@@ -454,6 +454,9 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
         Err(e) => eprintln!("[mouseclaw] 🎙️ StreamSession::new for IME failed: {e:#}"),
     }
     state.streaming_active.store(true, Ordering::SeqCst);
+    // v0.4.2 · bug2 修复 —— 新会话开始即 bump_gen，让上一次 stop_and_paste 排的
+    // auto-hide timer 失效（否则它会在新会话进行中 hide 掉桌宠 → 跳）。
+    crate::overlay::bump_gen(&state);
     crate::overlay::show_mouse(&app);
     crate::overlay::emit_view(&app, &crate::events::ViewKind::VoiceImeListening { partial: String::new() });
 
@@ -692,8 +695,12 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
                         insert_text: None,
                         streaming: false,
                     });
-                    tokio::time::sleep(Duration::from_millis(1500)).await;
-                    crate::overlay::hide_overlay(&app2);
+                    // v0.4.2 · bug2 修复 —— 用受 gen 保护的 schedule_auto_hide 替代裸
+                    // sleep+hide。之前裸 sleep 1500ms 后无条件 hide：用户在这期间马上再
+                    // 按触发键召唤新会话，旧 timer 醒来仍 hide，把刚召唤出来的桌宠拽回
+                    // 角落 → 视觉"跳"。schedule_auto_hide 记录当前 gen，新会话 start 时
+                    // bump_gen 让这个旧 timer no-op（与 AI 召唤路径一致）。
+                    crate::overlay::schedule_auto_hide(&app2, &state2, 1500);
                 }
                 Err(e) => {
                     eprintln!("[mouseclaw] 🎙️ write_at_cursor: {e}");
