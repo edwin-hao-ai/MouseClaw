@@ -52,6 +52,7 @@ pub mod sessions;
 pub mod skins;
 pub mod tidy_up;
 pub mod update_check;
+pub mod shortcut_menu;
 pub mod voice_ime;
 pub mod voice_correct;
 pub mod vocab;
