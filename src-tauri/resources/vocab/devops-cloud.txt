@@ -1,0 +1,112 @@
+# MouseClaw · DevOps / 云原生 词包 v1（免费 · 社区种子）
+# Format: <word> :<score>  (one entry per line)
+# Higher score = stronger boost. 1.5-3.0 是合理区间。
+# 大小写必须写对 —— 词表同时驱动「ALLCAPS 还原」(KUBERNETES→Kubernetes)。
+# 已在 programmer.txt 的词（Docker/Kubernetes/AWS/GCP/nginx/Redis/TLS/OAuth 等）不重复。
+#
+# 云厂商 / 服务 Cloud providers & services
+Azure :2.0
+Cloudflare :2.5
+DigitalOcean :2.5
+Netlify :2.0
+Heroku :2.0
+Lambda :1.8
+EC2 :2.0
+S3 :1.8
+RDS :2.0
+DynamoDB :2.5
+CloudFront :2.5
+Route53 :2.5
+EKS :2.0
+ECS :2.0
+Fargate :2.5
+IAM :2.0
+VPC :2.0
+CloudWatch :2.5
+#
+# 容器 / 编排 Containers & orchestration
+kubectl :2.5
+Helm :2.0
+containerd :2.5
+Podman :2.0
+namespace :1.5
+deployment :1.5
+ReplicaSet :2.5
+StatefulSet :2.5
+DaemonSet :2.5
+Ingress :2.0
+ConfigMap :2.5
+Istio :2.5
+Envoy :2.0
+service mesh :2.0
+sidecar :2.0
+#
+# CI/CD
+Jenkins :2.0
+CircleCI :2.5
+GitLab CI :2.0
+GitHub Actions :2.0
+ArgoCD :2.5
+Flux :2.0
+Tekton :2.5
+pipeline :1.5
+runner :1.5
+artifact :1.5
+#
+# IaC（基础设施即代码）
+Terraform :2.5
+Ansible :2.5
+Pulumi :2.5
+CloudFormation :2.5
+Vagrant :2.0
+Packer :2.0
+#
+# 可观测性 Observability
+Prometheus :2.5
+Grafana :2.5
+Datadog :2.5
+Loki :2.0
+Jaeger :2.5
+OpenTelemetry :2.5
+Sentry :2.0
+Kibana :2.5
+Elasticsearch :2.5
+Logstash :2.5
+Fluentd :2.5
+Splunk :2.0
+#
+# 消息 / 数据 Messaging & data
+Kafka :2.0
+RabbitMQ :2.5
+NATS :2.0
+Pulsar :2.0
+Flink :2.0
+Spark :1.8
+Airflow :2.0
+dbt :2.0
+Snowflake :2.0
+BigQuery :2.5
+ClickHouse :2.5
+#
+# 网络 / 安全 Networking & security
+mTLS :2.5
+OIDC :2.5
+RBAC :2.5
+WAF :2.0
+CDN :1.8
+load balancer :1.8
+reverse proxy :2.0
+#
+# 实践 / 指标 Practices & metrics
+SRE :2.0
+DevOps :2.0
+GitOps :2.5
+canary :1.8
+blue-green :2.0
+rollout :1.8
+rollback :1.8
+SLA :2.0
+SLO :2.5
+SLI :2.5
+autoscaling :2.0
+HPA :2.5

@@ -1,0 +1,129 @@
+# MouseClaw · AI / ML 词包 v1（免费 · 社区种子）
+# Format: <word> :<score>  (one entry per line)
+# Higher score = stronger boost. 1.5-3.0 是合理区间。
+# 大小写必须写对 —— 词表同时驱动「ALLCAPS 还原」(PYTORCH→PyTorch)。
+# 已在 programmer.txt 的词（Claude/GPT/OpenAI/LLM/RAG/embedding/Whisper 等）不重复。
+#
+# 框架 / 库 Frameworks & libraries
+PyTorch :2.5
+TensorFlow :2.5
+JAX :2.0
+Keras :2.0
+scikit-learn :2.0
+sklearn :1.8
+NumPy :2.0
+pandas :1.8
+Matplotlib :1.8
+Transformers :2.0
+Diffusers :2.0
+vLLM :2.5
+TensorRT :2.5
+DeepSpeed :2.5
+Megatron :2.0
+FlashAttention :2.5
+ONNX :2.0
+ONNXRuntime :2.0
+CUDA :2.0
+cuDNN :2.0
+Triton :2.0
+#
+# 模型架构 Architectures
+Transformer :2.5
+attention :1.8
+self-attention :2.0
+BERT :2.0
+ResNet :2.0
+CNN :1.8
+RNN :1.8
+LSTM :2.0
+GRU :2.0
+GAN :2.0
+diffusion :2.0
+VAE :2.0
+encoder :1.5
+decoder :1.5
+MoE :2.5
+LoRA :2.5
+QLoRA :2.5
+#
+# 训练 Training
+backpropagation :2.0
+gradient :1.8
+epoch :1.8
+fine-tune :2.0
+fine-tuning :2.0
+pretrain :2.0
+pretraining :2.0
+checkpoint :1.8
+overfitting :2.0
+underfitting :2.0
+regularization :2.0
+dropout :2.0
+optimizer :1.8
+Adam :1.8
+AdamW :2.0
+SGD :2.0
+logits :2.0
+softmax :2.0
+sigmoid :2.0
+ReLU :2.0
+GELU :2.0
+tokenizer :2.0
+tokenization :2.0
+quantization :2.0
+distillation :2.0
+#
+# LLM / 生成式 GenAI
+prompt :1.8
+prompting :1.8
+few-shot :2.0
+zero-shot :2.0
+chain-of-thought :2.5
+CoT :2.0
+in-context :2.0
+hallucination :2.0
+alignment :1.8
+RLHF :2.5
+DPO :2.5
+context window :1.8
+temperature :1.5
+top-k :2.0
+top-p :2.0
+beam search :2.0
+perplexity :2.0
+agentic :2.5
+multimodal :2.5
+VLM :2.0
+inference :1.8
+#
+# 向量 / 检索 Vector & retrieval
+Pinecone :2.5
+Weaviate :2.5
+Qdrant :2.5
+Chroma :2.0
+FAISS :2.5
+Milvus :2.5
+cosine similarity :2.0
+reranking :2.0
+retrieval :1.8
+#
+# 模型名 Model names
+GPT-4 :2.0
+GPT-4o :2.5
+Qwen :2.5
+Gemma :2.0
+Phi :1.8
+Stable Diffusion :2.5
+Midjourney :2.5
+DALL-E :2.5
+Sora :2.0
+CLIP :2.0
+#
+# 数据集 / 评测 Datasets & eval
+ImageNet :2.0
+benchmark :1.5
+MMLU :2.5
+HumanEval :2.5
+F1 :1.5
+BLEU :2.0
+ROUGE :2.0
