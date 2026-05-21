@@ -55,6 +55,14 @@ interface PixelMouseProps {
   neglected?: boolean;
   /** v0.4+ · 撞墙回弹方向 —— 非 null 时给 .mouse-wrap 加 mc-bonk-{dir}，精灵朝那面墙挤压回弹。 */
   bonk?: "left" | "right" | "top" | "bottom" | null;
+  /**
+   * v0.5 · 开场调皮入场动画当前 phase —— 非 null 时给 .mouse-wrap 加
+   * `mc-entrance-{phase}`，精灵播跑腿/急刹/蹦跶/伸懒腰（见 PixelMouse.css）。
+   * 由 App.tsx 监听 Rust `entrance-phase` 事件驱动；窗口位置由 Rust 端逐帧 set_position
+   * 推（entrance.rs）。9 款皮肤一视同仁：动画作用在整只 .mouse-svg + .mc-ear/.mc-tail 子组，
+   * 颜色全来自 palette，不 hardcode。
+   */
+  entrance?: "peek" | "run" | "skid" | "beat" | "stretch" | null;
 }
 
 // ── Body parts (按 body variant 决定形状) ───────────────────────────
@@ -480,6 +488,7 @@ function Extras({ state, skin }: { state: MouseState; skin: Skin }) {
 export function PixelMouse({
   state, size = 96, skin = "classic", continuing = false, twitching = false,
   companionState, eyeOffset, intimacyLevel = 0, neglected = false, bonk = null,
+  entrance = null,
 }: PixelMouseProps) {
   const s = getSkin(skin);
   // companion 在"非任务态"挂（idle 状态下 mouseStateFor 返回 "sleep"；onboarding/listening
@@ -516,7 +525,7 @@ export function PixelMouse({
     eyesTransformAttr = (t + s).trim() || undefined;
   }
   return (
-    <div className={`mouse-wrap mouse-${state} mouse-skin-${s.id}${twitching ? " mouse-twitch" : ""}${companionClass}${intimacyClass}${bonk ? ` mc-bonk-${bonk}` : ""}`} style={{ width: size, height: size }}>
+    <div className={`mouse-wrap mouse-${state} mouse-skin-${s.id}${twitching ? " mouse-twitch" : ""}${companionClass}${intimacyClass}${bonk ? ` mc-bonk-${bonk}` : ""}${entrance ? ` mc-entrance-${entrance}` : ""}`} style={{ width: size, height: size }}>
       {continuing && <div className="mouse-chain" aria-hidden />}
       <svg
         viewBox="-1 -3 18 18"

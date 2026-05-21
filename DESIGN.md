@@ -252,6 +252,24 @@ If `backdrop-filter` isn't supported (rare on Tauri webview but possible), fall 
 | Jump | 0.9s | 3 keyframes | one-shot (3× max) | trigger on success |
 | Countdown bar fill | 3000ms exact | continuous | linear | once per B-mode |
 
+#### Launch entrance (v0.5 · `mc-entrance-*`)
+
+开场调皮入场动画的桌宠精灵动作。窗口横穿位置由 Rust `entrance.rs` 逐帧推（不在此表）；
+此表只列**精灵自身**的 CSS 动画。三档（loud / medium / subtle）共用这些 phase class。
+所有动作只作用在整只 `.mouse-svg` + `.mc-ear` / `.mc-tail` 子组 → 9 款皮肤一视同仁，零 palette 硬编码。
+原型：`docs/prototypes/launch-entrance-20260521.html`。
+
+| Phase | Duration | Curve | 动作 |
+|---|---|---|---|
+| `peek` | 600ms loop | `ease-default` | 探头左右张望（±7° 摇头）+ 抖耳 |
+| `run` | 240ms loop · `steps(2)` | linear steps | 跑腿弹跳（translateY + ±3° 旋转，像素跳帧感） |
+| `skid` | 280ms one-shot | `ease-tap` | 急刹横向挤压回弹（squash/stretch） |
+| `beat` | 760ms one-shot | `ease-spring` | 蹦跶张望（hop + 歪头）+ 甩尾 + 抖耳 |
+| `stretch` | 620ms one-shot | `ease-spring` | 角落伸懒腰（subtle 档专用，纵向拉伸回弹） |
+
+表情拍跨物种：鼠/猫/狐 `.mc-ear` 旋转抖动；蛙 `.mc-ear-frog` 改眼鼓气（scale 1.28）；
+cyber `.mc-ear`（天线）同样摆；尾巴 `.mc-tail` 甩（狐尾本就大，摆幅天然更明显）。
+
 #### UI Motion
 
 | Element | Duration | Curve |
@@ -268,6 +286,7 @@ When set:
 - Mouse states: still animate (the character IS the product) — but slow to ~50% speed and reduce amplitude
 - UI hover lifts: disable entirely
 - Streaming cursor: replace blinking with static block
+- Launch entrance (`mc-entrance-*`): fully skipped — Rust 端读 `reduced_motion` 不横穿，桌宠直接出现在 anchor；CSS 也把 phase class 动画降级为 `none`
 
 ---
 

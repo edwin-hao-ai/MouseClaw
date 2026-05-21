@@ -53,7 +53,8 @@ pub fn build_tray_submenu(app: &AppHandle, en: bool)
 
 /// 4 corner 距屏幕边缘的内缩 padding（pt，逻辑像素）。
 /// 大概等于 DESIGN.md 第 5 节 spacing scale 的 --space-6 ≈ 24pt。
-const ANCHOR_PADDING: f64 = 24.0;
+/// pub —— entrance.rs 复用 corner_position 计算入场落点（桌宠归位的角落）。
+pub const ANCHOR_PADDING: f64 = 24.0;
 
 /// 把 overlay 窗口送回当前 anchor 指定的位置。
 /// `Follow` → no-op（位置由 cursor_follow 接管），返回 false。

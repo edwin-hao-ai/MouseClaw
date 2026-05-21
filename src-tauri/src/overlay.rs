@@ -53,6 +53,10 @@ pub fn show_mouse(app: &AppHandle) {
     // set_position 尚未提交）拿到旧 anchor 坐标 → 把桌宠拽回角落（用户报：第一次按 fn
     // 桌宠不移到光标，第二次才移）。提前同步置 expanded，让 expand_to_full 真 no-op。
     crate::overlay_size::mark_expanded();
+    // v0.5 · 用户主动召唤 = 打断进行中的开场入场动画（硬规则：任意阶段可打断）。
+    if let Some(state) = app.try_state::<Arc<AppState>>() {
+        crate::entrance::abort(state.inner());
+    }
     let app2 = app.clone();
     let _ = app.run_on_main_thread(move || {
         let Some(window) = app2.get_webview_window("mouse") else { return };
@@ -84,6 +88,10 @@ pub fn show_mouse(app: &AppHandle) {
 ///   - **不**启用 cursor_follow（nudge 不该跟着鼠标走）
 ///   - 把 overlay 放到用户的 anchor 位置（4 角之一 / Hidden 时也放 BR 兜底）
 pub fn show_mouse_at_anchor(app: &AppHandle) {
+    // v0.5 · nudge 弹气泡也算"有事发生" → 打断进行中的入场动画。
+    if let Some(state) = app.try_state::<Arc<AppState>>() {
+        crate::entrance::abort(state.inner());
+    }
     let anchor = crate::config::Config::load().pet_anchor;
     // Hidden / Follow 也强行放右下兜底 —— 让 nudge bubble 有可见位置可挂
     let effective = if anchor.pin_visible_when_idle() {

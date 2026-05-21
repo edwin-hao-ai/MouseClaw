@@ -171,6 +171,15 @@ pub struct Config {
     /// launching the app re-opens the Onboarding window instead.
     #[serde(default)]
     pub onboarded: bool,
+    /// v0.5 · 开场调皮入场动画（launch entrance）是否已经"炸"过一次。
+    /// false → 下次启动播 **loud** 入场（探头→横冲→张望→跑去角落），播完置 true，
+    ///   **一生一次**（首次安装那次）。
+    /// true → 之后每日 `--minimized` 自启播 **subtle**（角落伸懒腰），手动冷启播
+    ///   **medium**（窜到角落+开心蹦）。详见 `entrance.rs`。
+    /// 老 config 缺这个字段 → serde default false → 老用户升级后会看到一次 loud 入场
+    ///   （等价"第一次见到新版桌宠"，符合预期）。
+    #[serde(default)]
+    pub seen_entrance: bool,
     /// Schema version. Saved configs older than CURRENT_CONFIG_VERSION get
     /// treated as not-onboarded so the user re-picks a shortcut.
     /// Pre-versioned configs default to 1 (the legacy schema).
@@ -209,6 +218,7 @@ impl Default for Config {
             pet_custom_position: None,
             tts_enabled: false,
             onboarded: false,
+            seen_entrance: false,
             version: CURRENT_CONFIG_VERSION,
         }
     }

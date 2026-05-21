@@ -125,6 +125,7 @@ pub fn save_shortcut(
         pet_custom_position: prev.pet_custom_position,
         tts_enabled: prev.tts_enabled,
         onboarded: true,
+        seen_entrance: prev.seen_entrance,
         version: config::CURRENT_CONFIG_VERSION,
     };
     cfg.save().map_err(|e| format!("保存配置失败：{e}"))?;
@@ -218,6 +219,15 @@ pub fn set_overlay_has_ui(has_ui: bool, _app: AppHandle, state: State<'_, Arc<Ap
     // 见 CLAUDE.md「前后端不要同时管同一个窗口尺寸」。
     state.overlay_has_ui.store(has_ui, std::sync::atomic::Ordering::Relaxed);
     Ok(())
+}
+
+/// v0.5 · 前端启动上报 prefers-reduced-motion 偏好 —— 开场入场动画据此决定是否
+/// 跳过横穿/蹦跶（reduced 时桌宠直接出现在角落）。前端在 App.tsx mount 时调，
+/// 并监听 media query change 变化再次上报。
+#[tauri::command]
+pub fn report_reduced_motion(reduced: bool, state: State<'_, Arc<AppState>>) {
+    state.reduced_motion.store(reduced, std::sync::atomic::Ordering::Relaxed);
+    println!("[mouseclaw] reduced-motion reported = {reduced}");
 }
 
 /// v0.4 · 内容驱动 overlay 尺寸 —— React 端 ResizeObserver 实测可见 UI 实际像素，传过来。

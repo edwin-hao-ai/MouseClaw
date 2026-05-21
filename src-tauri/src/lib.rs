@@ -32,6 +32,7 @@ pub mod cursor_follow;
 pub mod cursor_trail;
 pub mod drag_detector;
 pub mod companion;
+pub mod entrance;
 pub mod pet_passthrough;
 pub mod overlay_size;
 pub mod commands;
@@ -147,6 +148,13 @@ pub struct AppState {
     /// 「钉住 / 解除钉住」标签，避免去 lock tokio::Mutex 的 SessionStore。
     /// 真值在 SessionStore.pinned；toggle_pin_session 同步更新这个镜像。
     pub session_pinned: AtomicBool,
+    /// v0.5 · 开场入场动画的取消令牌（generation）。entrance::play 认领时 bump 并
+    /// 每帧自检；用户按召唤快捷键 / 拖文件 → entrance::abort bump 它 → 进行中的入场
+    /// 下一帧自检失败立刻停 + 归位让位。见 `entrance.rs`。
+    pub entrance_gen: AtomicU64,
+    /// v0.5 · 前端启动上报的 prefers-reduced-motion 偏好。入场动画据此决定是否
+    /// 跳过横穿/蹦跶（直接让桌宠出现在 anchor）。默认 false（全动画）。
+    pub reduced_motion: AtomicBool,
 }
 
 /// v0.4.0 · 语音确认动作枚举
@@ -179,6 +187,8 @@ impl AppState {
             voice_confirm_action: std::sync::atomic::AtomicU8::new(VC_PENDING),
             voice_confirm_text: Mutex::new(None),
             session_pinned: AtomicBool::new(false),
+            entrance_gen: AtomicU64::new(0),
+            reduced_motion: AtomicBool::new(false),
         })
     }
 }
@@ -372,6 +382,7 @@ pub fn run() {
             commands::open_accessibility_settings,
             commands::set_overlay_has_ui,
             commands::set_overlay_content_size,
+            commands::report_reduced_motion,
             commands::get_pet_menu_orientation,
             commands::save_pet_custom_position,
             commands::set_nap_until,
@@ -511,9 +522,17 @@ pub fn run() {
                 Err(e) => eprintln!("[mouseclaw] vocab regen failed: {e}"),
             }
 
+            // v0.1.26 · --minimized 由 autostart plugin 在登录启动时传入。
+            // 提到这里统一算一次：决定 idle 落点 / 入场档位 / Onboarding 是否弹都要它。
+            let minimized = std::env::args().any(|a| a == "--minimized");
+            // v0.5 · 本次启动是否要播开场入场动画 —— 要播的话**不**先把桌宠摆到角落
+            //   （那样会"角落闪一下 → 又被拽去屏外 → 再冲进来"），让 entrance 自己摆窗口，
+            //   窗口在入场起跑前保持隐藏（tauri.conf visible:false）。
+            let will_play_entrance = entrance::decide_tier(&cfg, minimized).is_some();
+
             // v0.1.27 · 已 onboarded 的用户：启动时把桌宠送到 anchor 位置打盹。
-            // Follow 模式跳过 —— 由 cursor_follow 接管。
-            if cfg.onboarded && cfg.pet_anchor.pin_visible_when_idle() {
+            // Follow 模式跳过 —— 由 cursor_follow 接管。入场要播的话也跳过（entrance 接管）。
+            if cfg.onboarded && cfg.pet_anchor.pin_visible_when_idle() && !will_play_entrance {
                 anchor::apply_idle_anchor(&app.handle(), cfg.pet_anchor);
                 println!(
                     "[mouseclaw] 🦞 pet pinned to {} (idle anchor)",
@@ -565,11 +584,14 @@ pub fn run() {
                         Err(e) => eprintln!("[mouseclaw] ⌘⇧V 注册失败（可能被其它 app 占）：{e}"),
                     }
                 }
+                // v0.5 · 开场调皮入场动画 —— 按场景分档（首次炸 / 冷启中 / 自启轻）。
+                //   内部判定档位 + 延迟 ~700ms 起跑（等前端挂载 + 上报 reduced-motion）。
+                //   anchor=Follow/Hidden 或没 onboarded → 自动不播。见 entrance.rs。
+                entrance::maybe_play_on_launch(app.handle().clone(), &cfg, minimized);
             } else {
                 // v0.1.26 · --minimized 由 autostart plugin 在登录启动时传入。
                 // 这种情况下用户没有主动启动，应保持完全静默：不弹 Onboarding，
                 // 不显示任何窗口，只在菜单栏挂着等快捷键召唤。
-                let minimized = std::env::args().any(|a| a == "--minimized");
                 if minimized {
                     println!("[mouseclaw] launched via autostart (--minimized) · staying silent");
                 } else {

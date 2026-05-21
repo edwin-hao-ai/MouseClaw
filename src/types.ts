@@ -56,6 +56,17 @@ export const EV_STREAM_CHUNK = "stream-chunk";
 export const EV_COUNTDOWN    = "countdown-tick";
 export const EV_NUDGE        = "nudge";
 export const EV_SESSION_STATE = "session-state";
+/** v0.5 · 开场调皮入场动画 phase 事件 —— 必须与 Rust `entrance::EV_ENTRANCE` 一致。 */
+export const EV_ENTRANCE = "entrance-phase";
+
+/** 入场动画当前 phase（驱动桌宠精灵的 .mc-entrance-* CSS class）。
+ *  "done" 不出现在前端 state 里 —— 收到时清空（回 idle）。 */
+export type EntrancePhase = "peek" | "run" | "skid" | "beat" | "stretch";
+
+export interface EntrancePayload {
+  phase: EntrancePhase | "done";
+  tier: "loud" | "medium" | "subtle";
+}
 
 /** Session 状态（v0.4.x）—— 驱动链条图标 / 第 N 轮 / 钉住 / 软提示。 */
 export interface SessionState {

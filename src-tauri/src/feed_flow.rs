@@ -301,6 +301,8 @@ pub fn on_drag_enter(app: &AppHandle, state: &Arc<AppState>) {
     if state.feed_drag_active.swap(true, Ordering::SeqCst) {
         return;
     }
+    // v0.5 · 拖文件来了 = 打断进行中的开场入场动画，让 feed 流接管窗口位置。
+    crate::entrance::abort(state);
     // 关键：抢在 cursor_follow 之前把它关掉，让动画独占 set_position
     crate::cursor_follow::disable(state);
     // 仅显示窗口（不动位置，让动画从当前位置 lerp 到光标）

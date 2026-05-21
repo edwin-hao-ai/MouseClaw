@@ -18,8 +18,9 @@ import { NudgeBubble } from "./components/NudgeBubble";
 import { RecordingBubble } from "./components/RecordingBubble";
 import { TourBubble } from "./components/TourBubble";
 import {
-  EV_VIEW_CHANGED, EV_SKIN_CHANGED, EV_NUDGE, EV_SESSION_STATE,
+  EV_VIEW_CHANGED, EV_SKIN_CHANGED, EV_NUDGE, EV_SESSION_STATE, EV_ENTRANCE,
   type ViewKind, type SkinId, type NudgePayload, type SessionState,
+  type EntrancePhase, type EntrancePayload,
 } from "./types";
 import { DEFAULT_SKIN } from "./skins";
 import { useT, getCurrentLang } from "./i18n";
@@ -82,6 +83,14 @@ export default function App() {
   // - reactive：T2 payload —— ribbon 在桌宠头顶弹一组按钮，5s 自动消失（或点了 action）
   const [twitching, setTwitching] = useState(false);
   const [reactive, setReactive] = useState<ReactivePayload | null>(null);
+  // v0.5 · 开场调皮入场动画当前 phase（null = 没在入场）。Rust entrance.rs 推 phase + 动窗口位置；
+  // 这里只控制桌宠精灵的 mc-entrance-* class。"done" 收到时清空回 idle。
+  const [entrancePhase, setEntrancePhase] = useState<EntrancePhase | null>(null);
+  // 横穿期间（peek/run/skid/beat）窗口被 Rust 扩到 320 + 推位置 → 桌宠用 96px + listen 表情，
+  // 且必须关掉 useAdaptiveOverlay（否则自适应把横穿窗口缩掉，跟 set_position 抢尺寸）。
+  // "stretch"（subtle 档）在 compact 角落原地播，保持 idle 64px。
+  const bigEntrance = entrancePhase === "peek" || entrancePhase === "run"
+                   || entrancePhase === "skid" || entrancePhase === "beat";
   // v0.4+ · 陪伴向动画 —— hook 订阅 Rust companion-tick + 算桌宠当前帧
   const petStageRef = useRef<HTMLDivElement>(null);
   const stageRootRef = useRef<HTMLDivElement>(null);
@@ -101,7 +110,9 @@ export default function App() {
   // cursor_follow 抢同一个窗口 → 桌宠在光标和原锚点之间来回弹（用户报"乱飘"）。
   // 其余视图（idle / tour / voice-confirm / reply / voice-ime-listening 等）窗口不
   // 跟随，自适应是唯一尺寸权威。
-  useAdaptiveOverlay(stageRootRef, { enabled: view.kind !== "listening" });
+  // v0.5 · 入场横穿期间也禁用 —— 窗口尺寸/位置由 Rust entrance.rs 全权管，
+  //   自适应若同时按内容反算会把横穿窗口缩掉、跟 set_position 抢尺寸。
+  useAdaptiveOverlay(stageRootRef, { enabled: view.kind !== "listening" && !entrancePhase });
 
   // v0.3.12 · 在 idle 状态下显示 React-only UI（下载提示气泡 / petMenu / nudge / ack
   //   / v0.4 reactive ribbon）时主动通知 Rust 把窗口 hit-box 扩到全窗口；
@@ -335,6 +346,32 @@ export default function App() {
       console.warn("Tauri event listen unavailable (browser-only mode):", e);
     }
     return () => { if (unlisten) unlisten(); };
+  }, []);
+
+  // v0.5 · 开场调皮入场动画 phase 监听 —— Rust entrance.rs 在横穿/张望/伸懒腰各拍 emit。
+  // "done" → 清空回 idle。窗口位置 Rust 推，这里只切桌宠精灵动画。
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    try {
+      const p = listen<EntrancePayload>(EV_ENTRANCE, (e) => {
+        const ph = e.payload.phase;
+        setEntrancePhase(ph === "done" ? null : ph);
+      });
+      p.then((fn) => { unlisten = fn; }).catch(() => {});
+    } catch { /* browser-only mode */ }
+    return () => { if (unlisten) unlisten(); };
+  }, []);
+
+  // v0.5 · 上报 prefers-reduced-motion 给 Rust —— 入场动画据此决定是否跳过横穿/蹦跶。
+  // mount 时报一次 + 监听变化再报。
+  useEffect(() => {
+    try {
+      const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+      const report = () => invoke("report_reduced_motion", { reduced: mq.matches }).catch(() => {});
+      report();
+      mq.addEventListener?.("change", report);
+      return () => mq.removeEventListener?.("change", report);
+    } catch { /* browser-only mode */ }
   }, []);
 
   // v0.1.27 P3 · nudge event listener
@@ -653,7 +690,7 @@ export default function App() {
 
   return (
     <div ref={stageRootRef} className="stage stage-mouse-bubble">
-      <BubbleFor view={view} continuing={continuing} onExpand={handleExpand} onNewSession={handleNewSession} modelProgress={modelProgress} editRequested={editRequested} onRequestEdit={() => setEditRequested(true)} />
+      <BubbleFor view={view} continuing={continuing} onExpand={handleExpand} onNewSession={handleNewSession} modelProgress={entrancePhase ? null : modelProgress} editRequested={editRequested} onRequestEdit={() => setEditRequested(true)} />
       {/* Local ack bubble — visible above the pet without going through Rust */}
       {transientAck && (
         <div className="stage-bubble">
@@ -661,7 +698,7 @@ export default function App() {
         </div>
       )}
       {/* v0.4.x · session 状态 chip —— idle 静默时浮在桌宠头顶，让"连续/钉住/软提示"可见 */}
-      {view.kind === "idle" && !transientAck && !petMenuOpen && !nudge && sessionState.continuing && (
+      {view.kind === "idle" && !entrancePhase && !transientAck && !petMenuOpen && !nudge && sessionState.continuing && (
         <div className="stage-bubble">
           <SessionChip s={sessionState} />
         </div>
@@ -677,15 +714,16 @@ export default function App() {
         style={{ cursor: "grab" }}
       >
         <PixelMouse
-          state={mouseStateFor(view)} skin={skin}
-          size={view.kind === "idle" ? 64 : 96}
+          state={bigEntrance ? "listen" : mouseStateFor(view)} skin={skin}
+          size={bigEntrance ? 96 : (view.kind === "idle" ? 64 : 96)}
           continuing={continuing}
           twitching={twitching}
-          companionState={companion.state}
+          companionState={entrancePhase ? undefined : companion.state}
           eyeOffset={{ x: companion.eyeOffsetX, y: companion.eyeOffsetY }}
           intimacyLevel={intimacy.level}
           neglected={intimacy.neglected}
           bonk={bonkDir}
+          entrance={entrancePhase}
         />
         {hearts.map((id) => (
           <span key={id} className="pet-heart" aria-hidden>❤️</span>
@@ -710,7 +748,7 @@ export default function App() {
         )}
         {/* v0.4 · Reactive ribbon —— idle 视图下浮在桌宠头顶。其他视图（listening / thinking
             / panel 等）有自己的气泡，让位 */}
-        {view.kind === "idle" && !petMenuOpen && !nudge && (
+        {view.kind === "idle" && !entrancePhase && !petMenuOpen && !nudge && (
           <ReactiveOverlay
             payload={reactive}
             lang={getCurrentLang() as "zh" | "en"}
