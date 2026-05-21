@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MouseClaw · 开场调皮入场动画（launch entrance）· 2026-05-21</title>
+<style>
+/* ──────────────────────────────────────────────────────────────────
+   Design tokens — 全部来自 DESIGN.md §2.7 + §9 cheatsheet
+   皮肤颜色不在这里 hardcode：每只老鼠由 skins.ts 的 8 色 palette 驱动
+   （renderMouse 把 palette 注入 SVG fill），换皮肤自动适配。
+   ────────────────────────────────────────────────────────────────── */
+:root {
+  --surface-deep: #0a0e1a;
+  --surface-mid:  #131826;
+  --text-on-dark: #f5f5f7;
+  --text-dim:     #a1a1a8;
+  --accent-primary: #ff6b9d;
+  --accent-soft:    #ff9bb8;
+  --accent-glow:    rgba(255,107,157,0.15);
+  --success: #5cd6a0;
+  --warn:    #ffd166;
+  --danger:  #ff5f57;
+  --radius-md: 8px;
+  --radius-xl: 12px;
+  --radius-3xl: 16px;
+  --radius-pill: 999px;
+  /* Motion tokens — DESIGN.md §2.7 */
+  --ease-default: ease-in-out;
+  --ease-spring:  cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-tap:     cubic-bezier(0.2, 0, 0, 1);
+  --shadow-bubble: 0 12px 32px rgba(0,0,0,0.35), 0 2px 6px rgba(0,0,0,0.2),
+                   inset 0 1px 0 rgba(255,255,255,0.7);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: radial-gradient(1200px 800px at 30% 20%, #1a2034 0%, var(--surface-deep) 60%);
+  color: var(--text-on-dark);
+  font: 14px/1.6 -apple-system, "PingFang SC", system-ui, sans-serif;
+  padding: 36px 22px 90px;
+  min-height: 100vh;
+}
+.wrap { max-width: 1180px; margin: 0 auto; }
+h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.01em; }
+h2 { font-size: 17px; margin: 38px 0 14px; padding-bottom: 6px; border-bottom: 1px solid #23283a; }
+.sub { color: var(--text-dim); margin: 0 0 24px; }
+.lead { color: var(--text-dim); max-width: 820px; }
+.lead strong { color: var(--text-on-dark); }
+
+svg.mouse { image-rendering: pixelated; shape-rendering: crispEdges; display: block; }
+
+/* ── mock desktop stage ─────────────────────────────────────────── */
+.stage {
+  position: relative; height: 360px; overflow: hidden;
+  border-radius: var(--radius-3xl); border: 1px solid #23283a;
+  background:
+    radial-gradient(ellipse at 28% 18%, #5b8def22, transparent 52%),
+    radial-gradient(ellipse at 82% 84%, #e8638c22, transparent 52%),
+    linear-gradient(135deg, #f3eee6, #e7ddcd);
+}
+.stage .menu-bar {
+  height: 24px; background: rgba(255,255,255,.62); backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(0,0,0,.06); display: flex; align-items: center;
+  padding: 0 14px; gap: 14px; font-size: 12px; color: #555; position: relative; z-index: 5;
+}
+.menu-bar .item { font-weight: 600; } .menu-bar .right { margin-left: auto; display: flex; gap: 10px; font-size: 11px; color: #777; }
+/* mock IDE window underneath — proves the pet overlays a real app */
+.ide {
+  position: absolute; top: 48px; left: 40px; width: 460px;
+  background: #1e1e28; border-radius: 10px; padding: 26px 16px 16px;
+  box-shadow: 0 16px 40px rgba(0,0,0,.32); font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+}
+.ide::before { content:""; position:absolute; top:10px; left:12px; width:10px; height:10px; border-radius:50%;
+  background: var(--danger); box-shadow: 16px 0 0 var(--warn), 32px 0 0 var(--success); }
+.ide .l { color:#6a6a78; white-space: pre; }
+.ide .l .k { color:#ff9bb8; } .ide .l .s { color:#7ec699; } .ide .l .f { color:#7aa2f7; }
+.ide .caret { background: var(--accent-glow); }
+
+/* the pet host — moves across the stage (= the overlay window scampering) */
+.pet-host {
+  position: absolute; width: 72px; height: 72px; left: -80px; top: 0;
+  display: flex; align-items: flex-end; justify-content: center;
+  z-index: 20; will-change: left, top, opacity;
+}
+.pet-host.idle      .mouse { animation: mc-breathe 3.2s var(--ease-default) infinite; transform-origin: bottom center; }
+.pet-host.running   .mouse { animation: mc-run 240ms steps(2) infinite;             transform-origin: bottom center; }
+.pet-host.skidding  .mouse { animation: mc-skid 280ms var(--ease-tap);              transform-origin: bottom center; }
+.pet-host.beat      .mouse { animation: mc-beat 760ms var(--ease-spring);           transform-origin: bottom center; }
+.pet-host.peeking   .mouse { animation: mc-peek 600ms var(--ease-default) infinite; transform-origin: bottom center; }
+.pet-host.stretching .mouse{ animation: mc-stretch 620ms var(--ease-spring);        transform-origin: bottom center; }
+
+/* ear/tail expressive beat — adapts per skin: rodent/cat/fox ears flick,
+   frog eye-bulges puff, robot antennas sway. tail wags (fox tail = bigger). */
+.pet-host.beat .mc-ear:not(.mc-ear-frog),
+.pet-host.peeking .mc-ear:not(.mc-ear-frog) { animation: mc-ear-flick 600ms var(--ease-default); }
+.pet-host.beat .mc-ear-frog,
+.pet-host.peeking .mc-ear-frog              { animation: mc-frog-puff 600ms var(--ease-default); }
+.pet-host.beat .mc-tail     { animation: mc-tail-wag 520ms var(--ease-spring) 2; }
+.pet-host.beat .mc-tail-fox { animation: mc-tail-wag-big 520ms var(--ease-spring) 2; }
+
+@keyframes mc-breathe { 0%,100%{transform:scaleY(1)} 50%{transform:scaleY(.98)} }
+@keyframes mc-run     { 0%{transform:translateY(0) rotate(-3deg)} 50%{transform:translateY(-3px) rotate(0)} 100%{transform:translateY(0) rotate(3deg)} }
+@keyframes mc-skid    { 0%{transform:scaleX(1.18) scaleY(.86)} 55%{transform:scaleX(.9) scaleY(1.08)} 100%{transform:scale(1)} }
+@keyframes mc-peek    { 0%,100%{transform:rotate(-7deg)} 50%{transform:rotate(7deg)} }
+@keyframes mc-stretch { 0%{transform:scaleY(.66) scaleX(1.12)} 45%{transform:scaleY(1.14) scaleX(.94)} 100%{transform:scale(1)} }
+/* the "ta-da, here I am" beat: hop + a cheeky head tilt */
+@keyframes mc-beat {
+  0%   { transform: translateY(0) rotate(0); }
+  22%  { transform: translateY(-15px) rotate(-6deg) scaleY(1.04); }
+  48%  { transform: translateY(0) rotate(5deg) scaleY(.94); }
+  70%  { transform: translateY(-5px) rotate(-3deg); }
+  100% { transform: translateY(0) rotate(0); }
+}
+@keyframes mc-ear-flick   { 0%,100%{transform:rotate(0)} 30%{transform:rotate(-16deg)} 62%{transform:rotate(11deg)} }
+@keyframes mc-frog-puff   { 0%,100%{transform:scale(1)} 50%{transform:scale(1.28)} }
+@keyframes mc-tail-wag    { 0%,100%{transform:rotate(0)} 50%{transform:rotate(-20deg)} }
+@keyframes mc-tail-wag-big{ 0%,100%{transform:rotate(0)} 50%{transform:rotate(-34deg)} }
+
+/* dust puff kicked up while running */
+.dust { position:absolute; width:6px; height:6px; border-radius:50%; background:#fff8; pointer-events:none; z-index:19;
+        animation: mc-dust 460ms var(--ease-default) forwards; }
+@keyframes mc-dust { 0%{opacity:.7; transform:scale(.4)} 100%{opacity:0; transform:scale(1.5) translateY(4px)} }
+
+/* tiny "here!" bubble at the beat (loud tier only) */
+.hi-bubble {
+  position:absolute; z-index:21; pointer-events:none;
+  background: rgba(255,255,255,.97); color:#1a1a1a; font-weight:700; font-size:12px;
+  padding:4px 9px; border-radius:12px; box-shadow: var(--shadow-bubble);
+  opacity:0; transform: translateY(4px) scale(.9); transition: opacity 180ms, transform 180ms;
+}
+.hi-bubble.on { opacity:1; transform: translateY(0) scale(1); }
+
+/* ── controls ───────────────────────────────────────────────────── */
+.controls { display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:14px 16px; margin-top:12px;
+  background: var(--surface-mid); border:1px solid #23283a; border-radius: var(--radius-xl); }
+.controls button { font:inherit; font-size:13px; padding:7px 14px; border-radius:8px; border:none; cursor:pointer; font-weight:600; }
+.btn-primary { background: var(--accent-primary); color:#fff; } .btn-primary:hover { background:#ff5790; }
+.btn-ghost { background:#222a3d; color: var(--text-on-dark); } .btn-ghost:hover { background:#2c3650; }
+.btn-danger { background:#3a2230; color:#ffb3c8; } .btn-danger:hover { background:#4a2a3c; }
+.seg { display:flex; gap:2px; background:#0e1320; border:1px solid #23283a; border-radius:9px; padding:3px; }
+.seg button { background:transparent; color: var(--text-dim); padding:6px 12px; border-radius:6px; }
+.seg button.active { background: var(--accent-primary); color:#fff; }
+.controls .spacer { margin-left:auto; }
+.controls label { font-size:12px; color: var(--text-dim); display:flex; gap:6px; align-items:center; }
+.controls select { font:inherit; font-size:12px; padding:4px 7px; border-radius:6px; border:1px solid #2c3650; background:#0e1320; color:var(--text-on-dark); }
+.hint { font-size:12px; color: var(--text-dim); margin:8px 2px 0; }
+
+/* ── 9-skin grid ────────────────────────────────────────────────── */
+.grid { display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; }
+.cell { background: var(--surface-mid); border:1px solid #23283a; border-radius: var(--radius-xl); padding:10px; }
+.cell .mini-stage {
+  position:relative; height:128px; overflow:hidden; border-radius: var(--radius-md);
+  background: linear-gradient(180deg,#f3eee6,#e3d8c6);
+}
+.cell .mini-stage::before { content:""; position:absolute; inset:0; opacity:.6; background:
+  linear-gradient(transparent 22px,#d4c8b3 22px,#d4c8b3 23px,transparent 23px),
+  linear-gradient(transparent 44px,#c9bba2 44px,#c9bba2 45px,transparent 45px),
+  linear-gradient(transparent 80px,#d4c8b3 80px,#d4c8b3 81px,transparent 81px); }
+.cell .name { font-size:12.5px; font-weight:600; margin-top:8px; }
+.cell .name .tag { font-size:10px; color: var(--accent-soft); background: var(--accent-glow);
+  padding:1px 7px; border-radius: var(--radius-pill); margin-left:6px; vertical-align:middle; }
+.cell .mini-stage .pet-host { width:44px; height:44px; }
+
+/* ── tables / notes ─────────────────────────────────────────────── */
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th,td { padding:8px 10px; text-align:left; border-bottom:1px solid #23283a; vertical-align:top; }
+th { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--text-dim); font-weight:700; }
+td code, .notes code { background:#0e1320; color: var(--accent-soft); padding:1px 6px; border-radius:5px; font-size:12px; }
+.card { background: var(--surface-mid); border:1px solid #23283a; border-radius: var(--radius-xl); padding:16px 18px; }
+.notes { font-size:13px; color: var(--text-dim); line-height:1.8; }
+.notes b, .notes strong { color: var(--text-on-dark); }
+.notes ul { margin:6px 0; padding-left:20px; }
+.beat-strip { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
+.beat-chip { background:#0e1320; border:1px solid #23283a; border-radius:8px; padding:8px 10px; font-size:12px; flex:1 1 150px; }
+.beat-chip .t { color: var(--accent-soft); font-weight:700; font-size:11px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pet-host .mouse, .pet-host .mc-ear, .pet-host .mc-tail, .dust { animation: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>开场调皮入场动画 · launch entrance</h1>
+  <p class="sub">v0.4.x · 2026-05-21 · 一打开就来一段调皮的出场吸引注意力 → 然后默默回角落待命</p>
+
+  <div class="card">
+    <p class="lead" style="margin:0">
+      <strong>核心张力</strong>：一次惊艳 vs 每天烦。MouseClaw 是 <code>--minimized</code> 开机自启的，
+      所以入场动画<strong>必须按启动场景分档</strong>——首次安装可以炸，每天登录必须克制，否则跑 50 次就成了骚扰。
+      下面三档都做出来了，切换 tab 对比；右侧速度可调，<strong>「模拟用户打断」</strong>按钮验证任何时候都能被点击/按键打断、立刻归位。
+    </p>
+  </div>
+
+  <h2>① 主舞台（叠在一个 IDE 窗口上 · 选皮肤看大图）</h2>
+  <div class="stage" id="hero">
+    <div class="menu-bar">
+      <span class="item">  IDE</span><span>File</span><span>Edit</span><span>View</span>
+      <span class="right"><span>🔋 86%</span><span>📶</span><span>10:24</span></span>
+    </div>
+    <div class="ide">
+      <div class="l"><span class="k">fn</span> <span class="f">main</span>() {</div>
+      <div class="l">    <span class="k">let</span> pet = MouseClaw::<span class="f">summon</span>();</div>
+      <div class="l">    pet.<span class="f">scamper_in</span>();   <span class="s">// 调皮入场</span></div>
+      <div class="l">    pet.<span class="f">settle_corner</span>();<span class="caret"> </span></div>
+      <div class="l">}</div>
+    </div>
+    <div class="pet-host" id="hero-pet"></div>
+    <div class="hi-bubble" id="hero-hi">🦞 在这呢!</div>
+  </div>
+
+  <div class="controls">
+    <div class="seg" id="tier-seg">
+      <button data-tier="loud" class="active">首次安装 · 炸</button>
+      <button data-tier="medium">手动召唤 · 中</button>
+      <button data-tier="subtle">每日自启 · 轻</button>
+    </div>
+    <button class="btn-primary" id="play">▶ 播放入场</button>
+    <button class="btn-danger" id="interrupt">✋ 模拟用户打断</button>
+    <button class="btn-ghost" id="reset">↺ 归位</button>
+    <span class="spacer"></span>
+    <label>皮肤
+      <select id="skin-sel"></select>
+    </label>
+    <label>速度
+      <select id="speed">
+        <option value="1">1×</option>
+        <option value="0.5">0.5× 慢放</option>
+        <option value="2">2×</option>
+      </select>
+    </label>
+  </div>
+  <p class="hint" id="phase">阶段 0 · 待命（开机瞬间老鼠还没出场）</p>
+
+  <h2>② 9 款皮肤同屏跑同一段入场（硬规则：所有皮肤一视同仁）</h2>
+  <p class="lead">点上面的「▶ 播放入场」会<strong>同时</strong>驱动主舞台和下面 9 只。注意：耳朵抽动对鼠/猫/狐成立，
+    蛙没有外耳→改成<strong>眼鼓鼓气</strong>，cyber 机器人→<strong>天线摆动</strong>，狐狸大尾摆幅更大——同一种情绪每款都有视觉答复。</p>
+  <div class="grid" id="grid"></div>
+
+  <h2>③ 三档触发场景（用户已拍板：按场景分档）</h2>
+  <div class="card">
+    <table>
+      <tr><th width="20%">启动场景</th><th width="14%">检测方式</th><th width="14%">档位</th><th>行为</th></tr>
+      <tr>
+        <td><strong>首次安装 / Onboarding 完成</strong></td>
+        <td>config 无 <code>seen_entrance</code> 标记</td>
+        <td>炸（loud）</td>
+        <td>左边探头 → 横冲到中央 → 急刹 → 张望+蹦跶+甩尾「在这呢」→ 跑去右下角坐下 → 回头瞥一眼。~2.8s</td>
+      </tr>
+      <tr>
+        <td><strong>手动召唤</strong>（托盘「召唤老鼠」/ 快捷键冷启）</td>
+        <td>用户主动触发路径</td>
+        <td>中（medium）</td>
+        <td>从最近边缘窜到 anchor → 一个开心蹦+抖耳 → 坐下。~1.3s，不去中央乱逛</td>
+      </tr>
+      <tr>
+        <td><strong>每天开机自启</strong> <code>--minimized</code></td>
+        <td><code>args.contains("--minimized")</code></td>
+        <td>轻（subtle）</td>
+        <td>直接在角落淡入 + 伸个懒腰/打哈欠 + 一下抖耳 → 坐下。~0.9s，不横穿、不抢注意力</td>
+      </tr>
+    </table>
+    <p class="notes" style="margin:12px 0 0">
+      额外护栏：<b>炸档每台机器一生只演一次</b>（演完写 <code>seen_entrance=true</code>）；
+      就算判定逻辑出错，<b>同一天最多炸一次</b>（<code>last_entrance_date</code> 兜底），永远不会一天炸两回。
+    </p>
+  </div>
+
+  <h2>④ 炸档的逐拍编排（脑子里先演一遍这段视频）</h2>
+  <div class="beat-strip">
+    <div class="beat-chip"><div class="t">0–0.6s · 探头</div>从左边缘探出半个身子，左右张望（调皮/鬼祟感，不是直接冲进来）</div>
+    <div class="beat-chip"><div class="t">0.6–1.3s · 横冲</div>全速跑向桌面中央，run 精灵（弹跳+轻微旋转）+ 脚下尘土</div>
+    <div class="beat-chip"><div class="t">1.3–1.6s · 急刹</div>过冲一点点 → 横向挤压回弹（squash/stretch），站定</div>
+    <div class="beat-chip"><div class="t">1.6–2.3s · 张望</div>蹦一下 + 歪头 + 甩尾 +「🦞 在这呢」气泡，注意到你</div>
+    <div class="beat-chip"><div class="t">2.3–2.8s · 归位</div>小跑去右下角 anchor，减速坐下，回头瞥你一眼 → idle 呼吸</div>
+  </div>
+
+  <h2>⑤ 设计决策 / 边界（动手写 Rust 前必须答完的 UX 10 问）</h2>
+  <div class="card notes">
+    <ul>
+      <li><strong>可发现性</strong>：入场动画<b>本身就是</b>「MouseClaw 活着、在这」的告知。炸档让首次用户秒懂有这只老鼠。</li>
+      <li><strong>可打断（硬规则）</strong>：入场任意阶段，用户点击 / 按键 / 触发任务 → 立刻 snap 到 anchor + idle，绝不逼用户看完过场。
+        实现上整段动画是一个可取消的 task，收到任何前台输入事件就 abort。</li>
+      <li><strong>不抢焦点</strong>：overlay 窗口 <code>focus:false</code>，入场不夺走键盘焦点；用户该敲字敲字。</li>
+      <li><strong>实现关键 = 让窗口本体跑，不是开个全屏透明窗</strong>：入场 = 那个 80×80 的 pet 窗口
+        从屏幕边缘 <b>滑动它的物理位置</b> 到 anchor（Tauri set window position 逐帧）。
+        <b>绝不</b>把 overlay 撑成全屏来"装下"路径——那会重演 f253762 的 WebKit backing 遮挡问题
+        （桌面图标不可点 / Mission Control 行为怪）。这点和 <code>pet-runs-to-greet</code> 的窗口移动方案一致。</li>
+      <li><strong>全皮肤适配</strong>：run/skid/hop/张望都作用在整只 SVG（对 9 个 body variant 都成立）；
+        表情拍由 <code>.mc-ear</code> / <code>.mc-tail</code> 子组承担——蛙走 <code>.mc-ear-frog</code> 鼓气 keyframe，
+        狐尾走 <code>.mc-tail-wag-big</code> 大摆幅。颜色全部来自 skins.ts palette，零 hardcode。</li>
+      <li><strong>多屏</strong>：在<b>光标所在那一屏</b>入场并停到那屏的 anchor，不跨屏横冲。</li>
+      <li><strong>前台是全屏 app / 演示模式</strong>：always-on-top 在 fullscreen space 被系统隐藏 → 入场静默跳过，下次普通桌面再演（炸档标记还没消耗就保留）。</li>
+      <li><strong>prefers-reduced-motion</strong>：三档全部降级为「直接出现在 anchor」，无横冲无蹦跶（见本页 media query；真机同样处理）。</li>
+      <li><strong>长期使用不烦</strong>：炸档一生一次、轻档每天但 &lt;1s 且不挡视线——这是「第一印象惊艳」和「每天不打扰」的平衡点。</li>
+    </ul>
+  </div>
+
+  <p style="margin:40px 0 0; color: var(--text-dim); font-size:12.5px; text-align:center;">
+    Prototype · 2026-05-21 · 拍板后才动 Rust/Tauri 实现，实现必须和本 prototype 视觉一致。
+  </p>
+</div>
+
+<script>
+/* ════════════════════════════════════════════════════════════════
+   皮肤定义（镜像 src/skins.ts · 9 款 · 8 色 palette + body variant）
+   ════════════════════════════════════════════════════════════════ */
+const SKINS = [
+  { id:"classic", name:"经典灰", tag:"默认", body:"standard",
+    palette:{body:"#cfcfcf",belly:"#ffffff",earIn:"#ff9bb8",earOut:"#cfcfcf",eye:"#1a1a1a",nose:"#d63d6a",tail:"#8a8a8a",paw:"#ffffff"} },
+  { id:"lab", name:"小白鼠", body:"slim",
+    palette:{body:"#fafafa",belly:"#ffffff",earIn:"#ffb3c8",earOut:"#e8e3dc",eye:"#ff5f57",nose:"#ff6b9d",tail:"#ffb3c8",paw:"#ffffff"} },
+  { id:"field", name:"田鼠", body:"chubby",
+    palette:{body:"#a47148",belly:"#e8d5b0",earIn:"#d6a07a",earOut:"#7a4e2e",eye:"#1a1a1a",nose:"#5a2e10",tail:"#7a4e2e",paw:"#d6a07a"} },
+  { id:"ninja", name:"忍者鼠", body:"ninja",
+    palette:{body:"#3a3a42",belly:"#5a5a64",earIn:"#1a1a1a",earOut:"#2a2a30",eye:"#ffd166",nose:"#1a1a1a",tail:"#2a2a30",paw:"#1a1a1a"} },
+  { id:"cyber", name:"机械鼠", tag:"酷", body:"robot",
+    palette:{body:"#c0c8d0",belly:"#e8eef4",earIn:"#00e5ff",earOut:"#7a8290",eye:"#00e5ff",nose:"#00e5ff",tail:"#7a8290",paw:"#5a6270"} },
+  { id:"golden", name:"金鼠", tag:"限定", body:"round",
+    palette:{body:"#e8c87a",belly:"#fff4d6",earIn:"#d68a40",earOut:"#c8a050",eye:"#3a2818",nose:"#a06028",tail:"#c8a050",paw:"#fff4d6"} },
+  { id:"cat-gray", name:"小灰猫", tag:"新", body:"cat",
+    palette:{body:"#a8a8a8",belly:"#f4f4f4",earIn:"#ff9bb8",earOut:"#7a7a7a",eye:"#3fa66a",nose:"#d63d6a",tail:"#7a7a7a",paw:"#a8a8a8"} },
+  { id:"fox-red", name:"赤狐", tag:"新", body:"fox",
+    palette:{body:"#d96e2c",belly:"#fff4ec",earIn:"#1a1a1a",earOut:"#a04a18",eye:"#1a1a1a",nose:"#1a1a1a",tail:"#fff4ec",paw:"#1a1a1a"} },
+  { id:"frog-tree", name:"树蛙", tag:"新", body:"frog",
+    palette:{body:"#7ab84a",belly:"#f4e890",earIn:"#ffffff",earOut:"#5a8a30",eye:"#d63d6a",nose:"#5a8a30",tail:"#5a8a30",paw:"#f4e890"} },
+];
+
+/* ── 渲染一只老鼠 SVG（移植自 src/components/PixelMouse.tsx 的 9 body variant）
+   eyeState ∈ {alert, happy, sleep}。颜色全部来自 skin.palette。 */
+function renderMouse(skin, eyeState, size) {
+  const p = skin.palette, b = skin.body;
+  const R = (x,y,w,h,f,extra="") => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${f}"${extra}/>`;
+
+  // ── ears (L/R as animatable groups; frog tags mc-ear-frog) ──
+  let earL, earR, frogCls = (b==="frog") ? " mc-ear-frog" : "";
+  if (b==="robot") {
+    earL = R(4,-1,1,3,p.earOut)+R(4,-2,1,1,p.earIn);   earR = R(11,-1,1,3,p.earOut)+R(11,-2,1,1,p.earIn);
+    var oL="4.5px 2px", oR="11.5px 2px";
+  } else if (b==="cat") {
+    earL = R(2,0,1,3,p.earOut)+R(3,1,1,2,p.earOut)+R(4,2,1,1,p.earOut)+R(3,2,1,1,p.earIn);
+    earR = R(13,0,1,3,p.earOut)+R(12,1,1,2,p.earOut)+R(11,2,1,1,p.earOut)+R(12,2,1,1,p.earIn);
+    var oL="3.5px 3px", oR="12.5px 3px";
+  } else if (b==="fox") {
+    earL = R(2,-1,1,4,p.earOut)+R(3,0,1,3,p.earOut)+R(4,1,1,2,p.earOut)+R(3,1,1,2,p.earIn);
+    earR = R(13,-1,1,4,p.earOut)+R(12,0,1,3,p.earOut)+R(11,1,1,2,p.earOut)+R(12,1,1,2,p.earIn);
+    var oL="3.5px 3px", oR="12.5px 3px";
+  } else if (b==="frog") {
+    earL = R(3,0,3,3,p.body)+R(4,1,1,1,p.earIn)+R(4,0,1,1,p.earOut);
+    earR = R(10,0,3,3,p.body)+R(11,1,1,1,p.earIn)+R(11,0,1,1,p.earOut);
+    var oL="4.5px 1.5px", oR="11.5px 1.5px";
+  } else if (b==="chubby") {
+    earL = R(2,0,3,3,p.earOut)+R(1,1,4,3,p.earOut)+R(3,1,1,2,p.earIn);
+    earR = R(11,0,3,3,p.earOut)+R(11,1,4,3,p.earOut)+R(12,1,1,2,p.earIn);
+    var oL="3px 3.5px", oR="13px 3.5px";
+  } else { // standard / slim / ninja / round
+    earL = R(3,1,2,2,p.earOut)+R(2,2,3,2,p.earOut)+R(3,2,1,1,p.earIn);
+    earR = R(11,1,2,2,p.earOut)+R(11,2,3,2,p.earOut)+R(12,2,1,1,p.earIn);
+    var oL="4px 3px", oR="12px 3px";
+  }
+  const ears = `<g class="mc-ear mc-ear-l${frogCls}" style="transform-origin:${oL}">${earL}</g>`
+             + `<g class="mc-ear mc-ear-r${frogCls}" style="transform-origin:${oR}">${earR}</g>`;
+
+  // ── ninja mask ──
+  let mask = (b==="ninja") ? R(2,5,12,1,"#1a1a1a")+R(0,5,2,1,p.earIn)+R(14,5,2,1,p.earIn) : "";
+
+  // ── body ──
+  let body;
+  if (b==="cat") {
+    body = R(3,3,10,1,p.body)+R(2,4,12,3,p.body)+R(3,7,10,1,p.body)+R(5,8,6,2,p.belly)
+         + R(3,8,2,2,p.body)+R(11,8,2,2,p.body)+R(4,10,8,1,p.body)
+         + R(0,6,2,1,p.body,' opacity="0.7"')+R(0,7,2,1,p.body,' opacity="0.5"')
+         + R(14,6,2,1,p.body,' opacity="0.7"')+R(14,7,2,1,p.body,' opacity="0.5"');
+  } else if (b==="fox") {
+    body = R(3,3,10,1,p.body)+R(2,4,12,3,p.body)+R(3,7,10,1,p.body)+R(6,7,4,1,p.belly)
+         + R(5,8,6,3,p.belly)+R(3,8,2,2,p.body)+R(11,8,2,2,p.body)+R(4,10,8,1,p.body);
+  } else if (b==="frog") {
+    body = R(2,3,12,1,p.body)+R(1,4,14,4,p.body)+R(2,8,12,2,p.body)+R(4,6,8,4,p.belly)
+         + R(6,9,4,1,p.body)+R(5,10,6,1,p.body);
+  } else if (b==="slim") {
+    body = R(4,3,8,1,p.body)+R(3,4,10,3,p.body)+R(4,7,8,1,p.body)+R(6,8,4,2,p.belly)
+         + R(4,8,2,2,p.body)+R(10,8,2,2,p.body)+R(5,10,6,1,p.body);
+  } else if (b==="round") {
+    body = R(3,3,10,1,p.body)+R(2,4,12,3,p.body)+R(3,7,10,1,p.body)+R(4,8,8,3,p.belly)
+         + R(3,8,1,3,p.body)+R(12,8,1,3,p.body);
+  } else { // standard / chubby / ninja / robot
+    body = R(3,3,10,1,p.body)+R(2,4,12,3,p.body)+R(3,7,10,1,p.body)+R(5,8,6,2,p.belly)
+         + R(3,8,2,2,p.body)+R(11,8,2,2,p.body)+R(4,10,8,1,p.body);
+  }
+
+  // ── tail (animatable group; fox gets mc-tail-fox for bigger wag) ──
+  let tail, tailCls = (b==="fox") ? " mc-tail-fox" : "";
+  if (b==="round")      tail = R(13,9,1,1,p.tail)+R(14,8,1,2,p.tail)+R(15,7,1,1,p.tail)+R(14,6,2,1,p.tail);
+  else if (b==="robot") tail = R(13,9,2,1,p.tail)+R(15,8,1,1,p.tail);
+  else if (b==="cat")   tail = R(13,9,1,1,p.tail)+R(14,8,1,1,p.tail)+R(15,7,1,2,p.tail)+R(15,5,1,2,p.tail)+R(14,4,1,1,p.tail);
+  else if (b==="fox")   tail = R(13,6,3,4,p.body)+R(14,5,2,1,p.body)+R(15,9,1,2,p.tail)+R(14,10,2,1,p.tail);
+  else if (b==="frog")  tail = "";
+  else                  tail = R(13,9,1,1,p.tail)+R(14,7,1,3,p.tail);
+  const tailG = `<g class="mc-tail${tailCls}" style="transform-origin:13px 9px">${tail}</g>`;
+
+  // ── eyes ──
+  let eyes;
+  if (eyeState==="sleep")      eyes = R(5,6,1,1,p.eye)+R(10,6,1,1,p.eye);
+  else if (eyeState==="happy") eyes = R(5,6,1,1,p.eye)+R(6,5,1,1,p.eye)+R(9,5,1,1,p.eye)+R(10,6,1,1,p.eye);
+  else                         eyes = R(5,5,1,2,p.eye)+R(10,5,1,2,p.eye); // alert
+  const eyesG = `<g class="mc-eyes">${eyes}</g>`;
+
+  // ── paws + nose ──
+  const paws = R(4,11,2,1,p.paw)+R(10,11,2,1,p.paw);
+  const nose = `<rect class="mc-nose" x="7" y="7" width="2" height="1" fill="${p.nose}" style="transform-origin:8px 7.5px"/>`;
+
+  return `<svg class="mouse" viewBox="-1 -3 18 18" width="${size}" height="${size}" role="img" aria-label="${skin.name} 入场">`
+       + ears + mask + body + tailG + eyesG + paws + nose + `</svg>`;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   入场编排（三档）。runId 做取消令牌：任何打断/重播 都使旧 run 失效。
+   ════════════════════════════════════════════════════════════════ */
+let runId = 0;
+let currentTier = "loud";
+let speed = 1;
+
+const $ = id => document.getElementById(id);
+const wait = ms => new Promise(r => setTimeout(r, ms / speed));
+
+function setPhase(t){ $("phase").textContent = t; }
+
+// 一个 pet 实体：{host, stage, bubble?, size}
+function placePet(pet, x, y){
+  pet.host.style.left = (x - pet.host.offsetWidth/2) + "px";
+  pet.host.style.top  = (y - pet.host.offsetHeight) + "px";
+}
+function moveTo(pet, x, y, ms, ease){
+  pet.host.style.transition = `left ${ms/speed}ms ${ease}, top ${ms/speed}ms ${ease}, opacity 200ms`;
+  placePet(pet, x, y);
+}
+function cls(pet, ...c){ pet.host.className = "pet-host " + c.join(" "); }
+function home(pet){ const s=pet.stage; return { x: s.clientWidth*0.80, y: s.clientHeight*0.66 }; }
+
+function spawnDust(pet){
+  const s = pet.stage, r = pet.host.getBoundingClientRect(), sr = s.getBoundingClientRect();
+  const d = document.createElement("div"); d.className = "dust";
+  d.style.left = (r.left - sr.left + pet.host.offsetWidth*0.3) + "px";
+  d.style.top  = (r.top  - sr.top  + pet.host.offsetHeight - 6) + "px";
+  s.appendChild(d); setTimeout(()=>d.remove(), 480);
+}
+function showHi(pet, on){
+  if (!pet.bubble) return;
+  if (on){
+    const h = home(pet);
+    pet.bubble.style.left = (pet.stage.clientWidth*0.46 - 24) + "px";
+    pet.bubble.style.top  = (pet.stage.clientHeight*0.46 - 44) + "px";
+    pet.bubble.classList.add("on");
+  } else pet.bubble.classList.remove("on");
+}
+
+function snapHome(pet){
+  const h = home(pet);
+  pet.host.style.transition = "none";
+  pet.host.style.opacity = "1";
+  cls(pet, "idle");
+  placePet(pet, h.x, h.y);
+  showHi(pet, false);
+}
+
+async function entrance(pet, tier, myId){
+  const alive = () => myId === runId;
+  const W = pet.stage.clientWidth, H = pet.stage.clientHeight, h = home(pet);
+  pet.host.style.opacity = "1";
+
+  if (tier === "subtle"){
+    // 每日自启：角落淡入 + 伸懒腰，不横穿
+    pet.host.style.transition = "none";
+    pet.host.style.opacity = "0";
+    placePet(pet, h.x, h.y);
+    void pet.host.offsetWidth;            // reflow
+    pet.host.style.transition = "opacity 260ms ease";
+    pet.host.style.opacity = "1";
+    cls(pet, "stretching");
+    await wait(640); if(!alive()) return;
+    cls(pet, "idle");
+    return;
+  }
+
+  if (tier === "medium"){
+    // 手动召唤：从右边缘窜到 anchor + 一个开心蹦
+    pet.host.style.transition = "none";
+    placePet(pet, W*1.10, h.y);
+    void pet.host.offsetWidth;
+    cls(pet, "running");
+    moveTo(pet, h.x, h.y, 420, "var(--ease-spring)");
+    await wait(430); if(!alive()) return;
+    cls(pet, "beat");
+    await wait(560); if(!alive()) return;
+    cls(pet, "idle");
+    return;
+  }
+
+  // ── loud（首次安装）：探头 → 横冲 → 急刹 → 张望 → 归位 ──
+  pet.host.style.transition = "none";
+  placePet(pet, -W*0.06, h.y);            // 藏在左边缘外
+  void pet.host.offsetWidth;
+  // 探头
+  cls(pet, "peeking");
+  moveTo(pet, W*0.07, h.y, 240, "var(--ease-default)");
+  setPhase("阶段 1 · 从左边缘探头张望（鬼祟/调皮）");
+  await wait(620); if(!alive()) return;
+  // 横冲到中央
+  cls(pet, "running");
+  setPhase("阶段 2 · 横冲到桌面中央（脚下扬尘）");
+  moveTo(pet, W*0.46, H*0.46, 640, "cubic-bezier(.32,.7,.3,1)");
+  for (let i=0;i<5;i++){ spawnDust(pet); await wait(120); if(!alive()) return; }
+  await wait(60); if(!alive()) return;
+  // 急刹 + 过冲
+  setPhase("阶段 3 · 急刹 · 横向挤压回弹");
+  cls(pet, "skidding");
+  moveTo(pet, W*0.53, H*0.46, 160, "var(--ease-tap)");
+  await wait(300); if(!alive()) return;
+  // 张望 + 蹦 + 甩尾 +「在这呢」
+  setPhase("阶段 4 · 张望 · 蹦跶 · 甩尾「🦞 在这呢」");
+  cls(pet, "beat");
+  showHi(pet, true);
+  await wait(780); if(!alive()) return;
+  showHi(pet, false);
+  // 跑去角落坐下
+  setPhase("阶段 5 · 小跑回右下角 anchor · 坐下回头瞥一眼");
+  cls(pet, "running");
+  moveTo(pet, h.x, h.y, 560, "cubic-bezier(.2,0,.1,1)");
+  await wait(580); if(!alive()) return;
+  cls(pet, "idle");
+  setPhase("完成 · idle 待命（炸档一生一次 + 同日兜底，下次不再炸）");
+}
+
+/* ── 收集所有 pet 实体（hero + 9 grid） ───────────────────────── */
+let pets = [];
+function buildGrid(){
+  const g = $("grid");
+  g.innerHTML = SKINS.map(s => `
+    <div class="cell">
+      <div class="mini-stage" data-skin="${s.id}">
+        <div class="pet-host" data-skin="${s.id}"></div>
+      </div>
+      <div class="name">${s.name}${s.tag?`<span class="tag">${s.tag}</span>`:""}</div>
+    </div>`).join("");
+  pets = [];
+  // hero
+  const heroSkin = SKINS.find(x=>x.id===$("skin-sel").value) || SKINS[0];
+  $("hero-pet").innerHTML = renderMouse(heroSkin, "alert", 72);
+  pets.push({ host:$("hero-pet"), stage:$("hero"), bubble:$("hero-hi"), skin:heroSkin });
+  // grid
+  g.querySelectorAll(".mini-stage").forEach(ms=>{
+    const s = SKINS.find(x=>x.id===ms.dataset.skin);
+    const host = ms.querySelector(".pet-host");
+    host.innerHTML = renderMouse(s, "alert", 44);
+    pets.push({ host, stage: ms, bubble:null, skin:s });
+  });
+  // 全部归位
+  pets.forEach(snapHome);
+}
+
+function play(){
+  const myId = ++runId;
+  pets.forEach(p => entrance(p, currentTier, myId));
+}
+function interrupt(){
+  runId++;                       // 让进行中的 run 失效
+  setPhase("⚡ 用户打断（点击/按键/触发任务）→ 立刻归位 idle");
+  pets.forEach(snapHome);
+}
+function reset(){
+  runId++;
+  setPhase("阶段 0 · 待命（开机瞬间老鼠还没出场）");
+  pets.forEach(snapHome);
+}
+
+/* ── wiring ───────────────────────────────────────────────────── */
+function initSkinSel(){
+  $("skin-sel").innerHTML = SKINS.map(s=>`<option value="${s.id}">${s.name}</option>`).join("");
+  $("skin-sel").value = "classic";
+}
+$("tier-seg").addEventListener("click", e=>{
+  const btn = e.target.closest("button"); if(!btn) return;
+  currentTier = btn.dataset.tier;
+  $("tier-seg").querySelectorAll("button").forEach(b=>b.classList.toggle("active", b===btn));
+  reset();
+});
+$("play").addEventListener("click", play);
+$("interrupt").addEventListener("click", interrupt);
+$("reset").addEventListener("click", reset);
+$("speed").addEventListener("change", e=> speed = parseFloat(e.target.value));
+$("skin-sel").addEventListener("change", ()=>{ buildGrid(); });
+
+initSkinSel();
+buildGrid();
+// 等布局稳定再归位一次（offsetWidth 在首帧可能为 0）
+requestAnimationFrame(()=> pets.forEach(snapHome));
+</script>
+</body>
+</html>
