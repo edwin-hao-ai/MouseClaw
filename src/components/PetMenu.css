@@ -7,10 +7,9 @@
 
 .pet-menu {
   position: absolute;
-  /* v0.3.3 · 居中于桌宠上方（跟 NudgeBubble 一致），左右对称 */
+  /* v0.4.3 · 垂直固定桌宠上方 78px；水平锚点 + 入场动画由 data-h 决定（方向感知，
+     贴屏幕边时翻向内侧避免被切）。data-h 变体在本规则块之后定义。 */
   bottom: 78px;
-  left: 50%;
-  transform: translateX(-50%);
   width: 220px;
   background: #ffffff;
   color: #1a1a2e;
@@ -24,7 +23,7 @@
     0 24px 48px rgba(0, 0, 0, 0.18);
   padding: 6px;
   z-index: 10;
-  animation: pet-menu-in 180ms cubic-bezier(.2,.7,.3,1) both;
+  /* animation 移到 data-h 变体（center 保留 translateX 居中，side 不带横移） */
   font: 13px/1.45 -apple-system, "PingFang SC", system-ui, sans-serif;
 }
 
@@ -33,8 +32,6 @@
   content: "";
   position: absolute;
   bottom: -6px;
-  left: 50%;
-  margin-left: -6px;
   width: 12px;
   height: 12px;
   background: #ffffff;
@@ -45,10 +42,22 @@
   /* 不要 shadow，否则 tail 会显得有"两层" */
 }
 
-@keyframes pet-menu-in {
-  /* keep translateX(-50%) horizontal centering through animation */
+/* v0.4.3 · 水平方向感知：data-h 决定菜单往桌宠哪侧展开 + tail 位置 + 入场动画。
+   center=居中（默认）；left=往右展开（桌宠贴左边）；right=往左展开（桌宠贴右边）。 */
+.pet-menu[data-h="center"] { left: 50%; animation: pet-menu-in-center 180ms cubic-bezier(.2,.7,.3,1) both; }
+.pet-menu[data-h="left"]   { left: calc(50% - 28px); animation: pet-menu-in-side 180ms cubic-bezier(.2,.7,.3,1) both; }
+.pet-menu[data-h="right"]  { right: calc(50% - 28px); left: auto; animation: pet-menu-in-side 180ms cubic-bezier(.2,.7,.3,1) both; }
+.pet-menu[data-h="center"]::after { left: 50%; margin-left: -6px; }
+.pet-menu[data-h="left"]::after   { left: 22px; }
+.pet-menu[data-h="right"]::after  { right: 22px; }
+
+@keyframes pet-menu-in-center {
   0%   { opacity: 0; transform: translateX(-50%) translateY(6px) scale(0.96); }
   100% { opacity: 1; transform: translateX(-50%) translateY(0)   scale(1); }
+}
+@keyframes pet-menu-in-side {
+  0%   { opacity: 0; transform: translateY(6px) scale(0.96); }
+  100% { opacity: 1; transform: translateY(0)   scale(1); }
 }
 
 .pet-menu-item {

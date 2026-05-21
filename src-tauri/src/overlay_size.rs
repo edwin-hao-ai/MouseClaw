@@ -96,9 +96,27 @@ pub fn expand_to_full(app: &AppHandle) {
 ///   - 跳过 CURRENT_MODE 检查 —— 每次 React 渲染都可能不一样大小，需要直接生效
 ///   - clamp 上限 1200×1200，防止 React 异常算出疯狂数字撑爆屏幕
 ///   - clamp 下限 COMPACT_SIZE，防止比桌宠还小（hit-box 失效）
-pub fn set_to_explicit(app: &AppHandle, want_w: f64, want_h: f64) {
+/// v0.4.3 · 自适应窗口尺寸 + 桌宠定位。
+///
+/// `pet_ratio_x` / `pet_from_bottom` —— 桌宠中心在内容窗口里的相对位置（由前端
+/// useAdaptiveOverlay 实测：菜单居中时 ratio≈0.5、距底≈40；PetMenu 贴边往侧边展开时
+/// 桌宠不在窗口中心，ratio 会偏向一侧）。后端据此摆窗口，保证桌宠中心始终落在屏幕锚点。
+///
+/// `pet_anchored` —— true 时用「桌宠本体保持」clamp（PetMenu 方向感知路径：菜单已往
+/// 屏幕内侧展开不会越界，只需让桌宠那侧的透明边距/阴影允许溢出 → 桌宠纹丝不动）；
+/// false 时用整窗 clamp（bubble / ribbon 等居中对称内容的老行为，保证完整在屏，不动）。
+pub fn set_to_explicit(
+    app: &AppHandle,
+    want_w: f64,
+    want_h: f64,
+    pet_ratio_x: f64,
+    pet_from_bottom: f64,
+    pet_anchored: bool,
+) {
     let w = want_w.clamp(COMPACT_SIZE, 1200.0);
     let h = want_h.clamp(COMPACT_SIZE, 1200.0);
+    let rx = pet_ratio_x.clamp(0.0, 1.0);
+    let fb = pet_from_bottom.clamp(0.0, h);
     let app2 = app.clone();
     let _ = app.run_on_main_thread(move || {
         let Some(window) = app2.get_webview_window("mouse") else { return; };
@@ -117,13 +135,21 @@ pub fn set_to_explicit(app: &AppHandle, want_w: f64, want_h: f64) {
         }
         let frame = visible_frame_top_left();
         let (anchor_x, anchor_y) = resolve_anchor(cur_x, cur_y, cur_w, cur_h, frame);
-        let raw_new_x = anchor_x - w * PET_X_OFFSET_RATIO;
-        let raw_new_y = anchor_y - (h - PET_BOTTOM_OFFSET);
-        // clamp 到 visibleFrame（防 NSWindow 收非法 frame crash）+ 报出撞了哪面墙。
-        let (new_x, new_y, bonk) = clamp_origin_with_bonk(raw_new_x, raw_new_y, w, h, frame);
+        // 桌宠中心落在屏幕锚点 → 反算窗口左上角（用前端实测的桌宠相对位置，不再写死居中）
+        let raw_new_x = anchor_x - w * rx;
+        let raw_new_y = anchor_y - (h - fb);
+        let (new_x, new_y, bonk) = if pet_anchored {
+            clamp_keep_pet(raw_new_x, raw_new_y, w, h, rx, fb, frame)
+        } else {
+            clamp_origin_with_bonk(raw_new_x, raw_new_y, w, h, frame)
+        };
         CURRENT_MODE.store(1, Ordering::Relaxed);
         let _ = window.set_size(LogicalSize::new(w, h));
         let _ = window.set_position(LogicalPosition::new(new_x, new_y));
+        // 摆完后把真锚点（桌宠中心屏幕坐标）存回 —— 偏侧布局下 resolve_anchor 用固定
+        // RATIO 反算当前桌宠位置会偏，显式存真值消除累积误差。
+        LAST_PET_CENTER_X.store(anchor_x.round() as i32, Ordering::Relaxed);
+        LAST_PET_CENTER_Y.store(anchor_y.round() as i32, Ordering::Relaxed);
         if let Some(dir) = bonk { emit_bonk_edge(&app2, dir); }
     });
 }
@@ -186,6 +212,62 @@ fn clamp_origin_with_bonk(x: f64, y: f64, w: f64, h: f64, frame: Option<(f64, f6
     else if cy > y + 0.5 { dir = Some(BonkDir::Top); }
     else if cy < y - 0.5 { dir = Some(BonkDir::Bottom); }
     (cx, cy, dir)
+}
+
+/// v0.4.3 · 「桌宠本体保持」clamp —— 只保证桌宠本体留在屏内，允许窗口（桌宠那侧的
+/// 透明边距 / 阴影）溢出屏幕。PetMenu 方向感知路径用：菜单已往屏幕内侧展开不会越界，
+/// 桌宠在角落时本体本就在屏 → 不被 clamp → 桌宠纹丝不动（不再被整窗 clamp 拽走）。
+/// 纯函数，桌宠相对位置由 (pet_ratio_x, pet_from_bottom) 给出。
+fn clamp_keep_pet(
+    raw_x: f64, raw_y: f64, w: f64, h: f64,
+    pet_ratio_x: f64, pet_from_bottom: f64,
+    frame: Option<(f64, f64, f64, f64)>,
+) -> (f64, f64, Option<BonkDir>) {
+    let Some((sx, sy, sw, sh)) = frame else { return (raw_x, raw_y, None); };
+    const PET_HALF: f64 = 48.0; // 桌宠本体约 96px 宽，半宽
+    const PET_TOP: f64 = 48.0;
+    const PET_BOT: f64 = 8.0;
+    let cx = raw_x + w * pet_ratio_x;        // 桌宠中心 x
+    let cy = raw_y + (h - pet_from_bottom);  // 桌宠中心 y
+    let lo_x = sx + PET_HALF;
+    let hi_x = (sx + sw - PET_HALF).max(lo_x);
+    let lo_y = sy + PET_TOP;
+    let hi_y = (sy + sh - PET_BOT).max(lo_y);
+    let ccx = cx.clamp(lo_x, hi_x);
+    let ccy = cy.clamp(lo_y, hi_y);
+    let nx = ccx - w * pet_ratio_x;
+    let ny = ccy - (h - pet_from_bottom);
+    let mut dir = None;
+    if ccx > cx + 0.5 { dir = Some(BonkDir::Left); }
+    else if ccx < cx - 0.5 { dir = Some(BonkDir::Right); }
+    else if ccy > cy + 0.5 { dir = Some(BonkDir::Top); }
+    else if ccy < cy - 0.5 { dir = Some(BonkDir::Bottom); }
+    (nx, ny, dir)
+}
+
+/// PetMenu 估算尺寸（跟 PetMenu.css width:220 + 8 项高度一致）—— 算展开方向用。
+pub const PET_MENU_W: f64 = 220.0;
+pub const PET_MENU_H: f64 = 300.0;
+
+/// v0.4.3 · 算 PetMenu 该往哪边展开（贴边时翻向屏幕内侧），逻辑同
+/// docs/prototypes/petmenu-edge-aware-20260521.html。
+/// 返回 (h, v)：h ∈ {"left","right","center"}（菜单锚向），v ∈ {"up","down"}。
+/// 用上次存的桌宠中心屏幕坐标 (LAST_PET_CENTER) + 屏幕 visibleFrame 算。
+/// 拿不到屏幕 / 没有桌宠位置 → 退回 ("center","up")（= 老行为）。
+pub fn compute_menu_orientation(frame: Option<(f64, f64, f64, f64)>) -> (&'static str, &'static str) {
+    let Some((sx, sy, sw, sh)) = frame else { return ("center", "up"); };
+    let pcx = LAST_PET_CENTER_X.load(Ordering::Relaxed);
+    let pcy = LAST_PET_CENTER_Y.load(Ordering::Relaxed);
+    if pcx == i32::MIN || pcy == i32::MIN { return ("center", "up"); }
+    let (petcx, petcy) = (pcx as f64, pcy as f64);
+    let space_right = (sx + sw) - petcx;
+    let space_left = petcx - sx;
+    let h = if space_right < PET_MENU_W / 2.0 + 8.0 { "right" }       // 贴右 → 往左展开
+            else if space_left < PET_MENU_W / 2.0 + 8.0 { "left" }    // 贴左 → 往右展开
+            else { "center" };
+    let space_up = petcy - sy;
+    let v = if space_up < PET_MENU_H + 20.0 { "down" } else { "up" };
+    (h, v)
 }
 
 /// follow 路径专用 clamp：桌宠跟随光标时，要留在屏内的是**桌宠本体**（约 96px，

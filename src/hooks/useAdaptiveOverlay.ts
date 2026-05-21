@@ -78,10 +78,15 @@ export function useAdaptiveOverlay(
       // 判存在，零尺寸/隐藏的 .rx-ribbon 等也会强制 96px padding，跟"测量忽略零尺寸元素"
       // 不一致 → 窗口被无谓撑大。改为在同一遍 measure 里、对实际计入的可见元素判 shadowed。
       let hasShadowed = false;
+      // v0.4.3 · PetMenu 方向感知需要桌宠本体中心 + 是否有菜单在场
+      let petCx = NaN;
+      let hasPetMenu = false;
       els.forEach((el) => {
         const r = el.getBoundingClientRect();
         if (r.width === 0 || r.height === 0) return; // 不可见元素跳过
         if (el.matches(SHADOWED_SELECTOR)) hasShadowed = true;
+        if (el.matches(".mouse-wrap")) petCx = r.left + r.width / 2;
+        if (el.matches(".pet-menu")) hasPetMenu = true;
         if (r.left < minX) minX = r.left;
         if (r.top < minY) minY = r.top;
         if (r.right > maxX) maxX = r.right;
@@ -91,13 +96,35 @@ export function useAdaptiveOverlay(
       const pad = hasShadowed ? SHADOW_PADDING : BASE_PADDING;
       // v0.4 fix (2026-05-20)：Math.ceil 永远向上取整 + 亚像素 getBoundingClientRect
       // 会被放大成单向累积飘移。改用 Math.round + 4px 容差阈值。
-      const w = Math.round(maxX - minX + pad);
+      let w: number;
       const h = Math.round(maxY - minY + pad);
+      // 桌宠相对窗口的位置（默认 = 老行为：水平居中、距底 40）
+      let petRatioX = 0.5;
+      const petFromBottom = 40;
+      let petAnchored = false;
+      if (hasPetMenu && Number.isFinite(petCx)) {
+        // v0.4.3 · 菜单贴边时会往桌宠某一侧展开（union 不对称）。以桌宠中心为轴**水平
+        // 对称化** union → 桌宠保持窗口水平中心（ratio=0.5），空的那侧是透明边距。
+        // 配合后端 petAnchored 的「桌宠本体保持」clamp → 空侧允许溢出屏幕，菜单完整在屏、
+        // 桌宠纹丝不动。垂直保持现状（菜单往上、桌宠底部，from_bottom=40）。
+        const halfW = Math.max(petCx - minX, maxX - petCx) + pad / 2;
+        w = Math.round(halfW * 2);
+        petRatioX = 0.5;
+        petAnchored = true;
+      } else {
+        w = Math.round(maxX - minX + pad);
+      }
       const dw = Math.abs(w - lastSizeRef.current.w);
       const dh = Math.abs(h - lastSizeRef.current.h);
       if (dw < CHANGE_THRESHOLD_PX && dh < CHANGE_THRESHOLD_PX) return;
       lastSizeRef.current = { w, h };
-      invoke("set_overlay_content_size", { width: w, height: h }).catch(() => {});
+      invoke("set_overlay_content_size", {
+        width: w,
+        height: h,
+        petRatioX,
+        petFromBottom,
+        petAnchored,
+      }).catch(() => {});
     };
 
     const schedule = () => {

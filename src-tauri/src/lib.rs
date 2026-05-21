@@ -372,6 +372,7 @@ pub fn run() {
             commands::open_accessibility_settings,
             commands::set_overlay_has_ui,
             commands::set_overlay_content_size,
+            commands::get_pet_menu_orientation,
             commands::save_pet_custom_position,
             commands::set_nap_until,
             commands::dismiss_nudge,

@@ -17,7 +17,7 @@
  * (DnD state lives in presence buffer, feed count rewards animations, etc.).
  */
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useT } from "../i18n";
 import "./PetMenu.css";
 
@@ -36,6 +36,15 @@ const FEED_COUNT_KEY = "mouseclaw.feed.count";
 export function PetMenu({ open, onClose, onFeed, onNap }: PetMenuProps) {
   const t = useT();
   const menuRef = useRef<HTMLDivElement | null>(null);
+  // v0.4.3 · 菜单水平展开方向 —— 贴屏幕边时翻向内侧（后端按桌宠位置算），避免被切。
+  const [menuH, setMenuH] = useState<"left" | "right" | "center">("center");
+
+  useEffect(() => {
+    if (!open) return;
+    invoke<{ h?: string }>("get_pet_menu_orientation")
+      .then((o) => setMenuH(o?.h === "left" || o?.h === "right" ? o.h : "center"))
+      .catch(() => setMenuH("center"));
+  }, [open]);
 
   // Click outside to close — listen on the document so clicks anywhere else
   // (including the pet itself) collapse the menu.
@@ -99,6 +108,7 @@ export function PetMenu({ open, onClose, onFeed, onNap }: PetMenuProps) {
   return (
     <div
       className="pet-menu"
+      data-h={menuH}
       ref={menuRef}
       role="menu"
       aria-label="Pet menu"

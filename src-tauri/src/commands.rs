@@ -233,9 +233,32 @@ pub fn set_overlay_has_ui(has_ui: bool, _app: AppHandle, state: State<'_, Arc<Ap
 /// 之后，又把布尔设回 true → 整窗一直接收点击、盖住底层 app + 尺寸/hit-box 两路打架。
 /// 现在职责分离：本命令只管尺寸，前端 effect 只管 hit-box。
 #[tauri::command]
-pub fn set_overlay_content_size(width: f64, height: f64, app: AppHandle, _state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    crate::overlay_size::set_to_explicit(&app, width, height);
+pub fn set_overlay_content_size(
+    width: f64,
+    height: f64,
+    pet_ratio_x: f64,
+    pet_from_bottom: f64,
+    pet_anchored: bool,
+    app: AppHandle,
+    _state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    crate::overlay_size::set_to_explicit(&app, width, height, pet_ratio_x, pet_from_bottom, pet_anchored);
     Ok(())
+}
+
+/// v0.4.3 · PetMenu 打开时查询该往哪边展开（贴屏幕边时翻向内侧，避免被切）。
+/// 主线程拿 visibleFrame + 桌宠中心算 (h, v)，前端据此设 data-h / data-v。
+#[tauri::command]
+pub async fn get_pet_menu_orientation(app: AppHandle) -> Result<serde_json::Value, String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.run_on_main_thread(move || {
+        let frame = crate::overlay_size::visible_frame_top_left();
+        let (h, v) = crate::overlay_size::compute_menu_orientation(frame);
+        let _ = tx.send((h.to_string(), v.to_string()));
+    })
+    .map_err(|e| e.to_string())?;
+    let (h, v) = rx.recv().map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({ "h": h, "v": v }))
 }
 
 /// v0.3.6 · 一键打开 macOS 系统设置 → 隐私与安全性 → 辅助功能 面板。
