@@ -166,6 +166,9 @@ pub enum NudgeKind {
     /// v0.4+ · 连续工作：长时间高强度敲键（≥ 2h 窗口持续活跃）+ **当下出现自然停顿**
     /// → 趁停顿提醒休息眼睛 / 起来走走。刻意在停顿时发，不打断心流。
     LongFocus,
+    /// v0.4.4 · 记忆首次透明告知：记忆默认开,第一次启动时一次性告知
+    /// 「本地存、随时看/删」。marker file 兜底,弹过不再弹。
+    MemoryIntro,
 }
 
 impl NudgeKind {
@@ -179,6 +182,7 @@ impl NudgeKind {
             NudgeKind::Lunch       => "lunch",
             NudgeKind::LearnedCli  => "learned-cli",
             NudgeKind::LongFocus   => "long-focus",
+            NudgeKind::MemoryIntro => "memory-intro",
         }
     }
 }

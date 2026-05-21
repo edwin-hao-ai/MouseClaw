@@ -71,7 +71,8 @@ export type NudgeKind =
   | "stretch" | "stuck" | "late-night"
   | "water" | "good-morning" | "lunch"  // v0.1.32
   | "learned-cli"                        // v0.4.x · 老用户升级提示
-  | "long-focus";                        // v0.4+ · 连续专注 2h 提醒休息
+  | "long-focus"                         // v0.4+ · 连续专注 2h 提醒休息
+  | "memory-intro";                      // v0.4.4 · 记忆首次透明告知
 
 export interface NudgePayload {
   kind: NudgeKind;

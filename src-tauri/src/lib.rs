@@ -470,6 +470,9 @@ pub fn run() {
             // browser/office CLI 且没弹过，弹一次性 nudge 引导去状态页装。
             cli_install::maybe_hint_upgrade(app.handle().clone());
 
+            // v0.4.4 · 记忆默认开 → 首次一次性透明告知(本地存、可看可删)。
+            memory::maybe_show_memory_intro(app.handle().clone());
+
             if let Err(e) = tray::setup(&app.handle()) {
                 eprintln!("[mouseclaw] tray setup failed: {e:#}");
             } else {

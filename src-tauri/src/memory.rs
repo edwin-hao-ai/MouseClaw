@@ -107,6 +107,48 @@ fn enabled() -> bool {
     cfg.memory_enabled && !cfg.memory_paused
 }
 
+/// v0.4.4 · 记忆默认开 → 首次启动一次性透明告知(本地存、可看可删)。
+/// marker file 兜底,弹过不再弹。仿 `cli_install::maybe_hint_upgrade`。
+pub fn maybe_show_memory_intro(app: tauri::AppHandle) {
+    use tauri::Emitter;
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        let cfg = crate::config::Config::load();
+        if !cfg.onboarded || !cfg.memory_enabled {
+            return; // 新用户走 onboarding;关了记忆就别提
+        }
+        let marker = match std::env::var_os("HOME") {
+            Some(h) => PathBuf::from(h).join(".mouseclaw").join("memory_intro_shown"),
+            None => return,
+        };
+        if marker.exists() {
+            return; // 弹过了
+        }
+        let en = cfg.language != "zh";
+        let message = if en {
+            "🧠 I'll remember what we do together — all stored locally, view or delete it anytime.".to_string()
+        } else {
+            "🧠 我会记得我们一起做过的事 —— 全部存在你本地,随时可看可删。".to_string()
+        };
+        let cta_label = if en { "View".to_string() } else { "看看".to_string() };
+        let payload = crate::events::NudgePayload {
+            kind: crate::events::NudgeKind::MemoryIntro,
+            message,
+            cta_label: Some(cta_label),
+            cta_action: Some("open-memory".into()),
+        };
+        if let Err(e) = app.emit(crate::events::EV_NUDGE, payload) {
+            eprintln!("[mouseclaw] memory-intro emit failed: {e}");
+            return;
+        }
+        if let Some(dir) = marker.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(&marker, b"1");
+        println!("[mouseclaw] memory intro shown");
+    });
+}
+
 // ── 写入:记录一轮 turn(零额外 LLM) ──────────────────────────────────
 
 fn importance_heuristic(text: &str) -> i64 {
