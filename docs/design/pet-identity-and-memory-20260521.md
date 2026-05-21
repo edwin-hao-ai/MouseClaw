@@ -335,6 +335,69 @@ LIMIT  8;
 - **D4 · 日/周回顾** → 采用推荐:**只在用户问时答,v1 不主动推**(避免打扰)。
 - **D5 · 性格预设 → ✅ 加多到 9 款 + 自定义**(用户 2026-05-21 定),清单见 §1.2。
 
+### 2.10 头等约束:记忆必须 backend 无关 —— 为未来「直连 LLM API」铺路(用户 2026-05-21 提)
+
+**战略背景(用户原话):未来可能让用户直接接入 LLM。那时没有 Codex / Claude Code CLI,
+我们也得有一套自己的记忆系统 —— 这正是现在就把记忆做扎实的理由。**
+
+现状:`backend.rs` 的 4 个 backend(ClaudeCli / CodexCli / OpenclawCli / HermesAgent)
+**全是 agentic CLI 子进程**,能自己读文件、跑命令、维持自己的上下文。未来要加的第 5 类
+是 **直连 LLM API(`DirectLlm`,如 Anthropic Messages / OpenAI / Gateway,自带 key,不装 CLI)**。
+它有两个根本不同:
+
+1. **无 agentic 工具**:不能自己读文件 / 跑 bash。Mode A 的「思考+执行」(改代码、跑命令)
+   基本失效,它只能「看屏幕回答 + 写回光标(Mode B)」。**所有上下文必须 MouseClaw 预先备齐喂进去。**
+2. **完全无状态**:每次 API 调用都是冷启动,没有 CLI 那套自管会话。
+   **→ MouseClaw 的记忆成了它唯一的长期连续性。** 所以直连 API 模式下,记忆不是锦上添花,是命脉。
+
+#### 这对记忆系统的设计要求(以下都已满足或本节补齐)
+
+- ✅ **采集 backend 无关**:app标题(`frontmost.rs`)/ 截图(`screencapture`)/ 语音(sherpa)
+  都是 OS 层能力,不依赖任何 AI backend。
+- ✅ **存储 backend 无关**:SQLite,自包含。
+- ✅ **写入期抽取 backend 无关**:走 `backend::ask_text_only(backend, prompt)` —— 纯文本进出,
+  是 4 个 CLI 和未来 raw API 的最小公约数。raw API 一样能跑。
+- ✅ **读取 backend 无关**:纯 SQL,零 AI 依赖。
+- ⚠️ **注入点必须改造(唯一会漏 CLI 依赖的地方)**:见下。
+
+#### 必做改造:prompt 拼装抽象成 backend 无关的「上下文 bundle」
+
+现在 `claude_cli.rs::build_prompt` 产出**一个扁平字符串**(喂 `claude -p` / `codex exec` 这种
+命令行 CLI)。直连 LLM API 要的是 **messages 数组 + 图片 block**(`system` + `user{文本+image}`)。
+所以记忆(以及截图、语音、光标上下文)不能写死成「字符串拼接」,要抽象成中间结构:
+
+```rust
+/// backend 无关的「这一轮要喂给模型的全部上下文」。
+/// 各 backend 自己决定渲染成扁平 prompt(CLI)还是 messages 数组(raw API)。
+pub struct ContextBundle<'a> {
+    pub transcript: &'a str,           // 音频
+    pub image_path: Option<&'a Path>,  // 视觉(raw API 渲染成 image block;text-only 模型则丢弃)
+    pub frontmost_app: Option<&'a str>,
+    pub cursor: Option<&'a CursorContext>,
+    pub memory: Option<&'a str>,       // ← §3 检索出来的记忆块
+    pub history: &'a [Turn],
+}
+
+// CLI backend:  bundle.render_flat_prompt() -> String   (现有 build_prompt 的逻辑)
+// DirectLlm:    bundle.render_messages()    -> Vec<Message>  (system + user{text, image_block})
+```
+
+`ask_streaming` / `ask_text_only` 接收 `ContextBundle` 而不是已拼好的 `&str`,
+让 backend 在最后一刻按自己形状渲染。**这样记忆模块永远只管「产出 bundle.memory」,
+不关心下游是 CLI 还是 API。**
+
+#### raw API 模式的额外考量(写进 v2 backend 时落地,但记忆设计现在就要兼容)
+
+- **token 成本在用户头上** → 注入的记忆要有 **token 预算**(top-K 截断,而非全塞)。
+- **查询期 LLM 扩词(§2.3)是额外一次调用** → raw API 模式下可降级为「启发式扩词 / 关掉」,
+  避免每次召唤 3 次 API 调用(扩词 + 抽取 + 主回答)。
+- **截图**:多数现代 API 支持图片 block(Anthropic/OpenAI),`ContextBundle` 渲染时带上;
+  纯文本模型则 `image_path` 丢弃,记忆+语音仍可用(优雅降级)。
+
+> **结论:记忆模块整体坐在 backend dispatch 之上**,只跟 SQLite + `ask_text_only` 打交道。
+> 加 `DirectLlm` backend 时,记忆**零改动自动可用**;唯一要动的是 prompt 拼装层(本节的 `ContextBundle`)。
+> 这就是把记忆做成「我们自己的系统」而非「借 CLI 的能力」的全部意义。
+
 ---
 
 ## 3. 视觉 + 音频 + 记忆联动(就是②的读取期表现)
@@ -356,7 +419,9 @@ LIMIT  8;
 - **记忆** → 用上面两者做 SQL 检索 → 注入 prompt
 
 即:**视觉定位「在哪」、音频定位「问什么」、记忆补上「以前发生过什么」**,三者在 prompt 拼接这一步合流。
-实现上是给 `build_prompt` 加一个 `memory: Option<&str>` 参数,不是新系统。
+实现上记忆只负责产出这个 block,塞进 §2.10 的 `ContextBundle.memory` 字段 —— 不直接拼字符串,
+由各 backend(CLI 扁平 prompt / 直连 API 的 messages 数组)在最后一刻自己渲染。这样视觉+音频+记忆
+的联动对所有 backend(含未来直连 LLM)一视同仁,不是新系统。
 
 ---
 
