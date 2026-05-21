@@ -337,6 +337,7 @@ pub fn run() {
             commands::open_memory_window,
             memory::memory_list_turns,
             memory::memory_get_profile,
+            memory::memory_get_graph,
             memory::memory_delete_turn,
             memory::memory_delete_profile_item,
             memory::memory_clear_all,
@@ -406,6 +407,16 @@ pub fn run() {
             if let Err(e) = memory::init() {
                 eprintln!("[mouseclaw] memory init failed (记忆功能本次禁用): {e:#}");
             }
+            // v0.4.4 · reflection 定时巩固:每 30 min,有未消化且空闲时蒸馏画像/图谱。
+            // (pipeline 攒够 6 条也会即时触发;这个定时器兜底处理零散积压。)
+            tauri::async_runtime::spawn(async {
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(1800)).await;
+                    if memory::unprocessed_count() > 0 && !ai_queue::is_busy() {
+                        let _ = memory::run_reflection().await;
+                    }
+                }
+            });
 
             // Tray always available (escape valve before/during onboarding)
             // v0.1.8 启动 cursor-follow 后台任务（30fps；由 AtomicBool 控制开 / 关）

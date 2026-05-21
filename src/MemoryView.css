@@ -177,6 +177,55 @@
 .mem-turn-meta { font-size: var(--text-micro); color: var(--text-dim); margin-top: 2px; }
 .mem-imp { color: var(--accent-primary); letter-spacing: 1px; }
 
+/* 知识图谱 tab */
+.mem-graph-nodes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+.mem-node {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  background: #fff;
+  border-radius: var(--radius-pill);
+  padding: 5px 10px;
+  font-size: var(--text-body-sm);
+  color: var(--text-primary);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+}
+.mem-node-freq {
+  font-style: normal;
+  font-size: var(--text-micro);
+  font-weight: 700;
+  color: #fff;
+  background: var(--accent-primary);
+  border-radius: var(--radius-pill);
+  padding: 0 5px;
+  min-width: 14px;
+  text-align: center;
+}
+.mem-edges-title {
+  font-size: var(--text-micro);
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: var(--space-2);
+}
+.mem-edge {
+  font-size: var(--text-body-sm);
+  color: var(--text-primary);
+  padding: 4px 0;
+  border-bottom: 1px solid var(--surface-glass);
+}
+.mem-edge-k {
+  color: var(--text-dim);
+  font-size: var(--text-micro);
+  margin: 0 var(--space-1);
+}
+
 .mem-footer {
   display: flex;
   justify-content: space-between;

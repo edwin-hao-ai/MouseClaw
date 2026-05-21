@@ -16,6 +16,7 @@ use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
 use once_cell::sync::Lazy;
 use rusqlite::{params, Connection};
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -168,7 +169,14 @@ fn time_ago(ts: i64) -> String {
     else { format!("{}天前", d / 86400) }
 }
 
-struct ScoredTurn { ts: i64, app: Option<String>, snippet: String, score: f64 }
+struct ScoredTurn { id: i64, ts: i64, app: Option<String>, snippet: String, score: f64 }
+
+fn snippet_of(summary: Option<String>, text: &str) -> String {
+    summary.unwrap_or_else(|| {
+        let s: String = text.chars().take(60).collect();
+        if text.chars().count() > 60 { format!("{s}…") } else { s }
+    })
+}
 
 /// 当前画像(always-on):有效 insight + 有效 preference。
 fn collect_profile(c: &Connection) -> rusqlite::Result<Vec<String>> {
@@ -194,22 +202,23 @@ fn collect_relevant(c: &Connection, query: &str, app: Option<&str>, limit: usize
     let toks = query_tokens(query);
     let now = Utc::now().timestamp();
     let mut st = c.prepare(
-        "SELECT ts, app, role, text, summary, importance FROM memory_turn
+        "SELECT id, ts, app, role, text, summary, importance FROM memory_turn
          ORDER BY ts DESC LIMIT 120",
     )?;
     let rows = st.query_map([], |r| {
         Ok((
             r.get::<_, i64>(0)?,
-            r.get::<_, Option<String>>(1)?,
-            r.get::<_, String>(2)?,
+            r.get::<_, i64>(1)?,
+            r.get::<_, Option<String>>(2)?,
             r.get::<_, String>(3)?,
-            r.get::<_, Option<String>>(4)?,
-            r.get::<_, i64>(5)?,
+            r.get::<_, String>(4)?,
+            r.get::<_, Option<String>>(5)?,
+            r.get::<_, i64>(6)?,
         ))
     })?;
     let mut scored: Vec<ScoredTurn> = Vec::new();
     for row in rows {
-        let (ts, tapp, _role, text, summary, importance) = row?;
+        let (id, ts, tapp, _role, text, summary, importance) = row?;
         let hay = summary.clone().unwrap_or_else(|| text.clone());
         let hay_l = hay.to_lowercase();
         // relevance:命中的 token 数
@@ -227,15 +236,78 @@ fn collect_relevant(c: &Connection, query: &str, app: Option<&str>, limit: usize
         if hits == 0 && score < 2.6 {
             continue; // 既不相关又不够近/重要 → 丢
         }
-        let snippet = summary.unwrap_or_else(|| {
-            let s: String = text.chars().take(60).collect();
-            if text.chars().count() > 60 { format!("{s}…") } else { s }
-        });
-        scored.push(ScoredTurn { ts, app: tapp, snippet, score });
+        scored.push(ScoredTurn { id, ts, app: tapp, snippet: snippet_of(summary, &text), score });
     }
     scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
     scored.truncate(limit);
     Ok(scored)
+}
+
+/// 知识图谱遍历:种子实体(名字命中 query / app)→ 1 跳邻居(entity↔entity 边)→
+/// 这些实体被提及的 turn(mentions 边)。全在 Rust 内算(对中文鲁棒,动态 IN 只用 i64,
+/// 无注入面)。让"以前在这个项目/这个话题下发生过什么"能被召回 —— 这才是图带来的价值。
+fn collect_graph(c: &Connection, query: &str, app: Option<&str>, limit: usize)
+    -> rusqlite::Result<Vec<ScoredTurn>>
+{
+    let toks: Vec<String> = query_tokens(query).iter().map(|t| t.to_lowercase()).collect();
+    let app_l = app.map(|a| a.to_lowercase());
+    // 1. 载入实体
+    let mut est = c.prepare("SELECT id, name FROM entity ORDER BY last_seen DESC LIMIT 400")?;
+    let erows = est.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))?;
+    let mut id_name: Vec<(i64, String)> = Vec::new();
+    for e in erows { id_name.push(e?); }
+    if id_name.is_empty() { return Ok(Vec::new()); }
+    // 2. 种子:名字被 query token / app 命中
+    let mut seeds: HashSet<i64> = HashSet::new();
+    for (id, name) in &id_name {
+        let nl = name.to_lowercase();
+        if nl.chars().count() < 2 { continue; }
+        let by_tok = toks.iter().any(|t| nl.contains(t.as_str()) || t.contains(nl.as_str()));
+        let by_app = app_l.as_deref().map(|a| a.contains(nl.as_str()) || nl.contains(a)).unwrap_or(false);
+        if by_tok || by_app { seeds.insert(*id); }
+    }
+    if seeds.is_empty() { return Ok(Vec::new()); }
+    // 3. 载入边
+    let mut xst = c.prepare("SELECT src, dst, kind FROM edge LIMIT 4000")?;
+    let xrows = xst.query_map([], |r|
+        Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, String>(2)?)))?;
+    let mut edges: Vec<(i64, i64, String)> = Vec::new();
+    for x in xrows { edges.push(x?); }
+    // 4. 1 跳邻居(entity↔entity)
+    let mut nodes = seeds.clone();
+    for (s, d, k) in &edges {
+        if k == "co_occurs" || k == "about" {
+            if seeds.contains(s) { nodes.insert(*d); }
+            if seeds.contains(d) { nodes.insert(*s); }
+        }
+    }
+    // 5. 提及这些实体的 turn(mentions 边:src=turn, dst=entity)
+    let mut turn_ids: HashSet<i64> = HashSet::new();
+    for (s, d, k) in &edges {
+        if k == "mentions" && nodes.contains(d) { turn_ids.insert(*s); }
+    }
+    if turn_ids.is_empty() { return Ok(Vec::new()); }
+    // 6. 取这些 turn(i64 拼 IN,无注入面)
+    let csv = turn_ids.iter().take(40).map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+    let sql = format!(
+        "SELECT id, ts, app, summary, text, importance FROM memory_turn WHERE id IN ({csv}) ORDER BY ts DESC"
+    );
+    let now = Utc::now().timestamp();
+    let mut tst = c.prepare(&sql)?;
+    let trows = tst.query_map([], |r| Ok((
+        r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, Option<String>>(2)?,
+        r.get::<_, Option<String>>(3)?, r.get::<_, String>(4)?, r.get::<_, i64>(5)?,
+    )))?;
+    let mut out = Vec::new();
+    for row in trows {
+        let (id, ts, tapp, summary, text, importance) = row?;
+        let age_days = ((now - ts).max(0) as f64) / 86400.0;
+        let score = 2.5 + 2.0 * 0.5_f64.powf(age_days / 7.0) + importance as f64 * 0.4;
+        out.push(ScoredTurn { id, ts, app: tapp, snippet: snippet_of(summary, &text), score });
+    }
+    out.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    out.truncate(limit);
+    Ok(out)
 }
 
 /// 注入 prompt 的记忆块。无内容 / 禁用 / 暂停 → None。
@@ -245,7 +317,18 @@ pub fn retrieve_block(query: &str, app: Option<&str>) -> Option<String> {
     }
     let res: Result<Option<String>> = with_db(|c| {
         let profile = collect_profile(c).unwrap_or_default();
-        let turns = collect_relevant(c, query, app, 5).unwrap_or_default();
+        // 情景层(token/时近/同app 打分)+ 图谱层(实体邻居→相关 turn),合并去重。
+        let mut cands = collect_relevant(c, query, app, 8).unwrap_or_default();
+        cands.extend(collect_graph(c, query, app, 6).unwrap_or_default());
+        cands.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        let mut seen: HashSet<i64> = HashSet::new();
+        let mut turns: Vec<ScoredTurn> = Vec::new();
+        for t in cands {
+            if seen.insert(t.id) {
+                turns.push(t);
+                if turns.len() >= 5 { break; }
+            }
+        }
         if profile.is_empty() && turns.is_empty() {
             return Ok(None);
         }
@@ -298,6 +381,8 @@ struct Extraction {
     #[serde(default)] insights: Vec<InsightDto>,
     #[serde(default)] preferences: Vec<PrefDto>,
     #[serde(default)] summaries: Vec<SummaryDto>,
+    #[serde(default)] entities: Vec<EntityDto>,
+    #[serde(default)] relations: Vec<RelationDto>,
 }
 #[derive(serde::Deserialize)]
 struct InsightDto { kind: String, text: String, #[serde(default)] confidence: Option<f64> }
@@ -305,6 +390,21 @@ struct InsightDto { kind: String, text: String, #[serde(default)] confidence: Op
 struct PrefDto { key: String, value: String, #[serde(default)] confidence: Option<f64> }
 #[derive(serde::Deserialize)]
 struct SummaryDto { i: usize, text: String }
+#[derive(serde::Deserialize)]
+struct EntityDto { kind: String, name: String }
+#[derive(serde::Deserialize)]
+struct RelationDto { from: String, to: String, #[serde(default)] kind: Option<String> }
+
+/// upsert 实体节点(UNIQUE(kind,name) → 已存在则 last_seen/freq 更新),返回 id。
+fn upsert_entity(c: &Connection, kind: &str, name: &str, now: i64) -> rusqlite::Result<i64> {
+    c.execute(
+        "INSERT INTO entity (kind, name, first_seen, last_seen, freq) VALUES (?1, ?2, ?3, ?3, 1)
+         ON CONFLICT(kind, name) DO UPDATE SET last_seen = ?3, freq = freq + 1",
+        params![kind, name, now],
+    )?;
+    c.query_row("SELECT id FROM entity WHERE kind = ?1 AND name = ?2",
+        params![kind, name], |r| r.get(0))
+}
 
 /// 从 LLM 输出里挖出第一个 JSON 对象(模型常包一段解释)。
 fn extract_json(s: &str) -> Option<&str> {
@@ -345,7 +445,11 @@ pub async fn run_reflection() -> Result<()> {
            (这是更新后的**完整**画像,涵盖用户的技术栈/沟通偏好/在做的项目/常用工具等,旧的若仍成立请保留)\n\
          - \"preferences\": 数组,每项 {{\"key\":\"answer_length|tech_stack|tone|language|...\",\"value\":\"...\",\"confidence\":0~1}}\n\
          - \"summaries\": 数组,每项 {{\"i\":交互序号,\"text\":\"这轮一句话摘要\"}}\n\
-         画像精炼克制,最多 8 条 insight、8 条 preference。"
+         - \"entities\": 数组,每项 {{\"kind\":\"project|app|file|topic|tool|person\",\"name\":\"实体名\"}}\n\
+           (从这几轮里出现的项目/应用/文件/话题/工具/人,用于构建知识图谱节点)\n\
+         - \"relations\": 数组,每项 {{\"from\":\"实体名\",\"to\":\"实体名\",\"kind\":\"about|co_occurs\"}}\n\
+           (实体之间的关系,比如 话题 about 项目、两个工具 co_occurs)\n\
+         画像精炼克制,最多 8 条 insight、8 条 preference、12 个 entity。"
     );
 
     let backend = crate::config::Config::load().backend;
@@ -399,6 +503,40 @@ pub async fn run_reflection() -> Result<()> {
                     params![s.text, t.id])?;
             }
         }
+        // 知识图谱:实体节点 + 边
+        let mut name_to_id: HashMap<String, i64> = HashMap::new();
+        for e in &parsed.entities {
+            let name = e.name.trim();
+            if name.is_empty() { continue; }
+            let id = upsert_entity(c, e.kind.trim(), name, now)?;
+            name_to_id.insert(name.to_lowercase(), id);
+        }
+        // turn → entity 提及边(确定性子串匹配,不额外烧 LLM)
+        for t in &batch {
+            let tl = t.text.to_lowercase();
+            for (nl, eid) in &name_to_id {
+                if nl.chars().count() >= 2 && tl.contains(nl.as_str()) {
+                    c.execute(
+                        "INSERT INTO edge (src, dst, kind, weight, ts) VALUES (?1, ?2, 'mentions', 1, ?3)",
+                        params![t.id, eid, now],
+                    )?;
+                }
+            }
+        }
+        // entity ↔ entity 关系边
+        for r in &parsed.relations {
+            let a = name_to_id.get(r.from.trim().to_lowercase().as_str()).copied();
+            let b = name_to_id.get(r.to.trim().to_lowercase().as_str()).copied();
+            if let (Some(a), Some(b)) = (a, b) {
+                if a != b {
+                    let k = r.kind.as_deref().unwrap_or("co_occurs");
+                    c.execute(
+                        "INSERT INTO edge (src, dst, kind, weight, ts) VALUES (?1, ?2, ?3, 1, ?4)",
+                        params![a, b, k, now],
+                    )?;
+                }
+            }
+        }
         let ids: Vec<i64> = batch.iter().map(|t| t.id).collect();
         mark_processed(c, &ids)?;
         Ok(())
@@ -406,8 +544,8 @@ pub async fn run_reflection() -> Result<()> {
     if let Err(e) = res {
         eprintln!("[mouseclaw] reflection 写库失败: {e:#}");
     } else {
-        println!("[mouseclaw] reflection ✓ 消化 {} 轮 → {} insight / {} preference",
-            batch.len(), parsed.insights.len(), parsed.preferences.len());
+        println!("[mouseclaw] reflection ✓ 消化 {} 轮 → {} insight / {} preference / {} entity",
+            batch.len(), parsed.insights.len(), parsed.preferences.len(), parsed.entities.len());
     }
     Ok(())
 }
@@ -487,6 +625,32 @@ pub fn memory_get_profile() -> serde_json::Value {
         Ok(serde_json::json!({ "insights": insights, "preferences": prefs }))
     })
     .unwrap_or_else(|_| serde_json::json!({ "insights": [], "preferences": [] }))
+}
+
+/// 知识图谱(给「🕸 关系」tab):实体节点 + entity↔entity 边。
+#[tauri::command]
+pub fn memory_get_graph() -> serde_json::Value {
+    with_db(|c| {
+        let mut es = c.prepare(
+            "SELECT id, kind, name, freq FROM entity ORDER BY freq DESC, last_seen DESC LIMIT 60",
+        )?;
+        let erows = es.query_map([], |r| Ok(serde_json::json!({
+            "id": r.get::<_, i64>(0)?, "kind": r.get::<_, String>(1)?,
+            "name": r.get::<_, String>(2)?, "freq": r.get::<_, i64>(3)?,
+        })))?;
+        let mut nodes = Vec::new();
+        for r in erows { nodes.push(r?); }
+        let mut xs = c.prepare(
+            "SELECT src, dst, kind FROM edge WHERE kind IN ('co_occurs','about') LIMIT 300",
+        )?;
+        let xrows = xs.query_map([], |r| Ok(serde_json::json!({
+            "src": r.get::<_, i64>(0)?, "dst": r.get::<_, i64>(1)?, "kind": r.get::<_, String>(2)?,
+        })))?;
+        let mut edges = Vec::new();
+        for r in xrows { edges.push(r?); }
+        Ok(serde_json::json!({ "nodes": nodes, "edges": edges }))
+    })
+    .unwrap_or_else(|_| serde_json::json!({ "nodes": [], "edges": [] }))
 }
 
 #[tauri::command]

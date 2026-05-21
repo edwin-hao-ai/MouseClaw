@@ -15,6 +15,12 @@ import "./MemoryView.css";
 interface Insight { id: number; kind: string; text: string; confidence: number }
 interface Pref { id: number; key: string; value: string; confidence: number }
 interface Turn { id: number; ts: number; app: string | null; role: string; summary: string; importance: number }
+interface GraphNode { id: number; kind: string; name: string; freq: number }
+interface GraphEdge { src: number; dst: number; kind: string }
+
+const KIND_ICON: Record<string, string> = {
+  project: "📦", app: "🪟", file: "📄", topic: "💡", tool: "🛠", person: "🙂",
+};
 
 function timeAgo(ts: number, lang: string): string {
   const d = Math.max(0, Math.floor(Date.now() / 1000) - ts);
@@ -27,12 +33,14 @@ function timeAgo(ts: number, lang: string): string {
 
 export default function MemoryView() {
   const t = useT();
-  const [tab, setTab] = useState<"profile" | "history">("profile");
+  const [tab, setTab] = useState<"profile" | "history" | "graph">("profile");
   const [paused, setPaused] = useState(false);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [prefs, setPrefs] = useState<Pref[]>([]);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [search, setSearch] = useState("");
+  const [nodes, setNodes] = useState<GraphNode[]>([]);
+  const [edges, setEdges] = useState<GraphEdge[]>([]);
 
   const loadProfile = useCallback(() => {
     invoke<{ insights: Insight[]; preferences: Pref[] }>("memory_get_profile")
@@ -44,13 +52,19 @@ export default function MemoryView() {
       .then(rows => setTurns(rows ?? []))
       .catch(() => {});
   }, []);
+  const loadGraph = useCallback(() => {
+    invoke<{ nodes: GraphNode[]; edges: GraphEdge[] }>("memory_get_graph")
+      .then(g => { setNodes(g.nodes ?? []); setEdges(g.edges ?? []); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     invoke<{ enabled: boolean; paused: boolean }>("memory_get_settings")
       .then(s => setPaused(!!s.paused)).catch(() => {});
     loadProfile();
     loadTurns("");
-  }, [loadProfile, loadTurns]);
+    loadGraph();
+  }, [loadProfile, loadTurns, loadGraph]);
 
   const togglePaused = () => {
     const next = !paused;
@@ -70,7 +84,7 @@ export default function MemoryView() {
   const clearAll = () => {
     if (!window.confirm(t("memory.clear_confirm"))) return;
     invoke("memory_clear_all").catch(() => {});
-    setInsights([]); setPrefs([]); setTurns([]);
+    setInsights([]); setPrefs([]); setTurns([]); setNodes([]); setEdges([]);
   };
 
   const onSearch = (q: string) => { setSearch(q); loadTurns(q); };
@@ -99,6 +113,8 @@ export default function MemoryView() {
           onClick={() => setTab("profile")}>{t("memory.tab.profile")}</button>
         <button type="button" className={`mem-tab ${tab === "history" ? "sel" : ""}`}
           onClick={() => setTab("history")}>{t("memory.tab.history")}</button>
+        <button type="button" className={`mem-tab ${tab === "graph" ? "sel" : ""}`}
+          onClick={() => setTab("graph")}>{t("memory.tab.graph")}</button>
       </div>
 
       {tab === "profile" && (
@@ -151,6 +167,38 @@ export default function MemoryView() {
                 onClick={() => delTurn(tn.id)}>✕</button>
             </div>
           ))}
+        </section>
+      )}
+
+      {tab === "graph" && (
+        <section className="mem-pane">
+          {nodes.length === 0 && <div className="mem-empty">{t("memory.graph.empty")}</div>}
+          {nodes.length > 0 && (
+            <>
+              <div className="mem-graph-nodes">
+                {nodes.map(n => (
+                  <span className="mem-node" key={n.id} title={`${n.kind} · ×${n.freq}`}>
+                    {KIND_ICON[n.kind] ?? "•"} {n.name}
+                    <i className="mem-node-freq">{n.freq}</i>
+                  </span>
+                ))}
+              </div>
+              {edges.length > 0 && (
+                <div className="mem-graph-edges">
+                  <div className="mem-edges-title">{t("memory.graph.links")}</div>
+                  {edges.map((e, idx) => {
+                    const a = nodes.find(n => n.id === e.src)?.name ?? `#${e.src}`;
+                    const b = nodes.find(n => n.id === e.dst)?.name ?? `#${e.dst}`;
+                    return (
+                      <div className="mem-edge" key={idx}>
+                        {a} <span className="mem-edge-k">↔ {e.kind} ↔</span> {b}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
         </section>
       )}
 
