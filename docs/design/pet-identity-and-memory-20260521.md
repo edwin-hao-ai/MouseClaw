@@ -586,14 +586,22 @@ MemGPT/Letta 靠 **agent 调 memory 工具**(`core_memory_append` 等)自己管�
 3. **不 bump `CURRENT_CONFIG_VERSION`**(原 §1.2 写 v20)。原因:全是 `#[serde(default)]` 增量
    字段,bump 会强制所有老用户重走 Onboarding,对加字段毫无必要。
 
-**仍缺的项(必须在 ship 默认开之前补 / 显式交代):**
-- ⚠️ **首次透明告知 UI 未做**(§2.9 D1 的刚需)。记忆默认开,但还没有「第一次开始记忆时一次性
-  告知『本地存、随时删』」的提示。**默认开却不告知 = 隐私惊吓,ship 前必须补。** 没现在做的原因:
-  它要接 overlay 气泡(跨层,需要编译验证),留到能 cargo check 时做更稳。
-- **overlay 内 🧠 命中标记未做**:需把「用了哪些记忆」从 `build_prompt` 穿到 reply 事件再到前端,
-  跨层盲改风险高,留到能编译验证后做。
-- **D3(memory.db 加密)未决**:当前明文(同 sessions.jsonl)。
-- **reflection 仅"攒够 N 条"触发,无每日定时**:够用,定时器留作增强。
+**已补完(2026-05-21 第二批):**
+- ✅ **知识图谱做实**:之前 entity/edge 是空架子;现在 reflection 抽实体(项目/app/文件/话题/
+  工具/人)+ 关系边写入图,turn→entity 提及边(确定性子串);检索新增 `collect_graph` 图遍历
+  (种子实体→1跳邻居→被提及的 turn),与情景层合并去重。查看器「🕸 关系」tab + `memory_get_graph`。
+  **所以:是的,记忆会形成图结构的知识图谱。**
+- ✅ **首次透明告知 UI**:`memory::maybe_show_memory_intro` 启动 10s 后一次性 nudge
+  (复用 `NudgeKind::MemoryIntro` + marker file 兜底)+「看看」CTA 打开记忆窗口。
+- ✅ **overlay 内 🧠 命中标记**:低风险做法 —— `retrieve_block` 把命中条数写 AtomicUsize,
+  pipeline 读后 emit `memory-used`,App 在 reply 气泡顶部加一行(内嵌不浮层,零重叠)。
+- ✅ **reflection 每日/空闲定时器**:lib.rs 30min 兜底 + pipeline 攒够 6 条即时触发。
+
+**仍开放(需你决策,非实现):**
+- **D3(memory.db 加密)**:当前明文(同 sessions.jsonl)。要不要对齐 `clipboard_crypto` 加密,等你拍板。
+
+**新增验证负债(仍未 cargo check)**:rusqlite 图遍历(动态 IN)、`upsert_entity` 的 ON CONFLICT、
+`NudgeKind::MemoryIntro` 新变体、AtomicUsize 命中计数。🧠 badge 在气泡内首行的视觉位置未经真机验证。
 
 **验证状态**:前端 `tsc --noEmit` 全绿。**Rust 全部未经 cargo check** —— Linux 容器缺 GTK/GDK
 (`gdk-3.0 not found`)+ sherpa-onnx 需 build 时下载平台库,无法在此编译。**须在 macOS 上
