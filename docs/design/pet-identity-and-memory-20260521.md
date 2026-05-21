@@ -566,6 +566,39 @@ MemGPT/Letta 靠 **agent 调 memory 工具**(`core_memory_append` 等)自己管�
 
 ---
 
+## 5.5 实现状态(v0.4.4 已落地) + 与本设计的偏差
+
+**已实现并提交(分支 `claude/desktop-pet-memory-features-46oSV`):**
+- **P1 名字 + 9 性格**:`config::Personality` + `pet_name`/`personality`/`personality_custom`;
+  `system_prompt()` 注入(4 backend 共用);`PickerView` 起名+选性格 UI(走 i18n);托盘「召唤 {name}」。
+- **P2 记忆引擎**:`memory.rs` SQLite(rusqlite bundled);`record_turn` 零额外 LLM;
+  `retrieve_block` 经 `build_prompt` 注入(4 backend 自动生效)。
+- **P2.5 reflection**:`run_reflection` 空闲批处理蒸馏画像/偏好(走 ai_queue),pipeline 攒够 6 条触发。
+- **P3 查看器**:`MemoryView`(画像/历史双层 + 暂停)+ 托盘「🧠 它记得的事…」+ `?view=memory`。
+
+**与上文设计的偏差(均有理由,显式记录):**
+1. **检索用 LIKE + Rust 内打分,不是 FTS5/BM25**(§2.4/§2.11)。原因:FTS5 + 中文 trigram
+   分词在 Linux 容器里无法编译/运行验证,盲写风险高。打分(token 重叠 + 同 app + 时近 +
+   importance)对中文鲁棒。FTS5/BM25 留作 v1.1,等能在 Mac 上跑测后升级。
+2. **未做 `ContextBundle` 抽象**(§2.10)。改为在 `build_prompt` 内直接调 `retrieve_block`。
+   原因:DirectLlm backend 还不存在(YAGNI),且这样不动 `ask_streaming`/4 backend 签名,风险更低。
+   真做 DirectLlm 时再抽 `ContextBundle`(那时记忆模块零改动,只动拼装层 —— §2.10 的结论仍成立)。
+3. **不 bump `CURRENT_CONFIG_VERSION`**(原 §1.2 写 v20)。原因:全是 `#[serde(default)]` 增量
+   字段,bump 会强制所有老用户重走 Onboarding,对加字段毫无必要。
+
+**仍缺的项(必须在 ship 默认开之前补 / 显式交代):**
+- ⚠️ **首次透明告知 UI 未做**(§2.9 D1 的刚需)。记忆默认开,但还没有「第一次开始记忆时一次性
+  告知『本地存、随时删』」的提示。**默认开却不告知 = 隐私惊吓,ship 前必须补。** 没现在做的原因:
+  它要接 overlay 气泡(跨层,需要编译验证),留到能 cargo check 时做更稳。
+- **overlay 内 🧠 命中标记未做**:需把「用了哪些记忆」从 `build_prompt` 穿到 reply 事件再到前端,
+  跨层盲改风险高,留到能编译验证后做。
+- **D3(memory.db 加密)未决**:当前明文(同 sessions.jsonl)。
+- **reflection 仅"攒够 N 条"触发,无每日定时**:够用,定时器留作增强。
+
+**验证状态**:前端 `tsc --noEmit` 全绿。**Rust 全部未经 cargo check** —— Linux 容器缺 GTK/GDK
+(`gdk-3.0 not found`)+ sherpa-onnx 需 build 时下载平台库,无法在此编译。**须在 macOS 上
+`cargo check --manifest-path src-tauri/Cargo.toml` 验证一遍**(尤其 rusqlite 集成 + 新命令注册)。
+
 ## 6. 待你确认后我会做的下一步
 
 1. 你回答 §2.9 的 D1-D5(尤其 D1 默认开关、D5 性格款数)
