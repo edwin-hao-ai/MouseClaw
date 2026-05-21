@@ -72,17 +72,22 @@ export function useAdaptiveOverlay(
       const els = root.querySelectorAll<HTMLElement>(VISIBLE_UI_SELECTORS);
       if (els.length === 0) return;
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      // 有「可见」阴影气泡在场 → 用大 padding 容下阴影；否则（只有桌宠 / 阴影元素是
+      // 零尺寸隐藏态）用小 padding 不撑大窗口。
+      // ⚠️ 必须只认**可见(非零尺寸)**的 shadowed 元素：之前用 querySelector(SHADOWED_SELECTOR)
+      // 判存在，零尺寸/隐藏的 .rx-ribbon 等也会强制 96px padding，跟"测量忽略零尺寸元素"
+      // 不一致 → 窗口被无谓撑大。改为在同一遍 measure 里、对实际计入的可见元素判 shadowed。
+      let hasShadowed = false;
       els.forEach((el) => {
         const r = el.getBoundingClientRect();
         if (r.width === 0 || r.height === 0) return; // 不可见元素跳过
+        if (el.matches(SHADOWED_SELECTOR)) hasShadowed = true;
         if (r.left < minX) minX = r.left;
         if (r.top < minY) minY = r.top;
         if (r.right > maxX) maxX = r.right;
         if (r.bottom > maxY) maxY = r.bottom;
       });
       if (minX === Infinity) return;
-      // 有阴影气泡在场 → 用大 padding 容下阴影；否则（只有桌宠）用小 padding 不撑大窗口。
-      const hasShadowed = root.querySelector(SHADOWED_SELECTOR) != null;
       const pad = hasShadowed ? SHADOW_PADDING : BASE_PADDING;
       // v0.4 fix (2026-05-20)：Math.ceil 永远向上取整 + 亚像素 getBoundingClientRect
       // 会被放大成单向累积飘移。改用 Math.round + 4px 容差阈值。

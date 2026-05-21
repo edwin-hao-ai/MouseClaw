@@ -74,9 +74,10 @@ describe("useAdaptiveOverlay", () => {
     const call = invokeMock.mock.calls[0];
     expect(call[0]).toBe("set_overlay_content_size");
     const { width, height } = call[1] as { width: number; height: number };
-    // 并集：x ∈ [20, 300]，y ∈ [100, 300] → w=280, h=200。padding 24
-    expect(width).toBe(280 + 24);
-    expect(height).toBe(200 + 24);
+    // 并集：x ∈ [20, 300]，y ∈ [100, 300] → w=280, h=200。
+    // .pet-menu 可见且在 SHADOWED_SELECTOR → 用 SHADOW_PADDING(96) 容下重阴影
+    expect(width).toBe(280 + 96);
+    expect(height).toBe(200 + 96);
   });
 
   it("dedupes consecutive same-size pushes", async () => {
