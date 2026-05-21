@@ -6,6 +6,36 @@ versioning follows [SemVer](https://semver.org/).
 
 ---
 
+## [0.4.2] · 2026-05-21
+
+语音输入更快、快捷键设置更顺手：本地转写 + 标点改多线程推理（出字更跟手），托盘新增
+统一的快捷键设置入口（召唤 AI 快捷键 + 语音触发键一处切换），修掉连续语音输入时桌宠
+被拽回角落的跳动。安装包仍 12 MB。
+Faster dictation and tidier shortcut settings: multi-threaded local ASR + punctuation,
+a unified shortcut-settings area in the tray (summon hotkey + voice trigger key), and a
+fix for the pet jumping back to its corner during rapid dictation. Still a 12 MB DMG.
+
+### Added
+- **⌨️ 托盘统一快捷键设置 / Unified shortcut settings in the tray** —— 召唤 AI 的快捷键
+  之前只能在 onboarding 设，现在托盘新增「召唤快捷键」子菜单（⌘⇧Space / ⌘⇧M / ⌘⇧D /
+  ⌃⇧Space 预设），紧挨「语音触发键」子菜单，一处切换两个快捷键，热切换不用重启。
+  The summon hotkey used to be onboarding-only; now there's a "Summon shortcut" submenu in
+  the tray next to the voice trigger key — switch both in one place, hot-swapped, no restart.
+
+### Changed
+- **⚡ 语音输入法提速 / Faster dictation** —— sherpa 本地转写 + 标点推理从单线程改成按
+  机器核数并行（2~4 线程），松手后出字、加标点更跟手。Local ASR + punctuation inference
+  went single-threaded → multi-threaded (2–4 by core count) — snappier output on release.
+- **🧹 内部清理 / Internal cleanup** —— tray.rs 拆成 5 个 ≤400 行模块；移除 v0.3 已删的
+  Whisper 过时引用，统一指向 sherpa-onnx。Split tray.rs into 5 modules; purged stale
+  Whisper references (sherpa-onnx since v0.3).
+
+### Fixed
+- **🐭 连续语音输入桌宠不再跳 / No more pet jump during rapid dictation** —— 写入光标后
+  立刻再按触发键说下一段，桌宠会先被上一次的 auto-hide 计时器拽回角落再跳到光标。改为
+  受 generation 保护的延迟隐藏 + 新会话开始时让旧计时器失效。Speaking a second phrase
+  right after the first no longer yanks the pet back to its corner mid-session.
+
 ## [0.4.1] · 2026-05-21
 
 一波打磨：根治提醒后桌宠漂移、修好 agent-browser 安装、浏览器能力改成"优先用你自己的
