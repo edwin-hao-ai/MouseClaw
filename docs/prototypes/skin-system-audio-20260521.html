@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MouseClaw · 皮肤音效系统 prototype (procedural chiptune)</title>
+<style>
+  /* ── DESIGN.md tokens (single source of truth) ───────────────────── */
+  :root {
+    --surface-deep: #0a0e1a;
+    --surface-glass: rgba(255, 255, 255, 0.06);
+    --bubble-bg: rgba(255, 255, 255, 0.97);
+    --panel-bg: rgba(252, 252, 254, 0.98);
+    --bubble-border: rgba(0, 0, 0, 0.06);
+    --text-primary: #1a1a1a;
+    --text-on-dark: #f5f5f7;
+    --text-dim: #a1a1a8;
+    --accent-primary: #ff6b9d;
+    --accent-soft: #ff9bb8;
+    --accent-gradient: linear-gradient(135deg, #ff6b9d, #ff9bb8);
+    --success: #5cd6a0;
+    --warn: #ffd166;
+    --danger: #ff5f57;
+    --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+    --radius-pill: 999px;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 10px;
+    --radius-xl: 12px;
+    --radius-3xl: 16px;
+    --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+    --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 48px;
+    --shadow-card: 0 30px 80px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.06);
+    --shadow-mouse: drop-shadow(0 4px 8px rgba(0,0,0,0.4));
+    --shadow-cta: 0 8px 24px rgba(255,107,157,0.35);
+    --ease-default: ease-in-out;
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-tap: cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    font-family: var(--font-system);
+    color: var(--text-on-dark);
+    background:
+      radial-gradient(1200px 800px at 70% -10%, #16203a 0%, transparent 60%),
+      radial-gradient(900px 600px at 10% 110%, #1a1326 0%, transparent 55%),
+      var(--surface-deep);
+    min-height: 100vh;
+    padding: var(--space-8) var(--space-6) var(--space-10);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; }
+
+  header h1 {
+    font-size: 22px; line-height: 1.3; font-weight: 700; margin: 0 0 var(--space-2);
+  }
+  header p { color: var(--text-dim); font-size: 13px; line-height: 1.6; margin: 0; max-width: 760px; }
+  .pill {
+    display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .03em;
+    padding: 3px 10px; border-radius: var(--radius-pill);
+    background: var(--surface-glass); color: var(--accent-soft);
+    border: 1px solid rgba(255,255,255,0.08); margin-bottom: var(--space-3);
+  }
+
+  /* ── control bar ─────────────────────────────────────────────────── */
+  .controls {
+    display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center;
+    background: var(--surface-glass); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: var(--radius-xl); padding: var(--space-3) var(--space-4);
+    margin: var(--space-5) 0 var(--space-6);
+  }
+  .ctl { display: flex; align-items: center; gap: var(--space-2); font-size: 12px; }
+  .ctl label { color: var(--text-dim); font-weight: 600; }
+  .switch {
+    position: relative; width: 42px; height: 24px; border-radius: var(--radius-pill);
+    background: rgba(255,255,255,0.14); cursor: pointer; transition: background .2s var(--ease-tap);
+    border: 1px solid rgba(255,255,255,0.1); flex: none;
+  }
+  .switch::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
+    border-radius: 50%; background: #fff; transition: transform .2s var(--ease-spring);
+  }
+  .switch.on { background: var(--accent-gradient); }
+  .switch.on::after { transform: translateX(18px); }
+  .switch.cat-amb.on { background: linear-gradient(135deg,#6aa9ff,#8fd0ff); }
+  .switch.cat-act.on { background: linear-gradient(135deg,#5cd6a0,#86e6c0); }
+  .switch.cat-rea.on { background: linear-gradient(135deg,#ffd166,#ffe1a0); }
+  input[type=range] { width: 120px; accent-color: var(--accent-primary); }
+  .vol-val { font-variant-numeric: tabular-nums; color: var(--text-on-dark); width: 34px; }
+
+  .section-title { font-size: 16px; font-weight: 600; margin: var(--space-6) 0 var(--space-3); }
+  .hint { color: var(--text-dim); font-size: 12px; line-height: 1.6; margin: 0 0 var(--space-3); }
+
+  /* ── skin shelf ──────────────────────────────────────────────────── */
+  .shelf {
+    display: grid; grid-template-columns: repeat(9, 1fr); gap: var(--space-2);
+    background: var(--surface-glass); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: var(--radius-3xl); padding: var(--space-4);
+  }
+  .skin-cell {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: var(--space-2) 4px; border-radius: var(--radius-lg); cursor: pointer;
+    border: 2px solid transparent; transition: background .15s, border-color .15s, transform .12s;
+    position: relative;
+  }
+  .skin-cell:hover { background: rgba(255,255,255,0.05); }
+  .skin-cell.active { border-color: var(--accent-primary); background: rgba(255,107,157,0.10); }
+  .skin-cell .nm { font-size: 11px; font-weight: 600; }
+  .skin-cell .sp { font-size: 9px; color: var(--text-dim); letter-spacing:.04em; text-transform: uppercase; }
+  .skin-cell svg { filter: var(--shadow-mouse); }
+  .skin-cell.bounce svg { animation: hop .42s var(--ease-spring); }
+  .skin-cell.sleeping svg { animation: breathe 3.5s var(--ease-default) infinite; }
+  .zzz {
+    position: absolute; top: 2px; right: 8px; font-size: 12px; color: var(--accent-soft);
+    opacity: 0; }
+  .skin-cell.sleeping .zzz { animation: zzz 3.5s var(--ease-default) infinite; }
+  @keyframes hop { 0%{transform:translateY(0)} 35%{transform:translateY(-10px)} 70%{transform:translateY(2px)} 100%{transform:translateY(0)} }
+  @keyframes breathe { 0%,100%{transform:scale(1)} 50%{transform:scale(1.04)} }
+  @keyframes zzz { 0%{opacity:0; transform:translateY(0)} 30%{opacity:1} 100%{opacity:0; transform:translateY(-14px)} }
+
+  /* ── sound board ─────────────────────────────────────────────────── */
+  .board { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: var(--space-3); }
+  .snd {
+    text-align: left; cursor: pointer; color: var(--text-primary);
+    background: var(--bubble-bg); border: 1px solid var(--bubble-border);
+    border-radius: var(--radius-xl); padding: var(--space-3) var(--space-3) var(--space-3);
+    transition: transform .12s var(--ease-tap), box-shadow .15s; font-family: inherit;
+    position: relative; overflow: hidden;
+  }
+  .snd:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(0,0,0,0.35); }
+  .snd:active { transform: translateY(0) scale(.985); }
+  .snd.flash::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    background: radial-gradient(circle at 22px 22px, rgba(255,107,157,.5), transparent 60%);
+    animation: flash .5s var(--ease-default);
+  }
+  @keyframes flash { from{opacity:1} to{opacity:0} }
+  .snd .emoji { font-size: 20px; }
+  .snd .t { font-size: 13px; font-weight: 600; margin: 4px 0 2px; display:flex; align-items:center; gap:6px; }
+  .snd .trig { font-size: 11px; color: #6c6c70; line-height: 1.5; }
+  .cat-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .dot-amb { background: #6aa9ff; }
+  .dot-act { background: #5cd6a0; }
+  .dot-rea { background: #ffd166; }
+
+  /* ── compare strip ───────────────────────────────────────────────── */
+  .compare {
+    display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center;
+    background: var(--surface-glass); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: var(--radius-xl); padding: var(--space-4); margin-top: var(--space-3);
+  }
+  select, .btn {
+    font-family: inherit; font-size: 13px; border-radius: var(--radius-md);
+    border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.06);
+    color: var(--text-on-dark); padding: 8px 12px; cursor: pointer;
+  }
+  .btn-primary {
+    background: var(--accent-gradient); color: #fff; border: none; font-weight: 700;
+    box-shadow: var(--shadow-cta);
+  }
+  .btn:disabled { opacity: .5; cursor: default; }
+
+  footer { color: var(--text-dim); font-size: 12px; line-height: 1.7; margin-top: var(--space-10); }
+  footer code { font-family: var(--font-mono); background: var(--surface-glass); padding: 1px 6px; border-radius: 4px; color: var(--accent-soft); }
+  footer h3 { color: var(--text-on-dark); font-size: 14px; margin: var(--space-5) 0 var(--space-2); }
+  footer ul { margin: 0; padding-left: 18px; }
+  footer li { margin: 3px 0; }
+
+  .toast {
+    position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%);
+    background: rgba(20,24,38,.95); border: 1px solid rgba(255,255,255,.1);
+    color: var(--text-on-dark); font-size: 12px; padding: 8px 16px; border-radius: var(--radius-pill);
+    opacity: 0; pointer-events: none; transition: opacity .2s; backdrop-filter: blur(8px);
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="pill">prototype · 程序化音效 (Web Audio · 零素材) · 2026-05-21</span>
+    <h1>🔊 皮肤音效系统</h1>
+    <p>
+      给桌宠的动画 / 状态加音效：睡觉有轻微鼾声、完成任务有提示音、点一下有吱声……
+      所有声音用振荡器**实时合成**（chiptune 8-bit 风），不打包任何音频文件。
+      4 个物种各有自己的"嗓音"——同一个事件在老鼠 / 猫 / 狐 / 蛙 身上音色不同。
+      先点下面试听、调音量、感受会不会吵，确认方案后我再写 Rust/TS（见底部）。
+    </p>
+  </header>
+
+  <div class="controls">
+    <div class="ctl"><label>总开关</label><div id="sw-master" class="switch on"></div></div>
+    <div class="ctl"><label>音量</label><input id="vol" type="range" min="0" max="100" value="45" /><span id="volv" class="vol-val">45</span></div>
+    <div class="ctl"><span class="cat-dot dot-amb"></span><label>环境(鼾声)</label><div id="sw-amb" class="switch cat-amb on"></div></div>
+    <div class="ctl"><span class="cat-dot dot-act"></span><label>任务提示</label><div id="sw-act" class="switch cat-act on"></div></div>
+    <div class="ctl"><span class="cat-dot dot-rea"></span><label>微反应</label><div id="sw-rea" class="switch cat-rea on"></div></div>
+  </div>
+
+  <h2 class="section-title">1 · 选一只皮肤（决定"嗓音"）</h2>
+  <p class="hint">点一只选中 → 下面试听的声音用它的物种音色。蓝色 species 标注同物种共享音色（6 款鼠 / 猫 / 狐 / 蛙）。</p>
+  <div id="shelf" class="shelf"></div>
+
+  <h2 class="section-title">2 · 试听每个事件音（用选中皮肤的嗓音）</h2>
+  <p class="hint">点卡片即时试听（试听不受三个分类开关限制，方便你逐个听）。下面括号是它在 app 里由哪个状态触发。</p>
+  <div id="board" class="board"></div>
+
+  <h2 class="section-title">3 · 同一个音 · 9 款皮肤逐个对比</h2>
+  <p class="hint">验证"音效适配所有皮肤"硬规则：选一个事件，依次在 9 只身上播放，每只同时蹦一下。</p>
+  <div class="compare">
+    <select id="cmp-event"></select>
+    <button id="cmp-go" class="btn btn-primary">▶ 在 9 款皮肤上依次播放</button>
+    <button id="snore-toggle" class="btn">💤 让选中皮肤睡觉（循环鼾声）</button>
+    <button id="demo" class="btn">🎬 自动演示一段（出场→思考→完成→睡→醒）</button>
+  </div>
+
+  <footer>
+    <h3>这个 prototype 在演示什么 / 接下来怎么落地</h3>
+    <p>
+      声音全部由 <code>AudioContext</code> 振荡器实时合成 —— DMG 体积不增加，可任意调参，天然贴合像素美术。
+      事件→状态映射直接对应现有的 <code>MouseState</code> 与 <code>CompanionState</code>。
+    </p>
+    <h3>事件 ↔ 状态映射（已对照源码）</h3>
+    <ul>
+      <li><span style="color:#5cd6a0">任务提示</span>：<code>task-done</code>=jump(A 模式回复完成) · <code>error</code>=block · <code>feed</code>=feed-digest · <code>insert</code>=paste(B 模式写入) · <code>link</code>=续 session · <code>levelup</code>=亲密度升级 · <code>nudge</code>=主动提醒</li>
+      <li><span style="color:#6aa9ff">环境</span>：<code>snore</code>=sleep / companion sleep（循环，最易吵，单独可关）</li>
+      <li><span style="color:#ffd166">微反应</span>：<code>squeak</code>=clicked · <code>hop</code>=hop(打字结束蹦) · <code>excited</code>=cursor 贴近 · <code>dizzy</code>=甩鼠标 · <code>bonk</code>=撞墙 · <code>wake</code>=waking</li>
+    </ul>
+    <h3>"会不会吵"的设计取舍（请重点感受）</h3>
+    <ul>
+      <li>三类独立开关 + 总音量；微反应(点击吱声)触发最频繁，<b>建议默认关</b>，你听完拍板。</li>
+      <li>鼾声循环最易腻：默认很轻、每 ~3.5s 一次（非持续嗡嗡），可单独静音。</li>
+      <li>同一音 400ms 内不重复触发（节流，已内置）。</li>
+      <li>正在 TTS 朗读时应自动让位（app 端会接 <code>tts</code> 状态，prototype 未模拟）。</li>
+    </ul>
+    <h3>确认后我会做的 Rust/TS 实现（本会话内一次做完，不留尾巴）</h3>
+    <ul>
+      <li><code>src/audio/petAudio.ts</code> —— 把这里的合成引擎搬过去（playEvent / startSnore / stopSnore）</li>
+      <li><code>src/hooks/usePetSounds.ts</code> —— 监听 MouseState / CompanionState / 续 session / 亲密度 / nudge / bonk，带节流触发</li>
+      <li>config 加 <code>sfx_enabled</code> + <code>sfx_volume</code>（schema v20：default / commands.rs 构造体 / picker 都补）</li>
+      <li>托盘菜单加 <code>🔉 桌宠音效</code> 开关（与现有 <code>🔊 桌宠朗读</code> 并列，双语）</li>
+      <li>i18n：zh.ts / en.ts / types.ts 三处加 key</li>
+    </ul>
+    <p style="margin-top:16px; color:#6c6c70">
+      还没决定 / 想听你意见的点：①三类的<b>默认开关</b>（尤其微反应、鼾声要不要默认开）；
+      ②音量细调放托盘还是 picker 窗口；③cyber 机械鼠要不要给个"电子味"特殊音色（目前归在鼠组）。
+    </p>
+  </footer>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+/* ════════════════════════════════════════════════════════════════════
+   皮肤数据（从 src/skins.ts 1:1 镜像）
+   ════════════════════════════════════════════════════════════════════ */
+const SKINS = [
+  { id:"classic",   name:"经典灰",   body:"standard", species:"mouse",
+    palette:{body:"#cfcfcf",belly:"#ffffff",earIn:"#ff9bb8",earOut:"#cfcfcf",eye:"#1a1a1a",nose:"#d63d6a",tail:"#8a8a8a",paw:"#ffffff"} },
+  { id:"lab",       name:"小白鼠",   body:"slim", species:"mouse",
+    palette:{body:"#fafafa",belly:"#ffffff",earIn:"#ffb3c8",earOut:"#e8e3dc",eye:"#ff5f57",nose:"#ff6b9d",tail:"#ffb3c8",paw:"#ffffff"} },
+  { id:"field",     name:"田鼠",     body:"chubby", species:"mouse",
+    palette:{body:"#a47148",belly:"#e8d5b0",earIn:"#d6a07a",earOut:"#7a4e2e",eye:"#1a1a1a",nose:"#5a2e10",tail:"#7a4e2e",paw:"#d6a07a"} },
+  { id:"ninja",     name:"忍者鼠",   body:"ninja", species:"mouse",
+    palette:{body:"#3a3a42",belly:"#5a5a64",earIn:"#1a1a1a",earOut:"#2a2a30",eye:"#ffd166",nose:"#1a1a1a",tail:"#2a2a30",paw:"#1a1a1a"} },
+  { id:"cyber",     name:"机械鼠",   body:"robot", species:"mouse",
+    palette:{body:"#c0c8d0",belly:"#e8eef4",earIn:"#00e5ff",earOut:"#7a8290",eye:"#00e5ff",nose:"#00e5ff",tail:"#7a8290",paw:"#5a6270"} },
+  { id:"golden",    name:"金鼠",     body:"round", species:"mouse",
+    palette:{body:"#e8c87a",belly:"#fff4d6",earIn:"#d68a40",earOut:"#c8a050",eye:"#3a2818",nose:"#a06028",tail:"#c8a050",paw:"#fff4d6"} },
+  { id:"cat-gray",  name:"小灰猫",   body:"cat", species:"cat",
+    palette:{body:"#a8a8a8",belly:"#f4f4f4",earIn:"#ff9bb8",earOut:"#7a7a7a",eye:"#3fa66a",nose:"#d63d6a",tail:"#7a7a7a",paw:"#a8a8a8"} },
+  { id:"fox-red",   name:"赤狐",     body:"fox", species:"fox",
+    palette:{body:"#d96e2c",belly:"#fff4ec",earIn:"#1a1a1a",earOut:"#a04a18",eye:"#1a1a1a",nose:"#1a1a1a",tail:"#fff4ec",paw:"#1a1a1a"} },
+  { id:"frog-tree", name:"树蛙",     body:"frog", species:"frog",
+    palette:{body:"#7ab84a",belly:"#f4e890",earIn:"#ffffff",earOut:"#5a8a30",eye:"#d63d6a",nose:"#5a8a30",tail:"#5a8a30",paw:"#f4e890"} },
+];
+
+/* ════════════════════════════════════════════════════════════════════
+   SVG 渲染（从 PixelMouse.tsx 移植：Ears/Body/NinjaMask/Tail/Eyes/Extras）
+   只实现 prototype 需要的 listen(睁眼) / sleep(闭眼) / jump 三态
+   ════════════════════════════════════════════════════════════════════ */
+const R = (x,y,w,h,f,o)=>`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${f}"${o!=null?` opacity="${o}"`:""}/>`;
+
+function ears(s){ const p=s.palette, b=s.body;
+  if(b==="robot") return R(4,-1,1,3,p.earOut)+R(4,-2,1,1,p.earIn)+R(11,-1,1,3,p.earOut)+R(11,-2,1,1,p.earIn);
+  if(b==="cat") return R(2,0,1,3,p.earOut)+R(3,1,1,2,p.earOut)+R(4,2,1,1,p.earOut)+R(3,2,1,1,p.earIn)
+    +R(13,0,1,3,p.earOut)+R(12,1,1,2,p.earOut)+R(11,2,1,1,p.earOut)+R(12,2,1,1,p.earIn);
+  if(b==="fox") return R(2,-1,1,4,p.earOut)+R(3,0,1,3,p.earOut)+R(4,1,1,2,p.earOut)+R(3,1,1,2,p.earIn)
+    +R(13,-1,1,4,p.earOut)+R(12,0,1,3,p.earOut)+R(11,1,1,2,p.earOut)+R(12,1,1,2,p.earIn);
+  if(b==="frog") return R(3,0,3,3,p.body)+R(4,1,1,1,p.earIn)+R(4,0,1,1,p.earOut)
+    +R(10,0,3,3,p.body)+R(11,1,1,1,p.earIn)+R(11,0,1,1,p.earOut);
+  if(b==="chubby") return R(2,0,3,3,p.earOut)+R(1,1,4,3,p.earOut)+R(3,1,1,2,p.earIn)
+    +R(11,0,3,3,p.earOut)+R(11,1,4,3,p.earOut)+R(12,1,1,2,p.earIn);
+  return R(3,1,2,2,p.earOut)+R(2,2,3,2,p.earOut)+R(3,2,1,1,p.earIn)
+    +R(11,1,2,2,p.earOut)+R(11,2,3,2,p.earOut)+R(12,2,1,1,p.earIn);
+}
+function body(s){ const p=s.palette, b=s.body;
+  if(b==="cat") return R(3,3,10,1,p.body)+R(2,4,12,3,p.body)+R(3,7,10,1,p.body)+R(5,8,6,2,p.belly)
+    +R(3,8,2,2,p.body)+R(11,8,2,2,p.body)+R(4,10,8,1,p.body)
+    +R(0,6,2,1,p.body,.7)+R(0,7,2,1,p.body,.5)+R(14,6,2,1,p.body,.7)+R(14,7,2,1,p.body,.5);
+  if(b==="fox") return R(3,3,10,1,p.body)+R(2,4,12,3,p.body)+R(3,7,10,1,p.body)
+    +R(6,7,4,1,p.belly)+R(5,8,6,3,p.belly)+R(3,8,2,2,p.body)+R(11,8,2,2,p.body)+R(4,10,8,1,p.body);
+  if(b==="frog") return R(2,3,12,1,p.body)+R(1,4,14,4,p.body)+R(2,8,12,2,p.body)
+    +R(4,6,8,4,p.belly)+R(6,9,4,1,p.body)+R(5,10,6,1,p.body);
+  if(b==="slim") return R(4,3,8,1,p.body)+R(3,4,10,3,p.body)+R(4,7,8,1,p.body)+R(6,8,4,2,p.belly)
+    +R(4,8,2,2,p.body)+R(10,8,2,2,p.body)+R(5,10,6,1,p.body);
+  if(b==="round") return R(3,3,10,1,p.body)+R(2,4,12,3,p.body)+R(3,7,10,1,p.body)+R(4,8,8,3,p.belly)
+    +R(3,8,1,3,p.body)+R(12,8,1,3,p.body);
+  return R(3,3,10,1,p.body)+R(2,4,12,3,p.body)+R(3,7,10,1,p.body)+R(5,8,6,2,p.belly)
+    +R(3,8,2,2,p.body)+R(11,8,2,2,p.body)+R(4,10,8,1,p.body);
+}
+function ninjaMask(s){ if(s.body!=="ninja") return ""; const p=s.palette;
+  return R(2,5,12,1,"#1a1a1a")+R(0,5,2,1,p.earIn)+R(14,5,2,1,p.earIn); }
+function tail(s){ const p=s.palette, b=s.body;
+  if(b==="round") return R(13,9,1,1,p.tail)+R(14,8,1,2,p.tail)+R(15,7,1,1,p.tail)+R(14,6,2,1,p.tail);
+  if(b==="robot") return R(13,9,2,1,p.tail)+R(15,8,1,1,p.tail);
+  if(b==="cat") return R(13,9,1,1,p.tail)+R(14,8,1,1,p.tail)+R(15,7,1,2,p.tail)+R(15,5,1,2,p.tail)+R(14,4,1,1,p.tail);
+  if(b==="fox") return R(13,6,3,4,p.body)+R(14,5,2,1,p.body)+R(15,9,1,2,p.tail)+R(14,10,2,1,p.tail);
+  if(b==="frog") return "";
+  return R(13,9,1,1,p.tail)+R(14,7,1,3,p.tail);
+}
+function eyes(state,s){ const e=s.palette.eye;
+  if(state==="sleep"||state==="write") return R(5,6,1,1,e)+R(10,6,1,1,e);
+  if(state==="jump") return R(5,5,1,1,e)+R(6,6,1,1,e)+R(9,6,1,1,e)+R(10,5,1,1,e);
+  return R(5,5,1,2,e)+R(10,5,1,2,e); // listen / alert
+}
+function mouseSVG(s, state){
+  const p=s.palette;
+  const inner = ears(s)+ninjaMask(s)+body(s)+`<g>${tail(s)}</g>`
+    +`<g>${eyes(state,s)}</g>`
+    +R(4,11,2,1,p.paw)+R(10,11,2,1,p.paw)
+    +R(7,7,2,1,p.nose);
+  return `<svg viewBox="-1 -3 18 18" width="58" height="58" style="image-rendering:pixelated;shape-rendering:crispEdges">${inner}</svg>`;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   音效合成引擎（程序化 chiptune）
+   ════════════════════════════════════════════════════════════════════ */
+let AC = null;
+function ac(){ if(!AC) AC = new (window.AudioContext||window.webkitAudioContext)(); if(AC.state==="suspended") AC.resume(); return AC; }
+
+const state = { master:true, vol:0.45, amb:true, act:true, rea:true };
+
+// 物种"嗓音"：波形 + 基频倍率 + 亮度 + 性格
+const VOICES = {
+  mouse:{ wave:"square",   pitch:1.00, bright:1.0 },
+  cat:  { wave:"triangle", pitch:0.74, bright:0.85, vibrato:13, glide:1.04 },
+  fox:  { wave:"sawtooth", pitch:0.86, bright:0.92 },
+  frog: { wave:"square",   pitch:0.52, bright:0.55, croak:true },
+};
+// 每款皮肤的微调音（cents），让 9 只各有细微差别
+const DETUNE = { classic:0, lab:30, field:-35, ninja:-12, cyber:55, golden:-20, "cat-gray":0, "fox-red":0, "frog-tree":0 };
+
+// 音名 → 频率
+const N = { C3:130.81,G3:196.00,A3:220.00,Bb3:233.08,C4:261.63,D4:293.66,Eb4:311.13,E4:329.63,
+            F4:349.23,G4:392.00,A4:440.00,B4:493.88,C5:523.25,D5:587.33,E5:659.25,G5:783.99,
+            A5:880.00,B5:987.77,C6:1046.50 };
+
+function tone(freq, t0, dur, o={}){
+  const A=ac();
+  const wave=o.wave||"square", vol=(o.vol??0.2)*state.vol, bright=o.bright??1;
+  const osc=A.createOscillator(), g=A.createGain(), lp=A.createBiquadFilter();
+  osc.type=wave; osc.frequency.setValueAtTime(freq,t0);
+  if(o.bend) osc.frequency.exponentialRampToValueAtTime(Math.max(20,freq*o.bend), t0+dur);
+  if(o.detune) osc.detune.setValueAtTime(o.detune,t0);
+  lp.type="lowpass"; lp.frequency.value=Math.min(13000, freq*6*bright+400);
+  if(o.vibrato){ const lfo=A.createOscillator(), la=A.createGain();
+    lfo.frequency.value=o.vibrato; la.gain.value=freq*0.025;
+    lfo.connect(la).connect(osc.frequency); lfo.start(t0); lfo.stop(t0+dur+0.05); }
+  const a=o.attack??0.005, r=o.release??0.06;
+  g.gain.setValueAtTime(0.0001,t0);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002,vol), t0+a);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0+dur+r);
+  osc.connect(lp).connect(g).connect(A.destination);
+  osc.start(t0); osc.stop(t0+dur+r+0.02);
+}
+function noiseBurst(t0, dur, o={}){
+  const A=ac();
+  const buf=A.createBuffer(1, Math.max(1,A.sampleRate*dur), A.sampleRate);
+  const d=buf.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+  const n=A.createBufferSource(); n.buffer=buf;
+  const lp=A.createBiquadFilter(); lp.type="lowpass"; lp.frequency.value=o.lp??2000;
+  const hp=A.createBiquadFilter(); hp.type="highpass"; hp.frequency.value=o.hp??200;
+  const g=A.createGain(); const vol=(o.vol??0.15)*state.vol;
+  g.gain.setValueAtTime(0.0001,t0);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002,vol), t0+0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+  n.connect(hp).connect(lp).connect(g).connect(A.destination);
+  n.start(t0); n.stop(t0+dur+0.02);
+}
+
+// 给定皮肤，返回一个带"嗓音"的发音函数
+function voiceFor(skin){
+  const v=VOICES[skin.species||"mouse"]||VOICES.mouse;
+  const det=DETUNE[skin.id]||0;
+  return function(freq, at, dur, o={}){
+    const opt=Object.assign({ wave:v.wave, bright:v.bright, detune:det }, o);
+    if(v.vibrato && opt.vibrato==null) opt.vibrato=v.vibrato;
+    if(v.glide && opt.bend==null) opt.bend=v.glide;
+    if(v.croak){ // 双脉冲 ribbit
+      tone(freq*v.pitch, at, Math.min(dur,0.05), opt);
+      tone(freq*v.pitch*0.97, at+0.065, dur, opt);
+      return;
+    }
+    tone(freq*v.pitch, at, dur, opt);
+  };
+}
+
+// 事件定义：(vt=带嗓音发音, t0=起始, skin) → 安排音符
+const EVENTS = {
+  "task-done":{ cat:"act", emoji:"🎉", label:"完成任务", trig:"jump · A 模式回复完成",
+    play:(vt,t)=>[N.C5,N.E5,N.G5,N.C6].forEach((f,i)=>vt(f,t+i*0.08,0.13,{vol:0.22})) },
+  "error":{ cat:"act", emoji:"⚠️", label:"出错/拦截", trig:"block",
+    play:(vt,t)=>[N.G4,N.Eb4,N.C4].forEach((f,i)=>vt(f,t+i*0.10,0.17,{wave:"sawtooth",vol:0.2,bright:0.8})) },
+  "feed":{ cat:"act", emoji:"🍪", label:"吃掉文件", trig:"feed-digest",
+    play:(vt,t)=>{ vt(N.C4,t,0.18,{vol:0.18,bend:0.65}); vt(N.G5,t+0.24,0.15,{vol:0.2}); } },
+  "insert":{ cat:"act", emoji:"⌨️", label:"写入光标", trig:"paste · B 模式插入",
+    play:(vt,t)=>{ vt(N.A5,t,0.04,{vol:0.13,wave:"square"}); vt(N.C6,t+0.1,0.13,{vol:0.2}); } },
+  "link":{ cat:"act", emoji:"🔗", label:"续接 session", trig:"continuing=true",
+    play:(vt,t)=>{ vt(N.C5,t,0.12,{vol:0.18}); vt(N.G5,t+0.13,0.17,{vol:0.2}); } },
+  "levelup":{ cat:"act", emoji:"✨", label:"亲密度升级", trig:"intimacy level↑",
+    play:(vt,t)=>[N.C5,N.E5,N.G5,N.B5,N.C6].forEach((f,i)=>vt(f,t+i*0.06,0.12,{vol:0.2})) },
+  "nudge":{ cat:"act", emoji:"🔔", label:"主动提醒", trig:"nudge 事件",
+    play:(vt,t)=>{ vt(N.E5,t,0.18,{wave:"triangle",vol:0.18}); vt(N.C5,t+0.17,0.26,{wave:"triangle",vol:0.16}); } },
+  "snore":{ cat:"amb", emoji:"💤", label:"睡觉鼾声", trig:"sleep（循环 · 见下方按钮）",
+    play:(vt,t,skin)=>snoreOnce(skin,t) },
+  "squeak":{ cat:"rea", emoji:"🐭", label:"点一下 (吱)", trig:"clicked",
+    play:(vt,t)=>vt(N.C6,t,0.06,{vol:0.16}) },
+  "hop":{ cat:"rea", emoji:"⤴️", label:"打字结束蹦", trig:"hop",
+    play:(vt,t)=>vt(N.E5,t,0.13,{vol:0.2,bend:1.6}) },
+  "excited":{ cat:"rea", emoji:"💗", label:"鼠标贴近兴奋", trig:"excited(<30px)",
+    play:(vt,t)=>{ vt(N.G5,t,0.07,{vol:0.17}); vt(N.C6,t+0.09,0.1,{vol:0.2}); } },
+  "dizzy":{ cat:"rea", emoji:"💫", label:"甩鼠标头晕", trig:"dizzy",
+    play:(vt,t)=>vt(N.A4,t,0.5,{vol:0.16,vibrato:20,bend:0.7}) },
+  "bonk":{ cat:"rea", emoji:"💥", label:"撞墙", trig:"edge-bonk",
+    play:(vt,t,skin)=>{ noiseBurst(t,0.08,{vol:0.18,lp:1200}); vt(N.G3,t,0.14,{vol:0.18,wave:"sine",bend:0.6}); } },
+  "wake":{ cat:"rea", emoji:"🥱", label:"打哈欠醒来", trig:"waking",
+    play:(vt,t)=>vt(N.C4,t,0.5,{vol:0.16,bend:1.9,attack:0.09,release:0.22}) },
+};
+
+// 鼾声单次（吸→呼），基频随物种降低
+function snoreOnce(skin, t){
+  const v=VOICES[skin.species||"mouse"]||VOICES.mouse;
+  const base=110*v.pitch;
+  tone(base, t, 0.42, {wave:"sine", vol:0.10, bend:1.5, attack:0.16, release:0.1, bright:0.5});
+  noiseBurst(t, 0.42, {vol:0.035, lp:560, hp:110});
+  tone(base*1.35, t+0.58, 0.46, {wave:"sine", vol:0.07, bend:0.6, attack:0.05, release:0.22, bright:0.5});
+}
+
+// 节流：同一事件 400ms 内不重复
+const lastFire = {};
+function categoryOn(cat){ return cat==="amb"?state.amb : cat==="act"?state.act : state.rea; }
+
+function fire(eventId, skin, {audition=false}={}){
+  const ev=EVENTS[eventId]; if(!ev) return;
+  if(!state.master) { toast("总开关已关"); return; }
+  if(!audition && !categoryOn(ev.cat)) return;          // 自动触发受分类开关限制
+  const now=performance.now();
+  if(now-(lastFire[eventId]||0) < 400) return;          // 节流
+  lastFire[eventId]=now;
+  const vt=voiceFor(skin);
+  ev.play(vt, ac().currentTime+0.001, skin);
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   UI 装配
+   ════════════════════════════════════════════════════════════════════ */
+let activeSkin = SKINS[0];
+const SPECIES_LABEL = { mouse:"mouse", cat:"cat", fox:"fox", frog:"frog" };
+
+function buildShelf(){
+  const el=document.getElementById("shelf"); el.innerHTML="";
+  SKINS.forEach(s=>{
+    const cell=document.createElement("div");
+    cell.className="skin-cell"+(s.id===activeSkin.id?" active":"");
+    cell.dataset.id=s.id;
+    cell.innerHTML=`<span class="zzz">z</span>${mouseSVG(s,"listen")}<span class="nm">${s.name}</span><span class="sp">${SPECIES_LABEL[s.species]||"mouse"}</span>`;
+    cell.onclick=()=>{ activeSkin=s; refreshActive(); fire("squeak", s, {audition:true}); };
+    el.appendChild(cell);
+  });
+}
+function refreshActive(){
+  document.querySelectorAll(".skin-cell").forEach(c=>{
+    c.classList.toggle("active", c.dataset.id===activeSkin.id);
+  });
+}
+function bounce(skinId){
+  const c=document.querySelector(`.skin-cell[data-id="${skinId}"]`);
+  if(!c) return; c.classList.remove("bounce"); void c.offsetWidth; c.classList.add("bounce");
+}
+
+function buildBoard(){
+  const el=document.getElementById("board"); el.innerHTML="";
+  Object.entries(EVENTS).forEach(([id,ev])=>{
+    const b=document.createElement("button");
+    b.className="snd"; b.dataset.id=id;
+    b.innerHTML=`<div class="emoji">${ev.emoji}</div>
+      <div class="t"><span class="cat-dot dot-${ev.cat}"></span>${ev.label}</div>
+      <div class="trig">${ev.trig}</div>`;
+    b.onclick=()=>{
+      b.classList.remove("flash"); void b.offsetWidth; b.classList.add("flash");
+      if(id==="snore"){ snoreOnce(activeSkin, ac().currentTime+0.001); }
+      else fire(id, activeSkin, {audition:true});
+      bounce(activeSkin.id);
+    };
+    el.appendChild(b);
+  });
+}
+
+function buildCompare(){
+  const sel=document.getElementById("cmp-event"); sel.innerHTML="";
+  Object.entries(EVENTS).forEach(([id,ev])=>{
+    const o=document.createElement("option"); o.value=id; o.textContent=`${ev.emoji} ${ev.label}`;
+    sel.appendChild(o);
+  });
+  sel.value="task-done";
+}
+
+document.getElementById("cmp-go").onclick=()=>{
+  const id=document.getElementById("cmp-event").value;
+  SKINS.forEach((s,i)=>{
+    setTimeout(()=>{
+      if(id==="snore") snoreOnce(s, ac().currentTime+0.001);
+      else fire(id, s, {audition:true});
+      bounce(s.id);
+    }, i*620);
+  });
+};
+
+// 鼾声循环
+let snoreTimer=null, sleepingSkin=null;
+const snoreBtn=document.getElementById("snore-toggle");
+snoreBtn.onclick=()=>{
+  if(snoreTimer){ stopSnore(); return; }
+  sleepingSkin=activeSkin;
+  document.querySelector(`.skin-cell[data-id="${sleepingSkin.id}"]`)?.classList.add("sleeping");
+  snoreBtn.textContent="⏹ 停止睡觉";
+  const tick=()=>{ if(state.master && state.amb) snoreOnce(sleepingSkin, ac().currentTime+0.01); };
+  tick(); snoreTimer=setInterval(tick, 3500);
+};
+function stopSnore(){
+  if(snoreTimer){ clearInterval(snoreTimer); snoreTimer=null; }
+  if(sleepingSkin) document.querySelector(`.skin-cell[data-id="${sleepingSkin.id}"]`)?.classList.remove("sleeping");
+  sleepingSkin=null; snoreBtn.textContent="💤 让选中皮肤睡觉（循环鼾声）";
+}
+
+// 自动演示一段
+document.getElementById("demo").onclick=()=>{
+  const s=activeSkin;
+  toast(`演示：${s.name} 出场→思考→完成→睡→醒`);
+  const seq=[
+    [0,    ()=>fire("link",s,{audition:true})],          // 出场续接
+    [900,  ()=>{ fire("excited",s,{audition:true}); bounce(s.id); }],
+    [2200, ()=>{ fire("task-done",s,{audition:true}); bounce(s.id); }], // 完成任务提示音
+    [3600, ()=>snoreOnce(s, ac().currentTime+0.01)],     // 困了打鼾
+    [7100, ()=>snoreOnce(s, ac().currentTime+0.01)],
+    [10000,()=>{ fire("wake",s,{audition:true}); bounce(s.id); }], // 醒来打哈欠
+  ];
+  seq.forEach(([d,fn])=>setTimeout(fn,d));
+};
+
+// 控制条
+function bindSwitch(elId, key){
+  const sw=document.getElementById(elId);
+  sw.onclick=()=>{ state[key]=!state[key]; sw.classList.toggle("on",state[key]);
+    if(key==="master" && !state[key]) stopSnore(); };
+}
+bindSwitch("sw-master","master");
+bindSwitch("sw-amb","amb");
+bindSwitch("sw-act","act");
+bindSwitch("sw-rea","rea");
+const vol=document.getElementById("vol"), volv=document.getElementById("volv");
+vol.oninput=()=>{ state.vol=vol.value/100; volv.textContent=vol.value; };
+
+// toast
+let toastTimer=null;
+function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("show"),1800); }
+
+buildShelf(); buildBoard(); buildCompare();
+</script>
+</body>
+</html>
