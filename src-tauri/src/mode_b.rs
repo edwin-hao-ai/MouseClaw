@@ -191,7 +191,7 @@ pub fn type_unicode_sync(_text: &str) -> Result<()> {
 #[cfg(target_os = "macos")]
 pub fn delete_chars(n: usize) -> Result<()> {
     if n == 0 { return Ok(()); }
-    use core_graphics::event::{CGEvent, CGEventTapLocation};
+    use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation};
     use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
     let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
         .map_err(|_| anyhow::anyhow!("CGEventSource::new failed"))?;
@@ -200,9 +200,14 @@ pub fn delete_chars(n: usize) -> Result<()> {
     for _ in 0..n {
         let down = CGEvent::new_keyboard_event(source.clone(), BACKSPACE_KEYCODE, true)
             .map_err(|_| anyhow::anyhow!("CGEvent backspace down failed"))?;
+        // v0.4.2 · 清零 modifier flag —— 边说边写时用户物理按着触发键（⌥/⌃/⌘），合成
+        // 的 backspace 默认继承物理 modifier → ⌘⌫ 删整行 / ⌥⌫ 删词，会吞掉用户已有
+        // 内容（实测 bug）。强制 empty 让它就是一个纯粹的 backspace。
+        down.set_flags(CGEventFlags::empty());
         down.post(CGEventTapLocation::HID);
         let up = CGEvent::new_keyboard_event(source.clone(), BACKSPACE_KEYCODE, false)
             .map_err(|_| anyhow::anyhow!("CGEvent backspace up failed"))?;
+        up.set_flags(CGEventFlags::empty());
         up.post(CGEventTapLocation::HID);
         std::thread::sleep(std::time::Duration::from_millis(2));
     }
@@ -294,7 +299,7 @@ fn paste_via_clipboard(text: &str) -> Result<()> {
 
 #[cfg(target_os = "macos")]
 fn type_unicode_string(text: &str) -> Result<()> {
-    use core_graphics::event::{CGEvent, CGEventTapLocation};
+    use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation};
     use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 
     let source = CGEventSource::new(CGEventSourceStateID::HIDSystemState)
@@ -312,12 +317,17 @@ fn type_unicode_string(text: &str) -> Result<()> {
         let down = CGEvent::new_keyboard_event(source.clone(), 0, true)
             .map_err(|_| anyhow::anyhow!("CGEvent::new_keyboard_event(down) failed"))?;
         down.set_string(&s);
+        // v0.4.2 · 清零 modifier flag —— 边说边写时用户物理按着触发键，合成事件默认
+        // 继承物理 modifier（⌘/⌥/⌃），会把注入的字符变成快捷键（⌘A 全选等）。强制
+        // empty 让它就是纯文本输入。松手后的 Plan B 路径 modifier 已释放，置 empty 无害。
+        down.set_flags(CGEventFlags::empty());
         down.post(CGEventTapLocation::HID);
 
         // Matching key-up for cleanliness (some apps require paired events).
         let up = CGEvent::new_keyboard_event(source.clone(), 0, false)
             .map_err(|_| anyhow::anyhow!("CGEvent::new_keyboard_event(up) failed"))?;
         up.set_string(&s);
+        up.set_flags(CGEventFlags::empty());
         up.post(CGEventTapLocation::HID);
 
         // 5ms between chunks gives focused apps time to consume the event.
