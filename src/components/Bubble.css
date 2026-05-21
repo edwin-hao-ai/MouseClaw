@@ -227,8 +227,11 @@
 }
 .bubble-md pre code { background: transparent; padding: 0; }
 .bubble-md ul, .bubble-md ol { margin: 0.5em 0; padding-left: 1.5em; }
-.bubble-md li { margin: 0.25em 0; }
-.bubble-md li > p { margin: 0.2em 0; } /* 嵌套段落不要再撑出空行 */
+.bubble-md li { margin: 0.2em 0; } /* 对齐 Panel 的 .turn-md，紧凑舒服 */
+/* v0.4.x · 关键 —— 松散列表(bullet 间有空行)里 marked 会把每个 li 内容包进 <p>，
+   那些 <p> 的上下 margin 会在小气泡里撑出一大段空白(用户反馈"空白太多")。
+   清零 li 内段落 margin → 松散列表渲染得和紧凑列表一样紧，跟"查看历史"密度一致。 */
+.bubble-md li > p { margin: 0; }
 .bubble-md a { color: var(--text-link, #5b8def); text-decoration: underline; }
 .bubble-md h1, .bubble-md h2, .bubble-md h3, .bubble-md h4 {
   margin: 0.55em 0 0.25em; font-weight: 700; line-height: 1.3;

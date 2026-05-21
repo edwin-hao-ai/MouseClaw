@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>MouseClaw · 回复气泡 markdown 渲染打磨 (2026-05-21)</title>
+<title>MouseClaw · 回复气泡 markdown 间距收紧 (2026-05-21)</title>
 <style>
 /* ── DESIGN.md §9 :root cheatsheet (verbatim) ───────────────────────── */
 :root{
@@ -21,196 +21,101 @@
 
 /* ── page chrome (prototype only, not shipped) ──────────────────────── */
 html,body{margin:0;height:100%;font-family:var(--font-system);color:#1a1a1a;}
-body{
-  background:
-    radial-gradient(1200px 600px at 70% -10%, #cfe3ff 0%, transparent 60%),
-    linear-gradient(160deg,#e9eef6,#dfe6f0);
-  min-height:100%;
-}
-.page{max-width:1080px;margin:0 auto;padding:32px 24px 80px;}
+body{background:radial-gradient(1200px 600px at 70% -10%, #cfe3ff 0%, transparent 60%),linear-gradient(160deg,#e9eef6,#dfe6f0);min-height:100%;}
+.page{max-width:1120px;margin:0 auto;padding:32px 24px 80px;}
 h1{font-size:22px;margin:0 0 4px;letter-spacing:.01em;}
-.sub{color:#5a6473;font-size:14px;margin:0 0 24px;}
-.fixes{background:#fff;border:1px solid #e3e8f0;border-radius:12px;padding:14px 18px;margin-bottom:28px;
+.sub{color:#5a6473;font-size:14px;margin:0 0 22px;}
+.fixes{background:#fff;border:1px solid #e3e8f0;border-radius:12px;padding:14px 18px;margin-bottom:26px;
   box-shadow:0 6px 20px rgba(30,50,90,.06);font-size:13.5px;line-height:1.7;}
 .fixes b{color:#b3326d;}
-.fixes ol{margin:6px 0 0;padding-left:20px;}
-.cols{display:grid;grid-template-columns:1fr 1fr;gap:28px;}
+.fixes code{background:#f1f3f8;padding:1px 5px;border-radius:4px;font-family:var(--font-mono);font-size:.86em;}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start;}
 .col h2{font-size:14px;margin:0 0 12px;color:#5a6473;font-weight:600;display:flex;align-items:center;gap:8px;}
 .tag{font-size:11px;padding:2px 9px;border-radius:999px;font-weight:700;}
 .tag-bad{background:#ffe3e3;color:#c0392b;}
 .tag-good{background:#dcf7e8;color:#1f8a52;}
 
-/* faux desktop window the mouse sits on top of */
-.scene{position:relative;height:430px;border-radius:14px;overflow:hidden;
-  background:#fff;border:1px solid #d7deea;box-shadow:0 18px 50px rgba(30,50,90,.16);}
-.scene-bar{height:34px;background:linear-gradient(#f6f7fa,#eceef3);border-bottom:1px solid #e2e6ee;
-  display:flex;align-items:center;gap:7px;padding:0 13px;}
+.scene{position:relative;height:520px;border-radius:14px;overflow:hidden;background:#fff;border:1px solid #d7deea;box-shadow:0 18px 50px rgba(30,50,90,.16);}
+.scene-bar{height:34px;background:linear-gradient(#f6f7fa,#eceef3);border-bottom:1px solid #e2e6ee;display:flex;align-items:center;gap:7px;padding:0 13px;}
 .dot{width:11px;height:11px;border-radius:50%;}
 .dot.r{background:#ff5f57;}.dot.y{background:#febc2e;}.dot.g{background:#28c840;}
 .scene-title{font-size:12px;color:#9aa3b2;margin-left:8px;}
-.scene-body{padding:22px 26px;color:#aeb6c4;font-size:13px;line-height:1.9;}
+.scene-body{padding:22px 26px;color:#aeb6c4;font-size:13px;}
 .scene-body .l{height:11px;border-radius:5px;background:#eef1f6;margin:11px 0;}
 .scene-body .l.w1{width:62%}.scene-body .l.w2{width:84%}.scene-body .l.w3{width:48%}.scene-body .l.w4{width:73%}
 
-/* the floating mouse+bubble stack, absolutely placed over the scene */
-.overlay{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);
-  display:flex;flex-direction:column;align-items:center;gap:0;width:320px;}
-
-/* ── Pixel mouse (simplified classic-grey, headband like screenshot) ── */
+.overlay{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;width:320px;}
 .pet{width:74px;height:74px;image-rendering:pixelated;filter:drop-shadow(0 4px 8px rgba(0,0,0,.32));margin-top:-2px;}
 
-/* ════════════════════════════════════════════════════════════════════
-   Bubble — shared shell.  .v-before keeps current CSS, .v-after applies
-   the proposed fixes.  Both are SCROLLED to mid-content so the top-clip
-   behaviour is visible (that's the state from the user's screenshot).
-   ════════════════════════════════════════════════════════════════════ */
+/* ════════ Bubble shell (shared) ════════ */
 .bubble{position:relative;background:var(--bubble-success-bg);color:var(--text-primary);
-  padding:14px var(--space-3) 10px;border-radius:var(--radius-xl);
-  font-size:var(--text-body);font-weight:500;line-height:1.5;width:290px;box-sizing:border-box;
-  box-shadow:var(--shadow-bubble);border:1px solid var(--bubble-border);}
-
+  padding:14px var(--space-3) 10px;border-radius:var(--radius-xl);font-size:var(--text-body);
+  font-weight:500;line-height:1.5;width:300px;box-sizing:border-box;box-shadow:var(--shadow-bubble);
+  border:1px solid var(--bubble-border);}
 .bubble-chip{font-size:var(--text-meta);color:var(--text-link);font-weight:600;margin-bottom:6px;
   letter-spacing:.04em;display:flex;align-items:center;justify-content:space-between;gap:8px;}
 .bubble-chip-newsession{font-size:11px;background:rgba(232,99,140,.10);color:#e8638c;
-  border:1px solid rgba(232,99,140,.25);border-radius:999px;padding:2px 8px;cursor:pointer;
-  white-space:nowrap;}
-
-.bubble-scroll{display:block;max-height:150px;overflow-y:auto;padding-right:4px;contain:layout;
+  border:1px solid rgba(232,99,140,.25);border-radius:999px;padding:2px 8px;cursor:pointer;white-space:nowrap;}
+.bubble-scrollwrap{position:relative;}
+.bubble-scroll{display:block;max-height:260px;overflow-y:auto;padding-right:4px;contain:layout;
   scrollbar-width:thin;scrollbar-color:rgba(0,0,0,.25) transparent;}
 .bubble-scroll::-webkit-scrollbar{width:6px;}
 .bubble-scroll::-webkit-scrollbar-thumb{background:rgba(0,0,0,.22);border-radius:3px;}
-
-/* markdown content */
 .bubble-md>:first-child{margin-top:0!important;}
 .bubble-md>:last-child{margin-bottom:0!important;}
 .bubble-md strong{font-weight:700;color:#2b2622;}
 .bubble-md code{background:rgba(0,0,0,.06);padding:1px 5px;border-radius:4px;font-family:var(--font-mono);font-size:.88em;}
-.bubble-md a{color:#5b8def;text-decoration:underline;}
-
-/* fade + scroll-top button */
-.bubble-fade-top{position:absolute;pointer-events:none;z-index:2;height:18px;
-  background:linear-gradient(to bottom,#d8f8e6 0%,rgba(216,248,230,0) 100%);}
-.bubble-scroll-top{position:absolute;z-index:3;width:22px;height:22px;padding:0;
-  display:inline-flex;align-items:center;justify-content:center;background:var(--accent-primary);
-  color:#fff;border:0;border-radius:50%;font:700 11px/1 var(--font-mono);cursor:pointer;
-  box-shadow:0 2px 6px rgba(0,0,0,.15);}
-
-/* expand footer */
-.bubble-expand{display:flex;align-items:center;gap:var(--space-2);margin-top:var(--space-2);
-  padding-top:var(--space-2);border-top:1px solid rgba(0,0,0,.06);font-size:var(--text-meta);
-  color:var(--text-link);font-weight:600;cursor:pointer;background:transparent;border-left:0;
-  border-right:0;border-bottom:0;width:100%;text-align:left;font-family:inherit;}
+.bubble-expand{display:flex;align-items:center;gap:var(--space-2);margin-top:var(--space-2);padding-top:var(--space-2);
+  border-top:1px solid rgba(0,0,0,.06);font-size:var(--text-meta);color:var(--text-link);font-weight:600;cursor:pointer;
+  background:transparent;border-left:0;border-right:0;border-bottom:0;width:100%;text-align:left;font-family:inherit;}
 .bubble-expand kbd{margin-left:auto;background:rgba(0,0,0,.06);padding:1px 6px;border-radius:var(--radius-xs);
   font-family:var(--font-mono);font-size:var(--text-micro);color:#666;}
 
-/* ── BEFORE (current shipped behaviour) ─────────────────────────────── */
-.v-before .bubble-md{line-height:1.55;}
-.v-before .bubble-md p{margin:.35em 0;}
-.v-before .bubble-md ul{margin:.35em 0;padding-left:1.3em;}
-.v-before .bubble-md li{margin:.1em 0;}
-/* fade + button anchored to BUBBLE top → sit over the chip row (the bug) */
-.v-before .bubble-fade-top{top:1px;left:1px;right:1px;border-top-left-radius:var(--radius-xl);border-top-right-radius:var(--radius-xl);}
-.v-before .bubble-scroll-top{top:6px;right:8px;}
+/* shared list/paragraph base (= Panel comfort) */
+.bubble-md{line-height:1.6;}
+.bubble-md p{margin:.5em 0;}
+.bubble-md ul,.bubble-md ol{margin:.5em 0;padding-left:1.5em;}
 
-/* ── AFTER (proposed) ───────────────────────────────────────────────── */
-/* roomier spacing, matched to Panel's .turn-md */
-.v-after .bubble-md{line-height:1.6;}
-.v-after .bubble-md p{margin:.5em 0;}
-.v-after .bubble-md ul{margin:.5em 0;padding-left:1.5em;}
-.v-after .bubble-md li{margin:.25em 0;}
-/* fade + button anchored to the SCROLL VIEWPORT, which we mark with a
-   positioned wrapper → they sit at the real content top, below the chip.
-   No overlap with 新对话, fade actually covers the clipped paragraph. */
-.v-after .scrollwrap{position:relative;}
-.v-after .bubble-fade-top{top:0;left:0;right:4px;}
-.v-after .bubble-scroll-top{top:2px;right:10px;}
+/* ── BEFORE (刚打包那版 · 太空) ── */
+.v-before .bubble-md li{margin:.25em 0;}
+.v-before .bubble-md li>p{margin:.2em 0;}   /* ← 松散列表里这些 <p> margin 撑出大空白 */
+
+/* ── AFTER (收紧 · 像查看历史) ── */
+.v-after .bubble-md li{margin:.2em 0;}        /* 对齐 Panel 的 0.2em */
+.v-after .bubble-md li>p{margin:0;}           /* ← 关键：清零 li 内段落 margin，松散列表也变紧凑 */
 
 .note{font-size:12px;color:#7a8493;margin-top:14px;line-height:1.6;}
 .note b{color:#5a6473;}
-@media (max-width:760px){.cols{grid-template-columns:1fr;}}
+@media (max-width:780px){.cols{grid-template-columns:1fr;}}
 </style>
 </head>
 <body>
 <div class="page">
-  <h1>回复气泡 · markdown 渲染打磨</h1>
-  <p class="sub">针对用户反馈「第一个截图的 markdown 渲染的不好看」。左=现状，右=改进后。两个气泡都处于「向下滚动、顶部内容被裁」的状态（即截图里的状态）。</p>
+  <h1>回复气泡 · markdown 间距收紧</h1>
+  <p class="sub">用户反馈：第一个气泡内容「空白太多」，希望像「查看历史」那样紧凑舒服。下面用截图1那条<b>松散列表</b>内容(bullet 间有空行)对比。</p>
 
   <div class="fixes">
-    三处问题 → 三个修复：
-    <ol>
-      <li><b>① 粉色 ▲「回顶」按钮压住了「✨ 新对话」</b> —— 两者都在右上角。<code>.bubble-scroll-top</code> 以整个气泡顶部为锚（<code>top:6px</code>），但滚动区其实在 chip 行下面 ~28px。修复：把 fade + ▲ 锚到<b>滚动视口</b>真实顶部（chip 行之下）。</li>
-      <li><b>② 顶部那颗游离的「.」</b> —— 是被裁掉的引导段「…项目<b>。</b>」从 fade 下面露出的句号。同一个根因：fade 画在 chip 行上（透明），没盖住真正被裁的那行。锚正确后自然消失。</li>
-      <li><b>③ 行距/列表太挤</b> —— <code>.bubble-md</code> 比 Panel 的 <code>.turn-md</code> 紧。对齐 Panel：行高 1.55→1.6、段距 .35→.5em、列表项 .1→.25em、缩进 1.3→1.5em。</li>
-    </ol>
+    <b>根因</b>：当 Claude 回复的 bullet 之间有空行(松散列表)，marked 会把每个 <code>&lt;li&gt;</code> 内容包进 <code>&lt;p&gt;</code>。气泡的 <code>.bubble-md li &gt; p</code> 带 <code>0.2em</code> 上下 margin、<code>li</code> 又 <code>0.25em</code> → 每个 bullet 之间撑出一大段空白。查看历史那条恰好是紧凑列表(无 <code>&lt;p&gt;</code>)所以舒服。
+    <br><b>修复</b>：① <code>.bubble-md li &gt; p {margin:0}</code> 清零 li 内段落 margin → 松散列表也渲染得像紧凑列表；② <code>li</code> 收回 <code>0.2em</code> 对齐 Panel。
   </div>
 
   <div class="cols">
-    <!-- ───────────── BEFORE ───────────── -->
+    <!-- BEFORE -->
     <div class="col">
-      <h2><span class="tag tag-bad">现状 BEFORE</span> ▲ 压住新对话 · 游离句号 · 偏挤</h2>
+      <h2><span class="tag tag-bad">刚打包那版 BEFORE</span> 空白太多</h2>
       <div class="scene">
-        <div class="scene-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="scene-title">github.com — Topics</span></div>
-        <div class="scene-body"><div class="l w2"></div><div class="l w1"></div><div class="l w4"></div><div class="l w3"></div><div class="l w2"></div></div>
-
+        <div class="scene-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="scene-title">GitHub — agent harness</span></div>
+        <div class="scene-body"><div class="l w2"></div><div class="l w1"></div><div class="l w4"></div><div class="l w3"></div></div>
         <div class="overlay">
           <div class="bubble v-before">
-            <div class="bubble-chip">
-              <span>🔗 续 Session #42 · 第 2 轮</span>
-              <button class="bubble-chip-newsession">✨ 新对话</button>
-            </div>
-            <div class="bubble-fade-top"></div>
-            <button class="bubble-scroll-top">▲</button>
-            <div class="bubble-scroll" data-scroll>
-              <div class="bubble-md">
-                <p>✅ 已打开 <strong>GitHub Topic: ai-agents</strong>（github.com/topics/ai-agents）—— 按 star 排序的热门 AI agent 项目。</p>
-                <p>想换别的角度告诉我：</p>
-                <ul>
-                  <li>「看 LLM 框架」 → <code>topic:llm</code></li>
-                  <li>「本周 Python AI 趋势」 → trending Python weekly</li>
-                  <li>「看 Anthropic / Claude 相关」 → <code>topic:claude</code> / anthropic</li>
-                </ul>
-              </div>
-            </div>
-            <button class="bubble-expand">💬 继续追问<kbd>↓</kbd></button>
-          </div>
-          <svg class="pet" viewBox="0 0 16 16" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
-            <rect x="6" y="1" width="4" height="2" fill="#7ee0a8"/>
-            <rect x="3" y="3" width="2" height="3" fill="#6b4a2f"/><rect x="11" y="3" width="2" height="3" fill="#6b4a2f"/>
-            <rect x="4" y="4" width="1" height="1" fill="#ff9bb8"/><rect x="11" y="4" width="1" height="1" fill="#ff9bb8"/>
-            <rect x="4" y="4" width="8" height="9" fill="#7a5436"/>
-            <rect x="5" y="6" width="2" height="2" fill="#1a1a1a"/><rect x="9" y="6" width="2" height="2" fill="#1a1a1a"/>
-            <rect x="5" y="9" width="6" height="4" fill="#e9d9b8"/>
-            <rect x="7" y="9" width="2" height="1" fill="#d63d6a"/>
-          </svg>
-        </div>
-      </div>
-      <p class="note"><b>看：</b>右上角粉圆 ▲ 盖在「✨ 新对话」上点不到；chip 下方那颗孤零零的 <b>.</b>；列表行贴得紧。</p>
-    </div>
-
-    <!-- ───────────── AFTER ───────────── -->
-    <div class="col">
-      <h2><span class="tag tag-good">改进后 AFTER</span> ▲ 让位 · 无游离符号 · 透气</h2>
-      <div class="scene">
-        <div class="scene-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="scene-title">github.com — Topics</span></div>
-        <div class="scene-body"><div class="l w2"></div><div class="l w1"></div><div class="l w4"></div><div class="l w3"></div><div class="l w2"></div></div>
-
-        <div class="overlay">
-          <div class="bubble v-after">
-            <div class="bubble-chip">
-              <span>🔗 续 Session #42 · 第 2 轮</span>
-              <button class="bubble-chip-newsession">✨ 新对话</button>
-            </div>
-            <div class="scrollwrap">
-              <div class="bubble-fade-top"></div>
-              <button class="bubble-scroll-top">▲</button>
-              <div class="bubble-scroll" data-scroll>
+            <div class="bubble-chip"><span>🔗 续 Session #42 · 第 2 轮</span><button class="bubble-chip-newsession">✨ 新对话</button></div>
+            <div class="bubble-scrollwrap">
+              <div class="bubble-scroll">
                 <div class="bubble-md">
-                  <p>✅ 已打开 <strong>GitHub Topic: ai-agents</strong>（github.com/topics/ai-agents）—— 按 star 排序的热门 AI agent 项目。</p>
-                  <p>想换别的角度告诉我：</p>
                   <ul>
-                    <li>「看 LLM 框架」 → <code>topic:llm</code></li>
-                    <li>「本周 Python AI 趋势」 → trending Python weekly</li>
-                    <li>「看 Anthropic / Claude 相关」 → <code>topic:claude</code> / anthropic</li>
+                    <li><p>描述："<strong>The agent harness performance</strong> … security, and research-first development for Claude Code, …"</p></li>
+                    <li><p>定位：<strong>Claude Code 的 agent harness</strong>（agent 执行框架），主打性能 + 安全 + 研究优先</p></li>
+                    <li><p>标签里看到 <code>agent-harness</code> / <code>claude-code</code> / <code>performance</code></p></li>
                   </ul>
                 </div>
               </div>
@@ -218,26 +123,49 @@ h1{font-size:22px;margin:0 0 4px;letter-spacing:.01em;}
             <button class="bubble-expand">💬 继续追问<kbd>↓</kbd></button>
           </div>
           <svg class="pet" viewBox="0 0 16 16" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
-            <rect x="6" y="1" width="4" height="2" fill="#7ee0a8"/>
-            <rect x="3" y="3" width="2" height="3" fill="#6b4a2f"/><rect x="11" y="3" width="2" height="3" fill="#6b4a2f"/>
+            <rect x="6" y="1" width="4" height="2" fill="#7ee0a8"/><rect x="3" y="3" width="2" height="3" fill="#6b4a2f"/><rect x="11" y="3" width="2" height="3" fill="#6b4a2f"/>
             <rect x="4" y="4" width="1" height="1" fill="#ff9bb8"/><rect x="11" y="4" width="1" height="1" fill="#ff9bb8"/>
-            <rect x="4" y="4" width="8" height="9" fill="#7a5436"/>
-            <rect x="5" y="6" width="2" height="2" fill="#1a1a1a"/><rect x="9" y="6" width="2" height="2" fill="#1a1a1a"/>
-            <rect x="5" y="9" width="6" height="4" fill="#e9d9b8"/>
-            <rect x="7" y="9" width="2" height="1" fill="#d63d6a"/>
+            <rect x="4" y="4" width="8" height="9" fill="#7a5436"/><rect x="5" y="6" width="2" height="2" fill="#1a1a1a"/><rect x="9" y="6" width="2" height="2" fill="#1a1a1a"/>
+            <rect x="5" y="9" width="6" height="4" fill="#e9d9b8"/><rect x="7" y="9" width="2" height="1" fill="#d63d6a"/>
           </svg>
         </div>
       </div>
-      <p class="note"><b>看：</b>▲ 移到内容真实顶部（chip 行下），「✨ 新对话」完整可点；fade 盖住被裁的引导段，没有游离句号；列表更透气，跟 Panel 一致。</p>
+      <p class="note"><b>看：</b>三个 bullet 之间一大段空白，像截图里那样松垮。</p>
+    </div>
+
+    <!-- AFTER -->
+    <div class="col">
+      <h2><span class="tag tag-good">收紧后 AFTER</span> 像查看历史那样舒服</h2>
+      <div class="scene">
+        <div class="scene-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="scene-title">GitHub — agent harness</span></div>
+        <div class="scene-body"><div class="l w2"></div><div class="l w1"></div><div class="l w4"></div><div class="l w3"></div></div>
+        <div class="overlay">
+          <div class="bubble v-after">
+            <div class="bubble-chip"><span>🔗 续 Session #42 · 第 2 轮</span><button class="bubble-chip-newsession">✨ 新对话</button></div>
+            <div class="bubble-scrollwrap">
+              <div class="bubble-scroll">
+                <div class="bubble-md">
+                  <ul>
+                    <li><p>描述："<strong>The agent harness performance</strong> … security, and research-first development for Claude Code, …"</p></li>
+                    <li><p>定位：<strong>Claude Code 的 agent harness</strong>（agent 执行框架），主打性能 + 安全 + 研究优先</p></li>
+                    <li><p>标签里看到 <code>agent-harness</code> / <code>claude-code</code> / <code>performance</code></p></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+            <button class="bubble-expand">💬 继续追问<kbd>↓</kbd></button>
+          </div>
+          <svg class="pet" viewBox="0 0 16 16" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
+            <rect x="6" y="1" width="4" height="2" fill="#7ee0a8"/><rect x="3" y="3" width="2" height="3" fill="#6b4a2f"/><rect x="11" y="3" width="2" height="3" fill="#6b4a2f"/>
+            <rect x="4" y="4" width="1" height="1" fill="#ff9bb8"/><rect x="11" y="4" width="1" height="1" fill="#ff9bb8"/>
+            <rect x="4" y="4" width="8" height="9" fill="#7a5436"/><rect x="5" y="6" width="2" height="2" fill="#1a1a1a"/><rect x="9" y="6" width="2" height="2" fill="#1a1a1a"/>
+            <rect x="5" y="9" width="6" height="4" fill="#e9d9b8"/><rect x="7" y="9" width="2" height="1" fill="#d63d6a"/>
+          </svg>
+        </div>
+      </div>
+      <p class="note"><b>看：</b>bullet 之间紧凑透气，和「查看历史」(Panel) 的密度一致。</p>
     </div>
   </div>
 </div>
-
-<script>
-// 把两个滚动区都滚到中段，复现「顶部内容被裁」的截图状态
-window.addEventListener('load',()=>{
-  document.querySelectorAll('[data-scroll]').forEach(el=>{el.scrollTop=46;});
-});
-</script>
 </body>
 </html>
