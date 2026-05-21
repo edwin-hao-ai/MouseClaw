@@ -53,7 +53,6 @@ pub mod skins;
 pub mod tidy_up;
 pub mod update_check;
 pub mod voice_ime;
-pub mod voice_live_type;
 pub mod voice_correct;
 pub mod vocab;
 // transcribe (Whisper) deleted in v0.3 — superseded by transcribe_stream (sherpa-onnx)

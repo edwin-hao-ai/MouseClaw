@@ -122,8 +122,6 @@ struct ImeMonitor {
     trigger_kc1: AtomicI64,
     trigger_kc2: AtomicI64,
     trigger_flag: AtomicU64,
-    // v0.4.2 · 当前 trigger 是不是 fn —— 边说边写决策用（fn 偷焦点不能 live-type）
-    trigger_is_fn: AtomicBool,
 }
 
 static MONITOR: once_cell::sync::Lazy<ImeMonitor> = once_cell::sync::Lazy::new(|| ImeMonitor {
@@ -133,7 +131,6 @@ static MONITOR: once_cell::sync::Lazy<ImeMonitor> = once_cell::sync::Lazy::new(|
     trigger_kc1: AtomicI64::new(63), // fn 默认
     trigger_kc2: AtomicI64::new(-1),
     trigger_flag: AtomicU64::new(1 << 23), // fn flag
-    trigger_is_fn: AtomicBool::new(true), // fn 默认
 });
 
 pub fn set_enabled(on: bool) {
@@ -150,7 +147,6 @@ pub fn set_trigger(t: ImeTrigger) {
     MONITOR.trigger_kc1.store(kcs.first().copied().unwrap_or(-1), Ordering::Relaxed);
     MONITOR.trigger_kc2.store(kcs.get(1).copied().unwrap_or(-1), Ordering::Relaxed);
     MONITOR.trigger_flag.store(trigger_to_flag_bit(t), Ordering::Relaxed);
-    MONITOR.trigger_is_fn.store(matches!(t, ImeTrigger::Fn), Ordering::Relaxed);
     println!("[mouseclaw] 🎙️ voice-ime trigger → {:?}", t);
 }
 
@@ -469,15 +465,63 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
         let mut g = state.ime_typed.lock().unwrap();
         g.clear();
     }
-    // v0.4.2 · 边说边写决策 —— 非 fn 触发键 + 目标 app 非富文本/终端 → live-type
-    // （partial 实时写进光标，体感"边说边冒字"）；否则降级回 Plan B（poller 只更新
-    // 桌宠气泡 partial，真正 paste 延后到松手后 stop_and_paste，那时 fn 系统行为已结束、
-    // 焦点回到原 app）。具体启用条件 + LCP 增量 + 写入串行化都在 voice_live_type。
-    let live_type = crate::voice_live_type::decide_live_typing(
-        MONITOR.trigger_is_fn.load(Ordering::Relaxed),
-    );
-    println!("[mouseclaw] 🎙️ live-type = {live_type}");
-    crate::voice_live_type::spawn_streaming_poller(app.clone(), state.clone(), live_type);
+    // v0.3.8 · Plan B —— streaming poller 只更新桌宠气泡 partial，**不**写入光标。
+    // 真正的 paste 延后到 fn 松开后（stop_and_paste_for_ime），那时候 macOS fn
+    // 系统行为已经结束，焦点回到原 app，CGEvent 字才进得了输入框。
+    // 这跟 Whisper 时代的 timing 一致 —— 用户看到流式视觉但写入是 batch 的。
+    let state_stream = state.clone();
+    let app_stream = app.clone();
+    // v0.4 fix (2026-05-20) · 用专用 std::thread 而非 async_runtime::spawn 跑流式解码。
+    //   原因：sherpa s.accept/partial + add_punctuation 都是 CPU 密集**同步**调用，放在
+    //   tokio async 任务里会占住一个 worker 线程。当 AI 子进程（翻译 / 召唤）同时在跑、
+    //   抢 tokio runtime 时，worker 被饿死 → 听写 partial 卡住（用户实测"打开语音输入法
+    //   就卡住"）。挪到独立 OS 线程后，操作系统抢占式调度保证它永远能跑，不受 tokio 状态影响。
+    std::thread::Builder::new()
+        .name("mouseclaw-ime-poller".into())
+        .spawn(move || {
+        let mut last_partial = String::new();
+        loop {
+            std::thread::sleep(Duration::from_millis(150));
+            if !state_stream.streaming_active.load(Ordering::SeqCst) {
+                break;
+            }
+            let samples = {
+                let g = state_stream.recorder.lock().unwrap();
+                match g.as_ref() {
+                    Some(r) => r.drain_resampled_16k(),
+                    None => break,
+                }
+            };
+            if samples.is_empty() { continue; }
+            let partial = {
+                let mut g = state_stream.stream_session.lock().unwrap();
+                if let Some(s) = g.as_mut() {
+                    s.accept(&samples);
+                    s.partial()
+                } else {
+                    continue;
+                }
+            };
+            if partial == last_partial { continue; }
+            last_partial = partial.clone();
+            // v0.4.1 · 先把模型的全大写英文还原成自然大小写（OPENAI→OpenAI），
+            // partial 也做，让"边说边出"的英文一开始就正常，不是最后一刻才变。
+            let recased = crate::vocab::recase_english(&partial);
+            // v0.4.0 · 流式 partial 也加标点 —— 沿用 add_punctuation（~10ms, soft-fail）
+            // 短片段（< 4 字符）模型加标点效果差，跳过让 raw 出。
+            let display = if recased.chars().count() >= 4 {
+                crate::punctuation::add_punctuation(&recased)
+            } else {
+                recased
+            };
+            // 桌宠头顶气泡实时显示新 partial —— 用户看到"边说边出"的视觉反馈
+            crate::overlay::emit_view(
+                &app_stream,
+                &crate::events::ViewKind::VoiceImeListening { partial: display },
+            );
+        }
+        println!("[mouseclaw] 🎙️ IME streaming poller exited (final paste in stop_and_paste)");
+    }).expect("spawn ime poller thread");
 
     // v0.1.13 安全 #3：记录当前前台 app 的 bundle id —— 录音中切走就取消
     let start_bundle = std::panic::catch_unwind(frontmost_bundle).unwrap_or_default();
@@ -605,36 +649,13 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
             println!("[mouseclaw] 🎯 punctuated → {punctuated:?}");
         }
 
+        // v0.3.8 · Plan B —— streaming poller 不 type，只在 fn 松开后一次性写。
+        // 跟 Whisper batch timing 一致：fn 松开 → 等焦点回到原 app → activate + paste。
+        // 不再有 LCP delta（streaming 没 type 任何东西，typed 永远是空）。
         let app2 = app.clone();
         let state2 = state.clone();
         tauri::async_runtime::spawn(async move {
             let final_text = punctuated.clone();
-
-            // v0.4.2 · 边说边写模式（非 fn + native app）：partial 已实时写进光标、焦点
-            // 没被偷，这里只补 final delta，跳过 Plan B 的焦点恢复 sleep/activate。
-            if crate::voice_live_type::is_live_active() {
-                let current_bundle = frontmost_bundle();
-                let correction = crate::voice_correct::try_parse(&final_text, &current_bundle);
-                if correction.is_some() {
-                    // 本轮说的"纠错口令"也被边写进了光标 —— 先撤销本轮，再执行纠错
-                    let this_round = state2.ime_typed.lock().unwrap().clone();
-                    let n = this_round.chars().count();
-                    if n > 0 {
-                        let _ = crate::mode_b::delete_chars(n);
-                        state2.ime_typed.lock().unwrap().clear();
-                    }
-                }
-                if let Some(action) = correction {
-                    handle_correction(&app2, action, &current_bundle).await;
-                    return;
-                }
-                crate::voice_live_type::finish_live(&app2, &state2, &final_text, &current_bundle).await;
-                return;
-            }
-
-            // ── Plan B（fn / 富文本 / 终端外的降级路径，逻辑未改）──
-            // streaming poller 不 type，只在松开后一次性写。fn 松开 → 等焦点回到原 app
-            // → activate + paste。
             println!("[mouseclaw] 🎙️ ready to paste final → {:?}", final_text);
 
             // 关键 timing：fn 松开后 macOS fn 系统行为结束，但焦点回到原 app

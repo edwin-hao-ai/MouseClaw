@@ -102,11 +102,8 @@ pub fn frontmost_app_name() -> Option<String> { None }
 
 /// Decide which write strategy to use for the frontmost app.
 /// 富文本/Electron/浏览器 → clipboard paste；其它 → direct CGEvent unicode keystrokes。
-///
-/// v0.4.2 · 改 pub —— 边说边写（voice_live_type）用它判断当前 app 能否走 direct
-/// unicode：富文本 app 吃 keystroke，必须降级回松手后 clipboard-paste（Plan B）。
 #[cfg(target_os = "macos")]
-pub fn should_use_clipboard_paste() -> bool {
+fn should_use_clipboard_paste() -> bool {
     let bundle = frontmost_app_bundle_id().unwrap_or_default();
     RICH_EDITOR_BUNDLES.iter().any(|b| bundle.eq_ignore_ascii_case(b))
 }
