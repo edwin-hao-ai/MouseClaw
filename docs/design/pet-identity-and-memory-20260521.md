@@ -400,6 +400,122 @@ pub struct ContextBundle<'a> {
 
 ---
 
+### 2.11 业界做法参考 + 据此细化的「三层记忆」模型(用户 2026-05-21 要求调研)
+
+调研了主流 agent 记忆系统,提炼出对「无向量库 + 省 token + 进化 + 更懂你」最有用的模式,
+逐条映射到我们的 SQLite 方案。
+
+#### 参考系统 → 我们借什么
+
+| 系统 | 核心思路 | 我们借鉴 | 我们的取舍 |
+|---|---|---|---|
+| **MemGPT / Letta** | 分层记忆(core/recall/archival),core 小块常驻 context;agent 调工具**自编辑**记忆 | 三层结构 + 小画像块常驻 | **不照抄自编辑** —— raw API 无工具,改由 MouseClaw 在外部编排(见下,这是 §2.10 的硬要求) |
+| **Generative Agents(Stanford)** | 检索打分 = recency+importance+relevance;importance 写入期 LLM 评 1-10;**reflection** 把观察蒸馏成高层洞察 | importance 存成标量列(排序不靠向量);reflection = 我们的"进化" | relevance 用 BM25 代替 embedding |
+| **Zep / Graphiti** | 时序知识图谱;**检索期零 LLM**(BM25+图遍历);事实带有效期,新事实让旧的**失效而非删除** | 时序有效期 + 检索期纯 SQL + 图遍历 | 图谱落 SQLite 而非 Neo4j;丢掉 embedding 这一路 |
+| **D-MEM / SimpleMem / A-MAC(2025-26)** | 共识:**BM25 优于向量**;admission control(不存垃圾);滚动摘要压缩(SimpleMem 报 30× token 削减) | 全部采纳:FTS5=BM25、写入期准入门槛、旧记忆压缩 | — |
+| **ChatGPT memory** | 双层:saved memories(画像 notepad,可编辑)/ chat history(over time 建 profile);Temporary Chat 不读写记忆 | P3 UX 范式:画像层可见可编辑 + 历史层可搜;"暂停记忆"= Temporary | — |
+
+#### 细化后的三层记忆(在 §2.4 schema 基础上)
+
+```
+┌─ 画像层 Profile(= MemGPT core + ChatGPT saved)──────────────┐
+│  小、人类可读、【每次召唤都注入】。固定 token 预算(~150-250 tok)。   │
+│  内容:沟通风格(简短/详细/语气)、技术栈、常用 app、在做的项目、     │
+│        明确说过的偏好、称呼。← 这就是"更懂你"的体感来源              │
+│  存:insight 表(kind=profile, valid_to IS NULL) 编译而成           │
+└────────────────────────────────────────────────────────────┘
+┌─ 情景层 Episodic(= recall)──────────────────────────────────┐
+│  每轮 turn 原文 + 一行摘要,FTS5 可搜,【按需 top-K 召回】。          │
+│  存:memory_turn + memory_fts(§2.4)                              │
+└────────────────────────────────────────────────────────────┘
+┌─ 图谱层 Semantic Graph(= Zep 时序图)────────────────────────┐
+│  实体 + 边 + 有效期。【图遍历召回 + 矛盾时旧事实失效】。              │
+│  存:entity / edge + 下面的有效期字段                              │
+└────────────────────────────────────────────────────────────┘
+```
+
+#### Schema 增量(加在 §2.4 之上)
+
+```sql
+-- memory_turn 增列
+ALTER TABLE memory_turn ADD COLUMN importance INTEGER DEFAULT 3;  -- 写入期 LLM 评 1-10(标量,排序用)
+ALTER TABLE memory_turn ADD COLUMN kept      INTEGER DEFAULT 1;  -- admission control:0=琐碎可丢,1=durable
+
+-- 偏好/事实带时序有效期(Zep 思路:更新=旧的失效,不删,留史)
+ALTER TABLE preference ADD COLUMN valid_from INTEGER;
+ALTER TABLE preference ADD COLUMN valid_to   INTEGER;            -- NULL = 当前有效
+
+-- 洞察/画像(reflection 的产物 —— "进化"沉淀在这)
+CREATE TABLE insight (
+  id          INTEGER PRIMARY KEY,
+  kind        TEXT,        -- profile | project_state | pattern
+  text        TEXT,
+  confidence  REAL,
+  valid_from  INTEGER,
+  valid_to    INTEGER,     -- NULL = 仍有效;被新洞察取代时填上(不删)
+  source_turns TEXT,       -- json: 由哪些 turn 蒸馏来(可追溯/可解释)
+  updated     INTEGER
+);
+```
+
+#### 检索打分(Generative Agents 公式 × Zep「零 LLM」,纯 SQL)
+
+```sql
+-- relevance(BM25)+ recency(指数衰减)+ importance(写入期标量),零 LLM 调用
+SELECT t.id, t.summary, t.ts, t.app
+FROM   memory_fts f JOIN memory_turn t ON t.id = f.rowid
+WHERE  memory_fts MATCH :keywords AND t.kept = 1
+ORDER  BY  :w_rel * bm25(memory_fts)
+         + :w_rec * (:now - t.ts)        -- 越旧分越大(惩罚)
+         - :w_imp * t.importance         -- 越重要越靠前
+ASC
+LIMIT  :k;
+```
+
+外加图谱层一跳(当前项目 → 未完成任务/相关话题)。两路合并去重 → 套 token 预算截断。
+
+#### 「进化 / 更懂你」= Reflection 巩固循环(本设计的核心增量)
+
+记忆不是"攒原始日志越攒越多",而是**周期性把日志蒸馏成更好的画像**:
+
+```
+触发:空闲时(ai_queue 无用户任务)+ 每 N 轮 / 每天一次
+单次 LLM 调用(ask_text_only · 低优先级 · 可用便宜模型):
+  1. 取最近未消化的 episodic turns
+  2. 抽共性 → upsert insight(profile / project_state / pattern)
+  3. 矛盾检测:新结论与旧 insight 冲突 → 给旧的 set valid_to(失效不删,留史 ← Zep)
+  4. 重算 preference 的 confidence
+  5. 旧 episodic turns 滚动摘要压缩(SimpleMem 思路,防长期膨胀)
+产出:更小更准的画像层 → 下次召唤 always-on profile 块更懂你
+```
+
+这就是「越用越懂你」的工程实现:**画像层每次召唤都带着"关于你的当前认知",而 reflection 让这份认知持续自我修正、与时俱进**(项目做完了、技术栈换了、你改了偏好,旧事实失效新事实接管)。
+
+#### 省 token 总账(用户专门问的)
+
+| 手段 | 来源 | 省在哪 |
+|---|---|---|
+| **读取期零 LLM(纯 SQL)** | Zep | 每次召唤省掉扩词/重排的 LLM 调用 |
+| **always-on 只放小画像块(固定预算)** | MemGPT core / ChatGPT | 常驻成本恒定,不随历史膨胀 |
+| **episodic 按需 top-K + token 预算** | D-MEM / SimpleMem | 只在相关时才花 token,无关轮次零成本 |
+| **admission control 丢琐碎** | A-MAC | 不存"现在几点"这种垃圾,检索更准更省 |
+| **importance 写入期标量评分** | Generative Agents | 排序不需要向量,零检索期算力 |
+| **旧记忆滚动摘要压缩** | SimpleMem(报 30×) | 长期 DB / 注入都不爆 |
+| **BM25/FTS 代替向量** | Zep / D-MEM / SimpleMem 共识 | 零额外模型、零常驻内存(守 600MB) |
+
+> 一句话:**写入期花点小钱(抽取+评分,可批处理+便宜模型),换读取期几乎零成本** —— 把贵的活挪到用户看不见、不着急的时刻。
+
+#### 关键取舍:为什么不学 MemGPT 让 backend 自编辑记忆
+
+MemGPT/Letta 靠 **agent 调 memory 工具**(`core_memory_append` 等)自己管记忆。我们**故意不这么做**:
+- raw API backend **没有工具**,自编辑根本跑不起来;
+- 4 个 CLI backend 各自的工具能力还不一样,行为会分叉。
+
+所以 **MouseClaw 在外部编排记忆**(写入期抽取 + reflection 巩固,都由 app 主导,backend 只当"纯文本蒸馏器")。
+代价:不如 MemGPT"自主";收益:**对所有 backend(含未来直连 LLM、甚至纯文本小模型)行为完全一致** —— 这正是 §2.10 的硬要求。
+
+---
+
 ## 3. 视觉 + 音频 + 记忆联动(就是②的读取期表现)
 
 现在 `build_prompt`(`claude_cli.rs`)已经拼:`语音 transcript + 截图路径 + 前台 app + 光标 + 鼠标轨迹`。
@@ -430,9 +546,10 @@ pub struct ContextBundle<'a> {
 | 阶段 | 内容 | 产出 |
 |---|---|---|
 | **P1** | 名字 + 性格 | config v20 + `system_prompt` 注入 + picker UI + i18n + **prototype HTML(9 皮肤)** |
-| **P2** | 记忆基建 | SQLite schema + sessions 迁移 + 写入期抽取(走 ai_queue)+ 读取期 SQL 检索 |
-| **P3** | 记忆 UX | 「我记得什么」查看/删除窗口 + 命中标记 + 暂停开关 + 日/周回顾(问答式) + **prototype HTML** |
-| **P4(可选/v2)** | 增强 | 本地向量召回兜底 + 真图谱可视化 + 主动接续 |
+| **P2** | 记忆基建(三层) | SQLite 三层 schema(§2.4+§2.11)+ sessions 迁移 + 写入期抽取&importance 评分 + admission control + 读取期 SQL 打分检索 + 画像层 always-on 注入(`ContextBundle.memory`) |
+| **P2.5** | 进化(reflection) | 空闲巩固循环:episodic→insight 蒸馏 + 矛盾失效(时序有效期)+ 旧记忆压缩 |
+| **P3** | 记忆 UX | 画像层(可编辑 notepad,仿 ChatGPT saved)+ 历史层(可搜/可删)+ 命中标记 `🧠` + 暂停记忆(= Temporary)+ 日/周回顾(问答式)+ **prototype HTML** |
+| **P4(可选/v2)** | 增强 | 本地向量召回兜底(BM25 漏的语义召回)+ 真图谱可视化 + 主动接续 |
 
 > 每个含 UI 的阶段,**先 prototype HTML 给你看,拍板后才写 Rust**(CLAUDE.md 硬规则)。
 
