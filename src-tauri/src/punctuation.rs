@@ -103,6 +103,11 @@ fn ensure_loaded() -> Result<()> {
     }
     let mut config = OfflinePunctuationConfig::default();
     config.model.ct_transformer = Some(path.to_string_lossy().into_owned());
+    // v0.4.2 · 性能：offline 标点是整句一次性推理，多线程收益比流式更明显。
+    // 默认 num_threads=1 → 提到一半核（clamp 2..=4）。provider 仍 cpu（同 ASR 理由）。
+    let threads = crate::transcribe_stream::pick_inference_threads();
+    config.model.num_threads = threads;
+    println!("[mouseclaw] 🎯 punctuation num_threads={threads}");
     let p = OfflinePunctuation::create(&config)
         .ok_or_else(|| anyhow!("OfflinePunctuation::create returned None"))?;
     *guard = Some(p);

@@ -140,6 +140,16 @@ pub fn preload() {
         .ok();
 }
 
+/// v0.4.2 · 推理线程数 —— 取机器逻辑核数的一半，clamp 到 2..=4。
+/// ASR（流式 Zipformer）与标点（offline CT-Transformer）共用：多核 Apple Silicon
+/// 上从 sherpa 默认单线程提到 2~4 是确定收益；对 150ms 小 chunk 过多线程反而增加
+/// 调度开销，所以封顶 4。拿不到核数信息（罕见）退回 2。
+pub fn pick_inference_threads() -> i32 {
+    std::thread::available_parallelism()
+        .map(|n| (n.get() / 2).clamp(2, 4) as i32)
+        .unwrap_or(2)
+}
+
 /// Lazy-load the OnlineRecognizer on first call.
 fn ensure_loaded() -> Result<()> {
     let mut guard = RECOGNIZER.lock().unwrap();
@@ -155,6 +165,16 @@ fn ensure_loaded() -> Result<()> {
 
     let files = active_model_files();
     let mut config = OnlineRecognizerConfig::default();
+
+    // v0.4.2 · 性能：sherpa 默认 num_threads=1（单线程 CPU）—— 在多核 Apple Silicon
+    // 上是浪费。onnxruntime CPU EP 对 Zipformer encoder 的矩阵乘多线程友好，取一半
+    // 核（clamp 2..=4）并行解码，实测能缩短 partial 刷新 + finalize 尾段延迟。
+    // provider 仍保持默认 "cpu"：int8 量化模型走 CoreML EP 容易 fallback 反而更慢，
+    // 留作后续单独实测的可选项，不在这一刀默认开（先稳后快）。
+    let threads = pick_inference_threads();
+    config.model_config.num_threads = threads;
+    println!("[mouseclaw] 🎤 sherpa ASR num_threads={threads}");
+
     config.model_config.transducer.encoder = Some(
         dir.join(files[0]).to_string_lossy().into_owned(),
     );
