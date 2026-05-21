@@ -40,6 +40,7 @@ export const zh: Strings = {
   "memory.tab.graph": "🕸 关系",
   "memory.graph.empty": "还没有知识图谱 —— reflection 跑过几次后,这里会浮现实体和它们的关系。",
   "memory.graph.links": "关系",
+  "memory.used_badge": "🧠 结合了 {n} 条记忆",
   "memory.pause_label": "记忆",
   "memory.paused_banner": "记忆已暂停 —— 这期间它既不读也不写记忆。",
   "memory.profile.intro": "它从你们的交互里蒸馏出的画像,每次召唤都带着 —— 这是「更懂你」的来源。可随时改/删。",

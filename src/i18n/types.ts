@@ -56,6 +56,7 @@ export interface Strings {
   "memory.tab.graph": string;
   "memory.graph.empty": string;
   "memory.graph.links": string;
+  "memory.used_badge": string;
   "memory.pause_label": string;
   "memory.paused_banner": string;
   "memory.profile.intro": string;

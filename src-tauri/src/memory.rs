@@ -18,10 +18,19 @@ use once_cell::sync::Lazy;
 use rusqlite::{params, Connection};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 /// 单连接 + Mutex 串行访问(记忆读写量小,SELECT < 10ms)。Connection 是 Send。
 static MEM: Lazy<Mutex<Option<Connection>>> = Lazy::new(|| Mutex::new(None));
+
+/// 最近一次 retrieve_block 注入了几条记忆 —— pipeline 调用后读它,emit 给前端做 🧠 命中标记。
+static LAST_USED: AtomicUsize = AtomicUsize::new(0);
+
+/// 读并清零(pipeline 在 AI 调用后读一次)。
+pub fn take_last_used() -> usize {
+    LAST_USED.swap(0, Ordering::Relaxed)
+}
 
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS memory_turn (
@@ -354,6 +363,7 @@ fn collect_graph(c: &Connection, query: &str, app: Option<&str>, limit: usize)
 
 /// 注入 prompt 的记忆块。无内容 / 禁用 / 暂停 → None。
 pub fn retrieve_block(query: &str, app: Option<&str>) -> Option<String> {
+    LAST_USED.store(0, Ordering::Relaxed);
     if !enabled() {
         return None;
     }
@@ -374,6 +384,7 @@ pub fn retrieve_block(query: &str, app: Option<&str>) -> Option<String> {
         if profile.is_empty() && turns.is_empty() {
             return Ok(None);
         }
+        LAST_USED.store(profile.len() + turns.len(), Ordering::Relaxed);
         let mut s = String::from("[记忆 · 仅供参考,以当前任务为准]\n");
         for p in &profile {
             s.push_str("- ");

@@ -40,6 +40,7 @@ export const en: Strings = {
   "memory.tab.graph": "🕸 Graph",
   "memory.graph.empty": "No knowledge graph yet — after a few reflections, entities and their links will surface here.",
   "memory.graph.links": "links",
+  "memory.used_badge": "🧠 used {n} memories",
   "memory.pause_label": "Memory",
   "memory.paused_banner": "Memory paused — it neither reads nor writes memory right now.",
   "memory.profile.intro": "The profile it distilled from your interactions, carried into every summon — this is what makes it 'get' you. Edit/delete anytime.",
