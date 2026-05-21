@@ -969,6 +969,36 @@ pub fn open_picker_window(app: AppHandle) -> Result<(), String> {
     }
 }
 
+/// v0.4.4 · 打开「桌宠记得的事」窗口(画像 / 历史 / 暂停)。
+#[tauri::command]
+pub fn open_memory_window(app: AppHandle) -> Result<(), String> {
+    use tauri::WebviewWindowBuilder;
+    use tauri::WebviewUrl;
+
+    if let Some(w) = app.get_webview_window("memory") {
+        let _ = w.show();
+        let _ = w.set_focus();
+        return Ok(());
+    }
+
+    let result = WebviewWindowBuilder::new(
+        &app, "memory",
+        WebviewUrl::App("index.html?view=memory".into()),
+    )
+    .title("MouseClaw — 桌宠记得的事")
+    .inner_size(560.0, 640.0)
+    .min_inner_size(460.0, 480.0)
+    .resizable(true)
+    .decorations(true)
+    .focused(true)
+    .build();
+
+    match result {
+        Ok(w) => { let _ = w.set_focus(); Ok(()) }
+        Err(e) => Err(format!("打开记忆窗口失败：{e:#}")),
+    }
+}
+
 #[tauri::command]
 pub fn capability_status() -> CapabilityStatus {
     CapabilityStatus {

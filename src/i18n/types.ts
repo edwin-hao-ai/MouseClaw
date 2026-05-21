@@ -49,6 +49,22 @@ export interface Strings {
   "persona.tsundere.name": string;   "persona.tsundere.preview": string;
   "persona.custom.name": string;     "persona.custom.preview": string;
 
+  // ── 长期记忆查看器 (v0.4.4) ──
+  "memory.title": string;
+  "memory.tab.profile": string;
+  "memory.tab.history": string;
+  "memory.pause_label": string;
+  "memory.paused_banner": string;
+  "memory.profile.intro": string;
+  "memory.profile.empty": string;
+  "memory.history.search": string;
+  "memory.history.empty": string;
+  "memory.clear_all": string;
+  "memory.clear_confirm": string;
+  "memory.local_note": string;
+  "memory.delete": string;
+  "memory.importance": string;
+
   // ── 桌宠 / 主气泡 ──
   "bubble.expand_to_panel": string;        // "💬 继续追问"
   "bubble.scroll_to_top": string;          // "▲ 回到开头"

@@ -80,6 +80,10 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     };
     let skin_picker_item = MenuItem::with_id(app, "open-picker", &skin_picker_label, true, None::<&str>)?;
 
+    // v0.4.4 · 长期记忆查看器入口
+    let s_memory = if en { "🧠 What it remembers…" } else { "🧠 它记得的事…" };
+    let memory_item = MenuItem::with_id(app, "open-memory", s_memory, true, None::<&str>)?;
+
     // 浏览器自动化标签 —— 根据当前 CDP 状态显示「启用 / 已启用 ✓」
     let cdp_alive = crate::browser_bridge::cdp_is_alive();
     let browser_label = if cdp_alive { s_browser_on } else { s_browser_off };
@@ -187,7 +191,7 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     // List items (declaring early so the vec! below can reference them)
     let mut items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = vec![
         &summon, &new_session_item, &pin_item, &clipboard_item, &history,
-        &skin_picker_item, &anchor_submenu, &lang_submenu,
+        &skin_picker_item, &memory_item, &anchor_submenu, &lang_submenu,
         &sep1, &vime_item, &summon_submenu, &trigger_submenu, &vocab_submenu, &pause_item,
         &workspace_item,
     ];

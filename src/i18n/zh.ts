@@ -33,6 +33,22 @@ export const zh: Strings = {
   "persona.tsundere.name": "😤 傲娇",      "persona.tsundere.preview": "哼,又要我帮忙…才、才不是特意等你呢,代码拿来吧。",
   "persona.custom.name": "✍️ 自定义",      "persona.custom.preview": "写一句话描述你想要的语气。",
 
+  // 长期记忆查看器 (v0.4.4)
+  "memory.title": "它记得的事",
+  "memory.tab.profile": "📌 关于你",
+  "memory.tab.history": "🕑 历史",
+  "memory.pause_label": "记忆",
+  "memory.paused_banner": "记忆已暂停 —— 这期间它既不读也不写记忆。",
+  "memory.profile.intro": "它从你们的交互里蒸馏出的画像,每次召唤都带着 —— 这是「更懂你」的来源。可随时改/删。",
+  "memory.profile.empty": "还没有画像 —— 多用几次,它会慢慢懂你。",
+  "memory.history.search": "搜历史…(本地检索,零 AI 调用)",
+  "memory.history.empty": "没有匹配的记忆",
+  "memory.clear_all": "清空全部记忆",
+  "memory.clear_confirm": "确定清空全部记忆?此操作不可恢复。",
+  "memory.local_note": "全部本地 · ~/.mouseclaw/memory.db",
+  "memory.delete": "删掉",
+  "memory.importance": "重要度",
+
   // 桌宠
   "bubble.expand_to_panel": "💬 继续追问",
   "bubble.scroll_to_top": "▲ 回到开头",

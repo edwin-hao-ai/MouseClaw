@@ -334,6 +334,7 @@ pub fn run() {
             commands::get_skin,
             commands::get_pet_identity,
             commands::save_pet_identity,
+            commands::open_memory_window,
             memory::memory_list_turns,
             memory::memory_get_profile,
             memory::memory_delete_turn,

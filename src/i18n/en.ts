@@ -33,6 +33,22 @@ export const en: Strings = {
   "persona.tsundere.name": "😤 Tsundere", "persona.tsundere.preview": "Hmph, need my help again… i-it's not like I waited for you. Hand it over.",
   "persona.custom.name": "✍️ Custom",     "persona.custom.preview": "Write one line describing the tone you want.",
 
+  // Long-term memory viewer (v0.4.4)
+  "memory.title": "What it remembers",
+  "memory.tab.profile": "📌 About you",
+  "memory.tab.history": "🕑 History",
+  "memory.pause_label": "Memory",
+  "memory.paused_banner": "Memory paused — it neither reads nor writes memory right now.",
+  "memory.profile.intro": "The profile it distilled from your interactions, carried into every summon — this is what makes it 'get' you. Edit/delete anytime.",
+  "memory.profile.empty": "No profile yet — use it a few more times and it'll get to know you.",
+  "memory.history.search": "Search history… (local, zero AI calls)",
+  "memory.history.empty": "No matching memories",
+  "memory.clear_all": "Clear all memory",
+  "memory.clear_confirm": "Clear all memory? This cannot be undone.",
+  "memory.local_note": "All local · ~/.mouseclaw/memory.db",
+  "memory.delete": "Delete",
+  "memory.importance": "importance",
+
   // Bubble
   "bubble.expand_to_panel": "💬 Continue chat",
   "bubble.scroll_to_top": "▲ Back to top",
