@@ -598,7 +598,22 @@ MemGPT/Letta 靠 **agent 调 memory 工具**(`core_memory_append` 等)自己管�
 - ✅ **reflection 每日/空闲定时器**:lib.rs 30min 兜底 + pipeline 攒够 6 条即时触发。
 
 **仍开放(需你决策,非实现):**
-- **D3(memory.db 加密)**:当前明文(同 sessions.jsonl)。要不要对齐 `clipboard_crypto` 加密,等你拍板。
+- **D3(memory.db 加密)**:当前明文(同 sessions.jsonl)。用户 2026-05-21 决定**先不做**。
+
+**第三批 · UX 加固(2026-05-21,针对自评发现的障碍):**
+- ✅ **质量闸**:`collect_relevant` 必须有相关性信号(token 命中或同 app)才注入,纯靠时近不注入
+  —— 防止"记忆帮倒忙"(把无关的最近 turn 当噪声塞进 prompt)。reflection 没跑通时也不会注入垃圾。
+- ✅ **可审查/纠正**:回复气泡底部「🧠 结合了 N 条记忆 ▾」可展开看每条 + ✕ 删错的(turn/insight/
+  preference 各删对应表)。取代之前只有计数。也顺带解决"badge 顶在短回复上"(改成可折叠,默认收起)。
+- ✅ **遗忘/剪枝**:提及边/关系边去重;`prune()` 留最近+高重要度 2000 条 turn、清孤儿边、归档 60 天
+  前失效画像;定时器每 30min 跑。解决"只增不减、长期膨胀"。
+- ✅ **起名可发现性**:`NudgeKind::NameHint` 启动 20s 一次性提示「给我起个名字?」+「起名」CTA 开 picker。
+
+**仍未解决的小项(显式交代):**
+- picker 右栏(大预览 + 名字 + 10 性格 + 操作键)在 760×600 下**布局是否偏挤未经真机验证**。
+- 首次告知/起名 nudge 对**全新用户要等下次启动**才弹(onboarded 时序),略晚。
+- reflection 仍依赖后端返回合法 JSON;弱模型可能频繁失败 → 画像/图谱偏空(质量闸已确保此时不注入噪声,
+  最坏退化成"只有最近同 app/命中的 turn",不会更差)。
 
 **新增验证负债(仍未 cargo check)**:rusqlite 图遍历(动态 IN)、`upsert_entity` 的 ON CONFLICT、
 `NudgeKind::MemoryIntro` 新变体、AtomicUsize 命中计数。🧠 badge 在气泡内首行的视觉位置未经真机验证。
