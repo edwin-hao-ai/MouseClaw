@@ -10,7 +10,9 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useT } from "./i18n";
+import { EV_SCHEDULE_RESULT } from "./types";
 import type { Schedule, ScheduleInput, ScheduleView, RunRecord } from "./types";
 import { scheduleLabel, scheduleIcon, formatWhen, formatRunTime } from "./lib/schedule-format";
 import "./TasksView.css";
@@ -37,6 +39,28 @@ export default function TasksView() {
 
   useEffect(() => {
     refresh();
+  }, [refresh]);
+
+  // 任务跑完（定时到点 / 手动「立刻跑」）→ 实时刷新列表的"上次"；
+  // 切回窗口（focus）也刷一次，覆盖"在别处用语音新建了任务"的情况。
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    try {
+      listen(EV_SCHEDULE_RESULT, () => {
+        setRuns({}); // 清结果历史缓存，下次展开重新拉
+        refresh();
+      })
+        .then((fn) => { unlisten = fn; })
+        .catch(() => {});
+    } catch {
+      /* browser-only dev */
+    }
+    const onFocus = () => refresh();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      if (unlisten) unlisten();
+      window.removeEventListener("focus", onFocus);
+    };
   }, [refresh]);
 
   const flash = useCallback((msg: string) => {
