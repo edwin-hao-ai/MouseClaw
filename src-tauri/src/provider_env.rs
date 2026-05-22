@@ -14,7 +14,7 @@
 //!
 //! 想用 MDHub 的 Vercel AI Gateway 测试 4 个后端？模板：
 //!
-//! ```
+//! ```text
 //! # ~/.mouseclaw/provider.env
 //! AI_GATEWAY_BASE_URL=https://ai-gateway.vercel.sh/v1
 //! AI_GATEWAY_API_KEY=vck_xxx
