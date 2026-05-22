@@ -524,14 +524,25 @@ Internal layout:
 
 4 vertical bars, 3px wide each, 3px gap, heights 10/16/8/14 px, color `var(--accent-primary)`. Animation: `scaleY 0.6 → 1` over 0.7s with 0.1s stagger per bar.
 
-### 4.7 Forbidden Components
+### 4.7 Scheduled Tasks (v0.5)
+
+定时任务（`?view=tasks` 管理窗 + 确认卡 + 结果轻气泡）**复用既有 token，不引入任何新颜色/间距/动画/mouse 状态**。
+
+- **Schedule confirm card**（桌宠头顶，`schedule-confirm` 视图）：用 `--bubble-bg` / `--shadow-bubble` / `--radius-xl`，标签用 `--accent-glow` + `--text-link`，频率 chip 同 §4.3 session-chip 的 accent 变体。CTA 用 `--accent-gradient` + `--shadow-cta`。打 `data-adaptive-measure` 走自适应窗口测量。
+- **Schedule result bubble**（`EV_SCHEDULE_RESULT`，不抢焦点、7s 自消）：成功用 `--bubble-success-bg`，`⏰ 定时` / `💡 提示` 标记用 `--accent-glow`/`--text-link`。同样打 `data-adaptive-measure`。
+- **Tasks window**（与 Hub / Picker 同级的二级管理窗，非 overlay）：`--panel-bg` 玻璃头/底栏，任务卡 `--radius-lg` + 1px `--bubble-border`，开关 toggle 用 `--accent-primary`，频率 chip / 编辑表单全部走既有 token（见 `TasksView.css`）。
+- **桌宠状态**：定时任务**不新增** mouse 状态 —— 确认时复用 `think`，跑任务时复用既有三点忙碌 badge（§"Companion / busy"），到点投递不改变 8 色调色板，9 款皮肤天然一致。
+
+### 4.8 Forbidden Components
 
 - ❌ Modal dialogs (we don't have a window — bubble or panel only)
 - ❌ Dropdown menus (use AskUserQuestion-style options grid)
 - ❌ Toast notifications (bubble already IS the toast)
 - ❌ Loading spinners (use the think state on the mouse)
 - ❌ Progress bars except for the countdown
-- ❌ Settings page (V1 has only Onboarding; no in-app settings)
+- ⚠️ ~~Settings page (V1 has only Onboarding; no in-app settings)~~ —— v0.1.26+ 已有 Hub /
+  Picker / Status / Tasks 等**二级管理窗**（非 overlay、各自独立窗口）。overlay 本体仍坚持
+  "只有气泡 / panel"，但管理类功能走独立窗口是允许的。
 
 ---
 

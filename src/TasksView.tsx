@@ -325,12 +325,12 @@ function EditForm({
       case "interval":
         return {
           kind: "interval",
-          everyMinutes: Math.max(1, Math.round(hours * 60)),
+          everyMinutes: Math.min(24, Math.max(1, Math.round(hours) || 1)) * 60,
           activeStart,
           activeEnd,
         };
       case "monthly":
-        return { kind: "monthly", day: Math.min(31, Math.max(1, dom)), time };
+        return { kind: "monthly", day: Math.min(31, Math.max(1, Math.round(dom) || 1)), time };
     }
   };
 
