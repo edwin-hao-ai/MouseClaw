@@ -162,6 +162,33 @@ pub async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppStat
     // 不需要 AI 锁，不该让它们继续阻塞队列）。
     drop(_ai_ticket);
 
+    // v0.5 · 定时任务：backend 回了 [SCHEDULE] 标记 → 弹确认卡，不走普通 reply，也不记 session
+    // （这次召唤是"设个定时"，不是一轮对话）。用户确认后前端调 create_schedule。
+    if let Some(json) = crate::claude_cli::parse_schedule_directive(&reply) {
+        match crate::schedule::parse_input(&json) {
+            Ok(input) => {
+                let next_run = input
+                    .schedule
+                    .next_after(chrono::Local::now())
+                    .map(|d| d.to_rfc3339());
+                emit_view(
+                    &app,
+                    &ViewKind::ScheduleConfirm {
+                        title: input.title,
+                        action: input.action,
+                        schedule: input.schedule,
+                        next_run,
+                    },
+                );
+                // 用户没操作就 45s 后收起（忽略 = 不创建，最安全的默认）。
+                // 点「确认 / 改一下」前端会主动 dismiss；Esc 也走 dismiss。
+                schedule_auto_hide(&app, &state, 45_000);
+                return;
+            }
+            Err(e) => eprintln!("[mouseclaw] schedule 解析失败，按普通回复处理：{e:#}"),
+        }
+    }
+
     // 4. Record turns into session history
     {
         let mut store = state.sessions.lock().await;
@@ -692,7 +719,7 @@ fn format_progress(p: &crate::model_downloader::ProgressEvent) -> String {
     }
 }
 
-fn friendly_backend_error(raw: &str, backend: crate::backend::Backend) -> String {
+pub fn friendly_backend_error(raw: &str, backend: crate::backend::Backend) -> String {
     let lower = raw.to_lowercase();
     let bin = backend.binary_name();
     if lower.contains("找不到") || lower.contains("no such file") || lower.contains("not found")

@@ -125,6 +125,13 @@ export function PetMenu({ open, onClose, onFeed, onNap }: PetMenuProps) {
         <span className="pet-menu-ico">📜</span>
         <span className="pet-menu-label">{t("petmenu.history")}</span>
       </button>
+      <button
+        className="pet-menu-item" role="menuitem" type="button"
+        onClick={() => { onClose(); invoke("open_tasks_window").catch(() => {}); }}
+      >
+        <span className="pet-menu-ico">⏰</span>
+        <span className="pet-menu-label">{t("petmenu.tasks")}</span>
+      </button>
       {/* v0.4.0 · 「📖 教我用」 —— 用户忘了功能可以随时重看引导 */}
       <button
         className="pet-menu-item" role="menuitem" type="button"

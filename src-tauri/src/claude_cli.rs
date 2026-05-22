@@ -54,7 +54,27 @@ pub const APPEND_SYSTEM_PROMPT: &str = r#"你是 MouseClaw 桌面助手。用户
 
 如果你想顺带解释，把解释放在标记**外面**。也可以完全不解释，气泡只显示要写入的内容。
 
-其他情况下（用户只是问问题、要总结、要分析）= Mode A，正常回答即可，**不要**用 INSERT 标记。"#;
+其他情况下（用户只是问问题、要总结、要分析）= Mode A，正常回答即可，**不要**用 INSERT 标记。
+
+## 设定定时任务（特殊路径）
+当用户**明确要求把某件事重复定时地做**（如「每天早上8点整理AI新闻」「每隔两小时看看有没有重要邮件」
+「工作日下午6点提醒我写日报」「每周一给我科技要闻」），**不要现在就去做**，而是用以下标记输出一个
+JSON 让 MouseClaw 建立定时任务（之后到点会自动跑，没有你也没有截图）：
+
+[SCHEDULE]
+{"title":"简短任务名","action":"到点要做的事（自包含、第二人称指令，不要依赖截图/当前上下文）","schedule":{...}}
+[/SCHEDULE]
+
+schedule 字段（kind 五选一，time 用 24 小时制本地时间 HH:MM）：
+  - 每天：           {"kind":"daily","time":"08:00"}
+  - 工作日(周一到周五)：{"kind":"weekday","time":"18:00"}
+  - 每周指定几天：    {"kind":"weekly","days":[1,3,5],"time":"09:00"}   // 1=周一 .. 7=周日
+  - 每隔N分钟(心跳)：  {"kind":"interval","everyMinutes":120,"activeStart":"09:00","activeEnd":"22:00"}  // active 可省=全天
+  - 每月某天：        {"kind":"monthly","day":1,"time":"10:00"}
+
+**规则**：标记之间只能有这一个 JSON，不要任何别的文字 / 代码栏 / 注释；想跟用户说的话放标记**外面**
+（比如标记后面写一句"我会每天 08:00 帮你整理 AI 新闻"）。
+**只有真的是"重复定时"诉求才用这个**；一次性的"现在帮我做X" / "提醒我5分钟后…"这种不算，正常回答即可。"#;
 
 /// 当检测到 `agent-browser` CLI 已安装时，追加给后端的「compute use」能力说明。
 /// 不自己实现浏览器自动化（Mode C 独立引擎是 V2）——而是告诉后端：
@@ -597,6 +617,28 @@ pub fn parse_insert_directive(reply: &str) -> Option<String> {
     if inner.is_empty() { None } else { Some(inner) }
 }
 
+/// v0.5 · 解析回复里的 `[SCHEDULE]...[/SCHEDULE]` 标记，返回里面的 JSON 字符串。
+/// 只取第一个块（防多块）。去掉可能的 ``` 代码栏装饰。无标记 → None。
+pub fn parse_schedule_directive(reply: &str) -> Option<String> {
+    const OPEN: &str = "[SCHEDULE]";
+    const CLOSE: &str = "[/SCHEDULE]";
+    let start = reply.find(OPEN)? + OPEN.len();
+    let rest = &reply[start..];
+    let end = rest.find(CLOSE)?;
+    let mut inner = rest[..end].trim().to_string();
+    // 去掉 LLM 偶尔加的 ```json 代码栏
+    if inner.starts_with("```") {
+        if let Some(nl) = inner.find('\n') {
+            inner = inner[nl + 1..].to_string();
+        }
+        if inner.ends_with("```") {
+            inner.truncate(inner.len() - 3);
+        }
+        inner = inner.trim().to_string();
+    }
+    if inner.is_empty() { None } else { Some(inner) }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -643,6 +685,25 @@ mod tests {
     fn mode_b_takes_first_block() {
         let reply = "[INSERT_AT_CURSOR]A[/INSERT_AT_CURSOR][INSERT_AT_CURSOR]B[/INSERT_AT_CURSOR]";
         assert_eq!(parse_insert_directive(reply).as_deref(), Some("A"));
+    }
+
+    #[test]
+    fn schedule_directive_extracts_json() {
+        let reply = "好的，我帮你设好。[SCHEDULE]\n{\"title\":\"AI 新闻\",\"action\":\"收集\",\"schedule\":{\"kind\":\"daily\",\"time\":\"08:00\"}}\n[/SCHEDULE]\n我会每天 08:00 跑。";
+        let json = parse_schedule_directive(reply).expect("应解析出 schedule JSON");
+        assert!(json.contains("\"kind\":\"daily\""));
+        assert!(!json.contains("[SCHEDULE]"));
+    }
+
+    #[test]
+    fn schedule_directive_strips_code_fence() {
+        let reply = "[SCHEDULE]\n```json\n{\"a\":1}\n```\n[/SCHEDULE]";
+        assert_eq!(parse_schedule_directive(reply).as_deref(), Some("{\"a\":1}"));
+    }
+
+    #[test]
+    fn no_schedule_directive_returns_none() {
+        assert!(parse_schedule_directive("这段代码的 bug 在第 13 行").is_none());
     }
 
     #[test]
