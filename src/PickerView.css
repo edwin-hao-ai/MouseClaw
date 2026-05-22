@@ -210,8 +210,15 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
+/* v0.4.5 · 名字输入 + 🎲 随机 */
+.picker-name-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
 .picker-name-input {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   font: inherit;
   font-size: 14px;
   font-weight: 500;
@@ -226,6 +233,69 @@
   border-color: #d63d6a;
   box-shadow: 0 0 0 3px rgba(214,61,106,0.12);
 }
+.picker-name-input::placeholder { color: #c3b8a6; }
+.picker-dice {
+  flex: 0 0 auto;
+  width: 42px;
+  border: 1px solid #e0d6c2;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 17px;
+  line-height: 1;
+  transition: transform 300ms ease, background 120ms ease;
+}
+.picker-dice:hover { background: #fff5f8; }
+.picker-dice.spin { transform: rotate(360deg); }
+
+/* v0.4.5 · 名字建议 chips */
+.picker-name-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.picker-name-chip {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid #e0d6c2;
+  background: #fff;
+  color: #2b2622;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+.picker-name-chip:hover { border-color: #f0a8c0; background: #fff5f8; }
+.picker-name-chip.on {
+  background: linear-gradient(135deg, #ff6b9d, #ff9bb8);
+  color: #fff;
+  border-color: transparent;
+}
+
+/* v0.4.5 · 实时打招呼气泡（桌宠用名字说话）*/
+.picker-greet {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  background: #faf7f2;
+  border: 1px solid #ece6dd;
+  border-radius: 12px;
+  padding: 9px 11px;
+}
+.picker-greet-pet {
+  flex: 0 0 auto;
+  transition: transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.picker-greet-pet[data-bump="1"] { transform: translateY(-4px); }
+.picker-greet-txt {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2b2622;
+  line-height: 1.4;
+}
+.picker-greet-muted { color: #a89d90; font-weight: 500; }
+
 .persona-list {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -151,6 +151,9 @@ export function installDevTauriMock(): void {
 
   // Tauri v2 内部接口 —— @tauri-apps/api 的 invoke / listen 走的就是这里
   (w as any).__TAURI_INTERNALS__ = {
+    // getCurrentWindow() 读 metadata.currentWindow.label —— 缺了 PickerView 等
+    // 用 window API 的视图会在挂载时崩（读 undefined.currentWindow）。
+    metadata: { currentWindow: { label: "e2e" }, currentWebview: { windowLabel: "e2e", label: "e2e" } },
     // 关键：listen() 内部调它分配 handler id，然后把 id 作为 invoke 参数发给 Rust
     transformCallback: (handler: AnyFn, _once?: boolean) => {
       const id = nextCallbackId++;

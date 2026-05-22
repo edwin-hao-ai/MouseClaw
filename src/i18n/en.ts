@@ -18,7 +18,10 @@ export const en: Strings = {
   // Pet identity: name + personality (v0.4.4)
   "picker.identity.heading": "Name it + pick a personality",
   "picker.identity.name_label": "Name",
-  "picker.identity.name_placeholder": "Give me a name… (leave blank for none)",
+  "picker.identity.name_placeholder": "Name me…",
+  "picker.identity.name_suggestions": "Pixel,Mochi,Biscuit,Pip,Nibbles,Cheese,Coco,Bean,Tofu,Squeak,Pebble,Bolt",
+  "picker.identity.greet": "Hi, I'm {name}!",
+  "picker.identity.greet_empty": "Name me and I'll remember it ～",
   "picker.identity.personality_label": "Personality",
   "picker.identity.persona_hint": "Each answers the same \"Take a look at this code 🐛\" — pick the tone you'd like to hear every day.",
   "picker.identity.custom_placeholder": "Describe the tone in one line, e.g. \"lazy like a cat but reliable\"",

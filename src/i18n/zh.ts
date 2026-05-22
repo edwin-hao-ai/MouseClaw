@@ -18,7 +18,10 @@ export const zh: Strings = {
   // 桌宠身份:起名 + 性格 (v0.4.4)
   "picker.identity.heading": "给它起名 + 选性格",
   "picker.identity.name_label": "名字",
-  "picker.identity.name_placeholder": "给我起个名字…(留空我就先没名字)",
+  "picker.identity.name_placeholder": "起个名字…",
+  "picker.identity.name_suggestions": "小灰,咪咪,团子,阿鼠,糯米,奶酪,可可,球球,薯条,元宝,豆豆,闪电",
+  "picker.identity.greet": "嗨，我是 {name}！",
+  "picker.identity.greet_empty": "起个名字，它就会记住自己叫什么～",
   "picker.identity.personality_label": "性格",
   "picker.identity.persona_hint": "它们都在回答同一句「帮我看下这段代码 🐛」—— 选你最想每天听到的语气。",
   "picker.identity.custom_placeholder": "一句话定义语气,例如「像猫一样慵懒但靠谱」",

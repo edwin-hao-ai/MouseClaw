@@ -55,6 +55,10 @@ export default function PickerView() {
   const [petName, setPetName] = useState("");
   const [personality, setPersonality] = useState<PersonaId>("warm");
   const [customText, setCustomText] = useState("");
+  // v0.4.5 · 起名交互优雅化（prototype: pet-naming-and-eye-tracking-20260523）
+  const [suggestions, setSuggestions] = useState<string[]>([]); // 当前展示的 4 个名字建议
+  const [diceSpin, setDiceSpin] = useState(false);              // 🎲 旋转一下
+  const [greetBump, setGreetBump] = useState(false);            // 收到名字 → 桌宠轻跳
   // v0.4+ · 预览大老鼠接 companion — 在 picker 里移鼠标，预览的眼睛会追
   const previewStageRef = useRef<HTMLDivElement>(null);
   const companion = useCompanion(previewStageRef);
@@ -79,6 +83,30 @@ export default function PickerView() {
   const saveIdentity = (name: string, persona: PersonaId, custom: string) => {
     invoke("save_pet_identity", { name, personality: persona, custom }).catch(() => {});
   };
+
+  // v0.4.5 · 名字建议池（i18n 逗号分隔 → 数组）+ 随机抽 4 个
+  const namedPool = useMemo(
+    () => t("picker.identity.name_suggestions").split(",").map(s => s.trim()).filter(Boolean),
+    [t],
+  );
+  const pickFour = (pool: string[]) => [...pool].sort(() => Math.random() - 0.5).slice(0, 4);
+  useEffect(() => { setSuggestions(pickFour(namedPool)); }, [namedPool]);
+  // 选名（chip / 🎲）→ 即时持久化（与 skin「单击即存」一致）
+  const chooseName = (n: string) => { setPetName(n); saveIdentity(n, personality, customText); };
+  const rollRandomName = () => {
+    setDiceSpin(true);
+    setTimeout(() => setDiceSpin(false), 300);
+    if (namedPool.length === 0) return;
+    chooseName(namedPool[Math.floor(Math.random() * namedPool.length)]);
+    setSuggestions(pickFour(namedPool)); // 顺便换一批建议
+  };
+  // 收到名字 → 桌宠轻跳一下（"它收到了这个名字"反馈）
+  useEffect(() => {
+    if (!petName.trim()) return;
+    setGreetBump(true);
+    const id = setTimeout(() => setGreetBump(false), 200);
+    return () => clearTimeout(id);
+  }, [petName]);
 
   // v0.1.31 · 拦截原生 ✕ 按钮 —— 不让它真 close（会让 accessory app 退出）
   // preventDefault 后走我们的 cancel 逻辑：还原 + hide。
@@ -186,17 +214,45 @@ export default function PickerView() {
             <span>id：{previewMeta.id}</span>
           </div>
 
-          {/* v0.4.4 · 起名 + 性格 */}
+          {/* v0.4.4 · 起名 + 性格（v0.4.5 起名交互优雅化）*/}
           <div className="picker-identity">
             <div className="picker-id-label">{t("picker.identity.name_label")}</div>
-            <input
-              className="picker-name-input"
-              value={petName}
-              placeholder={t("picker.identity.name_placeholder")}
-              maxLength={12}
-              onChange={e => setPetName(e.target.value)}
-              onBlur={() => saveIdentity(petName, personality, customText)}
-            />
+            <div className="picker-name-row">
+              <input
+                className="picker-name-input"
+                value={petName}
+                placeholder={t("picker.identity.name_placeholder")}
+                maxLength={12}
+                onChange={e => setPetName(e.target.value)}
+                onBlur={() => saveIdentity(petName, personality, customText)}
+              />
+              <button
+                type="button"
+                className={`picker-dice ${diceSpin ? "spin" : ""}`}
+                title={t("picker.identity.name_placeholder")}
+                onClick={rollRandomName}
+              >🎲</button>
+            </div>
+            <div className="picker-name-suggest">
+              {suggestions.map(n => (
+                <button
+                  key={n}
+                  type="button"
+                  className={`picker-name-chip ${petName.trim() === n ? "on" : ""}`}
+                  onClick={() => chooseName(n)}
+                >{n}</button>
+              ))}
+            </div>
+            <div className="picker-greet">
+              <div className="picker-greet-pet" data-bump={greetBump ? "1" : undefined}>
+                <PixelMouse state="listen" size={40} skin={previewSkin} />
+              </div>
+              <div className="picker-greet-txt">
+                {petName.trim()
+                  ? t("picker.identity.greet", { name: petName.trim() })
+                  : <span className="picker-greet-muted">{t("picker.identity.greet_empty")}</span>}
+              </div>
+            </div>
             <div className="picker-id-label">{t("picker.identity.personality_label")}</div>
             <div className="persona-list">
               {PERSONA_IDS.map(pid => (

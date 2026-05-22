@@ -35,6 +35,9 @@ export interface Strings {
   "picker.identity.heading": string;
   "picker.identity.name_label": string;
   "picker.identity.name_placeholder": string;
+  "picker.identity.name_suggestions": string;
+  "picker.identity.greet": string;
+  "picker.identity.greet_empty": string;
   "picker.identity.personality_label": string;
   "picker.identity.persona_hint": string;
   "picker.identity.custom_placeholder": string;
