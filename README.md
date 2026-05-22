@@ -186,8 +186,8 @@ App: 12 MB DMG · 35 MB installed · ~260 MB voice models (downloaded first laun
 
 Bug reports + screenshots welcome at [Issues](https://github.com/edwin-hao-ai/MouseClaw/issues).
 
-This is a personal "vibe project" — I make it pretty first, useful second. PRs that match the design direction (see [DESIGN.md](DESIGN.md)) are merged fast.
+This is a personal "vibe project" — I make it pretty first, useful second. PRs that match the design direction (see [DESIGN.md](DESIGN.md)) are merged fast. By submitting a contribution you agree it is licensed under the same terms as this project (see below).
 
 ## License
 
-MIT
+[Functional Source License 1.1 (MIT Future License)](LICENSE) — the source is public and you may freely use, modify, and redistribute it for any purpose **except** offering a competing commercial product or service. Two years after each release, that version converts to the MIT license. "MouseClaw" and the lobster mascot are trademarks of the author and are not licensed for use in derivative works.
