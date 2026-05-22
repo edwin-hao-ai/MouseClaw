@@ -169,6 +169,8 @@ pub enum NudgeKind {
     /// v0.4.4 · 记忆首次透明告知：记忆默认开,第一次启动时一次性告知
     /// 「本地存、随时看/删」。marker file 兜底,弹过不再弹。
     MemoryIntro,
+    /// v0.4.4 · 起名可发现性:还没起名的桌宠,一次性提示「给我起个名字?」+ CTA 开 picker。
+    NameHint,
 }
 
 impl NudgeKind {
@@ -183,6 +185,7 @@ impl NudgeKind {
             NudgeKind::LearnedCli  => "learned-cli",
             NudgeKind::LongFocus   => "long-focus",
             NudgeKind::MemoryIntro => "memory-intro",
+            NudgeKind::NameHint    => "name-hint",
         }
     }
 }

@@ -49,6 +49,9 @@ export function NudgeBubble({ payload, onDismiss }: NudgeBubbleProps) {
     } else if (payload.ctaAction === "open-memory") {
       // v0.4.4 · 记忆首次告知 → 打开「它记得的事」窗口
       invoke("open_memory_window").catch(() => {});
+    } else if (payload.ctaAction === "open-picker") {
+      // v0.4.4 · 起名提示 → 打开 picker(起名 + 性格在里面)
+      invoke("open_picker_window").catch(() => {});
     }
     onDismiss();
   };

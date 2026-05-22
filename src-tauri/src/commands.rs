@@ -235,6 +235,48 @@ pub fn save_pet_identity(
     Ok(())
 }
 
+/// v0.4.4 · 起名可发现性 —— 还没起名的桌宠,启动 20s 后一次性提示去起名
+/// (marker file 兜底,弹过不再弹)。CTA「起名」打开 picker。仿 cli_install::maybe_hint_upgrade。
+pub fn maybe_show_name_hint(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+        let cfg = config::Config::load();
+        if !cfg.onboarded {
+            return;
+        }
+        if cfg.pet_name.as_deref().map(|s| !s.trim().is_empty()).unwrap_or(false) {
+            return; // 已经起过名
+        }
+        let marker = match std::env::var_os("HOME") {
+            Some(h) => std::path::PathBuf::from(h).join(".mouseclaw").join("name_hint_shown"),
+            None => return,
+        };
+        if marker.exists() {
+            return;
+        }
+        let en = cfg.language != "zh";
+        let (message, cta) = if en {
+            ("🐭 I don't have a name yet — want to give me one?".to_string(), "Name me".to_string())
+        } else {
+            ("🐭 我还没有名字 —— 给我起一个?".to_string(), "起名".to_string())
+        };
+        let payload = crate::events::NudgePayload {
+            kind: crate::events::NudgeKind::NameHint,
+            message,
+            cta_label: Some(cta),
+            cta_action: Some("open-picker".into()),
+        };
+        if app.emit(crate::events::EV_NUDGE, payload).is_err() {
+            return;
+        }
+        if let Some(dir) = marker.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(&marker, b"1");
+        println!("[mouseclaw] name hint shown");
+    });
+}
+
 /// v0.3.6 · 用户拖动桌宠到任意位置后调用 —— 保存窗口左上角坐标。
 /// 下次启动 / apply_idle_anchor 会优先用这个坐标，跨重启持久。
 /// 用户在托盘 anchor 子菜单点任一角落 → 自动清空回到 corner anchor。
