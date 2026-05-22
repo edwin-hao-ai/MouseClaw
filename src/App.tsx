@@ -99,11 +99,15 @@ export default function App() {
   // v0.5 · 开场调皮入场动画当前 phase（null = 没在入场）。Rust entrance.rs 推 phase + 动窗口位置；
   // 这里只控制桌宠精灵的 mc-entrance-* class。"done" 收到时清空回 idle。
   const [entrancePhase, setEntrancePhase] = useState<EntrancePhase | null>(null);
+  // view 优先于 entrance：用户一旦召唤，view 变 listening/thinking…，入场精灵立刻让位
+  //（防止入场动画叠在非 idle 视图上渲染 + 抢尺寸 —— finder D#7）。只有 idle 视图入场才生效。
+  const entranceActive: EntrancePhase | null =
+    entrancePhase !== null && view.kind === "idle" ? entrancePhase : null;
   // 横穿期间（peek/run/skid/beat）窗口被 Rust 扩到 320 + 推位置 → 桌宠用 96px + listen 表情，
   // 且必须关掉 useAdaptiveOverlay（否则自适应把横穿窗口缩掉，跟 set_position 抢尺寸）。
   // "stretch"（subtle 档）在 compact 角落原地播，保持 idle 64px。
-  const bigEntrance = entrancePhase === "peek" || entrancePhase === "run"
-                   || entrancePhase === "skid" || entrancePhase === "beat";
+  const bigEntrance = entranceActive === "peek" || entranceActive === "run"
+                   || entranceActive === "skid" || entranceActive === "beat";
   // v0.4+ · 陪伴向动画 —— hook 订阅 Rust companion-tick + 算桌宠当前帧
   const petStageRef = useRef<HTMLDivElement>(null);
   const stageRootRef = useRef<HTMLDivElement>(null);
@@ -125,20 +129,26 @@ export default function App() {
   // 跟随，自适应是唯一尺寸权威。
   // v0.5 · 入场横穿期间也禁用 —— 窗口尺寸/位置由 Rust entrance.rs 全权管，
   //   自适应若同时按内容反算会把横穿窗口缩掉、跟 set_position 抢尺寸。
-  useAdaptiveOverlay(stageRootRef, { enabled: view.kind !== "listening" && !entrancePhase });
+  useAdaptiveOverlay(stageRootRef, { enabled: view.kind !== "listening" && !entranceActive });
 
   // v0.3.12 · 在 idle 状态下显示 React-only UI（下载提示气泡 / petMenu / nudge / ack
   //   / v0.4 reactive ribbon）时主动通知 Rust 把窗口 hit-box 扩到全窗口；
   //   其余时间 Rust 自动按 view.kind 处理。
   //   这是为了让 idle 静默时透明区域真的穿透到底层 app，但 React 临时弹的气泡也可点。
   useEffect(() => {
+    if (view.kind !== "idle") return; // 非 idle 由 Rust emit_view 那侧管，前端不要干扰
+    // v0.5 · 入场横穿期间强制 hit-box=false —— 否则那个移动的 320 窗口会拦住桌面点击
+    //   （入场没有可交互 UI，桌宠只是动画；finder B#4）。
+    if (entranceActive) {
+      invoke("set_overlay_has_ui", { hasUi: false }).catch(() => {});
+      return;
+    }
     // v0.4.x · session chip（idle + 有上下文时显示在头顶）也算 React UI ——
     // 否则窗口 hit-box 只在桌宠底部，chip 在上方会被穿透掉点不到（点击查看对话失效）。
     const chipVisible = sessionState.continuing && !petMenuOpen && !nudge && !transientAck;
     const hasReactUi = !!modelProgress || petMenuOpen || !!nudge || !!transientAck || !!reactive || !!scheduleResult || chipVisible;
-    if (view.kind !== "idle") return; // 非 idle 由 Rust emit_view 那侧管，前端不要干扰
     invoke("set_overlay_has_ui", { hasUi: hasReactUi }).catch(() => {});
-  }, [view.kind, modelProgress, petMenuOpen, nudge, transientAck, reactive, scheduleResult, sessionState.continuing]);
+  }, [view.kind, entranceActive, modelProgress, petMenuOpen, nudge, transientAck, reactive, scheduleResult, sessionState.continuing]);
 
   // 启动时从 Rust 读当前皮肤（避免闪一下默认 classic 再切换）
   useEffect(() => {
@@ -772,12 +782,12 @@ export default function App() {
           size={bigEntrance ? 96 : (view.kind === "idle" ? 64 : 96)}
           continuing={continuing}
           twitching={twitching}
-          companionState={entrancePhase ? undefined : companion.state}
-          eyeOffset={{ x: companion.eyeOffsetX, y: companion.eyeOffsetY }}
+          companionState={entranceActive ? undefined : companion.state}
+          eyeOffset={entranceActive ? { x: 0, y: 0 } : { x: companion.eyeOffsetX, y: companion.eyeOffsetY }}
           intimacyLevel={intimacy.level}
           neglected={intimacy.neglected}
           bonk={bonkDir}
-          entrance={entrancePhase}
+          entrance={entranceActive}
         />
         {hearts.map((id) => (
           <span key={id} className="pet-heart" aria-hidden>❤️</span>
@@ -800,7 +810,7 @@ export default function App() {
         {nudge && !petMenuOpen && (
           <NudgeBubble payload={nudge} onDismiss={() => setNudge(null)} />
         )}
-        {scheduleResult && !petMenuOpen && !nudge && (
+        {scheduleResult && !entranceActive && !petMenuOpen && !nudge && (
           <ScheduleResultBubble payload={scheduleResult} onDismiss={() => setScheduleResult(null)} />
         )}
         {/* v0.4 · Reactive ribbon —— idle 视图下浮在桌宠头顶。其他视图（listening / thinking

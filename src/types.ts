@@ -35,7 +35,21 @@ export type ShortcutChoice =
   | "double-cmd"    | "hold-cmd";
 
 /** AI backend choice — matches Rust `Backend::from_choice`. */
-export type BackendChoice = "claude-cli" | "codex-cli" | "openclaw-cli" | "hermes-agent";
+export type BackendChoice =
+  | "claude-cli"
+  | "codex-cli"
+  | "openclaw-cli"
+  | "hermes-agent"
+  // v0.4.4 · 主流 CLI agent 一次补齐
+  | "opencode-cli"
+  | "gemini-cli"
+  | "copilot-cli"
+  | "kiro-cli"
+  | "cline-cli"
+  | "kimi-cli"
+  | "vibe-cli"
+  | "pi-agent"
+  | "antigravity-cli";
 
 /** 桌宠悬停位置 (v0.1.27, +hidden in v0.1.28) — must match Rust `PetAnchor::from_str`. */
 export type PetAnchor =

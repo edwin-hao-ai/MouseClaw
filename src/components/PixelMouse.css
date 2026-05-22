@@ -472,7 +472,8 @@
   70%  { transform: translateY(-5px) rotate(-3deg); }
   100% { transform: translateY(0) rotate(0); }
 }
-@keyframes mc-en-stretch { 0% { transform: scaleY(.66) scaleX(1.12); } 45% { transform: scaleY(1.14) scaleX(.94); } 100% { transform: scale(1); } }
+/* subtle 档在 compact 80px 窗口里原地播（64px 桌宠）—— 振幅压到 1.08 避免拉伸顶到窗口边被剪（finder E#7）。 */
+@keyframes mc-en-stretch { 0% { transform: scaleY(.72) scaleX(1.10); } 45% { transform: scaleY(1.08) scaleX(.96); } 100% { transform: scale(1); } }
 @keyframes mc-en-ear     { 0%,100% { transform: rotate(0); } 30% { transform: rotate(-16deg); } 62% { transform: rotate(11deg); } }
 @keyframes mc-en-frog    { 0%,100% { transform: scale(1); } 50% { transform: scale(1.28); } }
 @keyframes mc-en-tail    { 0%,100% { transform: rotate(0); } 50% { transform: rotate(-20deg); } }

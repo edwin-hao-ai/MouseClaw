@@ -764,16 +764,18 @@ pub fn friendly_backend_error(raw: &str, backend: crate::backend::Backend) -> St
     if lower.contains("找不到") || lower.contains("no such file") || lower.contains("not found")
         || lower.contains("command not found")
     {
-        return match backend {
-            crate::backend::Backend::ClaudeCli =>
-                "找不到 claude CLI。装一下：`npm i -g @anthropic-ai/claude-code`，然后跑 `claude login` 登录".into(),
-            crate::backend::Backend::CodexCli =>
-                "找不到 codex CLI。装一下：`npm i -g @openai/codex`，并配好 OpenAI API key".into(),
-            crate::backend::Backend::OpenclawCli =>
-                "找不到 openclaw CLI。装一下：`npm i -g openclaw`，并在 shell 配 provider key".into(),
-            crate::backend::Backend::HermesAgent =>
-                "找不到 hermes CLI。装一下：`curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash`，然后跑 `hermes setup` 配 API key".into(),
+        // 通用：用 install_cmd() 拼安装命令（加新后端自动覆盖，不用再开 match）。
+        // Claude 额外提示登录 —— 它是唯一「装了还要 login」的默认后端。
+        let extra = if matches!(backend, crate::backend::Backend::ClaudeCli) {
+            "，然后跑 `claude login` 登录"
+        } else {
+            "，并按其文档配好 API key / provider"
         };
+        return format!(
+            "找不到 {bin} CLI（{}）。装一下：`{}`{extra}",
+            backend.display_name(),
+            backend.install_cmd(),
+        );
     }
     if lower.contains("login") || lower.contains("authentic") || lower.contains("unauthorized") || lower.contains("401") {
         return format!("{bin} 似乎没登录或 token 过期。跑 `{bin} login` 重新登录后再试");

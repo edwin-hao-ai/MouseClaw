@@ -16,6 +16,7 @@ import { useState, useEffect, useCallback, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { PixelMouse } from "./PixelMouse";
 import { OnboardingInstall } from "./OnboardingInstall";
+import { OnboardingBackendStep } from "./OnboardingBackendStep";
 import type { BackendChoice, SkinId, PetAnchor } from "../types";
 import { SKINS, DEFAULT_SKIN } from "../skins";
 import { useT } from "../i18n";
@@ -54,7 +55,7 @@ interface OnboardingProps {
   ) => void;
 }
 
-// OPTIONS / BACKENDS / PERMISSIONS — 函数化，每次渲染时按当前语言重建
+// OPTIONS / PERMISSIONS — 函数化，每次渲染时按当前语言重建
 function buildOptions(t: ReturnType<typeof useT>) {
   return [
     { id: "hold-option" as ShortcutChoice,
@@ -64,36 +65,6 @@ function buildOptions(t: ReturnType<typeof useT>) {
       label: t("onboarding.shortcut.hint").includes("Hold") ? "Hold ⌃ + ⌘ + M" : "按住 ⌃ + ⌘ + M",
       keyHint: "⌃ ⌘ M" },
   ];
-}
-
-const BACKENDS_META: Array<{ id: BackendChoice; label: string; descKey: string; tag?: string }> = [
-  { id: "claude-cli", label: "Claude Code CLI", descKey: "claude", tag: "common.recommended" },
-  { id: "codex-cli",  label: "OpenAI Codex CLI", descKey: "codex" },
-  { id: "openclaw-cli", label: "OpenClaw CLI",  descKey: "openclaw" },
-  { id: "hermes-agent", label: "Hermes Agent (Nous Research)", descKey: "hermes" },
-];
-
-function backendDesc(id: BackendChoice, t: ReturnType<typeof useT>): string {
-  // 这块描述不上升到 i18n key 表（太琐碎），直接走双语 inline
-  const en = t("onboarding.shortcut.hint").includes("Hold");
-  switch (id) {
-    case "claude-cli":
-      return en
-        ? "Most mature · native agentic + image reading. Needs claude installed & logged in."
-        : "最成熟 · 原生 agentic + 读图。需已装并登录 claude。";
-    case "codex-cli":
-      return en
-        ? "codex exec non-interactive mode. Needs npm i -g @openai/codex + OpenAI key."
-        : "codex exec 非交互模式。需 npm i -g @openai/codex 并配好 key。";
-    case "openclaw-cli":
-      return en
-        ? "openclaw agent --local. Needs npm i -g openclaw + provider key in shell."
-        : "openclaw agent --local。需 npm i -g openclaw 并配好 provider key。";
-    case "hermes-agent":
-      return en
-        ? "Hermes -z one-shot mode. Self-improving agent from Nous Research. Needs hermes installed + setup."
-        : "hermes -z 单次模式。Nous Research 的自学习 agent。需先装 hermes 并配 provider key。";
-  }
 }
 
 function buildPermissions(t: ReturnType<typeof useT>) {
@@ -120,10 +91,6 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   const voiceLang: VoiceLang = "zh-en";
   // v0.1.27 · 默认 bottom-right —— 最不挡视线
   const [petAnchor, setPetAnchor] = useState<PetAnchor>("bottom-right");
-  // v0.1.28 · 后端 CLI 安装状态（id → {installed, installCmd, installUrl}）
-  const [backendStatus, setBackendStatus] = useState<
-    Record<string, { installed: boolean; installCmd: string; installUrl: string } | "loading">
-  >({});
   // v0.1.26 · 开机自启动 —— 进 step 5 时拉一次系统真实状态，用户切换调 set_autostart
   const [autostart, setAutostart] = useState<boolean>(true);
   useEffect(() => {
@@ -158,26 +125,6 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     return () => clearInterval(timer);
   }, [step, refreshPerms]);
 
-  // v0.1.28 · 进 step 2 时并发检测 4 个 backend CLI 是否装在 PATH
-  useEffect(() => {
-    if (step !== 2) return;
-    const ids: BackendChoice[] = ["claude-cli", "codex-cli", "openclaw-cli", "hermes-agent"];
-    // mark all as loading first so UI doesn't flicker
-    setBackendStatus(Object.fromEntries(ids.map(id => [id, "loading" as const])));
-    ids.forEach((id) => {
-      invoke<{ installed: boolean; installCmd: string; installUrl: string }>(
-        "check_backend_installed", { backend: id }
-      ).then((res) => {
-        setBackendStatus(prev => ({ ...prev, [id]: res }));
-      }).catch(() => {
-        // browser-only mode 或 invoke 失败 —— 当成 "已装" 不挡用户
-        setBackendStatus(prev => ({
-          ...prev,
-          [id]: { installed: true, installCmd: "", installUrl: "" },
-        }));
-      });
-    });
-  }, [step]);
 
   // 一个权限算"搞定" = 真的查到已授权 OR (是屏幕录制 且 已点过请求)
   const isDone = (key: keyof PermissionStatus): boolean => {
@@ -235,78 +182,16 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     );
   }
 
-  // ── Step 2: 选 AI 后端 ────────────────────────────────────────────────────
+  // ── Step 2: 选 AI 后端（已安装优先 · v0.4.4，逻辑在 OnboardingBackendStep）
   if (step === 2) {
     return (
-      <div className="ob-root">
-        <div className="ob-mouse-stage">
-          <PixelMouse state="think" size={96} skin={skin} />
-        </div>
-        <h1 className="ob-title">{t("onboarding.backend.title")}</h1>
-        <p className="ob-subtitle">
-          {t("onboarding.backend.subtitle")}<br />
-          {t("onboarding.backend.uncertain_hint")}
-        </p>
-        <div className="ob-options" role="radiogroup" aria-label={t("onboarding.backend.title")}>
-          {BACKENDS_META.map(b => {
-            const st = backendStatus[b.id];
-            const isLoading = st === "loading";
-            const stObj = (st && st !== "loading") ? st : null;
-            const installed = stObj?.installed === true;
-            const missing = stObj?.installed === false;
-            return (
-              <button
-                key={b.id}
-                type="button"
-                role="radio"
-                aria-checked={backend === b.id}
-                className={`ob-option ${backend === b.id ? "selected" : ""}`}
-                onClick={() => setBackend(b.id)}
-              >
-                <span className="ob-label">
-                  {b.label}
-                  {isLoading && (
-                    <span className="ob-install-pill ob-install-loading">…</span>
-                  )}
-                  {installed && (
-                    <span className="ob-install-pill ob-install-ok">{t("backend.installed")}</span>
-                  )}
-                  {missing && (
-                    <span className="ob-install-pill ob-install-missing">{t("backend.missing")}</span>
-                  )}
-                </span>
-                <span className="ob-perm-desc">{backendDesc(b.id, t)}</span>
-                {missing && stObj && (
-                  <div
-                    className="ob-install-hint"
-                    onClick={(e) => e.stopPropagation()} // 别冒泡到 button 触发 select
-                  >
-                    <code className="ob-install-cmd">{stObj.installCmd}</code>
-                    <a
-                      href={stObj.installUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="ob-install-link"
-                    >
-                      {t("backend.install_open")} ↗
-                    </a>
-                  </div>
-                )}
-                {b.tag && <span className="ob-tag">{t(b.tag as "common.recommended")}</span>}
-              </button>
-            );
-          })}
-        </div>
-        <button
-          type="button"
-          className="ob-cta"
-          onClick={() => setStep(3)}
-        >
-          {t("onboarding.cta.next_skin")}
-        </button>
-      </div>
+      <OnboardingBackendStep
+        skin={skin}
+        onNext={b => { setBackend(b); setStep(3); }}
+      />
     );
   }
+
 
   // ── Step 3: 挑桌宠 ────────────────────────────────────────────────────────
   if (step === 3) {
