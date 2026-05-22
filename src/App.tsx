@@ -787,7 +787,7 @@ export default function App() {
         {nudge && !petMenuOpen && (
           <NudgeBubble payload={nudge} onDismiss={() => setNudge(null)} />
         )}
-        {scheduleResult && !petMenuOpen && !nudge && (
+        {scheduleResult && !entranceActive && !petMenuOpen && !nudge && (
           <ScheduleResultBubble payload={scheduleResult} onDismiss={() => setScheduleResult(null)} />
         )}
         {/* v0.4 · Reactive ribbon —— idle 视图下浮在桌宠头顶。其他视图（listening / thinking
