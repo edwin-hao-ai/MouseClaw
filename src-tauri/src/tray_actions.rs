@@ -8,8 +8,83 @@
 
 use tauri::{AppHandle, Manager};
 
+use crate::backend::Backend;
 use crate::skins::SkinId;
 use crate::tray_windows::open_onboarding_window;
+
+/// 弹一个 anchor 处的反馈气泡（走 show_mouse_at_anchor + emit_view + auto-hide）。
+/// 托盘动作没有现成可见气泡时用它，保证用户**看得到**反馈（CLAUDE.md 忙碌/反馈可见性硬规则）。
+fn flash_bubble(app: &AppHandle, transcript: &str, reply: String, hide_ms: u64) {
+    crate::overlay::show_mouse_at_anchor(app);
+    crate::overlay::emit_view(app, &crate::events::ViewKind::Reply {
+        transcript: transcript.into(),
+        reply,
+        mode: crate::events::ReplyMode::A,
+        insert_text: None,
+        streaming: false,
+    });
+    if let Some(state) = app.try_state::<std::sync::Arc<crate::AppState>>() {
+        crate::overlay::schedule_auto_hide(app, state.inner(), hide_ms);
+    }
+}
+
+/// 托盘「🤖 AI 后端」子菜单点击 → 运行时切换当前后端。
+/// 同时改 **config.json**（clipboard_action 每次 `Config::load` 读它 + 重启后生效）
+/// 和**内存里的 `AppState.backend`**（主 pipeline 每次调用读它）—— 两边都更新才是真热切换。
+pub(crate) fn change_backend(app: &AppHandle, slug: &str) {
+    use std::sync::Arc;
+    let parsed = Backend::from_choice(slug);
+    let mut cfg = crate::config::Config::load();
+    if cfg.backend == parsed {
+        return;
+    }
+    cfg.backend = parsed;
+    if let Err(e) = cfg.save() {
+        eprintln!("[mouseclaw] change_backend save: {e}");
+        return;
+    }
+    // 更新内存里的 live backend（tokio Mutex → 异步锁）
+    if let Some(state) = app.try_state::<Arc<crate::AppState>>() {
+        let st = state.inner().clone();
+        tauri::async_runtime::spawn(async move {
+            *st.backend.lock().await = parsed;
+        });
+    }
+    println!("[mouseclaw] 🤖 tray: backend → {}", parsed.display_name());
+
+    let en = cfg.language == "en";
+    let installed = crate::claude_cli::find_binary(parsed.binary_name()).is_ok();
+    let msg = if installed {
+        if en { format!("🤖 Switched to {}.", parsed.display_name()) }
+        else { format!("🤖 已切换到 {}。", parsed.display_name()) }
+    } else {
+        // 菜单只列已装的，正常走不到；万一 config 被手改成没装的，给安装命令兜底
+        if en {
+            format!("🤖 {} selected, but it's not installed:\n{}", parsed.display_name(), parsed.install_cmd())
+        } else {
+            format!("🤖 已选 {}，但还没装：\n{}", parsed.display_name(), parsed.install_cmd())
+        }
+    };
+    flash_bubble(app, "backend switch", msg, 3000);
+}
+
+/// 一个后端都没装时，托盘「去安装」入口 → 弹气泡推荐 Claude + 安装命令。
+pub(crate) fn recommend_backend_install(app: &AppHandle) {
+    let en = crate::config::Config::load().language == "en";
+    let claude = Backend::ClaudeCli;
+    let msg = if en {
+        format!(
+            "🤖 No AI backend installed yet. Recommended — Claude Code CLI:\n{}\nInstall one, then pick it from the 🤖 AI backend menu.",
+            claude.install_cmd()
+        )
+    } else {
+        format!(
+            "🤖 还没装任何 AI 后端。推荐装 Claude Code CLI：\n{}\n装好后回到「🤖 AI 后端」菜单就能选了。",
+            claude.install_cmd()
+        )
+    };
+    flash_bubble(app, "backend install", msg, 5000);
+}
 
 /// 弹原生 NSOpenPanel 选目录 → 存进 config
 /// 用 osascript 触发 —— Tauri 的 dialog plugin 也能做但要额外配权限

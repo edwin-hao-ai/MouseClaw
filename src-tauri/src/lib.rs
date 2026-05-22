@@ -16,6 +16,7 @@ pub mod ai_queue;
 pub mod anchor;
 pub mod audio;
 pub mod backend;
+pub mod backend_menu;
 pub mod browser_bridge;
 pub mod nudge;
 pub mod presence;

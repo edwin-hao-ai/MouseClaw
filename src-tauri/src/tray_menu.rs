@@ -174,10 +174,13 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     // v0.1.27 · 📍 桌宠位置 ▸ 子菜单（4 角 + 跟随光标）
     let anchor_submenu = crate::anchor::build_tray_submenu(app, en)?;
 
+    // v0.4.4 · 🤖 AI 后端 ▸ 子菜单（运行时切换；只列已安装的）
+    let backend_submenu = crate::backend_menu::build_backend_submenu(app, en)?;
+
     // List items (declaring early so the vec! below can reference them)
     let mut items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = vec![
         &summon, &new_session_item, &pin_item, &clipboard_item, &history,
-        &skin_picker_item, &anchor_submenu, &lang_submenu,
+        &skin_picker_item, &anchor_submenu, &backend_submenu, &lang_submenu,
         &sep1, &vime_item, &summon_submenu, &trigger_submenu, &vocab_submenu, &pause_item,
         &workspace_item,
     ];

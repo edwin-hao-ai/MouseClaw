@@ -108,6 +108,7 @@ impl Backend {
     /// 从前端传来的字符串解析（Onboarding 选项 id）。未知 → 回落 Claude。
     pub fn from_choice(s: &str) -> Backend {
         match s {
+            "claude-cli" | "claude" => Backend::ClaudeCli,
             "codex-cli" | "codex" => Backend::CodexCli,
             "openclaw-cli" | "openclaw" => Backend::OpenclawCli,
             "hermes-agent" | "hermes" => Backend::HermesAgent,
@@ -160,6 +161,17 @@ impl Backend {
             Backend::PiAgent     => "npm i -g @mariozechner/pi-coding-agent",
             Backend::AntigravityCli => "curl -fsSL https://antigravity.google/cli/install.sh | bash",
         }
+    }
+
+    /// 所有后端的规范顺序 —— 托盘切换菜单 / onboarding 选择 / 测试遍历共用一处。
+    /// Claude 排第一（默认 + 最成熟），其余大致按主流度。
+    pub fn all() -> [Backend; 13] {
+        [
+            Backend::ClaudeCli, Backend::CodexCli, Backend::GeminiCli, Backend::CopilotCli,
+            Backend::OpenCodeCli, Backend::ClineCli, Backend::KimiCli, Backend::KiroCli,
+            Backend::AntigravityCli, Backend::VibeCli, Backend::PiAgent, Backend::OpenclawCli,
+            Backend::HermesAgent,
+        ]
     }
 
     /// 一次性（非流式）调用的命令参数。`prompt` 已拼好（流式路径含 system + 截图路径；
@@ -384,12 +396,7 @@ mod tests {
 
     #[test]
     fn binary_names_are_distinct() {
-        let all = [
-            Backend::ClaudeCli, Backend::CodexCli, Backend::OpenclawCli, Backend::HermesAgent,
-            Backend::OpenCodeCli, Backend::GeminiCli, Backend::CopilotCli, Backend::KiroCli,
-            Backend::ClineCli, Backend::KimiCli, Backend::VibeCli, Backend::PiAgent,
-            Backend::AntigravityCli,
-        ];
+        let all = Backend::all();
         let mut names: Vec<&str> = all.iter().map(|b| b.binary_name()).collect();
         let n = names.len();
         names.sort_unstable();
@@ -401,12 +408,7 @@ mod tests {
 
     #[test]
     fn install_cmd_and_url_non_empty_for_all() {
-        let all = [
-            Backend::ClaudeCli, Backend::CodexCli, Backend::OpenclawCli, Backend::HermesAgent,
-            Backend::OpenCodeCli, Backend::GeminiCli, Backend::CopilotCli, Backend::KiroCli,
-            Backend::ClineCli, Backend::KimiCli, Backend::VibeCli, Backend::PiAgent,
-            Backend::AntigravityCli,
-        ];
+        let all = Backend::all();
         for b in all {
             assert!(!b.install_cmd().is_empty(), "{:?} install_cmd empty", b);
             assert!(b.install_url().starts_with("https://"), "{:?} bad url", b);
