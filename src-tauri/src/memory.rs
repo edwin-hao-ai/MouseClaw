@@ -1,16 +1,11 @@
-//! 长期记忆 · 本地 SQLite(无向量库) · 三层(画像 / 情景 / 图谱)
-//!
+//! 长期记忆 · 本地 SQLite(无向量库) · 三层(画像 / 情景 / 图谱)。
 //! 设计:docs/design/pet-identity-and-memory-20260521.md
 //!
-//! 取舍(为什么这么写):
-//!   - **无向量模型**:检索靠 关系表 + 时近/重要度/token 重叠 打分,在 Rust 内完成,
-//!     零额外常驻内存(守 600MB 目标)。FTS5/BM25 升级留到能在 Mac 上跑测之后(v1.1)。
-//!   - **记录零额外 LLM**:`record_turn` 只写库。把 LLM 蒸馏挪到空闲 `run_reflection`
-//!     批处理(P2.5),省 token、记录路径不卡。
-//!   - **backend 无关**:reflection 走 `backend::ask_text_only`(4 后端 + 未来直连 LLM 通吃);
-//!     注入走 `claude_cli::build_prompt`,所有 backend 自动生效。
-//!   - **隐私**:只存"用户召唤那一刻"已有的素材(app 标题 / 文本 / 截图路径),不做后台监控。
-//!     纯本地 `~/.mouseclaw/memory.db`。`memory_enabled` / `memory_paused` 双开关。
+//! 取舍:① 无向量模型 —— 检索靠 关系表 + 时近/重要度/token 重叠 在 Rust 内打分
+//! (零额外常驻内存;FTS5/BM25 留 v1.1)。② 记录零额外 LLM —— `record_turn` 只写库,
+//! LLM 蒸馏挪到空闲 `run_reflection`(省 token)。③ backend 无关 —— reflection 走
+//! `backend::ask_text_only`,注入走 `claude_cli::build_prompt`,4 后端 + 未来直连 LLM 通吃。
+//! ④ 隐私 —— 只存召唤那一刻已有素材(app/文本/截图路径),纯本地,双开关(enabled/paused)。
 
 use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
@@ -208,7 +203,7 @@ pub fn record_turn(role: &str, text: &str, app: Option<&str>, screenshot: Option
 fn query_tokens(query: &str) -> Vec<String> {
     let mut toks: Vec<String> = query
         .split(|c: char| c.is_whitespace() || c.is_ascii_punctuation()
-            || matches!(c, '，' | '。' | '、' | '？' | '！' | '：' | '；' | '"' | '"' | '（' | '）'))
+            || matches!(c, '，' | '。' | '、' | '？' | '！' | '：' | '；' | '\u{201c}' | '\u{201d}' | '（' | '）'))
         .map(|s| s.trim().to_string())
         .filter(|s| s.chars().count() >= 2)
         .collect();
