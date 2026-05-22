@@ -390,3 +390,42 @@
 .bubble-action:active { transform: scale(0.97); }
 .bubble-danger .bubble-action { background: var(--danger, #ff5f57); }
 .bubble-danger .bubble-action:hover { background: #ff7a73; }
+
+/* v0.4.4 · 🧠 用到的记忆(可展开 + 删错的) */
+.bubble-mem {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--bubble-border, rgba(0, 0, 0, 0.1));
+}
+.bubble-mem-toggle {
+  background: none;
+  border: 0;
+  padding: 2px 0;
+  font-family: inherit;
+  font-size: var(--text-meta);
+  font-weight: 600;
+  color: #7a4ac0;
+  cursor: pointer;
+}
+.bubble-mem-toggle:hover { text-decoration: underline; }
+.bubble-mem-list { margin-top: 4px; }
+.bubble-mem-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: var(--text-body-sm);
+  color: var(--text-primary);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+.bubble-mem-text { flex: 1; min-width: 0; line-height: 1.4; }
+.bubble-mem-x {
+  flex: none;
+  background: none;
+  border: 0;
+  padding: 0 2px;
+  font-weight: 700;
+  color: var(--text-dim, #a1a1a8);
+  cursor: pointer;
+}
+.bubble-mem-x:hover { color: var(--danger, #ff5f57); }

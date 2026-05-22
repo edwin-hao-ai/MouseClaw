@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>MouseClaw · 长期记忆 UX(画像/历史双层 + 🧠命中) · 2026-05-21</title>
+<style>
+  /* ===== DESIGN.md §9 cheatsheet tokens ===== */
+  :root{
+    --surface-deep:#0a0e1a;
+    --bubble-bg:rgba(255,255,255,0.97);
+    --panel-bg:rgba(252,252,254,0.98);
+    --bubble-border:rgba(0,0,0,0.10);
+    --text-primary:#1a1a1a;--text-on-dark:#f5f5f7;--text-dim:#a1a1a8;
+    --accent-primary:#ff6b9d;--accent-soft:#ff9bb8;
+    --accent-gradient:linear-gradient(135deg,#ff6b9d,#ff9bb8);
+    --success:#5cd6a0;--warn:#ffd166;--danger:#ff5f57;
+    --font-system:-apple-system,BlinkMacSystemFont,"SF Pro Display","PingFang SC","Microsoft YaHei",sans-serif;
+    --font-mono:ui-monospace,"SF Mono",Consolas,monospace;
+    --radius-pill:999px;--radius-xs:4px;--radius-sm:6px;--radius-md:8px;--radius-lg:10px;
+    --radius-xl:12px;--radius-3xl:16px;--radius-4xl:24px;
+    --shadow-panel:0 24px 64px rgba(0,0,0,0.4),0 4px 12px rgba(0,0,0,0.2),inset 0 1px 0 rgba(255,255,255,0.9);
+    --shadow-bubble:0 12px 32px rgba(0,0,0,0.35),0 2px 6px rgba(0,0,0,0.2),inset 0 1px 0 rgba(255,255,255,0.7);
+    --shadow-mouse:drop-shadow(0 4px 8px rgba(0,0,0,0.4));
+    --text-headline:22px;--text-title:16px;--text-body-lg:14px;--text-body:13px;
+    --text-body-sm:12px;--text-meta:11px;--text-micro:10px;
+    --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;
+    --ease-default:ease-in-out;--ease-spring:cubic-bezier(0.34,1.56,0.64,1);--ease-tap:cubic-bezier(0.2,0,0,1);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{font-family:var(--font-system);
+    background:radial-gradient(1200px 700px at 30% -10%,#2b3350,transparent),linear-gradient(135deg,#0c1020,#141a2e 60%,#0a0e1a);
+    color:var(--text-on-dark);min-height:100vh;padding:28px 24px 60px;}
+  .pixel{shape-rendering:crispEdges;image-rendering:pixelated;}
+  .wrap{max-width:1000px;margin:0 auto;}
+  h1{font-size:var(--text-headline);font-weight:700;letter-spacing:-0.02em;margin:0 0 6px;}
+  .lead{margin:0 0 8px;color:rgba(245,245,247,0.55);font-size:var(--text-body);max-width:780px;line-height:1.6;}
+  .pill{display:inline-block;font-size:var(--text-meta);font-weight:600;color:var(--accent-soft);
+    border:1px solid rgba(255,107,157,0.3);border-radius:var(--radius-pill);padding:2px 10px;margin-bottom:10px;}
+  h2.sec{font-size:var(--text-meta);font-weight:600;color:rgba(245,245,247,0.55);text-transform:uppercase;
+    letter-spacing:0.1em;margin:34px 0 14px;}
+  h2.sec b{color:var(--accent-soft);}
+
+  /* mock desktop window */
+  .mock-win{background:rgba(20,24,40,0.7);border:1px solid rgba(255,255,255,0.07);border-radius:var(--radius-lg);
+    overflow:hidden;backdrop-filter:blur(20px);box-shadow:0 30px 80px rgba(0,0,0,0.5);position:relative;}
+  .mock-bar{display:flex;gap:7px;align-items:center;padding:10px 14px;background:rgba(255,255,255,0.04);
+    border-bottom:1px solid rgba(255,255,255,0.06);}
+  .mock-bar i{width:11px;height:11px;border-radius:50%;}
+  .mock-bar .r{background:#ff5f57;}.mock-bar .y{background:#febc2e;}.mock-bar .g{background:#28c840;}
+  .mock-bar span{margin-left:10px;color:var(--text-dim);font-size:var(--text-meta);}
+  .mock-body{padding:18px 20px;font-family:var(--font-mono);font-size:var(--text-body-sm);color:#6b7895;line-height:1.7;min-height:120px;}
+  .mock-body .k{color:#c792ea;}.mock-body .e{color:#ff8a8a;}.mock-body .c{color:#546178;}
+
+  /* pet + 🧠 badge + bubble */
+  .scene{position:relative;display:flex;align-items:flex-end;gap:16px;margin-top:18px;flex-wrap:wrap;}
+  .pet-host{position:relative;width:108px;height:108px;flex:none;}
+  .pet-host .mouse-wrap{filter:var(--shadow-mouse);}
+  .mem-badge{position:absolute;top:-6px;left:50%;transform:translateX(-50%);
+    background:#fff;border:1px solid var(--bubble-border);border-radius:var(--radius-pill);
+    font-size:var(--text-meta);font-weight:700;color:#7a4ac0;padding:2px 8px;white-space:nowrap;
+    box-shadow:0 6px 16px rgba(0,0,0,0.25);animation:badge-float 2.4s var(--ease-default) infinite;z-index:3;}
+  @keyframes badge-float{0%,100%{transform:translateX(-50%) translateY(0);}50%{transform:translateX(-50%) translateY(-3px);}}
+
+  .bubble{background:var(--bubble-bg);border:1px solid var(--bubble-border);border-radius:var(--radius-xl);
+    box-shadow:var(--shadow-bubble);padding:12px 14px 10px;font-size:var(--text-body);color:var(--text-primary);
+    max-width:340px;line-height:1.55;position:relative;}
+  .bubble .who{font-weight:700;color:#7a4ac0;font-size:var(--text-body-sm);margin-bottom:3px;}
+  .mem-toggle{margin-top:8px;font-size:var(--text-body-sm);color:#7a4ac0;font-weight:600;cursor:pointer;
+    user-select:none;display:inline-flex;align-items:center;gap:4px;}
+  .mem-toggle:hover{text-decoration:underline;}
+  .mem-used{margin-top:8px;border-top:1px dashed var(--bubble-border);padding-top:8px;display:none;}
+  .mem-used.open{display:block;}
+  .mem-used .mu{display:flex;align-items:flex-start;gap:6px;font-size:var(--text-body-sm);color:#555;
+    padding:5px 0;border-bottom:1px solid rgba(0,0,0,0.04);}
+  .mem-used .mu .src{color:#9a9aa2;font-size:var(--text-micro);white-space:nowrap;font-weight:600;}
+  .mem-used .mu .x{margin-left:auto;color:var(--text-dim);cursor:pointer;font-weight:700;padding:0 4px;}
+  .mem-used .mu .x:hover{color:var(--danger);}
+  .mem-used .hint{font-size:var(--text-micro);color:#a1a1a8;margin-top:6px;}
+
+  /* 9-skin badge proof row */
+  .skin-row{display:flex;gap:10px;flex-wrap:wrap;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);
+    border-radius:var(--radius-3xl);padding:18px 16px 14px;}
+  .skin-cell{position:relative;width:84px;text-align:center;}
+  .skin-cell .ph{position:relative;width:72px;height:72px;margin:0 auto;}
+  .skin-cell .ph .mouse-wrap{filter:var(--shadow-mouse);}
+  .skin-cell .b{position:absolute;top:-2px;left:50%;transform:translateX(-50%);background:#fff;
+    border-radius:var(--radius-pill);font-size:9px;font-weight:700;color:#7a4ac0;padding:1px 5px;
+    box-shadow:0 4px 10px rgba(0,0,0,0.25);z-index:3;}
+  .skin-cell .nm{font-size:var(--text-micro);color:rgba(245,245,247,0.55);margin-top:4px;}
+
+  /* memory viewer panel */
+  .panel{background:var(--panel-bg);border-radius:var(--radius-4xl);box-shadow:var(--shadow-panel);
+    backdrop-filter:blur(40px);color:var(--text-primary);padding:var(--space-5);max-width:460px;}
+  .panel-head{display:flex;align-items:center;gap:8px;margin-bottom:14px;}
+  .panel-head .pet-mini{filter:var(--shadow-mouse);}
+  .panel-head h3{font-size:var(--text-title);font-weight:700;margin:0;}
+  .panel-head .pause{margin-left:auto;font-size:var(--text-meta);font-weight:600;color:#7a7a85;
+    display:inline-flex;align-items:center;gap:6px;cursor:pointer;}
+  .sw{width:34px;height:20px;border-radius:var(--radius-pill);background:var(--success);position:relative;transition:background .2s;}
+  .sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;
+    transition:transform .2s var(--ease-tap);box-shadow:0 1px 3px rgba(0,0,0,0.3);}
+  .pause.off .sw{background:#cfcfd6;}
+  .pause.off .sw::after{transform:translateX(14px);}
+
+  .tabs{display:flex;gap:6px;background:#f0f0f4;border-radius:var(--radius-md);padding:3px;margin-bottom:14px;}
+  .tab{flex:1;text-align:center;font-size:var(--text-body-sm);font-weight:600;color:#7a7a85;padding:7px;
+    border-radius:var(--radius-sm);cursor:pointer;transition:background .15s,color .15s;}
+  .tab.sel{background:#fff;color:var(--text-primary);box-shadow:0 1px 4px rgba(0,0,0,0.08);}
+  .tabpane{display:none;}
+  .tabpane.sel{display:block;}
+
+  /* profile chips */
+  .pf-intro{font-size:var(--text-body-sm);color:#7a7a85;line-height:1.5;margin:0 0 12px;}
+  .chip{display:flex;align-items:center;gap:8px;background:#f7f7fa;border-radius:var(--radius-lg);
+    padding:9px 11px;margin-bottom:7px;}
+  .chip .ic{font-size:15px;}
+  .chip .body{flex:1;min-width:0;}
+  .chip .k{font-size:var(--text-micro);color:#9a9aa2;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;}
+  .chip .v{font-size:var(--text-body);color:var(--text-primary);font-weight:500;}
+  .chip .conf{width:42px;height:4px;border-radius:var(--radius-pill);background:#e4e4ea;overflow:hidden;flex:none;}
+  .chip .conf i{display:block;height:100%;background:var(--accent-gradient);}
+  .chip .x{color:var(--text-dim);cursor:pointer;font-weight:700;padding:0 2px;}
+  .chip .x:hover{color:var(--danger);}
+
+  /* history */
+  .search{width:100%;font-size:var(--text-body);padding:9px 12px;border-radius:var(--radius-md);
+    border:1px solid #e0e0e6;outline:none;margin-bottom:10px;background:#fff;}
+  .search:focus{border-color:var(--accent-primary);box-shadow:0 0 0 3px rgba(255,107,157,0.15);}
+  .turn{display:flex;gap:9px;align-items:flex-start;padding:9px 4px;border-bottom:1px solid rgba(0,0,0,0.05);}
+  .turn .app{font-size:var(--text-meta);font-weight:700;color:#5a6b8a;background:#eef1f6;border-radius:var(--radius-xs);
+    padding:2px 6px;white-space:nowrap;flex:none;}
+  .turn .mid{flex:1;min-width:0;}
+  .turn .sum{font-size:var(--text-body-sm);color:var(--text-primary);line-height:1.45;}
+  .turn .meta{font-size:var(--text-micro);color:#a1a1a8;margin-top:2px;}
+  .turn .imp{color:var(--accent-primary);letter-spacing:1px;}
+  .turn .x{color:var(--text-dim);cursor:pointer;font-weight:700;padding:0 4px;flex:none;}
+  .turn .x:hover{color:var(--danger);}
+  .hist-foot{display:flex;justify-content:space-between;align-items:center;margin-top:12px;}
+  .danger-link{font-size:var(--text-body-sm);color:var(--danger);font-weight:600;cursor:pointer;background:none;border:none;}
+  .danger-link:hover{text-decoration:underline;}
+
+  /* layout helpers */
+  .two{display:grid;grid-template-columns:1fr 460px;gap:24px;align-items:start;}
+  @media(max-width:920px){.two{grid-template-columns:1fr;}}
+  .note{font-size:var(--text-body-sm);color:rgba(245,245,247,0.5);line-height:1.65;
+    border-left:2px solid rgba(255,107,157,0.4);padding:6px 0 6px 12px;margin-top:14px;}
+  .note b{color:rgba(245,245,247,0.82);}
+
+  .mouse-svg{display:block;animation:idle-bob 2.8s var(--ease-default) infinite;}
+  @keyframes idle-bob{0%,100%{transform:translateY(0);}50%{transform:translateY(-2px);}}
+  @media(prefers-reduced-motion:reduce){.mouse-svg,.mem-badge,.badge-float{animation:none!important;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="pill">PROTOTYPE · P3 长期记忆 UX · 2026-05-21</span>
+  <h1>它记得我们一起做过什么</h1>
+  <p class="lead">记忆只来自<b>你召唤它的那些时刻</b>(app 标题+截图+语音+回复),不是全天候监控。
+     默认开 → 所以第一次就透明告知 + 随时可看可删。下面演示:命中标记 🧠、双层查看器(画像/历史)、暂停。</p>
+
+  <!-- ① 记忆命中 in context -->
+  <h2 class="sec">① 召唤时<b>自动结合记忆</b>(案例 A · 跨天接续)</h2>
+  <div class="mock-win">
+    <div class="mock-bar"><i class="r"></i><i class="y"></i><i class="g"></i><span>lifetimes.rs — mouseclaw · VSCode</span></div>
+    <div class="mock-body">
+      <div><span class="k">fn</span> load(&<span class="k">self</span>) -> &<span class="k">str</span> {</div>
+      <div>&nbsp;&nbsp;<span class="e">// error[E0515]: cannot return reference to local `tmp`</span></div>
+      <div>&nbsp;&nbsp;&<span class="k">self</span>.tmp</div>
+      <div>}</div>
+    </div>
+    <div class="scene" style="padding:0 18px 18px;">
+      <div class="pet-host">
+        <div class="mem-badge">🧠 结合了 2 条记忆</div>
+        <div id="petA"></div>
+      </div>
+      <div class="bubble">
+        <div class="who">🐭 小灰</div>
+        上次在这个项目你也卡在 <b>lifetime <code>'a</code></b> —— 后来改成 <code>Arc</code> 通了。
+        这次这个 <code>E0515</code> 是同一个文件吗?要我按上次的思路改吗?
+        <div class="mem-toggle" id="memToggle">🧠 用到的记忆 ▾</div>
+        <div class="mem-used" id="memUsed">
+          <div class="mu"><span class="src">VSCode·3天前</span><span>borrow checker <code>'a</code> 报错 → 改用 <code>Arc</code> 解决</span><span class="x" title="这条不对,删掉">✕</span></div>
+          <div class="mu"><span class="src">画像</span><span>偏好简短回答 · 技术栈 Rust+Tauri</span><span class="x" title="删掉">✕</span></div>
+          <div class="hint">这些是它召回的记忆。不对就点 ✕ 当场纠正 —— 信任来自可见 + 可改。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ② 全皮肤 badge 验证 -->
+  <h2 class="sec">② <b>🧠 命中标记对全部 9 款皮肤都成立</b>(动画硬规则:不能只在 classic 上做)</h2>
+  <div class="skin-row" id="skinRow"></div>
+
+  <!-- ③ 双层查看器 + ④ 回顾 -->
+  <h2 class="sec">③ 双层查看器(<b>画像 / 历史</b>) + 暂停 &nbsp;·&nbsp; ④ 日回顾</h2>
+  <div class="two">
+    <div>
+      <!-- ④ daily recap bubble -->
+      <div class="scene">
+        <div class="pet-host"><div id="petR"></div></div>
+        <div class="bubble" style="max-width:300px;">
+          <div class="who">🐭 小灰 · 你问「我今天都干了啥」</div>
+          上午在 <b>VSCode</b> 调 overlay sizing(问了 3 次),中午在 <b>Chrome</b> 查 SQLite FTS5,
+          下午写发布脚本。今天召唤我 <b>12 次</b>,基本围着 MouseClaw 转。
+          <div class="hint" style="font-size:var(--text-micro);color:#a1a1a8;margin-top:7px;">
+            * 全部来自你召唤我的时刻,不是后台监控你一整天。</div>
+        </div>
+      </div>
+      <div class="note">
+        <b>进化(reflection):</b>它不是越攒越多原始日志,而是空闲时把日志蒸馏成更准的「画像」——
+        项目做完了 / 技术栈换了 / 你改了偏好,旧事实会<b>失效而非删除</b>,新认知接管。越用越懂你。
+      </div>
+    </div>
+
+    <!-- memory viewer -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="pet-mini" id="petMini"></div>
+        <h3>小灰记得的事</h3>
+        <div class="pause" id="pauseBtn"><span>记忆</span><span class="sw"></span></div>
+      </div>
+      <div class="tabs">
+        <div class="tab sel" data-tab="profile">📌 关于你</div>
+        <div class="tab" data-tab="history">🕑 历史</div>
+      </div>
+
+      <div class="tabpane sel" id="pane-profile">
+        <p class="pf-intro">它从你们的交互里蒸馏出的「画像」,每次召唤都带着 —— 这是「更懂你」的来源。可随时改/删。</p>
+        <div id="chips"></div>
+      </div>
+
+      <div class="tabpane" id="pane-history">
+        <input class="search" id="histSearch" placeholder="搜历史…(本地全文检索,零 AI 调用)" />
+        <div id="turns"></div>
+        <div class="hist-foot">
+          <span style="font-size:var(--text-micro);color:#a1a1a8;">本地 · ~/.mouseclaw/memory.db</span>
+          <button class="danger-link">清空全部记忆</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>暂停 = ChatGPT 的 Temporary Chat:</b>右上角关掉「记忆」开关后,这次召唤<b>既不读也不写</b>记忆 ——
+    给敏感场景用。默认是开的(空库时价值看不出,所以首次开启会一次性透明告知「本地存、随时删」)。
+  </div>
+</div>
+
+<script>
+const NS="http://www.w3.org/2000/svg";
+const SKINS=[
+ {id:"classic",name:"经典灰",body:"standard",palette:{body:"#cfcfcf",belly:"#ffffff",earIn:"#ff9bb8",earOut:"#cfcfcf",eye:"#1a1a1a",nose:"#d63d6a",tail:"#8a8a8a",paw:"#ffffff"}},
+ {id:"lab",name:"小白鼠",body:"slim",palette:{body:"#fafafa",belly:"#ffffff",earIn:"#ffb3c8",earOut:"#e8e3dc",eye:"#ff5f57",nose:"#ff6b9d",tail:"#ffb3c8",paw:"#ffffff"}},
+ {id:"field",name:"田鼠",body:"chubby",palette:{body:"#a47148",belly:"#e8d5b0",earIn:"#d6a07a",earOut:"#7a4e2e",eye:"#1a1a1a",nose:"#5a2e10",tail:"#7a4e2e",paw:"#d6a07a"}},
+ {id:"ninja",name:"忍者鼠",body:"ninja",palette:{body:"#3a3a42",belly:"#5a5a64",earIn:"#1a1a1a",earOut:"#2a2a30",eye:"#ffd166",nose:"#1a1a1a",tail:"#2a2a30",paw:"#1a1a1a"}},
+ {id:"cyber",name:"机械鼠",body:"robot",palette:{body:"#c0c8d0",belly:"#e8eef4",earIn:"#00e5ff",earOut:"#7a8290",eye:"#00e5ff",nose:"#00e5ff",tail:"#7a8290",paw:"#5a6270"}},
+ {id:"golden",name:"金鼠",body:"round",palette:{body:"#e8c87a",belly:"#fff4d6",earIn:"#d68a40",earOut:"#c8a050",eye:"#3a2818",nose:"#a06028",tail:"#c8a050",paw:"#fff4d6"}},
+ {id:"cat-gray",name:"小灰猫",body:"cat",palette:{body:"#a8a8a8",belly:"#f4f4f4",earIn:"#ff9bb8",earOut:"#7a7a7a",eye:"#3fa66a",nose:"#d63d6a",tail:"#7a7a7a",paw:"#a8a8a8"}},
+ {id:"fox-red",name:"赤狐",body:"fox",palette:{body:"#d96e2c",belly:"#fff4ec",earIn:"#1a1a1a",earOut:"#a04a18",eye:"#1a1a1a",nose:"#1a1a1a",tail:"#fff4ec",paw:"#1a1a1a"}},
+ {id:"frog-tree",name:"树蛙",body:"frog",palette:{body:"#7ab84a",belly:"#f4e890",earIn:"#ffffff",earOut:"#5a8a30",eye:"#d63d6a",nose:"#5a8a30",tail:"#5a8a30",paw:"#f4e890"}},
+];
+function R(p,x,y,w,h,f,o){const r=document.createElementNS(NS,"rect");r.setAttribute("x",x);r.setAttribute("y",y);
+  r.setAttribute("width",w);r.setAttribute("height",h);r.setAttribute("fill",f);if(o!=null)r.setAttribute("opacity",o);p.appendChild(r);return r;}
+function G(p,c,o){const g=document.createElementNS(NS,"g");if(c)g.setAttribute("class",c);if(o)g.style.transformOrigin=o;p.appendChild(g);return g;}
+function Ears(svg,s){const p=s.palette,b=s.body;
+  if(b==="robot"){const l=G(svg,"mc-ear mc-ear-l","4.5px 2px");R(l,4,-1,1,3,p.earOut);R(l,4,-2,1,1,p.earIn);const r=G(svg,"mc-ear mc-ear-r","11.5px 2px");R(r,11,-1,1,3,p.earOut);R(r,11,-2,1,1,p.earIn);return;}
+  if(b==="cat"){const l=G(svg,"mc-ear mc-ear-l","3.5px 3px");R(l,2,0,1,3,p.earOut);R(l,3,1,1,2,p.earOut);R(l,4,2,1,1,p.earOut);R(l,3,2,1,1,p.earIn);const r=G(svg,"mc-ear mc-ear-r","12.5px 3px");R(r,13,0,1,3,p.earOut);R(r,12,1,1,2,p.earOut);R(r,11,2,1,1,p.earOut);R(r,12,2,1,1,p.earIn);return;}
+  if(b==="fox"){const l=G(svg,"mc-ear mc-ear-l","3.5px 3px");R(l,2,-1,1,4,p.earOut);R(l,3,0,1,3,p.earOut);R(l,4,1,1,2,p.earOut);R(l,3,1,1,2,p.earIn);const r=G(svg,"mc-ear mc-ear-r","12.5px 3px");R(r,13,-1,1,4,p.earOut);R(r,12,0,1,3,p.earOut);R(r,11,1,1,2,p.earOut);R(r,12,1,1,2,p.earIn);return;}
+  if(b==="frog"){const l=G(svg,"mc-ear mc-ear-l mc-ear-frog","4.5px 1.5px");R(l,3,0,3,3,p.body);R(l,4,1,1,1,p.earIn);R(l,4,0,1,1,p.earOut);const r=G(svg,"mc-ear mc-ear-r mc-ear-frog","11.5px 1.5px");R(r,10,0,3,3,p.body);R(r,11,1,1,1,p.earIn);R(r,11,0,1,1,p.earOut);return;}
+  if(b==="chubby"){const l=G(svg,"mc-ear mc-ear-l","3px 3.5px");R(l,2,0,3,3,p.earOut);R(l,1,1,4,3,p.earOut);R(l,3,1,1,2,p.earIn);const r=G(svg,"mc-ear mc-ear-r","13px 3.5px");R(r,11,0,3,3,p.earOut);R(r,11,1,4,3,p.earOut);R(r,12,1,1,2,p.earIn);return;}
+  const l=G(svg,"mc-ear mc-ear-l","4px 3px");R(l,3,1,2,2,p.earOut);R(l,2,2,3,2,p.earOut);R(l,3,2,1,1,p.earIn);const r=G(svg,"mc-ear mc-ear-r","12px 3px");R(r,11,1,2,2,p.earOut);R(r,11,2,3,2,p.earOut);R(r,12,2,1,1,p.earIn);}
+function Body(svg,s){const p=s.palette,b=s.body;
+  if(b==="cat"){R(svg,3,3,10,1,p.body);R(svg,2,4,12,3,p.body);R(svg,3,7,10,1,p.body);R(svg,5,8,6,2,p.belly);R(svg,3,8,2,2,p.body);R(svg,11,8,2,2,p.body);R(svg,4,10,8,1,p.body);R(svg,0,6,2,1,p.body,0.7);R(svg,0,7,2,1,p.body,0.5);R(svg,14,6,2,1,p.body,0.7);R(svg,14,7,2,1,p.body,0.5);return;}
+  if(b==="fox"){R(svg,3,3,10,1,p.body);R(svg,2,4,12,3,p.body);R(svg,3,7,10,1,p.body);R(svg,6,7,4,1,p.belly);R(svg,5,8,6,3,p.belly);R(svg,3,8,2,2,p.body);R(svg,11,8,2,2,p.body);R(svg,4,10,8,1,p.body);return;}
+  if(b==="frog"){R(svg,2,3,12,1,p.body);R(svg,1,4,14,4,p.body);R(svg,2,8,12,2,p.body);R(svg,4,6,8,4,p.belly);R(svg,6,9,4,1,p.body);R(svg,5,10,6,1,p.body);return;}
+  if(b==="slim"){R(svg,4,3,8,1,p.body);R(svg,3,4,10,3,p.body);R(svg,4,7,8,1,p.body);R(svg,6,8,4,2,p.belly);R(svg,4,8,2,2,p.body);R(svg,10,8,2,2,p.body);R(svg,5,10,6,1,p.body);return;}
+  if(b==="round"){R(svg,3,3,10,1,p.body);R(svg,2,4,12,3,p.body);R(svg,3,7,10,1,p.body);R(svg,4,8,8,3,p.belly);R(svg,3,8,1,3,p.body);R(svg,12,8,1,3,p.body);return;}
+  R(svg,3,3,10,1,p.body);R(svg,2,4,12,3,p.body);R(svg,3,7,10,1,p.body);R(svg,5,8,6,2,p.belly);R(svg,3,8,2,2,p.body);R(svg,11,8,2,2,p.body);R(svg,4,10,8,1,p.body);}
+function Mask(svg,s){if(s.body!=="ninja")return;const p=s.palette;R(svg,2,5,12,1,"#1a1a1a");R(svg,0,5,2,1,p.earIn);R(svg,14,5,2,1,p.earIn);}
+function Tail(g,s){const p=s.palette,b=s.body;
+  if(b==="round"){R(g,13,9,1,1,p.tail);R(g,14,8,1,2,p.tail);R(g,15,7,1,1,p.tail);R(g,14,6,2,1,p.tail);return;}
+  if(b==="robot"){R(g,13,9,2,1,p.tail);R(g,15,8,1,1,p.tail);return;}
+  if(b==="cat"){R(g,13,9,1,1,p.tail);R(g,14,8,1,1,p.tail);R(g,15,7,1,2,p.tail);R(g,15,5,1,2,p.tail);R(g,14,4,1,1,p.tail);return;}
+  if(b==="fox"){R(g,13,6,3,4,p.body);R(g,14,5,2,1,p.body);R(g,15,9,1,2,p.tail);R(g,14,10,2,1,p.tail);return;}
+  if(b==="frog")return;
+  R(g,13,9,1,1,p.tail);R(g,14,7,1,3,p.tail);}
+function Eyes(g,state,s){const e=s.palette.eye;
+  if(state==="sleep"||state==="write"){R(g,5,6,1,1,e);R(g,10,6,1,1,e);return;}
+  if(state==="hub"){R(g,5,6,1,1,e);R(g,6,5,1,1,e);R(g,9,5,1,1,e);R(g,10,6,1,1,e);return;}
+  R(g,5,5,1,2,e);R(g,10,5,1,2,e);}
+function Extras(svg,state,s){
+  if(state==="listen"){R(svg,7,9,2,1,s.palette.eye);return;}
+  if(state==="think"){R(svg,11,-2,1,1,"var(--accent-primary)");R(svg,13,-2,1,1,"var(--accent-primary)");R(svg,15,-2,1,1,"var(--accent-primary)");}}
+function buildMouse(skinId,opts){opts=opts||{};const s=SKINS.find(x=>x.id===skinId)||SKINS[0];
+  const state=opts.state||"listen",size=opts.size||96;
+  const wrap=document.createElement("div");wrap.className="mouse-wrap mouse-"+state+" mouse-skin-"+s.id;
+  wrap.style.width=size+"px";wrap.style.height=size+"px";
+  const svg=document.createElementNS(NS,"svg");svg.setAttribute("viewBox","-1 -3 18 18");
+  svg.setAttribute("width",size);svg.setAttribute("height",size);svg.setAttribute("class","mouse-svg pixel");
+  svg.setAttribute("role","img");svg.setAttribute("aria-label","MouseClaw "+s.name+" "+state);
+  Ears(svg,s);Mask(svg,s);Body(svg,s);
+  const tg=G(svg,"mc-tail","13px 9px");Tail(tg,s);
+  const eg=G(svg,"mc-eyes");Eyes(eg,state,s);
+  Extras(svg,state,s);
+  R(svg,4,11,2,1,s.palette.paw);R(svg,10,11,2,1,s.palette.paw);
+  const nose=R(svg,7,7,2,1,s.palette.nose);nose.setAttribute("class","mc-nose");
+  wrap.appendChild(svg);return wrap;}
+
+/* mount pets */
+document.getElementById("petA").appendChild(buildMouse("classic",{state:"think",size:104}));
+document.getElementById("petR").appendChild(buildMouse("classic",{state:"hub",size:96}));
+document.getElementById("petMini").appendChild(buildMouse("classic",{state:"listen",size:34}));
+
+/* ② 9-skin badge proof */
+const skinRow=document.getElementById("skinRow");
+SKINS.forEach(sk=>{
+  const cell=document.createElement("div");cell.className="skin-cell";
+  const ph=document.createElement("div");ph.className="ph";
+  const b=document.createElement("div");b.className="b";b.textContent="🧠 2";
+  ph.appendChild(b);ph.appendChild(buildMouse(sk.id,{state:"think",size:72}));
+  const nm=document.createElement("div");nm.className="nm";nm.textContent=sk.name;
+  cell.appendChild(ph);cell.appendChild(nm);skinRow.appendChild(cell);
+});
+
+/* ① toggle used-memories */
+const memToggle=document.getElementById("memToggle"),memUsed=document.getElementById("memUsed");
+memToggle.onclick=()=>{const open=memUsed.classList.toggle("open");memToggle.textContent=open?"🧠 用到的记忆 ▴":"🧠 用到的记忆 ▾";};
+memUsed.querySelectorAll(".x").forEach(x=>x.onclick=e=>{e.target.closest(".mu").remove();});
+
+/* tabs */
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
+  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("sel"));
+  document.querySelectorAll(".tabpane").forEach(x=>x.classList.remove("sel"));
+  t.classList.add("sel");document.getElementById("pane-"+t.dataset.tab).classList.add("sel");
+});
+
+/* pause toggle */
+const pauseBtn=document.getElementById("pauseBtn");
+pauseBtn.onclick=()=>pauseBtn.classList.toggle("off");
+
+/* profile chips */
+const PROFILE=[
+ {ic:"💬",k:"沟通风格",v:"偏好简短 · 结论先行",conf:90},
+ {ic:"🛠",k:"技术栈",v:"Rust · Tauri · React · TypeScript",conf:95},
+ {ic:"🪟",k:"常用 app",v:"VSCode · Chrome · 终端",conf:80},
+ {ic:"📦",k:"在做的项目",v:"MouseClaw(桌宠 · 近 2 周高频)",conf:88},
+ {ic:"🌐",k:"语言",v:"中英混用",conf:70},
+ {ic:"🙂",k:"称呼",v:"Edwin",conf:60},
+];
+const chipsEl=document.getElementById("chips");
+function renderChips(){chipsEl.innerHTML="";PROFILE.forEach((c,i)=>{
+  const el=document.createElement("div");el.className="chip";
+  el.innerHTML=`<span class="ic">${c.ic}</span><div class="body"><div class="k">${c.k}</div><div class="v">${c.v}</div></div>
+    <div class="conf"><i style="width:${c.conf}%"></i></div><span class="x" title="删掉这条画像">✕</span>`;
+  el.querySelector(".x").onclick=()=>{PROFILE.splice(i,1);renderChips();};
+  chipsEl.appendChild(el);});}
+renderChips();
+
+/* history */
+const TURNS=[
+ {app:"VSCode",time:"3 天前",sum:"borrow checker <code>'a</code> lifetime 报错 → 改用 <code>Arc</code> 解决",imp:3},
+ {app:"Chrome",time:"周二 14:20",sum:"查 SQLite FTS5 trigram tokenizer 怎么对中文分词",imp:2},
+ {app:"终端",time:"5 分钟前",sum:"<code>linker command failed</code> 报错,问怎么排查",imp:2},
+ {app:"备忘录",time:"今天 10:05",sum:"一起写 v0.5 发布 checklist(notarize + version.json)",imp:3},
+ {app:"Chrome",time:"昨天",sum:"翻译一段 Zep 论文摘要 · 偏好更口语的中文",imp:1},
+];
+const turnsEl=document.getElementById("turns"),histSearch=document.getElementById("histSearch");
+function renderTurns(){const q=histSearch.value.trim();turnsEl.innerHTML="";
+  TURNS.filter(t=>!q||(t.sum+t.app).toLowerCase().includes(q.toLowerCase())).forEach((t,idx)=>{
+    const el=document.createElement("div");el.className="turn";
+    el.innerHTML=`<span class="app">${t.app}</span><div class="mid"><div class="sum">${t.sum}</div>
+      <div class="meta">${t.time} · <span class="imp">${"●".repeat(t.imp)}${"○".repeat(3-t.imp)}</span> 重要度</div></div>
+      <span class="x" title="删掉这条历史">✕</span>`;
+    el.querySelector(".x").onclick=()=>{const i=TURNS.indexOf(t);if(i>-1)TURNS.splice(i,1);renderTurns();};
+    turnsEl.appendChild(el);});
+  if(!turnsEl.children.length)turnsEl.innerHTML=`<div style="color:#a1a1a8;font-size:var(--text-body-sm);padding:12px 0;text-align:center;">没有匹配的记忆</div>`;}
+histSearch.addEventListener("input",renderTurns);renderTurns();
+</script>
+</body>
+</html>
+</content>

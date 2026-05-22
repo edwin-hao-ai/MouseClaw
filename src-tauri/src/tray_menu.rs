@@ -52,7 +52,17 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
          "🚀 开机自启动")
     };
 
-    let summon  = MenuItem::with_id(app, "summon",  s_summon,  true, None::<&str>)?;
+    // v0.4.4 · 有名字时托盘显示「召唤 {name}」,让身份在最常见入口可见。
+    let summon_label = match crate::config::Config::load()
+        .pet_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(name) => if en { format!("🦞 Summon {name}") } else { format!("🦞 召唤{name}") },
+        None => s_summon.to_string(),
+    };
+    let summon  = MenuItem::with_id(app, "summon",  &summon_label,  true, None::<&str>)?;
     let history = MenuItem::with_id(app, "history", s_history, true, None::<&str>)?;
     // v0.5 · 定时任务管理窗入口
     let s_tasks = if en { "⏰ Scheduled tasks…" } else { "⏰ 定时任务…" };
@@ -72,6 +82,10 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         format!("🎨 更换桌宠… ({})", crate::config::Config::load().skin.display_name())
     };
     let skin_picker_item = MenuItem::with_id(app, "open-picker", &skin_picker_label, true, None::<&str>)?;
+
+    // v0.4.4 · 长期记忆查看器入口
+    let s_memory = if en { "🧠 What it remembers…" } else { "🧠 它记得的事…" };
+    let memory_item = MenuItem::with_id(app, "open-memory", s_memory, true, None::<&str>)?;
 
     // 浏览器自动化标签 —— 根据当前 CDP 状态显示「启用 / 已启用 ✓」
     let cdp_alive = crate::browser_bridge::cdp_is_alive();
@@ -209,7 +223,7 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     // List items (declaring early so the vec! below can reference them)
     let mut items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = vec![
         &summon, &new_session_item, &pin_item, &clipboard_item, &history, &tasks_item,
-        &skin_picker_item, &anchor_submenu, &backend_submenu, &lang_submenu,
+        &skin_picker_item, &memory_item, &anchor_submenu, &backend_submenu, &lang_submenu,
         &sep1, &vime_item, &summon_submenu, &trigger_submenu, &vocab_submenu, &pause_item,
         &workspace_item,
     ];

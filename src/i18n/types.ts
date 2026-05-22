@@ -31,6 +31,44 @@ export interface Strings {
   "common.loading": string;
   "common.recommended": string;
 
+  // ── 桌宠身份:起名 + 性格 (v0.4.4) ──
+  "picker.identity.heading": string;
+  "picker.identity.name_label": string;
+  "picker.identity.name_placeholder": string;
+  "picker.identity.personality_label": string;
+  "picker.identity.persona_hint": string;
+  "picker.identity.custom_placeholder": string;
+  "persona.warm.name": string;       "persona.warm.preview": string;
+  "persona.snarky.name": string;     "persona.snarky.preview": string;
+  "persona.minimal.name": string;    "persona.minimal.preview": string;
+  "persona.companion.name": string;  "persona.companion.preview": string;
+  "persona.pro.name": string;        "persona.pro.preview": string;
+  "persona.cheerful.name": string;   "persona.cheerful.preview": string;
+  "persona.calm.name": string;       "persona.calm.preview": string;
+  "persona.curious.name": string;    "persona.curious.preview": string;
+  "persona.tsundere.name": string;   "persona.tsundere.preview": string;
+  "persona.custom.name": string;     "persona.custom.preview": string;
+
+  // ── 长期记忆查看器 (v0.4.4) ──
+  "memory.title": string;
+  "memory.tab.profile": string;
+  "memory.tab.history": string;
+  "memory.tab.graph": string;
+  "memory.graph.empty": string;
+  "memory.graph.links": string;
+  "memory.used_badge": string;
+  "memory.pause_label": string;
+  "memory.paused_banner": string;
+  "memory.profile.intro": string;
+  "memory.profile.empty": string;
+  "memory.history.search": string;
+  "memory.history.empty": string;
+  "memory.clear_all": string;
+  "memory.clear_confirm": string;
+  "memory.local_note": string;
+  "memory.delete": string;
+  "memory.importance": string;
+
   // ── 桌宠 / 主气泡 ──
   "bubble.expand_to_panel": string;        // "💬 继续追问"
   "bubble.scroll_to_top": string;          // "▲ 回到开头"

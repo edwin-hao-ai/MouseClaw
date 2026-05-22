@@ -124,6 +124,11 @@ pub(crate) fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
                 eprintln!("[mouseclaw] open-picker: {e}");
             }
         }
+        "open-memory"     => {
+            if let Err(e) = crate::commands::open_memory_window(app.clone()) {
+                eprintln!("[mouseclaw] open-memory: {e}");
+            }
+        }
         "backend-install" => recommend_backend_install(app),
         "status"          => open_status_window(app),
         // toggle-tidy removed in v0.3.3 — tidy_up is default-on via Haiku

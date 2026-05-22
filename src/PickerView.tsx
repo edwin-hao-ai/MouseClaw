@@ -17,9 +17,18 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { PixelMouse } from "./components/PixelMouse";
 import { SKINS, type Skin, type SkinId, type Species } from "./skins";
 import { useCompanion } from "./hooks/useCompanion";
+import { useT } from "./i18n";
+import type { TranslationKey } from "./i18n/types";
 import "./PickerView.css";
 
 type Group = { species: Species; label: string; skins: Skin[] };
+
+/** v0.4.4 · 9 性格 + 自定义,顺序与 config.rs Personality::all() 一致。 */
+const PERSONA_IDS = [
+  "warm", "snarky", "minimal", "companion", "pro",
+  "cheerful", "calm", "curious", "tsundere", "custom",
+] as const;
+type PersonaId = (typeof PERSONA_IDS)[number];
 
 function groupBySpecies(skins: readonly Skin[]): Group[] {
   const order: { species: Species; label: string }[] = [
@@ -38,9 +47,14 @@ function groupBySpecies(skins: readonly Skin[]): Group[] {
 }
 
 export default function PickerView() {
+  const t = useT();
   const [originalSkin, setOriginalSkin] = useState<SkinId>("classic");
   const [selected, setSelected] = useState<SkinId>("classic");
   const [hovered, setHovered] = useState<SkinId | null>(null);
+  // v0.4.4 · 起名 + 性格 —— 改动即时持久化(与 skin 的"单击即存"一致)
+  const [petName, setPetName] = useState("");
+  const [personality, setPersonality] = useState<PersonaId>("warm");
+  const [customText, setCustomText] = useState("");
   // v0.4+ · 预览大老鼠接 companion — 在 picker 里移鼠标，预览的眼睛会追
   const previewStageRef = useRef<HTMLDivElement>(null);
   const companion = useCompanion(previewStageRef);
@@ -51,7 +65,20 @@ export default function PickerView() {
       setOriginalSkin(id as SkinId);
       setSelected(id as SkinId);
     }).catch(() => {});
+    // v0.4.4 · 拉当前身份(名字 + 性格)
+    invoke<{ name: string; personality: string; custom: string }>("get_pet_identity")
+      .then(id => {
+        setPetName(id.name ?? "");
+        setPersonality((PERSONA_IDS as readonly string[]).includes(id.personality)
+          ? (id.personality as PersonaId) : "warm");
+        setCustomText(id.custom ?? "");
+      }).catch(() => {});
   }, []);
+
+  // 即时存身份(显式传值,避免 setState 异步导致的 stale 闭包)
+  const saveIdentity = (name: string, persona: PersonaId, custom: string) => {
+    invoke("save_pet_identity", { name, personality: persona, custom }).catch(() => {});
+  };
 
   // v0.1.31 · 拦截原生 ✕ 按钮 —— 不让它真 close（会让 accessory app 退出）
   // preventDefault 后走我们的 cancel 逻辑：还原 + hide。
@@ -158,6 +185,45 @@ export default function PickerView() {
             <span>物种：{previewMeta.species ?? "mouse"}</span>
             <span>id：{previewMeta.id}</span>
           </div>
+
+          {/* v0.4.4 · 起名 + 性格 */}
+          <div className="picker-identity">
+            <div className="picker-id-label">{t("picker.identity.name_label")}</div>
+            <input
+              className="picker-name-input"
+              value={petName}
+              placeholder={t("picker.identity.name_placeholder")}
+              maxLength={12}
+              onChange={e => setPetName(e.target.value)}
+              onBlur={() => saveIdentity(petName, personality, customText)}
+            />
+            <div className="picker-id-label">{t("picker.identity.personality_label")}</div>
+            <div className="persona-list">
+              {PERSONA_IDS.map(pid => (
+                <button
+                  key={pid}
+                  type="button"
+                  className={`persona-item ${personality === pid ? "sel" : ""}`}
+                  onClick={() => { setPersonality(pid); saveIdentity(petName, pid, customText); }}
+                >
+                  {t(`persona.${pid}.name` as TranslationKey)}
+                </button>
+              ))}
+            </div>
+            <div className="persona-preview">
+              {t(`persona.${personality}.preview` as TranslationKey)}
+            </div>
+            {personality === "custom" && (
+              <input
+                className="persona-custom-input"
+                value={customText}
+                placeholder={t("picker.identity.custom_placeholder")}
+                onChange={e => setCustomText(e.target.value)}
+                onBlur={() => saveIdentity(petName, personality, customText)}
+              />
+            )}
+          </div>
+
           <div className="picker-actions">
             <button type="button" className="picker-btn secondary" onClick={cancel}>
               取消

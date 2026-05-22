@@ -124,6 +124,11 @@ pub fn save_shortcut(
         pet_anchor: prev.pet_anchor,
         pet_custom_position: prev.pet_custom_position,
         tts_enabled: prev.tts_enabled,
+        pet_name: prev.pet_name,
+        personality: prev.personality,
+        personality_custom: prev.personality_custom,
+        memory_enabled: prev.memory_enabled,
+        memory_paused: prev.memory_paused,
         sfx_enabled: prev.sfx_enabled,
         sfx_volume: prev.sfx_volume,
         onboarded: true,
@@ -194,6 +199,86 @@ pub fn save_skin(skin: String, app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub fn get_skin() -> String {
     config::Config::load().skin.as_str().to_string()
+}
+
+/// v0.4.4 · picker 读当前桌宠身份(名字 + 性格)。
+#[tauri::command]
+pub fn get_pet_identity() -> serde_json::Value {
+    let cfg = config::Config::load();
+    serde_json::json!({
+        "name": cfg.pet_name.unwrap_or_default(),
+        "personality": cfg.personality.as_str(),
+        "custom": cfg.personality_custom.unwrap_or_default(),
+    })
+}
+
+/// v0.4.4 · picker 保存桌宠身份。空 name → None(回到通用自称「MouseClaw」)。
+/// 影响:① 所有 backend 的 system_prompt 自我称呼+语气 ② 托盘「召唤 {name}」label。
+#[tauri::command]
+pub fn save_pet_identity(
+    name: String,
+    personality: String,
+    custom: String,
+    app: AppHandle,
+) -> Result<(), String> {
+    let mut cfg = config::Config::load();
+    let trimmed = name.trim();
+    cfg.pet_name = if trimmed.is_empty() { None } else { Some(trimmed.to_string()) };
+    cfg.personality = config::Personality::from_str(&personality);
+    let c = custom.trim();
+    cfg.personality_custom = if c.is_empty() { None } else { Some(c.to_string()) };
+    cfg.save().map_err(|e| format!("保存桌宠身份失败：{e}"))?;
+
+    // 托盘「召唤 {name}」label 跟着换 + 广播给前端窗口
+    crate::tray::rebuild_tray_menu(&app);
+    let payload = cfg.pet_name.clone().unwrap_or_default();
+    for (_, w) in app.webview_windows() {
+        let _ = w.emit("pet-identity-changed", payload.clone());
+    }
+    println!("[mouseclaw] pet identity saved → name={:?}, personality={}", cfg.pet_name, cfg.personality.as_str());
+    Ok(())
+}
+
+/// v0.4.4 · 起名可发现性 —— 还没起名的桌宠,启动 20s 后一次性提示去起名
+/// (marker file 兜底,弹过不再弹)。CTA「起名」打开 picker。仿 cli_install::maybe_hint_upgrade。
+pub fn maybe_show_name_hint(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+        let cfg = config::Config::load();
+        if !cfg.onboarded {
+            return;
+        }
+        if cfg.pet_name.as_deref().map(|s| !s.trim().is_empty()).unwrap_or(false) {
+            return; // 已经起过名
+        }
+        let marker = match std::env::var_os("HOME") {
+            Some(h) => std::path::PathBuf::from(h).join(".mouseclaw").join("name_hint_shown"),
+            None => return,
+        };
+        if marker.exists() {
+            return;
+        }
+        let en = cfg.language != "zh";
+        let (message, cta) = if en {
+            ("🐭 I don't have a name yet — want to give me one?".to_string(), "Name me".to_string())
+        } else {
+            ("🐭 我还没有名字 —— 给我起一个?".to_string(), "起名".to_string())
+        };
+        let payload = crate::events::NudgePayload {
+            kind: crate::events::NudgeKind::NameHint,
+            message,
+            cta_label: Some(cta),
+            cta_action: Some("open-picker".into()),
+        };
+        if app.emit(crate::events::EV_NUDGE, payload).is_err() {
+            return;
+        }
+        if let Some(dir) = marker.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(&marker, b"1");
+        println!("[mouseclaw] name hint shown");
+    });
 }
 
 /// v0.4.x · 桌宠音效配置（开关 + 音量）—— 前端 petAudio 启动读一次，
@@ -953,6 +1038,36 @@ pub fn open_picker_window(app: AppHandle) -> Result<(), String> {
     }
 }
 
+/// v0.4.4 · 打开「桌宠记得的事」窗口(画像 / 历史 / 暂停)。
+#[tauri::command]
+pub fn open_memory_window(app: AppHandle) -> Result<(), String> {
+    use tauri::WebviewWindowBuilder;
+    use tauri::WebviewUrl;
+
+    if let Some(w) = app.get_webview_window("memory") {
+        let _ = w.show();
+        let _ = w.set_focus();
+        return Ok(());
+    }
+
+    let result = WebviewWindowBuilder::new(
+        &app, "memory",
+        WebviewUrl::App("index.html?view=memory".into()),
+    )
+    .title("MouseClaw — 桌宠记得的事")
+    .inner_size(560.0, 640.0)
+    .min_inner_size(460.0, 480.0)
+    .resizable(true)
+    .decorations(true)
+    .focused(true)
+    .build();
+
+    match result {
+        Ok(w) => { let _ = w.set_focus(); Ok(()) }
+        Err(e) => Err(format!("打开记忆窗口失败：{e:#}")),
+    }
+}
+
 // ────────────────────────── 定时任务 (v0.5) ──────────────────────────
 
 /// 打开「⏰ 定时任务」管理窗口（托盘 / 桌宠菜单 / 结果气泡"展开"都走它）。
@@ -976,6 +1091,7 @@ pub fn open_tasks_window(app: AppHandle) -> Result<(), String> {
     .decorations(true)
     .focused(true)
     .build();
+
     match result {
         Ok(w) => {
             let _ = w.set_focus();

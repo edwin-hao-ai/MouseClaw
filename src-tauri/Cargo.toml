@@ -30,6 +30,9 @@ hound = "3.5"
 sherpa-onnx = "1.13"
 once_cell = "1"
 regex = "1.12.3"
+# v0.4.4 · 长期记忆本地存储 —— bundled SQLite(自带,无系统依赖,含 FTS5)。
+# 无向量库:检索靠关系表 + 时近/重要度打分,见 docs/design/pet-identity-and-memory-20260521.md
+rusqlite = { version = "0.32", features = ["bundled"] }
 aes-gcm = { version = "0.10", features = ["alloc"] }
 base64 = "0.22"
 rand = "0.8"

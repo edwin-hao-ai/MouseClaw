@@ -39,6 +39,7 @@ pub mod pet_passthrough;
 pub mod overlay_size;
 pub mod commands;
 pub mod config;
+pub mod memory;
 pub mod events;
 pub mod feed;
 pub mod feed_flow;
@@ -345,6 +346,18 @@ pub fn run() {
             commands::restart_app,
             commands::save_skin,
             commands::get_skin,
+            commands::get_pet_identity,
+            commands::save_pet_identity,
+            commands::open_memory_window,
+            memory::memory_list_turns,
+            memory::memory_get_profile,
+            memory::memory_get_graph,
+            memory::memory_delete_turn,
+            memory::memory_delete_profile_item,
+            memory::memory_clear_all,
+            memory::memory_get_settings,
+            memory::memory_set_paused,
+            memory::memory_set_enabled,
             commands::get_sfx_config,
             commands::enable_browser_automation,
             commands::capability_status,
@@ -415,6 +428,22 @@ pub fn run() {
             println!("[mouseclaw] 后端 = {}", cfg.backend.display_name());
             emit_view(&app.handle(), &ViewKind::Idle);
 
+            // v0.4.4 · 长期记忆建库(失败只 log,不拖垮启动)。
+            if let Err(e) = memory::init() {
+                eprintln!("[mouseclaw] memory init failed (记忆功能本次禁用): {e:#}");
+            }
+            // v0.4.4 · reflection 定时巩固:每 30 min,有未消化且空闲时蒸馏画像/图谱。
+            // (pipeline 攒够 6 条也会即时触发;这个定时器兜底处理零散积压。)
+            tauri::async_runtime::spawn(async {
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(1800)).await;
+                    if memory::unprocessed_count() > 0 && !ai_queue::is_busy() {
+                        let _ = memory::run_reflection().await;
+                    }
+                    memory::prune(); // 遗忘/剪枝,防长期膨胀
+                }
+            });
+
             // Tray always available (escape valve before/during onboarding)
             // v0.1.8 启动 cursor-follow 后台任务（30fps；由 AtomicBool 控制开 / 关）
             cursor_follow::spawn_follow_loop(app.handle().clone(), app_state.clone());
@@ -470,6 +499,11 @@ pub fn run() {
             // v0.4.x · 老用户升级发现性 —— 启动 8s 后，若已 onboarded 但缺
             // browser/office CLI 且没弹过，弹一次性 nudge 引导去状态页装。
             cli_install::maybe_hint_upgrade(app.handle().clone());
+
+            // v0.4.4 · 记忆默认开 → 首次一次性透明告知(本地存、可看可删)。
+            memory::maybe_show_memory_intro(app.handle().clone());
+            // v0.4.4 · 还没起名的桌宠 → 一次性提示去起名(20s 后,错峰于记忆告知)。
+            commands::maybe_show_name_hint(app.handle().clone());
 
             if let Err(e) = tray::setup(&app.handle()) {
                 eprintln!("[mouseclaw] tray setup failed: {e:#}");
