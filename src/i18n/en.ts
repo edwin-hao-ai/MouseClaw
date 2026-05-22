@@ -14,6 +14,7 @@ export const en: Strings = {
   "common.search": "Search",
   "common.loading": "Loading…",
   "common.recommended": "Recommended",
+  "common.domestic": "CN",
 
   // Pet identity: name + personality (v0.4.4)
   "picker.identity.heading": "Name it + pick a personality",

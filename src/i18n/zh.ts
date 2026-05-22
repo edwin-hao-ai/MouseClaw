@@ -14,6 +14,7 @@ export const zh: Strings = {
   "common.search": "搜索",
   "common.loading": "加载中…",
   "common.recommended": "推荐",
+  "common.domestic": "国产",
 
   // 桌宠身份:起名 + 性格 (v0.4.4)
   "picker.identity.heading": "给它起名 + 选性格",

@@ -30,6 +30,7 @@ export interface Strings {
   "common.search": string;
   "common.loading": string;
   "common.recommended": string;
+  "common.domestic": string;
 
   // ── 桌宠身份:起名 + 性格 (v0.4.4) ──
   "picker.identity.heading": string;

@@ -49,7 +49,10 @@ export type BackendChoice =
   | "kimi-cli"
   | "vibe-cli"
   | "pi-agent"
-  | "antigravity-cli";
+  | "antigravity-cli"
+  // v0.4.6 · 国产 CLI agent
+  | "qwen-code"
+  | "trae-agent";
 
 /** 桌宠悬停位置 (v0.1.27, +hidden in v0.1.28) — must match Rust `PetAnchor::from_str`. */
 export type PetAnchor =
