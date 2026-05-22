@@ -55,9 +55,13 @@ security-framework = "2"
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
-# 非 macOS（Windows + Linux）：剪贴板密钥用 OS keystore。
+# 非 macOS（Windows + Linux）：
+#   keyring → 剪贴板密钥 OS keystore
+#   arboard → 跨平台剪贴板读写（macOS 仍用 NSPasteboard，故仅非 mac 引入）
+#            Linux：X11 走纯 Rust x11rb；Wayland 走 wl-clipboard-rs（无 display 时优雅失败）
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 keyring = "3"
+arboard = "3"
 
 [dev-dependencies]
 tempfile = "3.27.0"

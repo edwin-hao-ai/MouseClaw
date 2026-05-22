@@ -267,8 +267,25 @@ fn current_change_count() -> i64 {
         c
     })
 }
+// ───────────────────── 非 macOS：arboard 后端 ─────────────────────
+// macOS 没有「剪贴板变化事件」，靠 NSPasteboard.changeCount 轮询。arboard 没有等价的
+// changeCount，所以用「当前文本的哈希」当变化探针：文本变 → 哈希变 → 触发记录。
+// 持有一个 thread-local Clipboard 实例（X11 下 new() 会起后台线程持有 selection，
+// 不能每轮重建），整个捕获循环都在同一 std::thread 上，thread_local 安全。
 #[cfg(not(target_os = "macos"))]
-fn current_change_count() -> i64 { -1 }
+thread_local! {
+    static CLIPBOARD: std::cell::RefCell<Option<arboard::Clipboard>> =
+        std::cell::RefCell::new(arboard::Clipboard::new().ok());
+}
+
+#[cfg(not(target_os = "macos"))]
+fn current_change_count() -> i64 {
+    use std::hash::{Hash, Hasher};
+    let text = current_pasteboard_text().unwrap_or_default();
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut h);
+    h.finish() as i64
+}
 
 /// 读当前 NSPasteboard 的 type 列表，判断是否含 transient/concealed 标志
 #[cfg(target_os = "macos")]
@@ -323,7 +340,20 @@ fn current_pasteboard_text() -> Option<String> {
     })
 }
 #[cfg(not(target_os = "macos"))]
-fn current_pasteboard_text() -> Option<String> { None }
+fn current_pasteboard_text() -> Option<String> {
+    CLIPBOARD.with(|c| {
+        let mut guard = c.borrow_mut();
+        if guard.is_none() {
+            // 上次初始化失败（如 X11/Wayland 尚未就绪）→ 重试一次
+            *guard = arboard::Clipboard::new().ok();
+        }
+        let cb = guard.as_mut()?;
+        match cb.get_text() {
+            Ok(s) if !s.is_empty() => Some(s),
+            _ => None,
+        }
+    })
+}
 
 /// 公共导出 —— selection.rs / 其它 ambient 通道也需要这条 frontmost app 信息
 /// 来命中 SENSITIVE_BUNDLES。重复实现成本高于直接 re-export。

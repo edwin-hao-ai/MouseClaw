@@ -172,16 +172,21 @@ onboarding 的「授权三连」页 macOS 专属 → Win/Linux 改成精简页�
 - **CI matrix**（`.github/workflows/build.yml`）：`macos-latest` / `windows-latest` / `ubuntu-22.04`
   三路构建，Linux 装 webkit2gtk 等 apt 依赖。CI 是 Win/mac 的编译验证手段。
 
-## 4. 需要用户拍板的 UX 决策（prototype-first 红线项）
+## 4. UX 决策（已拍板 2026-05-22）
 
-以下不是「我忘了」，是**有明确理由的待决策项**——它们改变默认交互，按 CLAUDE.md 不能我替你砍：
+用户已就以下 4 项做出决策（驱动后续实现）：
 
-1. **Wayland 下 Mode B 自动键入大概率不可行** → 降级为「已复制，请 Ctrl+V」。接受？还是 Wayland 索性隐藏 Mode B？
-2. **听写触发手势**：Win/Linux 把「fn 长按」默认改成普通全局快捷键（如 `Ctrl+Alt+D`）？还是 Win 也尝试做长按钩子？
-3. **onboarding 授权页**：Win/Linux 没有 macOS 三连授权。是否做一个精简版 onboarding（跳过权限步、保留后端选择 + 快捷键）？
-4. **Wayland 陪伴动效**（跟随鼠标 / 轨迹 / idle 渐睡）拿不到全局光标 → 在 Wayland 上默认关闭并提示，还是完全不在 Wayland 上宣传这些？
+1. **Wayland 下 Mode B** → ✅ **降级为「已复制到剪贴板，请 Ctrl+V」+ 气泡提示**。
+   实现：注入层提供 `can_inject()`；Wayland 返回 false → 走剪贴板 + 提示路径。
+2. **听写触发手势** → ✅ **两者都给，用户选**。Win/Linux 默认普通全局快捷键
+   （走 `tauri-plugin-global-shortcut`，可发现、稳）；Win 额外提供「长按修饰键」选项
+   （`SetWindowsHookEx` 钩子）。Wayland 仅普通快捷键（或 portal GlobalShortcuts）。
+3. **onboarding** → ✅ **精简版**：Win/Linux 跳过权限三连页，保留后端选择 + 快捷键设置。
+   Wayland 首次截图时就地处理 portal 授权。
+4. **Wayland 陪伴动效** → ✅ **自动降级关闭**：检测到 Wayland → 桌宠固定锚点、不跟随、
+   无轨迹/渐睡（这些依赖全局光标，Wayland 拿不到）。X11/Win/mac 完整。
 
-→ 这些决策定了之后，凡涉及新 UI/文案的，先按 CLAUDE.md 出 prototype HTML 再写实现。
+→ 凡涉及新 UI/文案的（如精简 onboarding 的平台说明），先按 CLAUDE.md 出 prototype HTML。
 
 ## 5. 任务清单（全集 · 回来打勾）
 
