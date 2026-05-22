@@ -425,6 +425,8 @@ pub fn run() {
         .setup(move |app| {
             set_accessory_activation_policy();
             println!("[mouseclaw] activation policy = Accessory (no dock icon)");
+            // v0.4.6 · 让桌宠浮在全屏 app 之上（修"某 app 全屏后桌宠消失"）。
+            overlay::make_overlay_join_all_spaces(&app.handle());
             println!("[mouseclaw] 后端 = {}", cfg.backend.display_name());
             emit_view(&app.handle(), &ViewKind::Idle);
 

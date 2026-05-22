@@ -172,6 +172,38 @@ fn current_mouse_pos_top_left(_w: &WebviewWindow) -> Option<(f64, f64)> {
     None
 }
 
+/// v0.4.6 · 让桌宠 overlay **浮在全屏 app 之上**（修"某 app 全屏后桌宠消失"）。
+///
+/// 根因：Tauri `alwaysOnTop` 只设了 NSFloatingWindowLevel，没设 collectionBehavior。
+/// macOS 全屏 app 自成一个 Space，普通窗口留在原 Space 就被全屏画面盖住。
+/// 设 `canJoinAllSpaces | fullScreenAuxiliary | stationary | ignoresCycle`：
+///   - canJoinAllSpaces：窗口出现在**所有** Space（含当前全屏 Space）
+///   - fullScreenAuxiliary：允许与全屏窗口同屏共存
+///   - stationary：切 Space / Mission Control 时不被当普通窗口搬走
+///   - ignoresCycle：不进 Cmd+` 窗口循环（桌宠不是"窗口"）
+/// collectionBehavior 是 sticky 的（设一次即可，不被后续 set_always_on_top 重置）。
+/// 在 setup() 主线程调用一次。
+#[cfg(target_os = "macos")]
+pub fn make_overlay_join_all_spaces(app: &AppHandle) {
+    use cocoa::base::id;
+    use objc::{msg_send, sel, sel_impl};
+    const CAN_JOIN_ALL_SPACES: u64 = 1 << 0; // 1
+    const STATIONARY: u64 = 1 << 4; // 16
+    const IGNORES_CYCLE: u64 = 1 << 6; // 64
+    const FULLSCREEN_AUXILIARY: u64 = 1 << 8; // 256
+    let Some(window) = app.get_webview_window("mouse") else { return };
+    let Ok(ns_window) = window.ns_window() else { return };
+    let behavior: u64 = CAN_JOIN_ALL_SPACES | STATIONARY | IGNORES_CYCLE | FULLSCREEN_AUXILIARY;
+    unsafe {
+        let ns_window = ns_window as id;
+        let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
+    }
+    println!("[mouseclaw] overlay collectionBehavior = canJoinAllSpaces|fullScreenAux|stationary (浮在全屏 app 之上)");
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn make_overlay_join_all_spaces(_app: &AppHandle) {}
+
 /// 把一个 ViewKind 广播给所有 webview 窗口（前端的状态机靠它驱动）。
 /// 全链路日志 —— 每个 emit 都打出 kind，配合 panic hook 能定位"气泡不显示"问题。
 pub fn emit_view(app: &AppHandle, view: &ViewKind) {
