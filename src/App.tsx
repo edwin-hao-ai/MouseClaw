@@ -34,6 +34,9 @@ function isLongReply(text: string): boolean {
   return text.split("\n").length >= 4 || text.length > 140;
 }
 
+/** v0.4.4 · 这次回复用到的一条记忆(🧠 命中)。 */
+type MemItem = { kind: string; id: number; text: string };
+
 function mouseStateFor(view: ViewKind): MouseState {
   switch (view.kind) {
     case "idle":             return "sleep";
@@ -75,8 +78,8 @@ export default function App() {
   const [petMenuOpen, setPetMenuOpen] = useState(false);
   // 临时 ack 气泡（喂奶酪 / 休息了 等本地动作的反馈）
   const [transientAck, setTransientAck] = useState<string | null>(null);
-  // v0.4.4 · 🧠 记忆命中:本次回复结合了几条记忆(pipeline emit "memory-used")。
-  const [memUsed, setMemUsed] = useState(0);
+  // v0.4.4 · 🧠 记忆命中:本次回复实际用到的记忆条目(可展开看 + 删错的)。
+  const [memItems, setMemItems] = useState<MemItem[]>([]);
   // v0.1.27 P3 · 主动提醒（presence + nudge 引擎触发）
   const [nudge, setNudge] = useState<NudgePayload | null>(null);
   // v0.4 · Reactive 桌宠：剪贴板变化时立刻反应。
@@ -256,17 +259,23 @@ export default function App() {
     return () => { if (unlisten) unlisten(); };
   }, []);
 
-  // v0.4.4 · 🧠 记忆命中标记 —— pipeline 在回复后 emit "memory-used"(用了几条记忆)。
+  // v0.4.4 · 🧠 记忆命中 —— pipeline 在回复后 emit "memory-used"(实际用到的条目)。
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     try {
-      const p = listen<number>("memory-used", (e) => setMemUsed(e.payload));
+      const p = listen<MemItem[]>("memory-used", (e) => setMemItems(e.payload ?? []));
       p.then((fn) => { unlisten = fn; }).catch(() => {});
     } catch {/* dev mode */}
     return () => { if (unlisten) unlisten(); };
   }, []);
-  // 离开 reply 视图就清掉,避免下一条"无记忆"的回复仍显示旧 badge
-  useEffect(() => { if (view.kind !== "reply") setMemUsed(0); }, [view.kind]);
+  // 离开 reply 视图就清掉,避免下一条"无记忆"的回复仍显示旧条目
+  useEffect(() => { if (view.kind !== "reply") setMemItems([]); }, [view.kind]);
+  // 删错的记忆 → 调对应表删除 + 从本地列表移除
+  const handleDeleteMem = useCallback((kind: string, id: number) => {
+    if (kind === "turn") invoke("memory_delete_turn", { id }).catch(() => {});
+    else invoke("memory_delete_profile_item", { kind, id }).catch(() => {});
+    setMemItems((items) => items.filter((m) => !(m.kind === kind && m.id === id)));
+  }, []);
 
   // v0.4 · Reactive 处理完通知 —— ribbon 可能已被 dismiss / 超时 / 切到别的视图，
   // 后端处理完时 emit reactive-result。这里：
@@ -667,7 +676,7 @@ export default function App() {
 
   return (
     <div ref={stageRootRef} className="stage stage-mouse-bubble">
-      <BubbleFor view={view} continuing={continuing} onExpand={handleExpand} onNewSession={handleNewSession} modelProgress={modelProgress} editRequested={editRequested} onRequestEdit={() => setEditRequested(true)} memUsed={memUsed} />
+      <BubbleFor view={view} continuing={continuing} onExpand={handleExpand} onNewSession={handleNewSession} modelProgress={modelProgress} editRequested={editRequested} onRequestEdit={() => setEditRequested(true)} memItems={memItems} onDeleteMem={handleDeleteMem} />
       {/* Local ack bubble — visible above the pet without going through Rust */}
       {transientAck && (
         <div className="stage-bubble">
@@ -771,10 +780,10 @@ interface BubbleForProps {
   onExpand: () => void; onNewSession: () => void;
   modelProgress: { pct: number; mb_done: number; mb_total: number; phase: string } | null;
   editRequested: boolean; onRequestEdit: () => void;
-  memUsed: number;
+  memItems: MemItem[];
+  onDeleteMem: (kind: string, id: number) => void;
 }
-function BubbleFor({ view, continuing, onExpand, onNewSession, modelProgress, editRequested, onRequestEdit, memUsed }: BubbleForProps) {
-  const t = useT();
+function BubbleFor({ view, continuing, onExpand, onNewSession, modelProgress, editRequested, onRequestEdit, memItems, onDeleteMem }: BubbleForProps) {
   switch (view.kind) {
     case "idle":
       // v0.4.0 · idle 时模型未就绪 → 显示常驻迷你气泡 + 打开下载窗口入口
@@ -822,11 +831,9 @@ function BubbleFor({ view, continuing, onExpand, onNewSession, modelProgress, ed
       // 流式期间：default 样式 + 闪烁光标；流完了：success/warn 终态样式
       // v0.1.8：长回复气泡内部直接可滚动；按钮改成「↗ 在 Panel 里打开」（仍保留 Panel 入口）
       const variant = streaming ? "default" : view.mode === "B" ? "warn" : "success";
-      // 🧠 命中标记:终态回复 + 用了记忆 → 在气泡顶部加一行(不弹独立元素,零重叠风险)
-      const memLine = (!streaming && memUsed > 0) ? `${t("memory.used_badge", { n: memUsed })}\n\n` : "";
       return (
         <Bubble
-          text={memLine + view.reply}
+          text={view.reply}
           variant={variant}
           streaming={streaming}
           scrollable={long}
@@ -835,6 +842,8 @@ function BubbleFor({ view, continuing, onExpand, onNewSession, modelProgress, ed
           onExpand={onExpand}
           sessionChip={continuing ? { sessionId: 42, turn: 2 } : undefined}
           onNewSession={continuing ? onNewSession : undefined}
+          memItems={!streaming ? memItems : undefined}
+          onDeleteMem={onDeleteMem}
         />
       );
     }

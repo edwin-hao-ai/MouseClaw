@@ -18,18 +18,27 @@ use once_cell::sync::Lazy;
 use rusqlite::{params, Connection};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 /// 单连接 + Mutex 串行访问(记忆读写量小,SELECT < 10ms)。Connection 是 Send。
 static MEM: Lazy<Mutex<Option<Connection>>> = Lazy::new(|| Mutex::new(None));
 
-/// 最近一次 retrieve_block 注入了几条记忆 —— pipeline 调用后读它,emit 给前端做 🧠 命中标记。
-static LAST_USED: AtomicUsize = AtomicUsize::new(0);
+/// 最近一次 retrieve_block 实际注入的记忆条目 —— pipeline 读后 emit 给前端,
+/// 让用户看到「这次回复用了哪几条」+ 当场删错的(信任 + 可控)。
+#[derive(Clone, serde::Serialize)]
+pub struct UsedItem {
+    pub kind: String, // profile(insight) | preference | turn —— 决定删除走哪张表
+    pub id: i64,
+    pub text: String,
+}
+static LAST_ITEMS: Lazy<Mutex<Vec<UsedItem>>> = Lazy::new(|| Mutex::new(Vec::new()));
 
-/// 读并清零(pipeline 在 AI 调用后读一次)。
-pub fn take_last_used() -> usize {
-    LAST_USED.swap(0, Ordering::Relaxed)
+/// 读并清空(pipeline 在 AI 调用后读一次)。
+pub fn take_last_used_items() -> Vec<UsedItem> {
+    match LAST_ITEMS.lock() {
+        Ok(mut g) => std::mem::take(&mut *g),
+        Err(_) => Vec::new(),
+    }
 }
 
 const SCHEMA: &str = r#"
@@ -229,20 +238,25 @@ fn snippet_of(summary: Option<String>, text: &str) -> String {
     })
 }
 
-/// 当前画像(always-on):有效 insight + 有效 preference。
-fn collect_profile(c: &Connection) -> rusqlite::Result<Vec<String>> {
+/// 当前画像(always-on):有效 insight + 有效 preference,带 id/kind(供前端审查删除)。
+fn collect_profile_items(c: &Connection) -> rusqlite::Result<Vec<UsedItem>> {
     let mut out = Vec::new();
     let mut st = c.prepare(
-        "SELECT text FROM insight WHERE valid_to IS NULL AND kind IN ('profile','pattern')
+        "SELECT id, text FROM insight WHERE valid_to IS NULL AND kind IN ('profile','pattern')
          ORDER BY confidence DESC LIMIT 6",
     )?;
-    let rows = st.query_map([], |r| r.get::<_, String>(0))?;
+    let rows = st.query_map([], |r|
+        Ok(UsedItem { kind: "insight".into(), id: r.get(0)?, text: r.get(1)? }))?;
     for r in rows { out.push(r?); }
     let mut sp = c.prepare(
-        "SELECT key, value FROM preference WHERE valid_to IS NULL ORDER BY confidence DESC LIMIT 6",
+        "SELECT id, key, value FROM preference WHERE valid_to IS NULL ORDER BY confidence DESC LIMIT 6",
     )?;
-    let prefs = sp.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
-    for p in prefs { let (k, v) = p?; out.push(format!("{k}:{v}")); }
+    let prefs = sp.query_map([], |r| {
+        let key: String = r.get(1)?;
+        let value: String = r.get(2)?;
+        Ok(UsedItem { kind: "preference".into(), id: r.get(0)?, text: format!("{key}:{value}") })
+    })?;
+    for p in prefs { out.push(p?); }
     Ok(out)
 }
 
@@ -274,19 +288,19 @@ fn collect_relevant(c: &Connection, query: &str, app: Option<&str>, limit: usize
         let hay_l = hay.to_lowercase();
         // relevance:命中的 token 数
         let hits = toks.iter().filter(|t| hay_l.contains(t.to_lowercase().as_str())).count();
-        let mut score = hits as f64 * 3.0;
-        // 同 app 加权
-        if let (Some(a), Some(b)) = (app, tapp.as_deref()) {
-            if a == b { score += 1.5; }
+        let same_app = matches!((app, tapp.as_deref()), (Some(a), Some(b)) if a == b);
+        // 质量闸(防"帮倒忙"):必须有相关性信号 —— token 命中 或 同 app。
+        // 纯靠时近(最近但无关)不注入,否则给 AI 喂噪声反而拉低回答质量。
+        if hits == 0 && !same_app {
+            continue;
         }
+        let mut score = hits as f64 * 3.0;
+        if same_app { score += 1.5; }
         // 时近(指数衰减,7 天半衰期)
         let age_days = ((now - ts).max(0) as f64) / 86400.0;
         score += 2.0 * 0.5_f64.powf(age_days / 7.0);
         // 重要度
         score += importance as f64 * 0.4;
-        if hits == 0 && score < 2.6 {
-            continue; // 既不相关又不够近/重要 → 丢
-        }
         scored.push(ScoredTurn { id, ts, app: tapp, snippet: snippet_of(summary, &text), score });
     }
     scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
@@ -363,12 +377,12 @@ fn collect_graph(c: &Connection, query: &str, app: Option<&str>, limit: usize)
 
 /// 注入 prompt 的记忆块。无内容 / 禁用 / 暂停 → None。
 pub fn retrieve_block(query: &str, app: Option<&str>) -> Option<String> {
-    LAST_USED.store(0, Ordering::Relaxed);
+    if let Ok(mut g) = LAST_ITEMS.lock() { g.clear(); }
     if !enabled() {
         return None;
     }
     let res: Result<Option<String>> = with_db(|c| {
-        let profile = collect_profile(c).unwrap_or_default();
+        let profile = collect_profile_items(c).unwrap_or_default();
         // 情景层(token/时近/同app 打分)+ 图谱层(实体邻居→相关 turn),合并去重。
         let mut cands = collect_relevant(c, query, app, 8).unwrap_or_default();
         cands.extend(collect_graph(c, query, app, 6).unwrap_or_default());
@@ -384,11 +398,16 @@ pub fn retrieve_block(query: &str, app: Option<&str>) -> Option<String> {
         if profile.is_empty() && turns.is_empty() {
             return Ok(None);
         }
-        LAST_USED.store(profile.len() + turns.len(), Ordering::Relaxed);
+        // 记下实际注入的条目(前端可审查/删除)
+        let mut items: Vec<UsedItem> = profile.clone();
+        for t in &turns {
+            items.push(UsedItem { kind: "turn".into(), id: t.id, text: t.snippet.clone() });
+        }
+        if let Ok(mut g) = LAST_ITEMS.lock() { *g = items; }
         let mut s = String::from("[记忆 · 仅供参考,以当前任务为准]\n");
         for p in &profile {
             s.push_str("- ");
-            s.push_str(p);
+            s.push_str(&p.text);
             s.push('\n');
         }
         for t in &turns {
@@ -427,6 +446,28 @@ pub fn unprocessed_count() -> i64 {
         c.query_row("SELECT COUNT(*) FROM memory_turn WHERE processed = 0", [], |r| r.get(0))
     })
     .unwrap_or(0)
+}
+
+/// 遗忘 / 剪枝 —— 防止长期无限增长(设计 §2.7)。定时器里周期跑。
+/// 留最近+高重要度的 ~2000 条 turn;清掉孤儿提及边;归档 60 天前已失效的画像。
+pub fn prune() {
+    let cutoff = Utc::now().timestamp() - 60 * 86400;
+    let _ = with_db(|c| {
+        c.execute(
+            "DELETE FROM memory_turn WHERE id NOT IN (
+               SELECT id FROM memory_turn ORDER BY importance DESC, ts DESC LIMIT 2000)",
+            [],
+        )?;
+        // 指向已删 turn 的提及边一起清
+        c.execute(
+            "DELETE FROM edge WHERE kind='mentions' AND src NOT IN (SELECT id FROM memory_turn)",
+            [],
+        )?;
+        // 60 天前就失效的旧画像/偏好 —— 留史足够久,再老就归档
+        c.execute("DELETE FROM insight WHERE valid_to IS NOT NULL AND valid_to < ?1", params![cutoff])?;
+        c.execute("DELETE FROM preference WHERE valid_to IS NOT NULL AND valid_to < ?1", params![cutoff])?;
+        Ok(())
+    });
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -476,7 +517,7 @@ pub async fn run_reflection() -> Result<()> {
     if batch.is_empty() {
         return Ok(());
     }
-    let current_profile = with_db(|c| collect_profile(c)).unwrap_or_default();
+    let current_profile = with_db(|c| collect_profile_items(c)).unwrap_or_default();
 
     // 拼蒸馏 prompt
     let mut turns_txt = String::new();
@@ -487,7 +528,7 @@ pub async fn run_reflection() -> Result<()> {
     let profile_txt = if current_profile.is_empty() {
         "（暂无）".to_string()
     } else {
-        current_profile.iter().map(|p| format!("- {p}")).collect::<Vec<_>>().join("\n")
+        current_profile.iter().map(|p| format!("- {}", p.text)).collect::<Vec<_>>().join("\n")
     };
     let prompt = format!(
         "你在维护一个桌面助手对用户的【长期记忆画像】。下面是你目前对用户的认识,以及最近\
@@ -564,19 +605,21 @@ pub async fn run_reflection() -> Result<()> {
             let id = upsert_entity(c, e.kind.trim(), name, now)?;
             name_to_id.insert(name.to_lowercase(), id);
         }
-        // turn → entity 提及边(确定性子串匹配,不额外烧 LLM)
+        // turn → entity 提及边(确定性子串匹配,不额外烧 LLM)。去重防膨胀。
         for t in &batch {
             let tl = t.text.to_lowercase();
             for (nl, eid) in &name_to_id {
                 if nl.chars().count() >= 2 && tl.contains(nl.as_str()) {
                     c.execute(
-                        "INSERT INTO edge (src, dst, kind, weight, ts) VALUES (?1, ?2, 'mentions', 1, ?3)",
+                        "INSERT INTO edge (src, dst, kind, weight, ts)
+                         SELECT ?1, ?2, 'mentions', 1, ?3
+                         WHERE NOT EXISTS (SELECT 1 FROM edge WHERE src=?1 AND dst=?2 AND kind='mentions')",
                         params![t.id, eid, now],
                     )?;
                 }
             }
         }
-        // entity ↔ entity 关系边
+        // entity ↔ entity 关系边(去重)
         for r in &parsed.relations {
             let a = name_to_id.get(r.from.trim().to_lowercase().as_str()).copied();
             let b = name_to_id.get(r.to.trim().to_lowercase().as_str()).copied();
@@ -584,7 +627,9 @@ pub async fn run_reflection() -> Result<()> {
                 if a != b {
                     let k = r.kind.as_deref().unwrap_or("co_occurs");
                     c.execute(
-                        "INSERT INTO edge (src, dst, kind, weight, ts) VALUES (?1, ?2, ?3, 1, ?4)",
+                        "INSERT INTO edge (src, dst, kind, weight, ts)
+                         SELECT ?1, ?2, ?3, 1, ?4
+                         WHERE NOT EXISTS (SELECT 1 FROM edge WHERE src=?1 AND dst=?2 AND kind=?3)",
                         params![a, b, k, now],
                     )?;
                 }

@@ -415,6 +415,7 @@ pub fn run() {
                     if memory::unprocessed_count() > 0 && !ai_queue::is_busy() {
                         let _ = memory::run_reflection().await;
                     }
+                    memory::prune(); // 遗忘/剪枝,防长期膨胀
                 }
             });
 

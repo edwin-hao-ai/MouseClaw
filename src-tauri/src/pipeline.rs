@@ -187,10 +187,10 @@ pub async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppStat
     if crate::memory::unprocessed_count() >= 6 && !crate::ai_queue::is_busy() {
         tauri::async_runtime::spawn(async { let _ = crate::memory::run_reflection().await; });
     }
-    // 4c. 🧠 命中标记:这次回复结合了几条记忆 → emit 给 overlay 显示 badge。
-    let mem_used = crate::memory::take_last_used();
-    if mem_used > 0 {
-        let _ = app.emit("memory-used", mem_used);
+    // 4c. 🧠 命中标记:这次回复实际用到的记忆条目 → emit 给 overlay(可展开看 + 删错的)。
+    let mem_items = crate::memory::take_last_used_items();
+    if !mem_items.is_empty() {
+        let _ = app.emit("memory-used", mem_items);
     }
 
     // 5. Mode detection — [INSERT_AT_CURSOR] marker → Mode B (write at cursor)

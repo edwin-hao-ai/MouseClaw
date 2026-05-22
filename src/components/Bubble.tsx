@@ -50,15 +50,19 @@ interface BubbleProps {
   onNewSession?: () => void;
   /** v0.3.6 · 气泡底部行动按钮（如"🔓 去授权"打开系统设置）—— 用于 blocked 状态给用户具体下一步 */
   action?: { label: string; onClick: () => void };
+  /** v0.4.4 · 这次回复用到的记忆(🧠 可展开看 + 当场删错的)。 */
+  memItems?: { kind: string; id: number; text: string }[];
+  onDeleteMem?: (kind: string, id: number) => void;
 }
 
 export function Bubble({
   text, variant = "default", streaming = false,
   expandable = false, onExpand,
   sessionChip, voiceBars, loading = false, scrollable = false, markdown = false,
-  onNewSession, action,
+  onNewSession, action, memItems, onDeleteMem,
 }: BubbleProps) {
   const t = useT();
+  const [memOpen, setMemOpen] = useState(false);
   // markdown 解析结果 —— 流式期间每个 chunk 都重 parse 是 OK 的（marked 很快）
   const html = useMemo(
     () => (markdown ? renderMarkdown(text) : null),
@@ -201,6 +205,34 @@ export function Bubble({
         >
           {action.label}
         </button>
+      )}
+      {memItems && memItems.length > 0 && (
+        <div className="bubble-mem">
+          <button
+            type="button"
+            className="bubble-mem-toggle"
+            onClick={() => setMemOpen((o) => !o)}
+          >
+            {t("memory.used_badge", { n: memItems.length })} {memOpen ? "▴" : "▾"}
+          </button>
+          {memOpen && (
+            <div className="bubble-mem-list">
+              {memItems.map((m) => (
+                <div className="bubble-mem-item" key={`${m.kind}-${m.id}`}>
+                  <span className="bubble-mem-text">{m.text}</span>
+                  {onDeleteMem && (
+                    <button
+                      type="button"
+                      className="bubble-mem-x"
+                      title={t("memory.delete")}
+                      onClick={() => onDeleteMem(m.kind, m.id)}
+                    >✕</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
