@@ -19,11 +19,14 @@ import { RecordingBubble } from "./components/RecordingBubble";
 import { TourBubble } from "./components/TourBubble";
 import {
   EV_VIEW_CHANGED, EV_SKIN_CHANGED, EV_NUDGE, EV_SESSION_STATE, EV_ENTRANCE,
+  EV_SCHEDULE_RESULT,
   type ViewKind, type SkinId, type NudgePayload, type SessionState,
-  type EntrancePhase, type EntrancePayload,
+  type EntrancePhase, type EntrancePayload, type ScheduleResultPayload,
+  type Schedule,
 } from "./types";
 import { DEFAULT_SKIN } from "./skins";
 import { useT, getCurrentLang } from "./i18n";
+import { scheduleLabel, scheduleIcon, formatWhen } from "./lib/schedule-format";
 import { ReactiveOverlay, type ReactivePayload } from "./components/ReactiveOverlay";
 import { useCompanion } from "./hooks/useCompanion";
 import { useIntimacy } from "./hooks/useIntimacy";
@@ -53,6 +56,7 @@ function mouseStateFor(view: ViewKind): MouseState {
     case "mode-b-inserting": return "paste"; // v0.1.14: 拎剪贴板 sprite
     case "voice-confirm":    return "think"; // v0.4.0 转写完确认中
     case "tour-step":        return "listen"; // v0.4.0 引导桌宠 = 听 sprite，活泼
+    case "schedule-confirm": return "think"; // v0.5 定时任务确认中 = 好奇思考态
     case "blocked":          return "block";
   }
 }
@@ -80,6 +84,8 @@ export default function App() {
   const [transientAck, setTransientAck] = useState<string | null>(null);
   // v0.1.27 P3 · 主动提醒（presence + nudge 引擎触发）
   const [nudge, setNudge] = useState<NudgePayload | null>(null);
+  // v0.5 · 定时任务执行完成的轻气泡 payload（不抢焦点，几秒自动消失）
+  const [scheduleResult, setScheduleResult] = useState<ScheduleResultPayload | null>(null);
   // v0.4 · Reactive 桌宠：剪贴板变化时立刻反应。
   // - twitching：T1 抖耳一次，~500ms 后自动清掉
   // - reactive：T2 payload —— ribbon 在桌宠头顶弹一组按钮，5s 自动消失（或点了 action）
@@ -124,10 +130,10 @@ export default function App() {
     // v0.4.x · session chip（idle + 有上下文时显示在头顶）也算 React UI ——
     // 否则窗口 hit-box 只在桌宠底部，chip 在上方会被穿透掉点不到（点击查看对话失效）。
     const chipVisible = sessionState.continuing && !petMenuOpen && !nudge && !transientAck;
-    const hasReactUi = !!modelProgress || petMenuOpen || !!nudge || !!transientAck || !!reactive || chipVisible;
+    const hasReactUi = !!modelProgress || petMenuOpen || !!nudge || !!transientAck || !!reactive || !!scheduleResult || chipVisible;
     if (view.kind !== "idle") return; // 非 idle 由 Rust emit_view 那侧管，前端不要干扰
     invoke("set_overlay_has_ui", { hasUi: hasReactUi }).catch(() => {});
-  }, [view.kind, modelProgress, petMenuOpen, nudge, transientAck, reactive, sessionState.continuing]);
+  }, [view.kind, modelProgress, petMenuOpen, nudge, transientAck, reactive, scheduleResult, sessionState.continuing]);
 
   // 启动时从 Rust 读当前皮肤（避免闪一下默认 classic 再切换）
   useEffect(() => {
@@ -393,6 +399,16 @@ export default function App() {
     let unlisten: (() => void) | null = null;
     try {
       const p = listen<NudgePayload>(EV_NUDGE, (e) => setNudge(e.payload));
+      p.then((fn) => { unlisten = fn; }).catch(() => {});
+    } catch { /* browser-only mode */ }
+    return () => { if (unlisten) unlisten(); };
+  }, []);
+
+  // v0.5 · 定时任务执行完成 → 浮一个不抢焦点的轻气泡（几秒自动消失，结果已存任务窗）
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    try {
+      const p = listen<ScheduleResultPayload>(EV_SCHEDULE_RESULT, (e) => setScheduleResult(e.payload));
       p.then((fn) => { unlisten = fn; }).catch(() => {});
     } catch { /* browser-only mode */ }
     return () => { if (unlisten) unlisten(); };
@@ -761,6 +777,9 @@ export default function App() {
         {nudge && !petMenuOpen && (
           <NudgeBubble payload={nudge} onDismiss={() => setNudge(null)} />
         )}
+        {scheduleResult && !petMenuOpen && !nudge && (
+          <ScheduleResultBubble payload={scheduleResult} onDismiss={() => setScheduleResult(null)} />
+        )}
         {/* v0.4 · Reactive ribbon —— idle 视图下浮在桌宠头顶。其他视图（listening / thinking
             / panel 等）有自己的气泡，让位 */}
         {view.kind === "idle" && !entrancePhase && !petMenuOpen && !nudge && (
@@ -887,6 +906,16 @@ function BubbleFor({ view, continuing, onExpand, onNewSession, modelProgress, ed
     case "tour-step":
       // v0.4.0 · 首次使用引导 5 步流程
       return <TourBubble step={view.step} />;
+    case "schedule-confirm":
+      // v0.5 · 定时任务确认卡 —— backend 解析出 [SCHEDULE] 后摊开给用户确认
+      return (
+        <ScheduleConfirmBubble
+          title={view.title}
+          action={view.action}
+          schedule={view.schedule}
+          nextRun={view.nextRun}
+        />
+      );
     case "mode-b-inserting":
       return <Bubble text={`正在写入「${view.insertText}」`} variant="warn" />;
     case "blocked": {
@@ -1059,6 +1088,153 @@ function VoiceConfirmBubble({ transcript, remaining, editRequested, onRequestEdi
           >发送 ↵</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// v0.5 · 定时任务确认卡 —— backend 解析出 [SCHEDULE] 后摊开「我理解成什么」让用户确认。
+// ✓ 就这么定 → 建任务 + 收起；改一下 → 建任务 + 打开任务窗去 ✎ 调整；Esc/点外 → 取消（不建）。
+interface ScheduleConfirmProps {
+  title: string;
+  action: string;
+  schedule: Schedule;
+  nextRun?: string;
+}
+function ScheduleConfirmBubble({ title, action, schedule, nextRun }: ScheduleConfirmProps) {
+  const t = useT();
+  const [saved, setSaved] = useState(false);
+
+  const create = async () => {
+    await invoke("create_schedule", { input: { title, action, schedule } }).catch(() => {});
+  };
+  const confirm = async () => {
+    setSaved(true);
+    await create();
+    window.setTimeout(() => invoke("dismiss").catch(() => {}), 1100);
+  };
+  const tweak = async () => {
+    await create();
+    invoke("open_tasks_window").catch(() => {});
+    invoke("dismiss").catch(() => {});
+  };
+
+  const card: React.CSSProperties = {
+    background: "var(--bubble-bg)",
+    border: "1px solid var(--bubble-border)",
+    borderRadius: "var(--radius-xl)",
+    padding: "14px 14px 10px",
+    width: 290,
+    boxSizing: "border-box",
+    boxShadow: "var(--shadow-bubble)",
+    pointerEvents: "auto",
+    fontFamily: "var(--font-system)",
+    color: "var(--text-primary)",
+  };
+  const chip: React.CSSProperties = {
+    display: "inline-flex", alignItems: "center", gap: 4,
+    fontSize: "var(--text-meta)", fontWeight: 600, color: "var(--text-link)",
+    background: "var(--accent-glow)", border: "1px solid rgba(255,107,157,0.28)",
+    padding: "3px 9px", borderRadius: "var(--radius-pill)",
+  };
+
+  if (saved) {
+    return (
+      <div className="stage-bubble">
+        <div data-adaptive-measure="" style={{ ...card, width: "auto" }}>
+          <div style={{ fontSize: "var(--text-body)", fontWeight: 600 }}>
+            {t("schedule.confirm.created")}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="stage-bubble">
+      <div data-adaptive-measure="" style={card}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+          <span style={{
+            fontSize: "var(--text-micro)", fontWeight: 700, letterSpacing: "0.06em",
+            color: "var(--text-link)", background: "var(--accent-glow)",
+            padding: "2px 8px", borderRadius: "var(--radius-pill)",
+          }}>{t("schedule.confirm.title")}</span>
+          <span style={chip}>{scheduleIcon(schedule)} {scheduleLabel(t, schedule)}</span>
+        </div>
+        <div style={{ fontSize: "var(--text-body)", marginBottom: 8 }}>
+          <span style={{ color: "var(--text-bubble-dim)" }}>{t("schedule.confirm.what")}</span>
+          <br />
+          {action}
+        </div>
+        <div style={{ fontSize: "var(--text-meta)", color: "var(--text-bubble-dim)", marginBottom: 10 }}>
+          {nextRun && <span>{t("tasks.next", { when: formatWhen(t, nextRun) })} · </span>}
+          {t("schedule.confirm.delivery")}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button onClick={confirm} style={{
+            border: "none", borderRadius: "var(--radius-sm)", padding: "7px 14px",
+            fontSize: "var(--text-body-sm)", fontWeight: 700, cursor: "pointer",
+            background: "var(--accent-gradient)", color: "#fff", boxShadow: "var(--shadow-cta)",
+          }}>{t("schedule.confirm.ok")}</button>
+          <button onClick={tweak} style={{
+            border: "none", borderRadius: "var(--radius-sm)", padding: "7px 14px",
+            fontSize: "var(--text-body-sm)", fontWeight: 700, cursor: "pointer",
+            background: "rgba(0,0,0,0.05)", color: "var(--text-primary)",
+          }}>{t("schedule.confirm.edit")}</button>
+          <span style={{ marginLeft: "auto", fontSize: "var(--text-micro)", color: "var(--text-bubble-dim)" }}>
+            {t("schedule.confirm.esc")}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// v0.5 · 定时任务结果轻气泡 —— 不抢焦点、几秒自动消失，「展开」打开任务窗看全文。
+// taskId 为空 = 一次性"发现提示"。
+function ScheduleResultBubble({ payload, onDismiss }: { payload: ScheduleResultPayload; onDismiss: () => void }) {
+  const t = useT();
+  const isHint = payload.taskId === "";
+  useEffect(() => {
+    const id = window.setTimeout(onDismiss, isHint ? 12_000 : 7_000);
+    return () => window.clearTimeout(id);
+  }, [payload, onDismiss, isHint]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onDismiss(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onDismiss]);
+
+  const expand = () => {
+    invoke("open_tasks_window").catch(() => {});
+    onDismiss();
+  };
+
+  return (
+    <div
+      className="schedule-result-bubble"
+      data-adaptive-measure=""
+      role="status"
+      aria-live="polite"
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        position: "absolute", left: "50%", bottom: "100%", transform: "translateX(-50%)",
+        marginBottom: 10, width: 260, boxSizing: "border-box",
+        background: "var(--bubble-success-bg)", border: "1px solid var(--bubble-border)",
+        borderRadius: "var(--radius-xl)", padding: "12px 14px 10px",
+        boxShadow: "var(--shadow-bubble)", pointerEvents: "auto",
+        fontFamily: "var(--font-system)", color: "var(--text-primary)",
+      }}
+    >
+      <div style={{
+        fontSize: "var(--text-micro)", fontWeight: 700, letterSpacing: "0.06em",
+        color: "var(--text-link)", background: "var(--accent-glow)",
+        display: "inline-block", padding: "2px 8px", borderRadius: "var(--radius-pill)", marginBottom: 6,
+      }}>{isHint ? t("schedule.hint.tag") : t("schedule.result.tag")}{!isHint && payload.title ? ` · ${payload.title}` : ""}</div>
+      <div style={{ fontSize: "var(--text-body)", lineHeight: 1.5 }}>{payload.summary}</div>
+      <div onClick={expand} style={{
+        marginTop: 8, fontSize: "var(--text-meta)", fontWeight: 600,
+        color: "var(--text-link)", cursor: "pointer",
+      }}>{t("schedule.result.expand")}</div>
     </div>
   );
 }

@@ -1,0 +1,640 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MouseClaw · 定时任务 / 心跳（scheduled tasks）· 2026-05-21</title>
+<style>
+/* ──────────────────────────────────────────────────────────────────
+   Design tokens — 全部来自 DESIGN.md §2 + §9 cheatsheet。
+   皮肤颜色不 hardcode：每只老鼠由 skins.ts 的 8 色 palette 驱动。
+   忙碌 badge / ⏰ 标记 / 气泡底色都用语义 token，跟皮肤无关 → 9 款一视同仁。
+   ────────────────────────────────────────────────────────────────── */
+:root{
+  /* Surface (dark — 原型背景) */
+  --surface-deep:#0a0e1a; --surface-mid:#131826;
+  --text-on-dark:#f5f5f7; --text-dim:#a1a1a8;
+  /* Surface (light — 浮在用户 app 上的气泡 / 面板) */
+  --bubble-bg:rgba(255,255,255,0.97); --panel-bg:rgba(252,252,254,0.98);
+  --bubble-border:rgba(0,0,0,0.10);
+  --bubble-success-bg:linear-gradient(135deg,#d8f8e6,#ffffff);
+  --bubble-warn-bg:linear-gradient(135deg,#fff7e0,#ffffff);
+  --bubble-danger-bg:linear-gradient(135deg,#ffe1e0,#ffffff);
+  /* Text */
+  --text-primary:#1a1a1a; --text-bubble-dim:#6c6c70; --text-link:#b3326d;
+  /* Accent */
+  --accent-primary:#ff6b9d; --accent-soft:#ff9bb8;
+  --accent-gradient:linear-gradient(135deg,#ff6b9d,#ff9bb8);
+  --accent-glow:rgba(255,107,157,0.15);
+  /* Semantic */
+  --success:#5cd6a0; --success-soft:#88e2b7; --warn:#ffd166; --danger:#ff5f57;
+  /* Radius */
+  --radius-pill:999px; --radius-xs:4px; --radius-sm:6px; --radius-md:8px;
+  --radius-lg:10px; --radius-xl:12px; --radius-3xl:16px;
+  /* Shadow */
+  --shadow-bubble:0 12px 32px rgba(0,0,0,0.35),0 2px 6px rgba(0,0,0,0.2),inset 0 1px 0 rgba(255,255,255,0.7);
+  --shadow-panel:0 24px 64px rgba(0,0,0,0.4),0 4px 12px rgba(0,0,0,0.2),inset 0 1px 0 rgba(255,255,255,0.9);
+  --shadow-cta:0 8px 24px rgba(255,107,157,0.35);
+  --shadow-mouse:drop-shadow(0 4px 8px rgba(0,0,0,0.4));
+  /* Motion */
+  --ease-default:ease-in-out; --ease-spring:cubic-bezier(0.34,1.56,0.64,1); --ease-tap:cubic-bezier(0.2,0,0,1);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:radial-gradient(1200px 800px at 30% 20%,#1a2034 0%,var(--surface-deep) 60%);
+  color:var(--text-on-dark);
+  font:14px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC",system-ui,sans-serif;
+  padding:36px 22px 90px; min-height:100vh;
+}
+.wrap{max-width:1180px;margin:0 auto;}
+h1{font-size:26px;margin:0 0 4px;letter-spacing:-0.01em;}
+h2{font-size:17px;margin:40px 0 14px;padding-bottom:6px;border-bottom:1px solid #23283a;}
+.sub{color:var(--text-dim);margin:0 0 24px;}
+.lead{color:var(--text-dim);max-width:860px;}
+.lead strong,.lead b{color:var(--text-on-dark);}
+code{background:#0e1320;color:var(--accent-soft);padding:1px 6px;border-radius:5px;font-size:12px;
+  font-family:ui-monospace,Menlo,monospace;}
+.card{background:var(--surface-mid);border:1px solid #23283a;border-radius:var(--radius-xl);padding:16px 18px;}
+
+svg.mouse{image-rendering:pixelated;shape-rendering:crispEdges;display:block;}
+
+/* ── mock desktop stage ─────────────────────────────────────────── */
+.stage{position:relative;height:300px;overflow:hidden;border-radius:var(--radius-3xl);
+  border:1px solid #23283a;
+  background:
+    radial-gradient(ellipse at 28% 18%,#5b8def22,transparent 52%),
+    radial-gradient(ellipse at 82% 84%,#e8638c22,transparent 52%),
+    linear-gradient(135deg,#f3eee6,#e7ddcd);}
+.stage .menu-bar{height:24px;background:rgba(255,255,255,.62);backdrop-filter:blur(12px);
+  border-bottom:1px solid rgba(0,0,0,.06);display:flex;align-items:center;padding:0 14px;gap:14px;
+  font-size:12px;color:#555;position:relative;z-index:5;}
+.menu-bar .item{font-weight:600;}
+.menu-bar .right{margin-left:auto;display:flex;gap:10px;font-size:11px;color:#777;}
+.browser{position:absolute;top:48px;left:40px;width:520px;background:#fff;border-radius:10px;
+  box-shadow:0 16px 40px rgba(0,0,0,.28);overflow:hidden;font-size:12px;color:#333;}
+.browser .bar{height:30px;background:#ececf0;display:flex;align-items:center;gap:8px;padding:0 12px;}
+.browser .bar .dots{display:flex;gap:6px;}
+.browser .bar .dot{width:10px;height:10px;border-radius:50%;background:#ddd;}
+.browser .bar .url{flex:1;background:#fff;border-radius:6px;height:18px;font-size:10px;color:#999;
+  display:flex;align-items:center;padding:0 8px;}
+.browser .body{padding:14px 16px;line-height:1.7;color:#555;}
+.browser .body h4{margin:0 0 6px;color:#222;font-size:13px;}
+.browser .body .ln{height:8px;background:#eee;border-radius:4px;margin:6px 0;}
+.browser .body .ln.s{width:60%;} .browser .body .ln.m{width:85%;}
+
+/* the pet host */
+.pet-host{position:absolute;display:flex;align-items:flex-end;justify-content:center;z-index:20;}
+.pet-host .mouse{filter:var(--shadow-mouse);}
+.pet-host.idle .mouse{animation:mc-breathe 3.2s var(--ease-default) infinite;transform-origin:bottom center;}
+.pet-host.think .mouse{animation:mc-think 1.4s var(--ease-default) infinite;transform-origin:bottom center;}
+.pet-host.jump .mouse{animation:mc-jump .9s var(--ease-spring);transform-origin:bottom center;}
+@keyframes mc-breathe{0%,100%{transform:scaleY(1)}50%{transform:scaleY(.98)}}
+@keyframes mc-think{0%,100%{transform:rotate(-3deg)}50%{transform:rotate(3deg)}}
+@keyframes mc-jump{0%{transform:translateY(0)}40%{transform:translateY(-16px) scaleY(1.05)}70%{transform:translateY(0) scaleY(.96)}100%{transform:translateY(0)}}
+
+/* 忙碌 badge — 桌宠右下角三点（DESIGN「bg-task-changed」）· 任何皮肤一致 */
+.busy-badge{position:absolute;right:-2px;bottom:6px;display:none;gap:3px;z-index:22;}
+.busy-badge.on{display:flex;}
+.busy-badge i{width:4px;height:4px;border-radius:50%;background:var(--accent-primary);
+  animation:mc-busy 1s var(--ease-default) infinite;}
+.busy-badge i:nth-child(2){animation-delay:.15s;} .busy-badge i:nth-child(3){animation-delay:.3s;}
+@keyframes mc-busy{0%,100%{opacity:.35;transform:translateY(0)}50%{opacity:1;transform:translateY(-2px)}}
+
+/* ── bubble (DESIGN §4.1) ───────────────────────────────────────── */
+.bubble{position:absolute;background:var(--bubble-bg);color:var(--text-primary);
+  border:1px solid var(--bubble-border);border-radius:var(--radius-xl);
+  padding:14px 14px 10px;max-width:300px;box-shadow:var(--shadow-bubble);z-index:21;
+  opacity:0;transform:translateY(6px) scale(.96);transition:opacity .2s var(--ease-default),transform .2s var(--ease-default);}
+.bubble.on{opacity:1;transform:translateY(0) scale(1);}
+.bubble::after{content:"";position:absolute;bottom:-7px;left:24px;width:14px;height:14px;
+  background:var(--bubble-bg);border-right:1px solid var(--bubble-border);border-bottom:1px solid var(--bubble-border);
+  transform:rotate(45deg);}
+.bubble.success{background:var(--bubble-success-bg);} .bubble.success::after{background:#fff;}
+.bubble.warn{background:var(--bubble-warn-bg);} .bubble.warn::after{background:#fff;}
+.bubble.danger{background:var(--bubble-danger-bg);} .bubble.danger::after{background:#fff;}
+.bubble .body{font-size:13px;line-height:1.5;}
+.bubble .expand{margin-top:8px;font-size:11px;font-weight:600;color:var(--text-link);cursor:pointer;}
+/* ⏰ "这是定时跑的，不是你刚问的" 标记 — skin 无关 */
+.sched-tag{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;letter-spacing:.06em;
+  color:var(--text-link);background:var(--accent-glow);padding:2px 8px;border-radius:var(--radius-pill);
+  margin-bottom:6px;}
+.count-pill{font-size:11px;font-weight:600;color:#2d8c5f;background:rgba(92,214,160,.15);
+  border:1px solid rgba(92,214,160,.3);padding:1px 7px;border-radius:var(--radius-pill);}
+
+/* ── confirm card (一句话创建后的确认) — 用 bubble 系统 ────────────── */
+.confirm{max-width:300px;}
+.confirm .row1{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.confirm .title{font-size:14px;font-weight:700;}
+.confirm .said{font-size:11px;color:var(--text-bubble-dim);font-style:italic;margin-bottom:8px;
+  border-left:3px solid var(--accent-soft);padding-left:8px;}
+.confirm .what{font-size:13px;margin-bottom:8px;}
+.confirm .what .q{color:var(--text-bubble-dim);}
+.confirm .meta{font-size:11px;color:var(--text-bubble-dim);margin-bottom:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;
+  color:var(--text-link);background:var(--accent-glow);padding:3px 9px;border-radius:var(--radius-pill);
+  border:1px solid rgba(255,107,157,.28);font-variant-numeric:tabular-nums;}
+.confirm .acts{display:flex;gap:8px;align-items:center;}
+.bubble-btn{font:inherit;font-size:12px;font-weight:700;border:none;border-radius:var(--radius-sm);
+  padding:7px 14px;cursor:pointer;}
+.bubble-btn.cta{background:var(--accent-gradient);color:#fff;box-shadow:var(--shadow-cta);}
+.bubble-btn.ghost{background:rgba(0,0,0,.05);color:var(--text-primary);}
+.confirm .esc{font-size:10px;color:var(--text-bubble-dim);margin-left:auto;}
+
+/* ── controls ───────────────────────────────────────────────────── */
+.controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:14px 16px;margin-top:12px;
+  background:var(--surface-mid);border:1px solid #23283a;border-radius:var(--radius-xl);}
+.controls button{font:inherit;font-size:13px;padding:7px 14px;border-radius:8px;border:none;cursor:pointer;font-weight:600;}
+.btn-primary{background:var(--accent-primary);color:#fff;} .btn-primary:hover{background:#ff5790;}
+.btn-ghost{background:#222a3d;color:var(--text-on-dark);} .btn-ghost:hover{background:#2c3650;}
+.controls .spacer{margin-left:auto;}
+.controls label{font-size:12px;color:var(--text-dim);display:flex;gap:6px;align-items:center;}
+.controls select{font:inherit;font-size:12px;padding:4px 7px;border-radius:6px;border:1px solid #2c3650;background:#0e1320;color:var(--text-on-dark);}
+.hint{font-size:12px;color:var(--text-dim);margin:8px 2px 0;}
+.phrase-chips{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 0;}
+.phrase-chips button{background:#0e1320;color:var(--text-on-dark);border:1px solid #2c3650;
+  font-size:12.5px;padding:8px 12px;border-radius:var(--radius-md);cursor:pointer;text-align:left;}
+.phrase-chips button:hover{border-color:var(--accent-primary);background:#161d30;}
+.phrase-chips button .q{color:var(--text-dim);margin-right:6px;}
+
+/* ── the management window (?view=tasks) ────────────────────────── */
+.win-wrap{display:flex;justify-content:center;}
+.taskwin{width:440px;background:var(--panel-bg);border:1px solid var(--bubble-border);
+  border-radius:var(--radius-3xl);box-shadow:var(--shadow-panel);overflow:hidden;color:var(--text-primary);}
+.taskwin .hd{display:flex;align-items:center;gap:8px;padding:14px 16px;
+  border-bottom:1px solid rgba(0,0,0,.06);
+  background:linear-gradient(180deg,rgba(255,255,255,.7),rgba(255,255,255,0));}
+.taskwin .hd .h{font-size:16px;font-weight:700;}
+.taskwin .hd .c{font-size:11px;font-weight:600;color:var(--text-bubble-dim);}
+.taskwin .hd .x{margin-left:auto;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,.06);
+  display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--text-bubble-dim);cursor:pointer;}
+.taskwin .list{padding:12px;display:flex;flex-direction:column;gap:10px;max-height:430px;overflow:auto;}
+.task{border:1px solid rgba(0,0,0,.07);border-radius:var(--radius-lg);padding:12px 12px 10px;background:#fff;}
+.task.off{opacity:.55;}
+.task .t1{display:flex;align-items:center;gap:8px;}
+.task .t1 .name{font-size:14px;font-weight:700;}
+.task .t1 .tog{margin-left:auto;}
+.task .t2{display:flex;align-items:center;gap:8px;margin-top:7px;flex-wrap:wrap;}
+.task .action{font-size:12px;color:var(--text-bubble-dim);margin-top:8px;line-height:1.5;}
+.task .meta{font-size:11px;color:var(--text-bubble-dim);margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-variant-numeric:tabular-nums;}
+.task .meta .ok{color:#2d8c5f;font-weight:600;}
+.task .meta .fail{color:var(--text-link);font-weight:600;}
+.task .row-acts{margin-left:auto;display:flex;gap:6px;}
+.iconbtn{width:24px;height:24px;border-radius:var(--radius-sm);border:1px solid rgba(0,0,0,.08);
+  background:rgba(0,0,0,.03);cursor:pointer;font-size:11px;color:var(--text-bubble-dim);display:flex;align-items:center;justify-content:center;}
+.iconbtn:hover{background:var(--accent-glow);color:var(--text-link);border-color:rgba(255,107,157,.4);}
+.task .history{display:none;margin-top:10px;border-top:1px dashed rgba(0,0,0,.08);padding-top:9px;}
+.task.expanded .history{display:block;}
+.task .history .preview{font-size:12px;background:rgba(0,0,0,.03);border-radius:var(--radius-sm);padding:8px 10px;line-height:1.5;margin-bottom:8px;}
+.task .history .run{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-bubble-dim);padding:3px 0;font-variant-numeric:tabular-nums;}
+.task .history .run .dot{width:6px;height:6px;border-radius:50%;}
+.run .dot.ok{background:var(--success);} .run .dot.fail{background:var(--danger);} .run .dot.skip{background:#c9c9cf;}
+/* toggle */
+.tog{width:38px;height:22px;border-radius:var(--radius-pill);background:rgba(0,0,0,.18);position:relative;cursor:pointer;transition:background .2s;}
+.tog::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:left .2s var(--ease-tap);}
+.tog.on{background:var(--accent-primary);} .tog.on::after{left:18px;}
+.taskwin .new{padding:11px 14px;border-top:1px solid rgba(0,0,0,.06);display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.5);}
+.taskwin .new .ipt{flex:1;border:1px solid rgba(0,0,0,.12);border-radius:var(--radius-md);padding:8px 10px;font-size:12.5px;color:var(--text-bubble-dim);background:#fff;}
+.taskwin .new .add{width:32px;height:32px;border-radius:var(--radius-md);background:var(--accent-gradient);color:#fff;border:none;cursor:pointer;font-size:15px;font-weight:700;}
+.taskwin .empty{padding:38px 24px;text-align:center;color:var(--text-bubble-dim);}
+.taskwin .empty .big{font-size:34px;margin-bottom:8px;}
+.taskwin .empty .ex{font-size:12px;margin-top:10px;line-height:1.8;}
+.taskwin .empty .ex code{background:rgba(0,0,0,.05);color:var(--text-link);}
+
+/* ── 9-skin grid ────────────────────────────────────────────────── */
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+.cell{background:var(--surface-mid);border:1px solid #23283a;border-radius:var(--radius-xl);padding:10px;}
+.cell .mini-stage{position:relative;height:140px;overflow:hidden;border-radius:var(--radius-md);
+  background:linear-gradient(180deg,#f3eee6,#e3d8c6);}
+.cell .name{font-size:12.5px;font-weight:600;margin-top:8px;}
+.cell .name .tag{font-size:10px;color:var(--accent-soft);background:var(--accent-glow);
+  padding:1px 7px;border-radius:var(--radius-pill);margin-left:6px;vertical-align:middle;}
+.cell .mini-stage .pet-host{width:40px;height:40px;}
+.cell .mini-bubble{position:absolute;left:8px;top:8px;right:8px;background:var(--bubble-success-bg);
+  border:1px solid var(--bubble-border);border-radius:var(--radius-md);padding:7px 9px;font-size:10.5px;
+  color:var(--text-primary);box-shadow:0 4px 12px rgba(0,0,0,.18);line-height:1.4;}
+.cell .mini-bubble .st{font-size:9px;font-weight:700;color:var(--text-link);letter-spacing:.05em;}
+
+/* ── tables / notes ─────────────────────────────────────────────── */
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th,td{padding:8px 10px;text-align:left;border-bottom:1px solid #23283a;vertical-align:top;}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-dim);font-weight:700;}
+td code{font-size:12px;}
+.notes{font-size:13px;color:var(--text-dim);line-height:1.8;}
+.notes b,.notes strong{color:var(--text-on-dark);}
+.notes ul{margin:6px 0;padding-left:20px;}
+.redline{border-left:3px solid var(--danger);padding-left:12px;}
+.redline b{color:#ff9bb8;}
+pre.json{background:#0b0f1c;border:1px solid #23283a;border-radius:var(--radius-md);padding:14px 16px;
+  font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#c9d3e6;overflow:auto;line-height:1.6;}
+pre.json .k{color:#7aa2f7;} pre.json .s{color:#7ec699;} pre.json .n{color:#ffb3c8;} pre.json .c{color:#6a6a78;}
+
+@media (prefers-reduced-motion:reduce){
+  .pet-host .mouse,.busy-badge i{animation:none!important;}
+  .bubble{transition:none;}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>定时任务 / 心跳 · scheduled tasks</h1>
+  <p class="sub">v0.5 提案 · 2026-05-21 · 「每天早上整理 AI 新闻」「每隔 2 小时看看要紧邮件」—— 一句话设好，到点自己跑</p>
+
+  <div class="card">
+    <p class="lead" style="margin:0">
+      <strong>核心张力</strong>：MouseClaw 的人设是「平时不存在、安静」。而定时任务天生是<strong>主动打扰</strong>——
+      两者怎么调和？答案是三条纪律：① <b>入口零学习</b>，对桌宠说一句人话就建好，不弹表单；
+      ② <b>投递克制</b>，到点做完只冒一个<b>不抢焦点、几秒自动消失</b>的轻气泡，结果永久存进任务窗你想看再看；
+      ③ <b>安全收口</b>，定时任务<b>永远走 A 模式、永远不截屏、永远不往你当时的 app 里打字</b>。
+      下面把整条用户旅程做成可点的 demo（已拍板：一句话创建 · 轻气泡投递 · 固定/间隔/工作日全模型）。
+    </p>
+  </div>
+
+  <!-- ════════════ ① 一句话创建 ════════════ -->
+  <h2>① 入口 = 对桌宠说一句话（点下面任意一句，看它解析成结构化任务）</h2>
+  <div class="card" style="margin-bottom:12px;">
+    <div class="phrase-chips" id="phrases">
+      <button data-i="0"><span class="q">🎙️/⌨️</span>每天早上 8 点整理 AI 新闻给我</button>
+      <button data-i="1"><span class="q">🎙️/⌨️</span>工作日下午 6 点提醒我写日报</button>
+      <button data-i="2"><span class="q">🎙️/⌨️</span>每隔 2 小时看看收件箱有没有要紧邮件</button>
+      <button data-i="3"><span class="q">🎙️/⌨️</span>每周一早上 9 点给我本周科技要闻</button>
+    </div>
+  </div>
+  <div class="stage" id="s1">
+    <div class="menu-bar"><span class="item"> 备忘录</span><span>File</span><span>Edit</span>
+      <span class="right"><span>🔋 86%</span><span>📶</span><span>10:24</span></span></div>
+    <div class="browser">
+      <div class="bar"><div class="dots"><i class="dot"></i><i class="dot"></i><i class="dot"></i></div>
+        <div class="url">notes.app — 周一计划</div></div>
+      <div class="body"><h4>这周要做的事</h4><div class="ln m"></div><div class="ln s"></div><div class="ln m"></div><div class="ln"></div></div>
+    </div>
+    <div class="pet-host" id="s1-pet"><div class="busy-badge" id="s1-busy"><i></i><i></i><i></i></div></div>
+    <div class="bubble confirm" id="s1-card"></div>
+  </div>
+  <p class="hint" id="s1-phase">点上面任意一句话 → 桌宠解析（用现有 backend，不挑 CLI）→ 弹确认卡。零表单。</p>
+
+  <!-- ════════════ ② 任务管理窗 ════════════ -->
+  <h2>② 管理窗（托盘「⏰ 定时任务…」/ 桌宠菜单进入 · <code>?view=tasks</code>）</h2>
+  <p class="lead" style="margin:0 0 14px;">列出所有任务：开关、下次/上次、展开看结果历史、编辑/删除。底部「一句话新建」复用上面的解析。
+    失败的任务<strong>安静记在这里</strong>（不弹刺眼气泡打扰你），可一键重试。</p>
+  <div class="controls" style="margin-top:0;margin-bottom:14px;">
+    <button class="btn-ghost" id="toggle-empty">切换：列表 ⇄ 空状态</button>
+    <span class="hint" style="margin:0;">空状态也教你怎么建第一个</span>
+  </div>
+  <div class="win-wrap">
+    <div class="taskwin" id="taskwin"></div>
+  </div>
+
+  <!-- ════════════ ③ 结果投递（轻气泡） ════════════ -->
+  <h2>③ 到点执行 → 轻气泡投递（不抢焦点 · 几秒自动消失 · 已存窗口）</h2>
+  <div class="stage" id="s3">
+    <div class="menu-bar"><span class="item"> Chrome</span><span>File</span><span>Edit</span>
+      <span class="right"><span>🔋 72%</span><span>📶</span><span>08:00</span></span></div>
+    <div class="browser">
+      <div class="bar"><div class="dots"><i class="dot"></i><i class="dot"></i><i class="dot"></i></div>
+        <div class="url">docs.google.com — 你正在写的文档</div></div>
+      <div class="body"><h4>你正在专注做自己的事</h4><div class="ln m"></div><div class="ln"></div><div class="ln s"></div><div class="ln m"></div></div>
+    </div>
+    <div class="pet-host" id="s3-pet"><div class="busy-badge" id="s3-busy"><i></i><i></i><i></i></div></div>
+    <div class="bubble success" id="s3-bubble"></div>
+  </div>
+  <div class="controls">
+    <button class="btn-primary" id="s3-play">▶ 模拟到点 08:00 执行</button>
+    <button class="btn-ghost" id="s3-reset">↺ 归位</button>
+    <span class="spacer"></span>
+    <label>皮肤<select id="s3-skin"></select></label>
+  </div>
+  <p class="hint" id="s3-phase">阶段 0 · 桌宠在角落安静待命</p>
+
+  <!-- ════════════ ④ 9 皮肤 ════════════ -->
+  <h2>④ 9 款皮肤同屏：投递气泡 + 忙碌 badge 一视同仁（硬规则）</h2>
+  <p class="lead" style="margin:0 0 14px;">不新增桌宠动画——复用现有 think→jump 状态 + 三点忙碌 badge。
+    <strong>忙碌 badge、⏰ 标记、气泡底色全用语义 token（accent / success），跟皮肤调色板解耦</strong>，
+    所以 9 款（含猫/狐/蛙）渲染一致。每只都挂同一条「🗞 整理好了」成功气泡验证对比度。</p>
+  <div class="grid" id="grid"></div>
+
+  <!-- ════════════ ⑤ 定时模型 ════════════ -->
+  <h2>⑤ 定时模型：人话 → 结构化（已拍板「固定 + 间隔 + 工作日」全集）</h2>
+  <div class="card">
+    <table>
+      <tr><th width="34%">用户说</th><th width="22%">解析成</th><th>schedule JSON</th></tr>
+      <tr><td>每天早上 8 点…</td><td><span class="chip">每天 08:00</span></td><td><code>{"kind":"daily","time":"08:00"}</code></td></tr>
+      <tr><td>工作日下午 6 点…</td><td><span class="chip">工作日 18:00</span></td><td><code>{"kind":"weekday","time":"18:00"}</code></td></tr>
+      <tr><td>每周一早上 9 点…</td><td><span class="chip">每周一 09:00</span></td><td><code>{"kind":"weekly","days":[1],"time":"09:00"}</code></td></tr>
+      <tr><td>每隔 2 小时…（心跳）</td><td><span class="chip">每隔 2 小时</span></td><td><code>{"kind":"interval","everyMinutes":120,"active":"09:00-22:00"}</code></td></tr>
+      <tr><td>每月 1 号…</td><td><span class="chip">每月 1 号 10:00</span></td><td><code>{"kind":"monthly","day":1,"time":"10:00"}</code></td></tr>
+    </table>
+    <p class="notes" style="margin:12px 0 0;">
+      <b>心跳类（interval）多一个 <code>active</code> 活跃时段</b>：openclaw heartbeat 直觉是「定期醒来看看要不要做事」，
+      但半夜每 2 小时弹一次会烦 → 默认只在白天活跃时段跑，半夜静默。这个时段也能用人话改（「只在上班时间」）。
+    </p>
+  </div>
+
+  <!-- ════════════ ⑥ 入口可发现性 ════════════ -->
+  <h2>⑥ 用户怎么知道有这功能？（可发现性 — UX 第 1 问）</h2>
+  <div class="card">
+    <table>
+      <tr><th width="26%">入口</th><th>说明</th></tr>
+      <tr><td><b>① 直接说</b>（主路径）</td><td>召唤桌宠后说「每天…帮我…」，backend 识别到调度意图 → 回 <code>[SCHEDULE]</code> 标记 → 弹确认卡。和现有 Mode B <code>[INSERT_AT_CURSOR]</code> 同一套标记机制，<b>4 个 backend 共用 system prompt 自动生效</b>。</td></tr>
+      <tr><td><b>② 托盘菜单</b></td><td>新增 <code>⏰ 定时任务…</code> 一项（双语），打开管理窗。常驻可见 = 长期可发现性。</td></tr>
+      <tr><td><b>③ 桌宠右键菜单</b></td><td>PetMenu 加 <code>⏰ 定时任务</code> 项，就近入口。</td></tr>
+      <tr><td><b>④ 一次性发现提示</b></td><td>用过桌宠 N 次后，某次空闲冒一条轻提示：「💡 想让我每天定时帮你做点事吗？说一句『每天早上整理 AI 新闻』试试」。只出现一次（<code>seen_schedule_hint</code> 标记），不打扰。</td></tr>
+    </table>
+  </div>
+
+  <!-- ════════════ ⑦ UX 10 问 / 红线 / 失败模式 ════════════ -->
+  <h2>⑦ 全流程 UX 10 问 · 安全红线 · 失败模式（动手写 Rust 前答完）</h2>
+  <div class="card notes">
+    <ul>
+      <li class="redline"><b>红线 1 · 永远 A 模式</b>：定时任务<b>绝不</b>在到点时往你当时碰巧在用的 app 模拟键盘写字（B 模式）。8 点你在写邮件，它绝不偷偷插字。与「不写终端」同级红线 → 即使任务结果含 <code>[INSERT_AT_CURSOR]</code> 也强制忽略。</li>
+      <li class="redline"><b>红线 2 · 永远不截屏</b>：你不在主动问，偷抓屏幕既无意义又侵犯隐私。任务走 <code>backend::ask_text_only</code>（纯文本，无图），prompt 自包含。</li>
+      <li><b>首次使用</b>：确认卡把「我理解成了什么」摊开给你看（时间 + 动作 + 投递方式都可见）→ 不对就「改一下」用人话纠正。第一次就不会建错。</li>
+      <li><b>不抢焦点 / 不打扰（UX 第 6+9 问）</b>：overlay 窗 <code>focus:false</code>，投递气泡不夺键盘焦点；几秒自动消失；你正在打字时不弹（延到下一个自然停顿）。</li>
+      <li><b>失败模式 · Mac 睡着了</b>：定时器睡眠中不触发。醒来后若错过的是当天且仍在宽限窗内 → <b>补跑一次</b>；否则标「错过」并显示下次时间。<b>绝不堆积</b>——关机一周回来不会一次跑 7 遍。</li>
+      <li><b>失败模式 · 断网 / backend 挂</b>：因为是你「预约」的不是此刻要的，<b>不弹刺眼错误气泡</b>打断你 → 安静记进任务窗 + 自动重试一次 + 可手动重试。</li>
+      <li><b>取消 / 后悔</b>：确认卡 Esc 取消；管理窗一键开关（暂停不删）/ 删除；正在跑的走 ai_queue 排队，让它跑完即可（结果存窗口，气泡自消）。</li>
+      <li><b>状态可见性</b>：跑的时候三点忙碌 badge（任何视图可见）；管理窗每条显示下次/上次✓✗。你永远不会「不知道它在不在做、做完没」。</li>
+      <li><b>不抢 CPU</b>：套 <code>ai_queue::acquire()</code> 串行 + niced 子进程 → 跟你手动触发的任务、本地听写排队不打架（继承现有硬规则）。</li>
+      <li><b>长期不烦（UX 第 10 问）</b>：轻气泡几秒消失 + 可整条静音（管理窗关开关但保留）+ interval 默认只白天跑。惊艳一次 vs 每天烦的平衡点。</li>
+    </ul>
+  </div>
+
+  <!-- ════════════ ⑧ 数据模型 + 实现锚点 ════════════ -->
+  <h2>⑧ 数据模型 + 实现锚点（拍板后照此进 Rust，全建在现有设施上）</h2>
+  <div class="card">
+    <pre class="json"><span class="c">// ~/.mouseclaw/schedules.json  —— 任务列表（仿 config.json）</span>
+{
+  <span class="k">"id"</span>: <span class="s">"a3f1…"</span>,
+  <span class="k">"title"</span>: <span class="s">"AI 新闻摘要"</span>,            <span class="c">// 自动取自动作，可改</span>
+  <span class="k">"action"</span>: <span class="s">"收集今天值得看的 AI 新闻，写成简短中文摘要"</span>,
+  <span class="k">"schedule"</span>: { <span class="k">"kind"</span>:<span class="s">"daily"</span>, <span class="k">"time"</span>:<span class="s">"08:00"</span> },
+  <span class="k">"delivery"</span>: <span class="s">"bubble"</span>,           <span class="c">// 已拍板：默认轻气泡</span>
+  <span class="k">"enabled"</span>: <span class="n">true</span>,
+  <span class="k">"last_run"</span>: { <span class="k">"at"</span>:<span class="s">"…"</span>, <span class="k">"status"</span>:<span class="s">"ok"</span>, <span class="k">"summary"</span>:<span class="s">"8 条"</span> },
+  <span class="k">"next_run"</span>: <span class="s">"2026-05-22T08:00"</span>
+}
+<span class="c">// ~/.mouseclaw/schedule_runs.jsonl —— 每次跑的完整结果（仿 sessions.jsonl，append-only）</span></pre>
+    <p class="notes" style="margin:12px 0 0;">
+      <ul>
+        <li><b>调度循环</b>：直接复刻 <code>nudge.rs</code>/<code>presence.rs</code> 已有的 60s <code>tokio::time::interval</code> 规则引擎——每分钟扫 schedules.json 找到点的任务（用 <code>last_run</code> 防重复触发 + 醒来补跑判定）。零新框架。</li>
+        <li><b>跑任务</b>：<code>let _t = ai_queue::acquire().await;</code> → <code>backend::ask_text_only(cfg.backend, &action)</code> → 写 runs.jsonl → emit 气泡事件 + 刷新窗口。</li>
+        <li><b>NL 解析</b>：<code>system_prompt()</code> 加一条 <code>[SCHEDULE]{json}[/SCHEDULE]</code> 标记规则（4 backend 共用，自动生效）；pipeline 只取第一个块解析 → 弹确认卡。和 <code>[INSERT_AT_CURSOR]</code> 完全同构。</li>
+        <li><b>新窗口</b>：<code>?view=tasks</code> 加进 main.tsx 路由 + capabilities/default.json 的 windows 列表（已知坑 #3）；新增 React <code>TasksView</code>。</li>
+        <li><b>i18n</b>：所有文案进 <code>types.ts</code>+<code>zh.ts</code>+<code>en.ts</code>；托盘 <code>⏰ 定时任务…</code> 双语按 <code>current_lang</code> 分支。</li>
+        <li><b>config</b>：加 <code>seen_schedule_hint: bool</code>（一次性发现提示）→ 同步改 <code>Config::default()</code> + 构造处（已知坑 #1）。</li>
+      </ul>
+    </p>
+  </div>
+
+  <p style="margin:40px 0 0;color:var(--text-dim);font-size:12.5px;text-align:center;">
+    Prototype · 2026-05-21 · 拍板后才动 Rust/Tauri 实现，实现必须和本 prototype 视觉一致。
+  </p>
+</div>
+
+<script>
+/* ════════════════════════════════════════════════════════════════
+   皮肤定义 + renderMouse —— 逐字移植自 launch-entrance prototype /
+   src/components/PixelMouse.tsx（9 款 · 8 色 palette + body variant）
+   ════════════════════════════════════════════════════════════════ */
+const SKINS=[
+  {id:"classic",name:"经典灰",tag:"默认",body:"standard",palette:{body:"#cfcfcf",belly:"#ffffff",earIn:"#ff9bb8",earOut:"#cfcfcf",eye:"#1a1a1a",nose:"#d63d6a",tail:"#8a8a8a",paw:"#ffffff"}},
+  {id:"lab",name:"小白鼠",body:"slim",palette:{body:"#fafafa",belly:"#ffffff",earIn:"#ffb3c8",earOut:"#e8e3dc",eye:"#ff5f57",nose:"#ff6b9d",tail:"#ffb3c8",paw:"#ffffff"}},
+  {id:"field",name:"田鼠",body:"chubby",palette:{body:"#a47148",belly:"#e8d5b0",earIn:"#d6a07a",earOut:"#7a4e2e",eye:"#1a1a1a",nose:"#5a2e10",tail:"#7a4e2e",paw:"#d6a07a"}},
+  {id:"ninja",name:"忍者鼠",body:"ninja",palette:{body:"#3a3a42",belly:"#5a5a64",earIn:"#1a1a1a",earOut:"#2a2a30",eye:"#ffd166",nose:"#1a1a1a",tail:"#2a2a30",paw:"#1a1a1a"}},
+  {id:"cyber",name:"机械鼠",tag:"酷",body:"robot",palette:{body:"#c0c8d0",belly:"#e8eef4",earIn:"#00e5ff",earOut:"#7a8290",eye:"#00e5ff",nose:"#00e5ff",tail:"#7a8290",paw:"#5a6270"}},
+  {id:"golden",name:"金鼠",tag:"限定",body:"round",palette:{body:"#e8c87a",belly:"#fff4d6",earIn:"#d68a40",earOut:"#c8a050",eye:"#3a2818",nose:"#a06028",tail:"#c8a050",paw:"#fff4d6"}},
+  {id:"cat-gray",name:"小灰猫",tag:"新",body:"cat",palette:{body:"#a8a8a8",belly:"#f4f4f4",earIn:"#ff9bb8",earOut:"#7a7a7a",eye:"#3fa66a",nose:"#d63d6a",tail:"#7a7a7a",paw:"#a8a8a8"}},
+  {id:"fox-red",name:"赤狐",tag:"新",body:"fox",palette:{body:"#d96e2c",belly:"#fff4ec",earIn:"#1a1a1a",earOut:"#a04a18",eye:"#1a1a1a",nose:"#1a1a1a",tail:"#fff4ec",paw:"#1a1a1a"}},
+  {id:"frog-tree",name:"树蛙",tag:"新",body:"frog",palette:{body:"#7ab84a",belly:"#f4e890",earIn:"#ffffff",earOut:"#5a8a30",eye:"#d63d6a",nose:"#5a8a30",tail:"#5a8a30",paw:"#f4e890"}},
+];
+
+function renderMouse(skin,eyeState,size){
+  const p=skin.palette,b=skin.body;
+  const R=(x,y,w,h,f,extra="")=>`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${f}"${extra}/>`;
+  let earL,earR,frogCls=(b==="frog")?" mc-ear-frog":"";
+  if(b==="robot"){earL=R(4,-1,1,3,p.earOut)+R(4,-2,1,1,p.earIn);earR=R(11,-1,1,3,p.earOut)+R(11,-2,1,1,p.earIn);}
+  else if(b==="cat"){earL=R(2,0,1,3,p.earOut)+R(3,1,1,2,p.earOut)+R(4,2,1,1,p.earOut)+R(3,2,1,1,p.earIn);earR=R(13,0,1,3,p.earOut)+R(12,1,1,2,p.earOut)+R(11,2,1,1,p.earOut)+R(12,2,1,1,p.earIn);}
+  else if(b==="fox"){earL=R(2,-1,1,4,p.earOut)+R(3,0,1,3,p.earOut)+R(4,1,1,2,p.earOut)+R(3,1,1,2,p.earIn);earR=R(13,-1,1,4,p.earOut)+R(12,0,1,3,p.earOut)+R(11,1,1,2,p.earOut)+R(12,1,1,2,p.earIn);}
+  else if(b==="frog"){earL=R(3,0,3,3,p.body)+R(4,1,1,1,p.earIn)+R(4,0,1,1,p.earOut);earR=R(10,0,3,3,p.body)+R(11,1,1,1,p.earIn)+R(11,0,1,1,p.earOut);}
+  else if(b==="chubby"){earL=R(2,0,3,3,p.earOut)+R(1,1,4,3,p.earOut)+R(3,1,1,2,p.earIn);earR=R(11,0,3,3,p.earOut)+R(11,1,4,3,p.earOut)+R(12,1,1,2,p.earIn);}
+  else{earL=R(3,1,2,2,p.earOut)+R(2,2,3,2,p.earOut)+R(3,2,1,1,p.earIn);earR=R(11,1,2,2,p.earOut)+R(11,2,3,2,p.earOut)+R(12,2,1,1,p.earIn);}
+  const ears=`<g class="mc-ear mc-ear-l${frogCls}">${earL}</g><g class="mc-ear mc-ear-r${frogCls}">${earR}</g>`;
+  let mask=(b==="ninja")?R(2,5,12,1,"#1a1a1a")+R(0,5,2,1,p.earIn)+R(14,5,2,1,p.earIn):"";
+  let body;
+  if(b==="cat"){body=R(3,3,10,1,p.body)+R(2,4,12,3,p.body)+R(3,7,10,1,p.body)+R(5,8,6,2,p.belly)+R(3,8,2,2,p.body)+R(11,8,2,2,p.body)+R(4,10,8,1,p.body)+R(0,6,2,1,p.body,' opacity="0.7"')+R(0,7,2,1,p.body,' opacity="0.5"')+R(14,6,2,1,p.body,' opacity="0.7"')+R(14,7,2,1,p.body,' opacity="0.5"');}
+  else if(b==="fox"){body=R(3,3,10,1,p.body)+R(2,4,12,3,p.body)+R(3,7,10,1,p.body)+R(6,7,4,1,p.belly)+R(5,8,6,3,p.belly)+R(3,8,2,2,p.body)+R(11,8,2,2,p.body)+R(4,10,8,1,p.body);}
+  else if(b==="frog"){body=R(2,3,12,1,p.body)+R(1,4,14,4,p.body)+R(2,8,12,2,p.body)+R(4,6,8,4,p.belly)+R(6,9,4,1,p.body)+R(5,10,6,1,p.body);}
+  else if(b==="slim"){body=R(4,3,8,1,p.body)+R(3,4,10,3,p.body)+R(4,7,8,1,p.body)+R(6,8,4,2,p.belly)+R(4,8,2,2,p.body)+R(10,8,2,2,p.body)+R(5,10,6,1,p.body);}
+  else if(b==="round"){body=R(3,3,10,1,p.body)+R(2,4,12,3,p.body)+R(3,7,10,1,p.body)+R(4,8,8,3,p.belly)+R(3,8,1,3,p.body)+R(12,8,1,3,p.body);}
+  else{body=R(3,3,10,1,p.body)+R(2,4,12,3,p.body)+R(3,7,10,1,p.body)+R(5,8,6,2,p.belly)+R(3,8,2,2,p.body)+R(11,8,2,2,p.body)+R(4,10,8,1,p.body);}
+  let tail,tailCls=(b==="fox")?" mc-tail-fox":"";
+  if(b==="round")tail=R(13,9,1,1,p.tail)+R(14,8,1,2,p.tail)+R(15,7,1,1,p.tail)+R(14,6,2,1,p.tail);
+  else if(b==="robot")tail=R(13,9,2,1,p.tail)+R(15,8,1,1,p.tail);
+  else if(b==="cat")tail=R(13,9,1,1,p.tail)+R(14,8,1,1,p.tail)+R(15,7,1,2,p.tail)+R(15,5,1,2,p.tail)+R(14,4,1,1,p.tail);
+  else if(b==="fox")tail=R(13,6,3,4,p.body)+R(14,5,2,1,p.body)+R(15,9,1,2,p.tail)+R(14,10,2,1,p.tail);
+  else if(b==="frog")tail="";
+  else tail=R(13,9,1,1,p.tail)+R(14,7,1,3,p.tail);
+  const tailG=`<g class="mc-tail${tailCls}">${tail}</g>`;
+  let eyes;
+  if(eyeState==="sleep")eyes=R(5,6,1,1,p.eye)+R(10,6,1,1,p.eye);
+  else if(eyeState==="happy")eyes=R(5,6,1,1,p.eye)+R(6,5,1,1,p.eye)+R(9,5,1,1,p.eye)+R(10,6,1,1,p.eye);
+  else eyes=R(5,5,1,2,p.eye)+R(10,5,1,2,p.eye);
+  const eyesG=`<g class="mc-eyes">${eyes}</g>`;
+  const paws=R(4,11,2,1,p.paw)+R(10,11,2,1,p.paw);
+  const nose=`<rect class="mc-nose" x="7" y="7" width="2" height="1" fill="${p.nose}"/>`;
+  return `<svg class="mouse" viewBox="-1 -3 18 18" width="${size}" height="${size}" role="img" aria-label="${skin.name}">${ears}${mask}${body}${tailG}${eyesG}${paws}${nose}</svg>`;
+}
+
+const $=id=>document.getElementById(id);
+
+/* ════════════ ① 一句话创建 ════════════ */
+const PHRASES=[
+  {said:"每天早上 8 点整理 AI 新闻给我", title:"AI 新闻摘要", chip:"⏰ 每天 08:00",
+   action:"收集今天值得看的 AI 新闻，写成简短中文摘要"},
+  {said:"工作日下午 6 点提醒我写日报", title:"日报提醒", chip:"⏰ 工作日 18:00",
+   action:"提醒我写今天的工作日报，并根据今天的 git 提交起个草稿"},
+  {said:"每隔 2 小时看看收件箱有没有要紧邮件", title:"重要邮件巡检", chip:"🔁 每隔 2 小时",
+   action:"检查收件箱里有没有需要尽快处理的邮件，挑出来用一句话告诉我"},
+  {said:"每周一早上 9 点给我本周科技要闻", title:"每周科技要闻", chip:"⏰ 每周一 09:00",
+   action:"整理上周到现在的重要科技新闻，写成本周要闻速览"},
+];
+const s1pet=$("s1-pet"), s1busy=$("s1-busy"), s1card=$("s1-card");
+function placeS1(){
+  const st=$("s1"); s1pet.style.width="64px"; s1pet.style.height="64px";
+  s1pet.style.left=(st.clientWidth*0.62)+"px"; s1pet.style.top=(st.clientHeight-64-18)+"px";
+  s1pet.querySelector(".busy-badge")||s1pet.appendChild(s1busy);
+}
+function renderS1Pet(state){
+  s1pet.className="pet-host "+state;
+  s1pet.innerHTML=renderMouse(SKINS[0], state==="think"?"alert":"happy", 64);
+  s1pet.appendChild(s1busy);
+}
+let s1timer=null;
+$("phrases").addEventListener("click",e=>{
+  const btn=e.target.closest("button"); if(!btn) return;
+  const ph=PHRASES[+btn.dataset.i];
+  clearTimeout(s1timer);
+  s1card.classList.remove("on");
+  $("s1-phase").textContent="① 听到了 → 桌宠在解析这句话…";
+  renderS1Pet("think");
+  s1timer=setTimeout(()=>{
+    renderS1Pet("idle");
+    s1card.innerHTML=
+      `<div class="row1"><span class="sched-tag">⏰ 设个定时任务?</span><span class="chip">${ph.chip}</span></div>
+       <div class="said">“${ph.said}”</div>
+       <div class="what"><span class="q">我会到点帮你：</span><br>${ph.action}</div>
+       <div class="meta">📍 做完轻轻提醒你 · 也存进任务窗</div>
+       <div class="acts"><button class="bubble-btn cta">✓ 就这么定</button>
+         <button class="bubble-btn ghost">改一下</button>
+         <span class="esc">Esc 取消</span></div>`;
+    const st=$("s1");
+    s1card.style.left=(st.clientWidth*0.30)+"px";
+    s1card.style.top="64px";
+    s1card.classList.add("on");
+    $("s1-phase").textContent="② 解析好了 → 摊开「我理解成什么」让你确认。Esc / 点外面 = 取消。";
+  },900);
+});
+
+/* ════════════ ② 管理窗 ════════════ */
+const TASKS=[
+  {title:"AI 新闻摘要", chip:"⏰ 每天 08:00", on:true,
+   action:"收集今天值得看的 AI 新闻，写成简短中文摘要",
+   next:"明天 08:00", last:{k:"ok",t:"今早 07:00",txt:"✓ 今早 8 条"},
+   preview:"今天 AI 圈 3 件大事：① 某模型开源权重；② …；③ …。点开看全文。",
+   runs:[{k:"ok",t:"今天 08:00 · 8 条"},{k:"ok",t:"昨天 08:00 · 6 条"},{k:"skip",t:"前天 · Mac 睡眠，已跳过"}]},
+  {title:"重要邮件巡检", chip:"🔁 每隔 2 小时", on:true,
+   action:"检查收件箱里有没有需要尽快处理的邮件，挑出来用一句话告诉我",
+   next:"今天 14:00", last:{k:"fail",t:"12:00",txt:"✗ 断网，已自动重试"},
+   preview:"上次断网没拿到结果，已排重试。最近一次成功：发现 1 封 boss 的待回邮件。",
+   runs:[{k:"fail",t:"今天 12:00 · 断网（重试中）"},{k:"ok",t:"今天 10:00 · 1 封待回"},{k:"ok",t:"今天 08:00 · 无要紧"}]},
+  {title:"每周科技要闻", chip:"⏰ 每周一 09:00", on:false,
+   action:"整理上周到现在的重要科技新闻，写成本周要闻速览",
+   next:"已暂停", last:{k:"ok",t:"上周一",txt:"✓ 已暂停"},
+   preview:"（已暂停 · 开关打开后下周一恢复）",
+   runs:[{k:"ok",t:"上周一 09:00 · 12 条"}]},
+];
+function renderTaskWin(empty){
+  const w=$("taskwin");
+  if(empty){
+    w.innerHTML=
+      `<div class="hd"><span class="h">⏰ 定时任务</span><span class="c">0 个</span><span class="x">✕</span></div>
+       <div class="empty"><div class="big">⏰</div>
+         <div>还没有定时任务</div>
+         <div class="ex">召唤桌宠后说一句，比如：<br><code>每天早上整理 AI 新闻给我</code><br><code>每隔 2 小时看看要紧邮件</code></div>
+       </div>
+       <div class="new"><div class="ipt">用一句话新建：每天 / 工作日 / 每隔几小时…</div><button class="add">＋</button></div>`;
+    return;
+  }
+  w.innerHTML=
+    `<div class="hd"><span class="h">⏰ 定时任务</span><span class="c">${TASKS.length} 个 · ${TASKS.filter(t=>t.on).length} 启用</span><span class="x">✕</span></div>
+     <div class="list">${TASKS.map((t,i)=>`
+       <div class="task ${t.on?'':'off'}" data-i="${i}">
+         <div class="t1"><span class="name">${t.title}</span>
+           <div class="tog ${t.on?'on':''}" data-tog="${i}"></div></div>
+         <div class="t2"><span class="chip">${t.chip}</span></div>
+         <div class="action">${t.action}</div>
+         <div class="meta">
+           <span>下次 <b>${t.next}</b></span><span>·</span>
+           <span class="${t.last.k==='ok'?'ok':t.last.k==='fail'?'fail':''}">${t.last.txt}</span>
+           <span class="row-acts">
+             <span class="iconbtn" data-exp="${i}">▾</span>
+             <span class="iconbtn">✎</span>
+             <span class="iconbtn">🗑</span>
+           </span>
+         </div>
+         <div class="history">
+           <div class="preview">${t.preview}</div>
+           ${t.runs.map(r=>`<div class="run"><span class="dot ${r.k}"></span>${r.t}</div>`).join("")}
+         </div>
+       </div>`).join("")}</div>
+     <div class="new"><div class="ipt">用一句话新建：每天 / 工作日 / 每隔几小时…</div><button class="add">＋</button></div>`;
+  // wire toggles + expand
+  w.querySelectorAll("[data-tog]").forEach(el=>el.addEventListener("click",()=>{
+    const i=+el.dataset.tog; TASKS[i].on=!TASKS[i].on; renderTaskWin(false);
+  }));
+  w.querySelectorAll("[data-exp]").forEach(el=>el.addEventListener("click",()=>{
+    el.closest(".task").classList.toggle("expanded");
+    el.textContent=el.closest(".task").classList.contains("expanded")?"▴":"▾";
+  }));
+}
+let winEmpty=false;
+$("toggle-empty").addEventListener("click",()=>{winEmpty=!winEmpty;renderTaskWin(winEmpty);});
+renderTaskWin(false);
+
+/* ════════════ ③ 投递（轻气泡） ════════════ */
+const s3pet=$("s3-pet"),s3busy=$("s3-busy"),s3bub=$("s3-bubble");
+let s3skin=SKINS[0],s3timers=[];
+function placeS3(){
+  const st=$("s3"); s3pet.style.width="64px"; s3pet.style.height="64px";
+  s3pet.style.left=(st.clientWidth*0.80)+"px"; s3pet.style.top=(st.clientHeight-64-14)+"px";
+}
+function s3render(state){
+  s3pet.className="pet-host "+state;
+  const eye=state==="think"?"alert":state==="jump"?"happy":"sleep";
+  s3pet.innerHTML=renderMouse(s3skin,eye,64);
+  s3pet.appendChild(s3busy);
+}
+function s3clear(){ s3timers.forEach(clearTimeout); s3timers=[]; }
+function s3reset(){
+  s3clear(); s3busy.classList.remove("on"); s3bub.classList.remove("on"); s3render("idle");
+  $("s3-phase").textContent="阶段 0 · 桌宠在角落安静待命";
+}
+function s3play(){
+  s3clear(); s3bub.classList.remove("on");
+  $("s3-phase").textContent="阶段 1 · 到点 08:00 → 桌宠醒来，三点忙碌 badge 亮（任何视图可见）";
+  s3render("think"); s3busy.classList.add("on");
+  s3timers.push(setTimeout(()=>{
+    $("s3-phase").textContent="阶段 2 · 做完 → 一个开心蹦 → 轻气泡冒出来（不抢焦点）";
+    s3busy.classList.remove("on"); s3render("jump");
+    s3bub.innerHTML=
+      `<div class="sched-tag">⏰ 定时 · AI 新闻摘要</div>
+       <div class="body">🗞 今天的 AI 新闻整理好了 <span class="count-pill">8 条</span></div>
+       <div class="expand">▼ 展开看完整 · 也已存进任务窗</div>`;
+    const st=$("s3");
+    s3bub.style.left=(st.clientWidth*0.50)+"px"; s3bub.style.top="56px";
+    s3bub.classList.add("on");
+    s3timers.push(setTimeout(()=>s3render("idle"),900));
+    s3timers.push(setTimeout(()=>{
+      s3bub.classList.remove("on");
+      $("s3-phase").textContent="阶段 3 · 几秒后气泡自动消失 → 回 idle。结果不丢，任务窗随时回看。";
+    },4200));
+  },1600));
+}
+$("s3-play").addEventListener("click",s3play);
+$("s3-reset").addEventListener("click",s3reset);
+$("s3-skin").innerHTML=SKINS.map(s=>`<option value="${s.id}">${s.name}</option>`).join("");
+$("s3-skin").addEventListener("change",e=>{s3skin=SKINS.find(s=>s.id===e.target.value)||SKINS[0];s3render("idle");});
+
+/* ════════════ ④ 9 皮肤 ════════════ */
+function buildGrid(){
+  const g=$("grid");
+  g.innerHTML=SKINS.map(s=>`
+    <div class="cell">
+      <div class="mini-stage" data-skin="${s.id}">
+        <div class="mini-bubble"><div class="st">⏰ 定时 · AI 新闻</div>🗞 整理好了 · 8 条</div>
+        <div class="pet-host jump"><div class="busy-badge"><i></i><i></i><i></i></div></div>
+      </div>
+      <div class="name">${s.name}${s.tag?`<span class="tag">${s.tag}</span>`:""}</div>
+    </div>`).join("");
+  g.querySelectorAll(".mini-stage").forEach(ms=>{
+    const s=SKINS.find(x=>x.id===ms.dataset.skin);
+    const host=ms.querySelector(".pet-host");
+    host.innerHTML=renderMouse(s,"happy",40);
+    host.appendChild(ms.querySelector(".busy-badge"));
+    host.style.left="62%"; host.style.bottom="8px"; host.style.position="absolute";
+  });
+}
+
+/* init */
+function initAll(){
+  placeS1(); renderS1Pet("idle");
+  placeS3(); s3render("idle");
+  buildGrid();
+}
+initAll();
+requestAnimationFrame(initAll);
+window.addEventListener("resize",()=>{placeS1();placeS3();});
+</script>
+</body>
+</html>

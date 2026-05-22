@@ -54,6 +54,9 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 
     let summon  = MenuItem::with_id(app, "summon",  s_summon,  true, None::<&str>)?;
     let history = MenuItem::with_id(app, "history", s_history, true, None::<&str>)?;
+    // v0.5 · 定时任务管理窗入口
+    let s_tasks = if en { "⏰ Scheduled tasks…" } else { "⏰ 定时任务…" };
+    let tasks_item = MenuItem::with_id(app, "open-tasks", s_tasks, true, None::<&str>)?;
     // v0.1.17 · 显式剪贴板入口（解决 ⌘⇧V 发现性问题）
     let clipboard_item = MenuItem::with_id(app, "open-clipboard", s_clipboard, true, None::<&str>)?;
 
@@ -202,7 +205,7 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 
     // List items (declaring early so the vec! below can reference them)
     let mut items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = vec![
-        &summon, &new_session_item, &pin_item, &clipboard_item, &history,
+        &summon, &new_session_item, &pin_item, &clipboard_item, &history, &tasks_item,
         &skin_picker_item, &anchor_submenu, &lang_submenu,
         &sep1, &vime_item, &summon_submenu, &trigger_submenu, &vocab_submenu, &pause_item,
         &workspace_item,

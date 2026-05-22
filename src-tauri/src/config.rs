@@ -188,6 +188,10 @@ pub struct Config {
     ///   （等价"第一次见到新版桌宠"，符合预期）。
     #[serde(default)]
     pub seen_entrance: bool,
+    /// v0.5 · 是否已经给过一次性"定时任务发现提示"。从没建过定时任务的用户，
+    /// 启动几分钟后桌宠会轻轻提一句怎么用，提过即置 true（只提一次，不打扰）。
+    #[serde(default)]
+    pub seen_schedule_hint: bool,
     /// Schema version. Saved configs older than CURRENT_CONFIG_VERSION get
     /// treated as not-onboarded so the user re-picks a shortcut.
     /// Pre-versioned configs default to 1 (the legacy schema).
@@ -231,6 +235,7 @@ impl Default for Config {
             sfx_volume: default_sfx_volume(),
             onboarded: false,
             seen_entrance: false,
+            seen_schedule_hint: false,
             version: CURRENT_CONFIG_VERSION,
         }
     }

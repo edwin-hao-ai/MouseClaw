@@ -47,6 +47,8 @@ pub mod permissions;
 pub mod pipeline;
 pub mod provider_env;
 pub mod reactive;
+pub mod schedule;
+pub mod scheduler;
 pub mod screenshot;
 pub mod selection;
 pub mod sessions;
@@ -394,6 +396,15 @@ pub fn run() {
             commands::vocab_reload,
             commands::vocab_get_builtin_enabled,
             commands::vocab_set_builtin_enabled,
+            commands::open_tasks_window,
+            commands::list_schedules,
+            commands::create_schedule,
+            commands::update_schedule,
+            commands::delete_schedule,
+            commands::toggle_schedule,
+            commands::run_schedule_now,
+            commands::get_schedule_runs,
+            commands::parse_schedule_phrase,
             clipboard_action::process_reactive_action,
         ])
         .setup(move |app| {
@@ -429,6 +440,10 @@ pub fn run() {
                 presence_buf,
                 app_state.nudge_state.clone(),
             );
+
+            // v0.5 · 定时任务调度循环 —— 每 60s 扫 schedules.json 跑到点的任务。
+            // tick 内部自查 onboarded + backend，未配置时静默 no-op。
+            scheduler::spawn(app.handle().clone());
 
             // v0.2 启动剪贴板历史捕获 —— 500ms 轮询 changeCount
             // v0.4 · reactive 模块挂 AppHandle，clipboard 新条目时按 tier 发 event

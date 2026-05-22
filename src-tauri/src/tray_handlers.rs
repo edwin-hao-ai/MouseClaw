@@ -101,6 +101,11 @@ pub(crate) fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
             }
         }
         "history"         => open_history_window(app),
+        "open-tasks"      => {
+            if let Err(e) = crate::commands::open_tasks_window(app.clone()) {
+                eprintln!("[mouseclaw] open-tasks: {e}");
+            }
+        }
         "open-downloader" => {
             if let Err(e) = crate::commands::open_downloader_window(app.clone()) {
                 eprintln!("[mouseclaw] open-downloader: {e}");
