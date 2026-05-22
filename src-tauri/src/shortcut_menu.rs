@@ -10,8 +10,10 @@
 //!   只改 atomic 缓存（voice_ime::set_trigger），本来就是热的。
 //!
 //! 两者切换后 tray dispatch 都会 rebuild_tray_menu → 勾选实时同步。
-
-#![cfg(target_os = "macos")]
+//!
+//! 跨平台（v0.5）：菜单构建 + 召唤快捷键热切换走 tauri 跨平台 API，全平台可用。
+//! 语音触发键的标签（fn/⌥ 等）目前是 macOS 语义；Win/Linux 的听写触发方式待 §4
+//! UX 决策（见 docs/design/cross-platform-port-20260522.md）。
 
 use std::str::FromStr;
 use tauri::menu::{CheckMenuItem, IsMenuItem, Submenu};

@@ -13,13 +13,20 @@
 //! - 用 `image` crate 直接写 RGBA 像素到 PNG
 //! - 性能：100 个点 ≈ 8 秒内，烘图 < 30ms
 
-#![cfg(target_os = "macos")]
+//! 跨平台说明：`TrailPoint` 数据类型在所有平台编译（被 AppState / pipeline 引用）；
+//! 采样 + 烘图实现目前仅 macOS，调用点已在 pipeline.rs 用 `#[cfg(target_os = "macos")]`
+//! 包裹。Win/Linux 的轨迹采样依赖「全局光标位置」，待平台抽象接入（Wayland 拿不到）。
 
+#[cfg(target_os = "macos")]
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(target_os = "macos")]
 use std::sync::{Arc, Mutex};
+#[cfg(target_os = "macos")]
 use std::time::{Duration, Instant};
+#[cfg(target_os = "macos")]
 use tauri::{AppHandle, Emitter, Manager};
 
+#[cfg(target_os = "macos")]
 use serde::Serialize;
 
 /// 一个采样点
@@ -32,6 +39,7 @@ pub struct TrailPoint {
 }
 
 /// 给前端 DrawOverlay 的 payload —— x/y/t + drawing flag
+#[cfg(target_os = "macos")]
 #[derive(Serialize, Clone, Copy)]
 struct TrailPointEvent {
     x: f64,
@@ -41,14 +49,17 @@ struct TrailPointEvent {
 }
 
 /// 全局 trail 缓冲 —— Arc<Mutex<Vec<TrailPoint>>>
+#[cfg(target_os = "macos")]
 pub static TRAIL: once_cell::sync::Lazy<Arc<Mutex<Vec<TrailPoint>>>> =
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(Vec::with_capacity(128))));
 
 /// 控制采样 loop 的 atomic
+#[cfg(target_os = "macos")]
 static SAMPLING: AtomicBool = AtomicBool::new(false);
 
 /// 开始采样 —— 在 on_shortcut_press 里调
 /// v0.1.21：还会向 "draw" 窗口 emit trail-point 事件，让 React canvas 实时画线
+#[cfg(target_os = "macos")]
 pub fn start(app: AppHandle) {
     if SAMPLING.swap(true, Ordering::SeqCst) {
         return; // 已经在跑
@@ -87,6 +98,7 @@ pub fn start(app: AppHandle) {
 }
 
 /// 开 / 显示全屏透明画板 overlay
+#[cfg(target_os = "macos")]
 fn show_draw_overlay(app: &AppHandle) {
     use tauri::{WebviewWindowBuilder, WebviewUrl};
     if let Some(w) = app.get_webview_window("draw") {
@@ -127,6 +139,7 @@ fn show_draw_overlay(app: &AppHandle) {
 }
 
 /// 停止采样 + 拿出 trail（move 出来，buffer 清空）
+#[cfg(target_os = "macos")]
 pub fn stop_and_take() -> Vec<TrailPoint> {
     SAMPLING.store(false, Ordering::SeqCst);
     std::mem::take(&mut *TRAIL.lock().unwrap())
@@ -159,9 +172,11 @@ fn sample_cursor() -> Option<(f64, f64, bool)> {
     }
 }
 
-// ────────────────── 烘图：把轨迹画到 PNG 上 ──────────────────
+// ────────────────── 烘图：把轨迹画到 PNG 上（仅 macOS 调用）──────────────────
 
+#[cfg(target_os = "macos")]
 use std::path::Path;
+#[cfg(target_os = "macos")]
 use anyhow::{Context, Result};
 
 /// 把 trail 画在 screenshot PNG 上。原 path 被覆盖；如果 trail 空则不动。
@@ -169,6 +184,7 @@ use anyhow::{Context, Result};
 /// 视觉：
 ///   - 左键松开的段（trajectory）：灰色 2px 线
 ///   - 左键按住的段（annotation）：粉红色 6px 线 + 端点圆
+#[cfg(target_os = "macos")]
 pub fn render_onto_screenshot(png_path: &Path, trail: &[TrailPoint]) -> Result<()> {
     if trail.is_empty() { return Ok(()); }
     use image::{ImageReader, Rgba, RgbaImage};
@@ -220,6 +236,7 @@ pub fn render_onto_screenshot(png_path: &Path, trail: &[TrailPoint]) -> Result<(
 }
 
 /// Bresenham-ish thick line —— 简单暴力，性能够用
+#[cfg(target_os = "macos")]
 fn draw_line(img: &mut image::RgbaImage, x0: f64, y0: f64, x1: f64, y1: f64,
              thick: f64, color: image::Rgba<u8>) {
     let dx = x1 - x0;
@@ -235,6 +252,7 @@ fn draw_line(img: &mut image::RgbaImage, x0: f64, y0: f64, x1: f64, y1: f64,
     }
 }
 
+#[cfg(target_os = "macos")]
 fn draw_disc(img: &mut image::RgbaImage, cx: f64, cy: f64, r: f64, color: image::Rgba<u8>) {
     let (w, h) = img.dimensions();
     let x0 = ((cx - r).floor() as i32).max(0);
@@ -253,6 +271,7 @@ fn draw_disc(img: &mut image::RgbaImage, cx: f64, cy: f64, r: f64, color: image:
     }
 }
 
+#[cfg(target_os = "macos")]
 fn blend(img: &mut image::RgbaImage, x: u32, y: u32, src: image::Rgba<u8>) {
     if x >= img.width() || y >= img.height() { return; }
     let alpha = src[3] as f32 / 255.0;
@@ -282,7 +301,7 @@ fn primary_screen_logical_size() -> Option<(f64, f64)> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "macos"))]
 mod tests {
     use super::*;
     #[test]

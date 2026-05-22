@@ -198,10 +198,13 @@ impl AppState {
     }
 }
 
-/// Release builds run as a `.app` bundle where stdout/stderr go nowhere.
+/// Release builds run as a bundled GUI app where stdout/stderr go nowhere.
 /// Redirect both to `~/.mouseclaw/mouseclaw.log` so users (and us) can debug.
 /// Dev builds (`bun tauri dev`) keep console output — no redirect.
-#[cfg(all(target_os = "macos", not(debug_assertions)))]
+///
+/// 跨平台：macOS + Linux 都走 unix `dup2`（libc 是 unix 依赖）。Windows GUI 子系统
+/// 无 console，且无 `dup2`；release 版日志暂不落盘（已知降级，见 cross-platform-port doc）。
+#[cfg(all(unix, not(debug_assertions)))]
 fn init_file_logging() {
     use std::os::unix::io::IntoRawFd;
     let home = std::env::var("HOME").unwrap_or_default();
@@ -226,7 +229,7 @@ fn init_file_logging() {
     }
 }
 
-#[cfg(not(all(target_os = "macos", not(debug_assertions))))]
+#[cfg(not(all(unix, not(debug_assertions))))]
 fn init_file_logging() {}
 
 #[cfg(target_os = "macos")]

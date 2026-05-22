@@ -18,18 +18,27 @@
 //! 永久 CFRunLoop。Tap 在那个 loop 里 dispatch 事件，回调里把状态发到 tokio
 //! 的 mpsc，主 runtime 收到再 emit + 跑 pipeline。
 
-#![cfg(target_os = "macos")]
+//! 跨平台说明（v0.5 跨平台移植）：本模块的**配置层**（`ImeTrigger` 枚举、`set_enabled`/
+//! `set_trigger`、`MONITOR` 原子缓存）在所有平台编译，供托盘 / commands 调用。**事件监听
+//! 实现**（CGEventTap）目前仅 macOS；Win/Linux 的全局热键触发待 §4 UX 决策后接入
+//! （见 docs/design/cross-platform-port-20260522.md）。`spawn` 仅在 macOS 调用。
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
-use std::time::{Duration, Instant};
-use tauri::{AppHandle, Manager};
 
+#[cfg(target_os = "macos")]
+use std::sync::Arc;
+#[cfg(target_os = "macos")]
+use std::time::{Duration, Instant};
+#[cfg(target_os = "macos")]
+use tauri::{AppHandle, Manager};
+#[cfg(target_os = "macos")]
 use crate::AppState;
 
 /// 短按阈值 —— < 300ms 当误触不响应
+#[cfg(target_os = "macos")]
 const LONG_PRESS_MS: u128 = 300;
 /// 录音上限 —— 防止误触后忘了松开
+#[cfg(target_os = "macos")]
 const MAX_RECORDING_MS: u64 = 60_000;
 
 /// 触发键 —— 用户在 Onboarding / 托盘选。
@@ -114,6 +123,7 @@ impl ImeTrigger {
 /// ⚠️ v0.1.14 修：tap_callback 在 FFI hot path 上，**不能**调 Config::load()
 ///   （那会每次按键都读 + parse JSON 文件，跟其他线程写 config 也会撞）。
 /// 所以这里把 trigger 的 keycodes 和 flag_bit 缓存进 atomic，set_trigger 时更新。
+#[allow(dead_code)] // 非 macOS 上部分字段（keycode/flag 缓存）暂未被事件监听消费
 struct ImeMonitor {
     pressed_at: AtomicI64,    // micros since UNIX_EPOCH, 0 = not pressed
     triggered: AtomicBool,    // 长按已触发 = 等松开做 stop
@@ -151,6 +161,7 @@ pub fn set_trigger(t: ImeTrigger) {
 }
 
 #[inline]
+#[cfg(target_os = "macos")]
 fn cached_matches(keycode: i64) -> bool {
     let kc1 = MONITOR.trigger_kc1.load(Ordering::Relaxed);
     let kc2 = MONITOR.trigger_kc2.load(Ordering::Relaxed);
@@ -158,6 +169,8 @@ fn cached_matches(keycode: i64) -> bool {
 }
 
 /// 主入口 —— lib.rs setup 时调一次。起后台线程跑 CGEventTap。
+/// 仅 macOS：调用点在 lib.rs 已 `#[cfg(target_os = "macos")]` 包裹。
+#[cfg(target_os = "macos")]
 pub fn spawn(app: AppHandle, state: Arc<AppState>) {
     let cfg = crate::config::Config::load();
     MONITOR.enabled.store(cfg.voice_ime_enabled, Ordering::Relaxed);
@@ -172,14 +185,17 @@ pub fn spawn(app: AppHandle, state: Arc<AppState>) {
         .expect("spawn ime tap thread");
 }
 
-// ────────────────── CGEventTap 部分 ──────────────────
+// ────────────────── CGEventTap 部分（仅 macOS）──────────────────
 
+#[cfg(target_os = "macos")]
 #[repr(transparent)]
 #[derive(Copy, Clone)]
 #[allow(dead_code)] // 保留给后续扩展（事件回调里手动构造 event ref）
 struct CGEventRef(*mut std::ffi::c_void);
+#[cfg(target_os = "macos")]
 unsafe impl Send for CGEventRef {}
 
+#[cfg(target_os = "macos")]
 type CGEventTapCallBack = unsafe extern "C" fn(
     proxy: *mut std::ffi::c_void,
     event_type: u32,
@@ -187,6 +203,7 @@ type CGEventTapCallBack = unsafe extern "C" fn(
     user_info: *mut std::ffi::c_void,
 ) -> *mut std::ffi::c_void;
 
+#[cfg(target_os = "macos")]
 #[link(name = "ApplicationServices", kind = "framework")]
 extern "C" {
     fn CGEventTapCreate(
@@ -203,6 +220,7 @@ extern "C" {
     fn CGEventGetIntegerValueField(event: *mut std::ffi::c_void, field: u32) -> i64;
 }
 
+#[cfg(target_os = "macos")]
 #[link(name = "CoreFoundation", kind = "framework")]
 extern "C" {
     fn CFMachPortCreateRunLoopSource(
@@ -223,6 +241,7 @@ extern "C" {
 }
 
 /// Tap 接收回调（C ABI）—— 用 keycode 字段精确识别用户选的 trigger 键
+#[cfg(target_os = "macos")]
 unsafe extern "C" fn tap_callback(
     _proxy: *mut std::ffi::c_void,
     event_type: u32,
@@ -276,6 +295,7 @@ fn trigger_to_flag_bit(t: ImeTrigger) -> u64 {
     }
 }
 
+#[cfg(target_os = "macos")]
 #[derive(Debug)]
 enum ImeEvent {
     PressedDown,
@@ -284,10 +304,12 @@ enum ImeEvent {
     ReleasedShortTap,
 }
 
+#[cfg(target_os = "macos")]
 struct TapState {
     tx: std::sync::mpsc::Sender<ImeEvent>,
 }
 
+#[cfg(target_os = "macos")]
 fn run_event_tap(app: AppHandle, state: Arc<AppState>) {
     let (tx, rx) = std::sync::mpsc::channel::<ImeEvent>();
 
@@ -325,6 +347,7 @@ fn run_event_tap(app: AppHandle, state: Arc<AppState>) {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn handle_fn_events(rx: std::sync::mpsc::Receiver<ImeEvent>, app: AppHandle, state: Arc<AppState>) {
     while let Ok(ev) = rx.recv() {
         match ev {
@@ -394,6 +417,7 @@ fn is_secure_input_active() -> bool { false }
 
 // ────────────────── 录音 → sherpa ASR → paste 流程 ──────────────────
 
+#[cfg(target_os = "macos")]
 fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
     // 已经在录音（被 ⌘⇧Space 占着）→ 跳过
     if state.recorder.lock().unwrap().is_some() {
@@ -590,6 +614,7 @@ fn frontmost_bundle() -> String {
 #[cfg(not(target_os = "macos"))]
 fn frontmost_bundle() -> String { String::new() }
 
+#[cfg(target_os = "macos")]
 fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
     // v0.3.1 · 停止 streaming poller —— 让它最后一帧完成后退出
     state.streaming_active.store(false, Ordering::SeqCst);
@@ -715,6 +740,7 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
 
 /// v0.4.0 P2 · 执行纠错动作 —— Replace 走 backspace + write，UndoAll 走 backspace，
 /// NotFound 仅气泡反馈不写入。所有路径走完发个气泡 + 自动 hide。
+#[cfg(target_os = "macos")]
 async fn handle_correction(
     app: &AppHandle,
     action: crate::voice_correct::CorrectionAction,

@@ -36,17 +36,28 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 aes-gcm = { version = "0.10", features = ["alloc"] }
 base64 = "0.22"
 rand = "0.8"
-security-framework = "2"
 image = { version = "0.25", default-features = false, features = ["png"] }
 tauri-plugin-autostart = "2"
 
+# 剪贴板加密 master key 的安全存储后端（v0.5 跨平台移植）：
+#   macOS  → security-framework（Keychain，保留现有用户的条目语义，见下）
+#   Win    → keyring → Windows Credential Manager
+#   Linux  → keyring → Secret Service（无 keyring daemon 时 clipboard_crypto 退回 0600 文件）
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.26"
 objc = "0.2"
 block = "0.1"
 core-graphics = "0.24"
 core-foundation = "0.10"
+security-framework = "2"
+
+# 所有 unix（macOS + Linux）：lower_priority 用 setpriority（nice）。Windows 走 no-op 分支。
+[target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+# 非 macOS（Windows + Linux）：剪贴板密钥用 OS keystore。
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+keyring = "3"
 
 [dev-dependencies]
 tempfile = "3.27.0"

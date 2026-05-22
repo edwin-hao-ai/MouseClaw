@@ -34,23 +34,43 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": ["/tmp/**", "/private/var/folders/**", "$HOME/.mouseclaw/**"]
+        "scope": [
+          "$TEMP/**",
+          "$HOME/.mouseclaw/**",
+          "/tmp/**",
+          "/private/var/folders/**"
+        ]
       }
     }
   },
   "bundle": {
     "active": true,
-    "targets": "dmg",
+    "targets": ["app", "dmg", "nsis", "deb", "appimage"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
-      "icons/icon.icns"
+      "icons/icon.icns",
+      "icons/icon.ico"
     ],
     "macOS": {
       "minimumSystemVersion": "11.0",
       "signingIdentity": "Developer ID Application: Beijing VGO Co;Ltd (5XNDF727Y6)",
       "entitlements": "entitlements.plist"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0",
+          "libayatana-appindicator3-1"
+        ]
+      }
     }
   }
 }
