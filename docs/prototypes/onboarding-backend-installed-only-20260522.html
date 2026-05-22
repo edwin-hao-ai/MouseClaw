@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Onboarding · 后端选择「只列已安装」· prototype 20260522</title>
+<style>
+  /* 复用 DESIGN.md token（dark onboarding 主题），与 Onboarding.css 一致 */
+  :root{
+    --bg:#0e1422; --panel:#161d2c;
+    --card:rgba(255,255,255,0.04); --card-border:rgba(255,255,255,0.10);
+    --ink:#f5f5f7; --dim:#a1a1a8; --pink:#ff6b9d; --pink-soft:#ff9bb8;
+    --success:#5cd6a0; --warn:#ffd166; --mono:ui-monospace,Menlo,monospace;
+    --grad:linear-gradient(135deg,#ff6b9d,#ff9bb8);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#05070d;font:14px/1.5 -apple-system,"PingFang SC",system-ui,sans-serif;color:var(--ink);
+       min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:30px;gap:28px;flex-wrap:wrap}
+
+  /* 场景切换器（prototype 专用，真实产品没有）*/
+  .switcher{position:sticky;top:30px;background:#111726;border:1px solid var(--card-border);border-radius:14px;
+            padding:16px 18px;width:240px}
+  .switcher h4{margin:0 0 4px;font-size:13px;color:var(--ink)}
+  .switcher p{margin:0 0 12px;font-size:11.5px;color:var(--dim);line-height:1.6}
+  .scn{display:block;width:100%;text-align:left;margin-bottom:8px;border:1px solid var(--card-border);
+       background:var(--card);color:var(--ink);border-radius:10px;padding:10px 12px;cursor:pointer;font-size:12.5px;transition:.15s}
+  .scn:hover{border-color:rgba(255,107,157,.4)}
+  .scn.on{border-color:var(--pink);background:rgba(255,107,157,.12);color:var(--pink-soft)}
+  .scn small{display:block;color:var(--dim);font-size:11px;margin-top:2px}
+  .scn.on small{color:var(--pink-soft);opacity:.8}
+
+  /* 模拟 onboarding 窗口（700×760 真实尺寸）*/
+  .win{width:700px;background:var(--bg);border-radius:14px;overflow:hidden;
+       box-shadow:0 30px 80px rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.06)}
+  .titlebar{height:40px;display:flex;align-items:center;justify-content:center;position:relative;
+            background:#f4f4f6;color:#2b2622;font-weight:600;font-size:13px}
+  .lights{position:absolute;left:14px;display:flex;gap:8px}
+  .lights i{width:12px;height:12px;border-radius:50%}
+  .lights i:nth-child(1){background:#ff5f57}.lights i:nth-child(2){background:#febc2e}.lights i:nth-child(3){background:#28c840}
+  .body{padding:28px 44px 36px;max-height:700px;overflow:auto}
+  .pet{font-size:46px;text-align:center;margin-bottom:2px;animation:bob 3s ease-in-out infinite}
+  @keyframes bob{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-6px) rotate(2deg)}}
+  h1{text-align:center;font-size:25px;font-weight:800;margin:6px 0 6px}
+  .sub{text-align:center;color:var(--dim);font-size:14px;margin:0 0 18px;line-height:1.6}
+
+  /* 已安装的后端卡（可选）*/
+  .opts{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+  .opt{display:flex;align-items:center;gap:14px;border:1.5px solid var(--card-border);background:var(--card);
+       border-radius:12px;padding:14px 16px;cursor:pointer;transition:.15s;text-align:left;width:100%}
+  .opt:hover{border-color:rgba(255,107,157,.4)}
+  .opt.sel{border-color:var(--pink);background:rgba(255,107,157,.10)}
+  .opt .radio{width:18px;height:18px;border-radius:50%;border:2px solid #555c6b;flex:none;position:relative}
+  .opt.sel .radio{border-color:var(--pink)}
+  .opt.sel .radio::after{content:"";position:absolute;inset:3px;border-radius:50%;background:var(--pink)}
+  .opt .main{flex:1}
+  .opt .name{font-size:14.5px;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .pill{font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:999px}
+  .pill.ok{background:rgba(92,214,160,.16);color:var(--success)}
+  .pill.rec{background:rgba(255,107,157,.16);color:var(--pink-soft)}
+  .pill.login{background:rgba(255,209,102,.14);color:var(--warn)}
+  .opt .desc{font-size:12px;color:var(--dim);margin-top:3px;line-height:1.5}
+
+  /* 「查看全部」展开区 —— 未装的后端（不可选，给安装命令）*/
+  .more-toggle{background:none;border:0;color:var(--pink-soft);font-size:13px;cursor:pointer;padding:6px 0;
+               display:inline-flex;align-items:center;gap:6px}
+  .more-toggle:hover{text-decoration:underline}
+  .more{display:none;margin-top:6px;border-top:1px solid var(--card-border);padding-top:12px}
+  .more.open{display:block}
+  .more .mhint{font-size:12px;color:var(--dim);margin:0 0 10px;line-height:1.6}
+  .row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px dashed rgba(255,255,255,.06)}
+  .row:last-child{border-bottom:0}
+  .row .rn{flex:none;width:150px;font-size:12.5px;color:var(--ink)}
+  .row code{flex:1;background:rgba(255,255,255,.05);border:1px solid var(--card-border);border-radius:7px;
+            padding:5px 9px;font-family:var(--mono);font-size:11px;color:#cdd3df;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .copy{flex:none;border:1px solid var(--card-border);background:var(--card);color:var(--dim);border-radius:7px;
+        padding:5px 9px;font-size:11px;cursor:pointer;transition:.15s}
+  .copy:hover{border-color:var(--pink);color:var(--pink-soft)}
+  .copy.done{color:var(--success);border-color:rgba(92,214,160,.4)}
+
+  /* 空态：一个都没装 → 推荐 */
+  .empty{text-align:center}
+  .empty .hero{background:rgba(255,107,157,.08);border:1px solid rgba(255,107,157,.22);border-radius:14px;
+               padding:20px;margin-bottom:14px}
+  .empty .hero .lead{font-size:13.5px;color:var(--dim);margin:0 0 12px;line-height:1.6}
+  .empty .hero .reccard{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.04);
+        border:1px solid var(--card-border);border-radius:12px;padding:14px 16px;text-align:left}
+  .empty .hero .reccard .name{font-size:15px;font-weight:800}
+  .empty .cmdbar{display:flex;align-items:center;gap:8px;margin-top:12px}
+  .empty .cmdbar code{flex:1;background:#0a0e1a;border:1px solid var(--card-border);border-radius:9px;
+        padding:11px 13px;font-family:var(--mono);font-size:12.5px;color:#cdd3df;text-align:left}
+  .recheck{margin-top:14px;border:1px solid var(--card-border);background:var(--card);color:var(--ink);
+           border-radius:10px;padding:10px 16px;font-size:13px;cursor:pointer;transition:.15s}
+  .recheck:hover{border-color:var(--pink);color:var(--pink-soft)}
+  .recheck.scanning{color:var(--pink-soft);border-color:rgba(255,107,157,.4);pointer-events:none}
+
+  .cta{margin-top:8px;width:100%;border:0;padding:15px;border-radius:13px;background:var(--grad);
+       color:#fff;font-weight:700;font-size:15.5px;cursor:pointer;box-shadow:0 8px 30px rgba(255,107,157,.35)}
+  .cta:disabled{opacity:.4;cursor:not-allowed;box-shadow:none}
+
+  .note{max-width:330px;color:#8a93a6;font-size:12.5px;line-height:1.7;position:sticky;top:30px}
+  .note h2{color:#dfe4ee;font-size:14px;margin:0 0 10px}
+  .note li{margin-bottom:9px}
+  .note code{background:rgba(255,255,255,.06);padding:1px 6px;border-radius:5px;font-family:var(--mono);font-size:11.5px}
+  .note b{color:var(--pink-soft)}
+</style>
+</head>
+<body>
+  <div class="switcher">
+    <h4>🧪 模拟机器状态</h4>
+    <p>切换"用户机器上装了哪些 CLI"，看 onboarding 怎么变。真实产品靠 <code style="font-size:11px">check_backend_installed</code> 自动检测。</p>
+    <button class="scn on" data-scn="multi" onclick="setScn('multi')">装了 3 个<small>Claude · Gemini · Codex</small></button>
+    <button class="scn" data-scn="one" onclick="setScn('one')">只装了 1 个<small>只有 Codex（非默认）</small></button>
+    <button class="scn" data-scn="none" onclick="setScn('none')">一个都没装<small>全新机器</small></button>
+  </div>
+
+  <div class="win">
+    <div class="titlebar"><span class="lights"><i></i><i></i><i></i></span>MouseClaw · 第 2 步 / 选后端</div>
+    <div class="body">
+      <div class="pet">🦞</div>
+      <h1>用哪个 AI 后端？</h1>
+      <p class="sub" id="sub"></p>
+      <div id="content"></div>
+    </div>
+  </div>
+
+  <div class="note">
+    <h2>这个 prototype 在验证什么</h2>
+    <ul>
+      <li><b>只列已安装的</b>（用户决策 2026-05-22）：选项只放机器上真有的 CLI，没装的不当主选项 —— 不再让人"选了它却不工作"。</li>
+      <li><b>默认就帮你选好</b>：装了多个时，按优先级(Claude→Codex→Gemini…)自动选第一个能用的，用户直接点"下一步"即可。</li>
+      <li><b>发现性兜底</b>：未装的收进「▾ 查看全部 13 个后端」，给一键复制的安装命令 —— 想用别的也找得到，但不挡路。</li>
+      <li><b>一个都没装 → 推荐</b>：不给空列表，直接推荐 Claude + 可复制命令 + 「重新检测」。装完点一下就进来了。</li>
+      <li><b>登录类后端</b>(Copilot/Antigravity)标 <span style="color:var(--warn)">黄 pill</span>：提示去终端登录，而不是让你填 key。</li>
+      <li>复用现有 <code>check_backend_installed</code>（只查二进制在不在 PATH，零 API 开销）。"真能跑"的探针(ping)是另一条更重的线，可后加。</li>
+    </ul>
+  </div>
+
+<script>
+  // 13 个后端：name, 安装命令, 认证方式(login=true 走账号登录), 推荐优先级
+  const BACKENDS = [
+    {id:"claude",  name:"Claude Code CLI", cmd:"npm i -g @anthropic-ai/claude-code", auth:"claude login", rec:true},
+    {id:"codex",   name:"OpenAI Codex CLI", cmd:"npm i -g @openai/codex"},
+    {id:"gemini",  name:"Gemini CLI", cmd:"npm i -g @google/gemini-cli"},
+    {id:"copilot", name:"GitHub Copilot CLI", cmd:"npm i -g @github/copilot", login:"GitHub 账号"},
+    {id:"opencode",name:"OpenCode", cmd:"curl -fsSL https://opencode.ai/install | bash"},
+    {id:"cline",   name:"Cline CLI", cmd:"npm i -g cline"},
+    {id:"kimi",    name:"Kimi Code CLI", cmd:"curl -LsSf https://code.kimi.com/install.sh | bash"},
+    {id:"kiro",    name:"Kiro CLI", cmd:"curl -fsSL https://cli.kiro.dev/install | bash"},
+    {id:"agy",     name:"Antigravity CLI", cmd:"curl -fsSL https://antigravity.google/cli/install.sh | bash", login:"Google 账号"},
+    {id:"vibe",    name:"Mistral Vibe CLI", cmd:"uv tool install mistral-vibe"},
+    {id:"pi",      name:"Pi Coding Agent", cmd:"npm i -g @mariozechner/pi-coding-agent"},
+    {id:"openclaw",name:"OpenClaw CLI", cmd:"npm i -g openclaw"},
+    {id:"hermes",  name:"Hermes Agent", cmd:"curl -fsSL https://…/hermes/install.sh | bash"},
+  ];
+  const SCENARIOS = {
+    multi: ["claude","gemini","codex"],
+    one:   ["codex"],
+    none:  [],
+  };
+  let scn = "multi";
+  let installed = SCENARIOS[scn];
+  let selected = null;
+
+  function setScn(s){
+    scn = s; installed = SCENARIOS[s];
+    document.querySelectorAll('.scn').forEach(b=>b.classList.toggle('on', b.dataset.scn===s));
+    // 默认选已装里优先级最高的
+    selected = BACKENDS.find(b=>installed.includes(b.id))?.id || null;
+    render();
+  }
+
+  function authPill(b){
+    if(b.login) return `<span class="pill login">需 ${b.login}登录</span>`;
+    if(b.auth)  return `<span class="pill ok">✓ 已登录复用</span>`;
+    return `<span class="pill ok">复用已配置</span>`;
+  }
+
+  function render(){
+    const sub = document.getElementById('sub');
+    const c = document.getElementById('content');
+    if(installed.length === 0){
+      sub.textContent = "还没检测到 AI 后端 —— 装一个，MouseClaw 就把你的语音 + 截图交给它。";
+      const claude = BACKENDS[0];
+      c.innerHTML = `
+        <div class="empty">
+          <div class="hero">
+            <p class="lead">MouseClaw 需要一个 AI CLI 当大脑。最省心的是官方最成熟的：</p>
+            <div class="reccard">
+              <div class="radio" style="border-color:var(--pink)"><span></span></div>
+              <div class="main">
+                <div class="name">${claude.name} <span class="pill rec">推荐</span></div>
+                <div class="desc">原生 agentic + 读图，装完 <code style="font-size:11px">claude login</code> 一次即可。</div>
+              </div>
+            </div>
+            <div class="cmdbar">
+              <code>${claude.cmd}</code>
+              <button class="copy" onclick="copy(this,'${claude.cmd}')">复制</button>
+            </div>
+          </div>
+          <button class="recheck" id="recheck" onclick="rescan()">🔄 我装好了，重新检测</button>
+          <div style="margin-top:14px">
+            <button class="more-toggle" onclick="toggleMore()"><span id="caret">▾</span> 想用别的？13 个后端都支持</button>
+            <div class="more" id="more"></div>
+          </div>
+        </div>`;
+      fillMore();
+      return;
+    }
+    // 有已装的
+    sub.innerHTML = installed.length===1
+      ? "检测到你机器上装好了 <b style='color:var(--pink-soft)'>1 个</b> 后端 —— 直接用它，或装别的。"
+      : `检测到 <b style='color:var(--pink-soft)'>${installed.length} 个</b> 已就绪，默认选好了，点下一步即可。`;
+    const cards = BACKENDS.filter(b=>installed.includes(b.id)).map(b=>`
+      <button class="opt ${selected===b.id?'sel':''}" onclick="pick('${b.id}')">
+        <div class="radio"></div>
+        <div class="main">
+          <div class="name">${b.name}
+            <span class="pill ok">✓ 已装</span>
+            ${b.rec?'<span class="pill rec">推荐</span>':''}
+            ${b.login?`<span class="pill login">需 ${b.login}登录</span>`:''}
+          </div>
+          <div class="desc">${b.login?`已在终端登录过 ${b.login}? 那就能直接用。`:'复用你已配好的登录 / key，无需再填。'}</div>
+        </div>
+      </button>`).join('');
+    c.innerHTML = `
+      <div class="opts">${cards}</div>
+      <button class="more-toggle" onclick="toggleMore()"><span id="caret">▾</span> 没看到想用的？查看全部 13 个后端</button>
+      <div class="more" id="more"></div>
+      <button class="cta" id="cta">用 ${BACKENDS.find(b=>b.id===selected).name} →</button>`;
+    fillMore();
+  }
+
+  function fillMore(){
+    const more = document.getElementById('more');
+    if(!more) return;
+    const rest = BACKENDS.filter(b=>!installed.includes(b.id));
+    more.innerHTML = `<p class="mhint">下面这些还没装。装好后回到这一步会自动出现成可选项（登录类的标了去哪登录）。</p>` +
+      rest.map(b=>`
+        <div class="row">
+          <span class="rn">${b.name}${b.login?` <span style="color:var(--warn);font-size:10px">·登录</span>`:''}</span>
+          <code title="${b.cmd}">${b.cmd}</code>
+          <button class="copy" onclick="copy(this,'${b.cmd.replace(/'/g,"\\'")}')">复制</button>
+        </div>`).join('');
+  }
+
+  function pick(id){
+    selected = id;
+    document.querySelectorAll('.opt').forEach(o=>o.classList.remove('sel'));
+    event.currentTarget.classList.add('sel');
+    const cta = document.getElementById('cta');
+    if(cta) cta.textContent = `用 ${BACKENDS.find(b=>b.id===id).name} →`;
+  }
+  function toggleMore(){
+    const m = document.getElementById('more'); const cr = document.getElementById('caret');
+    m.classList.toggle('open'); cr.textContent = m.classList.contains('open')?'▴':'▾';
+  }
+  function copy(btn, txt){
+    navigator.clipboard?.writeText(txt);
+    const old = btn.textContent; btn.textContent='已复制 ✓'; btn.classList.add('done');
+    setTimeout(()=>{btn.textContent=old; btn.classList.remove('done');},1400);
+  }
+  function rescan(){
+    const r = document.getElementById('recheck');
+    r.classList.add('scanning'); r.textContent='🔄 检测中…';
+    // 模拟：检测后发现用户刚装了 Claude
+    setTimeout(()=>{ SCENARIOS.none = ["claude"]; setScn('none');
+      SCENARIOS.none = []; /* 复位 prototype，方便反复演示 */ }, 1100);
+  }
+
+  setScn('multi');
+</script>
+</body>
+</html>
