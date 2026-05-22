@@ -208,6 +208,20 @@ impl Backend {
             ],
         }
     }
+
+    /// 同 `oneshot_args`，但**放开工具**（给定时任务联网/读文件取真实数据，反幻觉）。
+    /// 只有 Claude 需要特殊处理：它默认 `--allowedTools ""` 关掉了所有工具；显式放开
+    /// web + 文件 + bash。其余后端的 oneshot_args 本就是 agentic（不禁工具），直接复用。
+    fn oneshot_args_agentic(&self, prompt: &str) -> Vec<String> {
+        match self {
+            Backend::ClaudeCli => vec![
+                "-p".into(), prompt.to_string(),
+                "--permission-mode".into(), "auto".into(),
+                "--allowedTools".into(), "WebSearch,WebFetch,Read,Bash,Grep,Glob".into(),
+            ],
+            other => other.oneshot_args(prompt),
+        }
+    }
 }
 
 /// 找后端二进制，没找到时把 install_cmd 拼进错误里（用户能直接照抄）。
@@ -324,6 +338,17 @@ where
 pub async fn ask_text_only(backend: Backend, prompt: &str) -> Result<String> {
     let bin = find_backend_binary(backend)?;
     let args = backend.oneshot_args(prompt);
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    spawn_and_stream(&bin, &arg_refs, |_| {}).await
+}
+
+/// 纯文本 → 文本 单次调用，但**放开 agentic 工具**（WebSearch/WebFetch/Bash/Read…）。
+/// 给定时任务这种"到点自动跑、常需要联网/读文件取真实数据"的后台任务用 —— 防止
+/// AI 凭记忆编造（如"整理 AI 新闻"没工具就只能幻觉）。reactive ribbon 的文本变换
+/// 不需要工具，仍走 `ask_text_only`。各后端用各自 CLI 但都允许工具（多后端硬规则）。
+pub async fn ask_text_only_agentic(backend: Backend, prompt: &str) -> Result<String> {
+    let bin = find_backend_binary(backend)?;
+    let args = backend.oneshot_args_agentic(prompt);
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     spawn_and_stream(&bin, &arg_refs, |_| {}).await
 }
