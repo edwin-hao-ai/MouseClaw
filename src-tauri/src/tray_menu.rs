@@ -64,6 +64,9 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     };
     let summon  = MenuItem::with_id(app, "summon",  &summon_label,  true, None::<&str>)?;
     let history = MenuItem::with_id(app, "history", s_history, true, None::<&str>)?;
+    // v0.5 · 定时任务管理窗入口
+    let s_tasks = if en { "⏰ Scheduled tasks…" } else { "⏰ 定时任务…" };
+    let tasks_item = MenuItem::with_id(app, "open-tasks", s_tasks, true, None::<&str>)?;
     // v0.1.17 · 显式剪贴板入口（解决 ⌘⇧V 发现性问题）
     let clipboard_item = MenuItem::with_id(app, "open-clipboard", s_clipboard, true, None::<&str>)?;
 
@@ -124,6 +127,32 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let s_tts = if en { "🔊 Pet speaks AI replies" } else { "🔊 桌宠朗读 AI 回复" };
     let tts_item = CheckMenuItem::with_id(app, "toggle-tts", s_tts,
         true, current_tts, None::<&str>)?;
+
+    // v0.4.x · 桌宠音效（程序化 chiptune：睡觉鼾声 / 完成提示音 / 撞墙等）
+    let current_sfx = crate::config::Config::load().sfx_enabled;
+    let current_vol = crate::config::Config::load().sfx_volume;
+    let s_sfx = if en { "🔉 Pet sound effects" } else { "🔉 桌宠音效" };
+    let sfx_item = CheckMenuItem::with_id(app, "toggle-sfx", s_sfx,
+        true, current_sfx, None::<&str>)?;
+    // 音量三档子菜单（托盘装不下滑块 → 轻/中/响 预设）
+    let s_vol_root = if en { "🔉 Sound volume" } else { "🔉 音效音量" };
+    let (s_vol_lo, s_vol_mid, s_vol_hi) = if en {
+        ("    ↳ Soft", "    ↳ Medium", "    ↳ Loud")
+    } else {
+        ("    ↳ 轻", "    ↳ 中", "    ↳ 响")
+    };
+    let vol_lo = CheckMenuItem::with_id(app, "sfx-vol:low", s_vol_lo,
+        true, current_vol < 0.35, None::<&str>)?;
+    let vol_mid = CheckMenuItem::with_id(app, "sfx-vol:mid", s_vol_mid,
+        true, current_vol >= 0.35 && current_vol <= 0.6, None::<&str>)?;
+    let vol_hi = CheckMenuItem::with_id(app, "sfx-vol:high", s_vol_hi,
+        true, current_vol > 0.6, None::<&str>)?;
+    let sfx_vol_submenu = Submenu::with_id_and_items(
+        app, "sfx-vol-submenu", s_vol_root, true,
+        &[&vol_lo as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
+          &vol_mid as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
+          &vol_hi as &dyn tauri::menu::IsMenuItem<tauri::Wry>],
+    )?;
 
     // v0.4.2 · 快捷键设置（统一入口）—— 召唤 AI 快捷键 + 语音输入触发键两个子菜单
     // 相邻摆放，构建/热切换逻辑都在 shortcut_menu（tray.rs 已超 800 行硬上限）。
@@ -190,7 +219,7 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 
     // List items (declaring early so the vec! below can reference them)
     let mut items: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = vec![
-        &summon, &new_session_item, &pin_item, &clipboard_item, &history,
+        &summon, &new_session_item, &pin_item, &clipboard_item, &history, &tasks_item,
         &skin_picker_item, &memory_item, &anchor_submenu, &lang_submenu,
         &sep1, &vime_item, &summon_submenu, &trigger_submenu, &vocab_submenu, &pause_item,
         &workspace_item,
@@ -202,6 +231,8 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         &browser_item as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
         &autostart_item as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
         &tts_item as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
+        &sfx_item as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
+        &sfx_vol_submenu as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
         &downloader_item as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
         &status as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
         &sep2,

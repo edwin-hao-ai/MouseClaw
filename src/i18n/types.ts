@@ -279,6 +279,73 @@ export interface Strings {
   "lang.zh": string;
   "lang.en": string;
   "lang.menu_title": string;
+
+  // ── 定时任务 / 心跳 (v0.5) ──
+  "petmenu.tasks": string;
+  "tasks.title": string;
+  "tasks.count": string;              // "{n} 个 · {on} 启用"
+  "tasks.empty.title": string;
+  "tasks.empty.hint": string;
+  "tasks.empty.ex1": string;
+  "tasks.empty.ex2": string;
+  "tasks.new.placeholder": string;
+  "tasks.new.parsing": string;
+  "tasks.new.failed": string;
+  "tasks.next": string;               // "下次 {when}"
+  "tasks.last.never": string;
+  "tasks.last.running": string;
+  "tasks.run_now": string;
+  "tasks.edit": string;
+  "tasks.delete": string;
+  "tasks.delete_confirm": string;     // "删除「{title}」？"
+  "tasks.paused": string;
+  "tasks.history.title": string;
+  "tasks.history.empty": string;
+  "tasks.edit.title_label": string;
+  "tasks.edit.action_label": string;
+  "tasks.edit.freq_label": string;
+  "tasks.edit.time_label": string;
+  "tasks.edit.every_label": string;   // "每隔（小时）"
+  "tasks.edit.days_label": string;
+  "tasks.edit.day_label": string;     // "每月几号"
+  "tasks.save": string;
+  // schedule 频率可读化
+  "schedule.daily": string;           // "每天 {time}"
+  "schedule.weekday": string;         // "工作日 {time}"
+  "schedule.weekly": string;          // "{days} {time}"
+  "schedule.interval": string;        // "每隔 {span}"
+  "schedule.interval.active": string; // " · {start}–{end}"
+  "schedule.monthly": string;         // "每月 {day} 号 {time}"
+  "schedule.span_hours": string;      // "{n} 小时"
+  "schedule.span_min": string;        // "{n} 分钟"
+  "schedule.opt.daily": string;
+  "schedule.opt.weekday": string;
+  "schedule.opt.weekly": string;
+  "schedule.opt.interval": string;
+  "schedule.opt.monthly": string;
+  "schedule.wd1": string;
+  "schedule.wd2": string;
+  "schedule.wd3": string;
+  "schedule.wd4": string;
+  "schedule.wd5": string;
+  "schedule.wd6": string;
+  "schedule.wd7": string;
+  // 相对时间
+  "when.today": string;               // "今天 {time}"
+  "when.tomorrow": string;            // "明天 {time}"
+  "when.other": string;               // "{md} {time}"
+  // 确认卡
+  "schedule.confirm.title": string;
+  "schedule.confirm.what": string;
+  "schedule.confirm.delivery": string;
+  "schedule.confirm.ok": string;
+  "schedule.confirm.edit": string;
+  "schedule.confirm.created": string;
+  "schedule.confirm.esc": string;
+  // 结果气泡
+  "schedule.result.tag": string;
+  "schedule.result.expand": string;
+  "schedule.hint.tag": string;
 }
 
 /** 翻译值 —— 字符串 OR (args) => string。后者支持插值。 */

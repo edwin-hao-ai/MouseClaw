@@ -252,6 +252,24 @@ If `backdrop-filter` isn't supported (rare on Tauri webview but possible), fall 
 | Jump | 0.9s | 3 keyframes | one-shot (3× max) | trigger on success |
 | Countdown bar fill | 3000ms exact | continuous | linear | once per B-mode |
 
+#### Launch entrance (v0.5 · `mc-entrance-*`)
+
+开场调皮入场动画的桌宠精灵动作。窗口横穿位置由 Rust `entrance.rs` 逐帧推（不在此表）；
+此表只列**精灵自身**的 CSS 动画。三档（loud / medium / subtle）共用这些 phase class。
+所有动作只作用在整只 `.mouse-svg` + `.mc-ear` / `.mc-tail` 子组 → 9 款皮肤一视同仁，零 palette 硬编码。
+原型：`docs/prototypes/launch-entrance-20260521.html`。
+
+| Phase | Duration | Curve | 动作 |
+|---|---|---|---|
+| `peek` | 600ms loop | `ease-default` | 探头左右张望（±7° 摇头）+ 抖耳 |
+| `run` | 240ms loop · `steps(2)` | linear steps | 跑腿弹跳（translateY + ±3° 旋转，像素跳帧感） |
+| `skid` | 280ms one-shot | `ease-tap` | 急刹横向挤压回弹（squash/stretch） |
+| `beat` | 760ms one-shot | `ease-spring` | 蹦跶张望（hop + 歪头）+ 甩尾 + 抖耳 |
+| `stretch` | 620ms one-shot | `ease-spring` | 角落伸懒腰（subtle 档专用，纵向拉伸回弹） |
+
+表情拍跨物种：鼠/猫/狐 `.mc-ear` 旋转抖动；蛙 `.mc-ear-frog` 改眼鼓气（scale 1.28）；
+cyber `.mc-ear`（天线）同样摆；尾巴 `.mc-tail` 甩（狐尾本就大，摆幅天然更明显）。
+
 #### UI Motion
 
 | Element | Duration | Curve |
@@ -268,6 +286,7 @@ When set:
 - Mouse states: still animate (the character IS the product) — but slow to ~50% speed and reduce amplitude
 - UI hover lifts: disable entirely
 - Streaming cursor: replace blinking with static block
+- Launch entrance (`mc-entrance-*`): fully skipped — Rust 端读 `reduced_motion` 不横穿，桌宠直接出现在 anchor；CSS 也把 phase class 动画降级为 `none`
 
 ---
 
@@ -505,14 +524,25 @@ Internal layout:
 
 4 vertical bars, 3px wide each, 3px gap, heights 10/16/8/14 px, color `var(--accent-primary)`. Animation: `scaleY 0.6 → 1` over 0.7s with 0.1s stagger per bar.
 
-### 4.7 Forbidden Components
+### 4.7 Scheduled Tasks (v0.5)
+
+定时任务（`?view=tasks` 管理窗 + 确认卡 + 结果轻气泡）**复用既有 token，不引入任何新颜色/间距/动画/mouse 状态**。
+
+- **Schedule confirm card**（桌宠头顶，`schedule-confirm` 视图）：用 `--bubble-bg` / `--shadow-bubble` / `--radius-xl`，标签用 `--accent-glow` + `--text-link`，频率 chip 同 §4.3 session-chip 的 accent 变体。CTA 用 `--accent-gradient` + `--shadow-cta`。打 `data-adaptive-measure` 走自适应窗口测量。
+- **Schedule result bubble**（`EV_SCHEDULE_RESULT`，不抢焦点、7s 自消）：成功用 `--bubble-success-bg`，`⏰ 定时` / `💡 提示` 标记用 `--accent-glow`/`--text-link`。同样打 `data-adaptive-measure`。
+- **Tasks window**（与 Hub / Picker 同级的二级管理窗，非 overlay）：`--panel-bg` 玻璃头/底栏，任务卡 `--radius-lg` + 1px `--bubble-border`，开关 toggle 用 `--accent-primary`，频率 chip / 编辑表单全部走既有 token（见 `TasksView.css`）。
+- **桌宠状态**：定时任务**不新增** mouse 状态 —— 确认时复用 `think`，跑任务时复用既有三点忙碌 badge（§"Companion / busy"），到点投递不改变 8 色调色板，9 款皮肤天然一致。
+
+### 4.8 Forbidden Components
 
 - ❌ Modal dialogs (we don't have a window — bubble or panel only)
 - ❌ Dropdown menus (use AskUserQuestion-style options grid)
 - ❌ Toast notifications (bubble already IS the toast)
 - ❌ Loading spinners (use the think state on the mouse)
 - ❌ Progress bars except for the countdown
-- ❌ Settings page (V1 has only Onboarding; no in-app settings)
+- ⚠️ ~~Settings page (V1 has only Onboarding; no in-app settings)~~ —— v0.1.26+ 已有 Hub /
+  Picker / Status / Tasks 等**二级管理窗**（非 overlay、各自独立窗口）。overlay 本体仍坚持
+  "只有气泡 / panel"，但管理类功能走独立窗口是允许的。
 
 ---
 

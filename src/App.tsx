@@ -18,15 +18,21 @@ import { NudgeBubble } from "./components/NudgeBubble";
 import { RecordingBubble } from "./components/RecordingBubble";
 import { TourBubble } from "./components/TourBubble";
 import {
-  EV_VIEW_CHANGED, EV_SKIN_CHANGED, EV_NUDGE, EV_SESSION_STATE,
+  EV_VIEW_CHANGED, EV_SKIN_CHANGED, EV_NUDGE, EV_SESSION_STATE, EV_ENTRANCE,
+  EV_SCHEDULE_RESULT,
   type ViewKind, type SkinId, type NudgePayload, type SessionState,
+  type EntrancePhase, type EntrancePayload, type ScheduleResultPayload,
+  type Schedule,
 } from "./types";
 import { DEFAULT_SKIN } from "./skins";
 import { useT, getCurrentLang } from "./i18n";
+import { scheduleLabel, scheduleIcon, formatWhen } from "./lib/schedule-format";
 import { ReactiveOverlay, type ReactivePayload } from "./components/ReactiveOverlay";
 import { useCompanion } from "./hooks/useCompanion";
 import { useIntimacy } from "./hooks/useIntimacy";
 import { useAdaptiveOverlay } from "./hooks/useAdaptiveOverlay";
+import { usePetSounds } from "./hooks/usePetSounds";
+import * as petAudio from "./audio/petAudio";
 
 const PREVIEW_LONG = "这篇 Nature 文章讨论 2026 年 AI 加速材料发现的三个突破：室温超导候选材料、新型电池电解液、碳捕获催化剂。核心机制是自动化实验室加大模型生成假设的迭代闭环。";
 
@@ -53,6 +59,7 @@ function mouseStateFor(view: ViewKind): MouseState {
     case "mode-b-inserting": return "paste"; // v0.1.14: 拎剪贴板 sprite
     case "voice-confirm":    return "think"; // v0.4.0 转写完确认中
     case "tour-step":        return "listen"; // v0.4.0 引导桌宠 = 听 sprite，活泼
+    case "schedule-confirm": return "think"; // v0.5 定时任务确认中 = 好奇思考态
     case "blocked":          return "block";
   }
 }
@@ -82,11 +89,21 @@ export default function App() {
   const [memItems, setMemItems] = useState<MemItem[]>([]);
   // v0.1.27 P3 · 主动提醒（presence + nudge 引擎触发）
   const [nudge, setNudge] = useState<NudgePayload | null>(null);
+  // v0.5 · 定时任务执行完成的轻气泡 payload（不抢焦点，几秒自动消失）
+  const [scheduleResult, setScheduleResult] = useState<ScheduleResultPayload | null>(null);
   // v0.4 · Reactive 桌宠：剪贴板变化时立刻反应。
   // - twitching：T1 抖耳一次，~500ms 后自动清掉
   // - reactive：T2 payload —— ribbon 在桌宠头顶弹一组按钮，5s 自动消失（或点了 action）
   const [twitching, setTwitching] = useState(false);
   const [reactive, setReactive] = useState<ReactivePayload | null>(null);
+  // v0.5 · 开场调皮入场动画当前 phase（null = 没在入场）。Rust entrance.rs 推 phase + 动窗口位置；
+  // 这里只控制桌宠精灵的 mc-entrance-* class。"done" 收到时清空回 idle。
+  const [entrancePhase, setEntrancePhase] = useState<EntrancePhase | null>(null);
+  // 横穿期间（peek/run/skid/beat）窗口被 Rust 扩到 320 + 推位置 → 桌宠用 96px + listen 表情，
+  // 且必须关掉 useAdaptiveOverlay（否则自适应把横穿窗口缩掉，跟 set_position 抢尺寸）。
+  // "stretch"（subtle 档）在 compact 角落原地播，保持 idle 64px。
+  const bigEntrance = entrancePhase === "peek" || entrancePhase === "run"
+                   || entrancePhase === "skid" || entrancePhase === "beat";
   // v0.4+ · 陪伴向动画 —— hook 订阅 Rust companion-tick + 算桌宠当前帧
   const petStageRef = useRef<HTMLDivElement>(null);
   const stageRootRef = useRef<HTMLDivElement>(null);
@@ -106,7 +123,9 @@ export default function App() {
   // cursor_follow 抢同一个窗口 → 桌宠在光标和原锚点之间来回弹（用户报"乱飘"）。
   // 其余视图（idle / tour / voice-confirm / reply / voice-ime-listening 等）窗口不
   // 跟随，自适应是唯一尺寸权威。
-  useAdaptiveOverlay(stageRootRef, { enabled: view.kind !== "listening" });
+  // v0.5 · 入场横穿期间也禁用 —— 窗口尺寸/位置由 Rust entrance.rs 全权管，
+  //   自适应若同时按内容反算会把横穿窗口缩掉、跟 set_position 抢尺寸。
+  useAdaptiveOverlay(stageRootRef, { enabled: view.kind !== "listening" && !entrancePhase });
 
   // v0.3.12 · 在 idle 状态下显示 React-only UI（下载提示气泡 / petMenu / nudge / ack
   //   / v0.4 reactive ribbon）时主动通知 Rust 把窗口 hit-box 扩到全窗口；
@@ -116,10 +135,10 @@ export default function App() {
     // v0.4.x · session chip（idle + 有上下文时显示在头顶）也算 React UI ——
     // 否则窗口 hit-box 只在桌宠底部，chip 在上方会被穿透掉点不到（点击查看对话失效）。
     const chipVisible = sessionState.continuing && !petMenuOpen && !nudge && !transientAck;
-    const hasReactUi = !!modelProgress || petMenuOpen || !!nudge || !!transientAck || !!reactive || chipVisible;
+    const hasReactUi = !!modelProgress || petMenuOpen || !!nudge || !!transientAck || !!reactive || !!scheduleResult || chipVisible;
     if (view.kind !== "idle") return; // 非 idle 由 Rust emit_view 那侧管，前端不要干扰
     invoke("set_overlay_has_ui", { hasUi: hasReactUi }).catch(() => {});
-  }, [view.kind, modelProgress, petMenuOpen, nudge, transientAck, reactive, sessionState.continuing]);
+  }, [view.kind, modelProgress, petMenuOpen, nudge, transientAck, reactive, scheduleResult, sessionState.continuing]);
 
   // 启动时从 Rust 读当前皮肤（避免闪一下默认 classic 再切换）
   useEffect(() => {
@@ -244,6 +263,18 @@ export default function App() {
     return () => { if (unlisten) unlisten(); if (bonkClearRef.current) window.clearTimeout(bonkClearRef.current); };
   }, [triggerBonk]);
 
+  // 音效 —— 把桌宠状态机接到 petAudio（程序化合成，按皮肤物种换嗓音）。
+  // 见 hooks/usePetSounds.ts + docs/prototypes/skin-system-audio-20260521.html。
+  usePetSounds({
+    skin,
+    mouseState: mouseStateFor(view),
+    companionState: companion.state,
+    continuing,
+    intimacyLevel: intimacy.level,
+    bonkActive: bonkDir !== null,
+    nudgeActive: nudge !== null,
+  });
+
   // v0.4 · 后台任务忙碌计数 —— 任何 reactive action 在跑时 > 0。
   // 桌宠据此显示忙碌指示（跨任何视图可见），用户永远知道"还在处理"。
   const [bgTaskCount, setBgTaskCount] = useState(0);
@@ -360,11 +391,47 @@ export default function App() {
     return () => { if (unlisten) unlisten(); };
   }, []);
 
+  // v0.5 · 开场调皮入场动画 phase 监听 —— Rust entrance.rs 在横穿/张望/伸懒腰各拍 emit。
+  // "done" → 清空回 idle。窗口位置 Rust 推，这里只切桌宠精灵动画。
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    try {
+      const p = listen<EntrancePayload>(EV_ENTRANCE, (e) => {
+        const ph = e.payload.phase;
+        setEntrancePhase(ph === "done" ? null : ph);
+      });
+      p.then((fn) => { unlisten = fn; }).catch(() => {});
+    } catch { /* browser-only mode */ }
+    return () => { if (unlisten) unlisten(); };
+  }, []);
+
+  // v0.5 · 上报 prefers-reduced-motion 给 Rust —— 入场动画据此决定是否跳过横穿/蹦跶。
+  // mount 时报一次 + 监听变化再报。
+  useEffect(() => {
+    try {
+      const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+      const report = () => invoke("report_reduced_motion", { reduced: mq.matches }).catch(() => {});
+      report();
+      mq.addEventListener?.("change", report);
+      return () => mq.removeEventListener?.("change", report);
+    } catch { /* browser-only mode */ }
+  }, []);
+
   // v0.1.27 P3 · nudge event listener
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     try {
       const p = listen<NudgePayload>(EV_NUDGE, (e) => setNudge(e.payload));
+      p.then((fn) => { unlisten = fn; }).catch(() => {});
+    } catch { /* browser-only mode */ }
+    return () => { if (unlisten) unlisten(); };
+  }, []);
+
+  // v0.5 · 定时任务执行完成 → 浮一个不抢焦点的轻气泡（几秒自动消失，结果已存任务窗）
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    try {
+      const p = listen<ScheduleResultPayload>(EV_SCHEDULE_RESULT, (e) => setScheduleResult(e.payload));
       p.then((fn) => { unlisten = fn; }).catch(() => {});
     } catch { /* browser-only mode */ }
     return () => { if (unlisten) unlisten(); };
@@ -671,12 +738,13 @@ export default function App() {
     // v0.4+ · 点桌宠 → 浮爱心 + 记一次亲密互动（菜单仍照常开合）
     popHeart();
     intimacy.bumpInteract();
+    petAudio.playEvent("squeak", skin); // 直接点桌宠才吱（不跟桌面点击 companion=clicked 混）
     setPetMenuOpen(prev => !prev);
-  }, [view.kind, popHeart, intimacy]);
+  }, [view.kind, popHeart, intimacy, skin]);
 
   return (
     <div ref={stageRootRef} className="stage stage-mouse-bubble">
-      <BubbleFor view={view} continuing={continuing} onExpand={handleExpand} onNewSession={handleNewSession} modelProgress={modelProgress} editRequested={editRequested} onRequestEdit={() => setEditRequested(true)} memItems={memItems} onDeleteMem={handleDeleteMem} />
+      <BubbleFor view={view} continuing={continuing} onExpand={handleExpand} onNewSession={handleNewSession} modelProgress={entrancePhase ? null : modelProgress} editRequested={editRequested} onRequestEdit={() => setEditRequested(true)} memItems={memItems} onDeleteMem={handleDeleteMem} />
       {/* Local ack bubble — visible above the pet without going through Rust */}
       {transientAck && (
         <div className="stage-bubble">
@@ -684,7 +752,7 @@ export default function App() {
         </div>
       )}
       {/* v0.4.x · session 状态 chip —— idle 静默时浮在桌宠头顶，让"连续/钉住/软提示"可见 */}
-      {view.kind === "idle" && !transientAck && !petMenuOpen && !nudge && sessionState.continuing && (
+      {view.kind === "idle" && !entrancePhase && !transientAck && !petMenuOpen && !nudge && sessionState.continuing && (
         <div className="stage-bubble">
           <SessionChip s={sessionState} />
         </div>
@@ -700,15 +768,16 @@ export default function App() {
         style={{ cursor: "grab" }}
       >
         <PixelMouse
-          state={mouseStateFor(view)} skin={skin}
-          size={view.kind === "idle" ? 64 : 96}
+          state={bigEntrance ? "listen" : mouseStateFor(view)} skin={skin}
+          size={bigEntrance ? 96 : (view.kind === "idle" ? 64 : 96)}
           continuing={continuing}
           twitching={twitching}
-          companionState={companion.state}
+          companionState={entrancePhase ? undefined : companion.state}
           eyeOffset={{ x: companion.eyeOffsetX, y: companion.eyeOffsetY }}
           intimacyLevel={intimacy.level}
           neglected={intimacy.neglected}
           bonk={bonkDir}
+          entrance={entrancePhase}
         />
         {hearts.map((id) => (
           <span key={id} className="pet-heart" aria-hidden>❤️</span>
@@ -731,9 +800,12 @@ export default function App() {
         {nudge && !petMenuOpen && (
           <NudgeBubble payload={nudge} onDismiss={() => setNudge(null)} />
         )}
+        {scheduleResult && !petMenuOpen && !nudge && (
+          <ScheduleResultBubble payload={scheduleResult} onDismiss={() => setScheduleResult(null)} />
+        )}
         {/* v0.4 · Reactive ribbon —— idle 视图下浮在桌宠头顶。其他视图（listening / thinking
             / panel 等）有自己的气泡，让位 */}
-        {view.kind === "idle" && !petMenuOpen && !nudge && (
+        {view.kind === "idle" && !entrancePhase && !petMenuOpen && !nudge && (
           <ReactiveOverlay
             payload={reactive}
             lang={getCurrentLang() as "zh" | "en"}
@@ -861,6 +933,16 @@ function BubbleFor({ view, continuing, onExpand, onNewSession, modelProgress, ed
     case "tour-step":
       // v0.4.0 · 首次使用引导 5 步流程
       return <TourBubble step={view.step} />;
+    case "schedule-confirm":
+      // v0.5 · 定时任务确认卡 —— backend 解析出 [SCHEDULE] 后摊开给用户确认
+      return (
+        <ScheduleConfirmBubble
+          title={view.title}
+          action={view.action}
+          schedule={view.schedule}
+          nextRun={view.nextRun}
+        />
+      );
     case "mode-b-inserting":
       return <Bubble text={`正在写入「${view.insertText}」`} variant="warn" />;
     case "blocked": {
@@ -1033,6 +1115,153 @@ function VoiceConfirmBubble({ transcript, remaining, editRequested, onRequestEdi
           >发送 ↵</button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// v0.5 · 定时任务确认卡 —— backend 解析出 [SCHEDULE] 后摊开「我理解成什么」让用户确认。
+// ✓ 就这么定 → 建任务 + 收起；改一下 → 建任务 + 打开任务窗去 ✎ 调整；Esc/点外 → 取消（不建）。
+interface ScheduleConfirmProps {
+  title: string;
+  action: string;
+  schedule: Schedule;
+  nextRun?: string;
+}
+function ScheduleConfirmBubble({ title, action, schedule, nextRun }: ScheduleConfirmProps) {
+  const t = useT();
+  const [saved, setSaved] = useState(false);
+
+  const create = async () => {
+    await invoke("create_schedule", { input: { title, action, schedule } }).catch(() => {});
+  };
+  const confirm = async () => {
+    setSaved(true);
+    await create();
+    window.setTimeout(() => invoke("dismiss").catch(() => {}), 1100);
+  };
+  const tweak = async () => {
+    await create();
+    invoke("open_tasks_window").catch(() => {});
+    invoke("dismiss").catch(() => {});
+  };
+
+  const card: React.CSSProperties = {
+    background: "var(--bubble-bg)",
+    border: "1px solid var(--bubble-border)",
+    borderRadius: "var(--radius-xl)",
+    padding: "14px 14px 10px",
+    width: 290,
+    boxSizing: "border-box",
+    boxShadow: "var(--shadow-bubble)",
+    pointerEvents: "auto",
+    fontFamily: "var(--font-system)",
+    color: "var(--text-primary)",
+  };
+  const chip: React.CSSProperties = {
+    display: "inline-flex", alignItems: "center", gap: 4,
+    fontSize: "var(--text-meta)", fontWeight: 600, color: "var(--text-link)",
+    background: "var(--accent-glow)", border: "1px solid rgba(255,107,157,0.28)",
+    padding: "3px 9px", borderRadius: "var(--radius-pill)",
+  };
+
+  if (saved) {
+    return (
+      <div className="stage-bubble">
+        <div data-adaptive-measure="" style={{ ...card, width: "auto" }}>
+          <div style={{ fontSize: "var(--text-body)", fontWeight: 600 }}>
+            {t("schedule.confirm.created")}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="stage-bubble">
+      <div data-adaptive-measure="" style={card}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+          <span style={{
+            fontSize: "var(--text-micro)", fontWeight: 700, letterSpacing: "0.06em",
+            color: "var(--text-link)", background: "var(--accent-glow)",
+            padding: "2px 8px", borderRadius: "var(--radius-pill)",
+          }}>{t("schedule.confirm.title")}</span>
+          <span style={chip}>{scheduleIcon(schedule)} {scheduleLabel(t, schedule)}</span>
+        </div>
+        <div style={{ fontSize: "var(--text-body)", marginBottom: 8 }}>
+          <span style={{ color: "var(--text-bubble-dim)" }}>{t("schedule.confirm.what")}</span>
+          <br />
+          {action}
+        </div>
+        <div style={{ fontSize: "var(--text-meta)", color: "var(--text-bubble-dim)", marginBottom: 10 }}>
+          {nextRun && <span>{t("tasks.next", { when: formatWhen(t, nextRun) })} · </span>}
+          {t("schedule.confirm.delivery")}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button onClick={confirm} style={{
+            border: "none", borderRadius: "var(--radius-sm)", padding: "7px 14px",
+            fontSize: "var(--text-body-sm)", fontWeight: 700, cursor: "pointer",
+            background: "var(--accent-gradient)", color: "#fff", boxShadow: "var(--shadow-cta)",
+          }}>{t("schedule.confirm.ok")}</button>
+          <button onClick={tweak} style={{
+            border: "none", borderRadius: "var(--radius-sm)", padding: "7px 14px",
+            fontSize: "var(--text-body-sm)", fontWeight: 700, cursor: "pointer",
+            background: "rgba(0,0,0,0.05)", color: "var(--text-primary)",
+          }}>{t("schedule.confirm.edit")}</button>
+          <span style={{ marginLeft: "auto", fontSize: "var(--text-micro)", color: "var(--text-bubble-dim)" }}>
+            {t("schedule.confirm.esc")}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// v0.5 · 定时任务结果轻气泡 —— 不抢焦点、几秒自动消失，「展开」打开任务窗看全文。
+// taskId 为空 = 一次性"发现提示"。
+function ScheduleResultBubble({ payload, onDismiss }: { payload: ScheduleResultPayload; onDismiss: () => void }) {
+  const t = useT();
+  const isHint = payload.taskId === "";
+  useEffect(() => {
+    const id = window.setTimeout(onDismiss, isHint ? 12_000 : 7_000);
+    return () => window.clearTimeout(id);
+  }, [payload, onDismiss, isHint]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onDismiss(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onDismiss]);
+
+  const expand = () => {
+    invoke("open_tasks_window").catch(() => {});
+    onDismiss();
+  };
+
+  return (
+    <div
+      className="schedule-result-bubble"
+      data-adaptive-measure=""
+      role="status"
+      aria-live="polite"
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        position: "absolute", left: "50%", bottom: "100%", transform: "translateX(-50%)",
+        marginBottom: 10, width: 260, boxSizing: "border-box",
+        background: "var(--bubble-success-bg)", border: "1px solid var(--bubble-border)",
+        borderRadius: "var(--radius-xl)", padding: "12px 14px 10px",
+        boxShadow: "var(--shadow-bubble)", pointerEvents: "auto",
+        fontFamily: "var(--font-system)", color: "var(--text-primary)",
+      }}
+    >
+      <div style={{
+        fontSize: "var(--text-micro)", fontWeight: 700, letterSpacing: "0.06em",
+        color: "var(--text-link)", background: "var(--accent-glow)",
+        display: "inline-block", padding: "2px 8px", borderRadius: "var(--radius-pill)", marginBottom: 6,
+      }}>{isHint ? t("schedule.hint.tag") : t("schedule.result.tag")}{!isHint && payload.title ? ` · ${payload.title}` : ""}</div>
+      <div style={{ fontSize: "var(--text-body)", lineHeight: 1.5 }}>{payload.summary}</div>
+      <div onClick={expand} style={{
+        marginTop: 8, fontSize: "var(--text-meta)", fontWeight: 600,
+        color: "var(--text-link)", cursor: "pointer",
+      }}>{t("schedule.result.expand")}</div>
     </div>
   );
 }

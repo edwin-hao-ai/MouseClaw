@@ -220,6 +220,14 @@ pub struct Config {
     /// 默认关 = 安静。开启从托盘「🔊 桌宠开口说话」即可。
     #[serde(default)]
     pub tts_enabled: bool,
+    /// v0.4.x · 桌宠音效 —— 程序化 chiptune（睡觉鼾声 / 完成提示音 / 撞墙等）。
+    /// 前端 petAudio 用 Web Audio 实时合成，按皮肤物种换嗓音；这俩字段只是开关 + 音量。
+    /// 默认开 + 音量 0.45（很轻）—— 用户在托盘「🔉 桌宠音效」一键关。
+    /// 不 bump CURRENT_CONFIG_VERSION：serde default 兜底，老 config 无痛升级、不重走 Onboarding。
+    #[serde(default = "default_sfx_enabled")]
+    pub sfx_enabled: bool,
+    #[serde(default = "default_sfx_volume")]
+    pub sfx_volume: f32,
     /// 长按 fn → 语音输入到光标（v0.1.11 voice IME）
     /// 默认开 —— 用户长按 fn 才触发，短按 fn 仍走 macOS 原生行为
     #[serde(default = "default_voice_ime")]
@@ -270,6 +278,19 @@ pub struct Config {
     /// v0.4.4 · 暂停记忆(= ChatGPT 的 Temporary):本次召唤既不读也不写记忆。默认 false。
     #[serde(default)]
     pub memory_paused: bool,
+    /// v0.5 · 开场调皮入场动画（launch entrance）是否已经"炸"过一次。
+    /// false → 下次启动播 **loud** 入场（探头→横冲→张望→跑去角落），播完置 true，
+    ///   **一生一次**（首次安装那次）。
+    /// true → 之后每日 `--minimized` 自启播 **subtle**（角落伸懒腰），手动冷启播
+    ///   **medium**（窜到角落+开心蹦）。详见 `entrance.rs`。
+    /// 老 config 缺这个字段 → serde default false → 老用户升级后会看到一次 loud 入场
+    ///   （等价"第一次见到新版桌宠"，符合预期）。
+    #[serde(default)]
+    pub seen_entrance: bool,
+    /// v0.5 · 是否已经给过一次性"定时任务发现提示"。从没建过定时任务的用户，
+    /// 启动几分钟后桌宠会轻轻提一句怎么用，提过即置 true（只提一次，不打扰）。
+    #[serde(default)]
+    pub seen_schedule_hint: bool,
     /// Schema version. Saved configs older than CURRENT_CONFIG_VERSION get
     /// treated as not-onboarded so the user re-picks a shortcut.
     /// Pre-versioned configs default to 1 (the legacy schema).
@@ -289,6 +310,8 @@ fn default_voice_ime() -> bool { true }
 fn default_voice_ime_trigger() -> String { "fn".into() }
 fn default_autostart() -> bool { true }
 fn default_memory_enabled() -> bool { true }
+fn default_sfx_enabled() -> bool { true }
+fn default_sfx_volume() -> f32 { 0.45 }
 
 impl Default for Config {
     fn default() -> Self {
@@ -308,12 +331,16 @@ impl Default for Config {
             pet_anchor: PetAnchor::default(),
             pet_custom_position: None,
             tts_enabled: false,
+            sfx_enabled: default_sfx_enabled(),
+            sfx_volume: default_sfx_volume(),
             onboarded: false,
             pet_name: None,
             personality: Personality::default(),
             personality_custom: None,
             memory_enabled: default_memory_enabled(),
             memory_paused: false,
+            seen_entrance: false,
+            seen_schedule_hint: false,
             version: CURRENT_CONFIG_VERSION,
         }
     }

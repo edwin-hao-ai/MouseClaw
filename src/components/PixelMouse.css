@@ -437,6 +437,53 @@
   .mouse-wrap[class*="mc-bonk-"] .mouse-svg { animation-duration: 1ms; }
 }
 
+/* ───────── v0.5 · 开场调皮入场动画 (mc-entrance-*) ─────────
+ *
+ * 设计原型：docs/prototypes/launch-entrance-20260521.html
+ * Rust 端：src-tauri/src/entrance.rs（逐帧 set_position 推窗口本体横穿 + emit phase）
+ * App.tsx 收到 entrance-phase 事件 → 给 .mouse-wrap 加 mc-entrance-{phase}。
+ *
+ * 分工：**窗口位置**（横穿屏幕）由 Rust 推；这里只管**桌宠精灵自身**的动作
+ * （跑腿弹跳 / 急刹挤压 / 蹦跶张望 / 伸懒腰）+ 表情拍（抖耳 / 甩尾 / 蛙鼓气）。
+ * 全部作用在整只 .mouse-svg + .mc-ear/.mc-tail 子组 → 9 款皮肤一视同仁，
+ * 不碰 palette 颜色。曲线用 DESIGN.md §2.7 的 spring/tap 值（字面量，跟 bonk 一致）。
+ */
+.mouse-wrap.mc-entrance-peek .mouse-svg    { animation: mc-en-peek 600ms ease-in-out infinite; transform-origin: center bottom; }
+.mouse-wrap.mc-entrance-run .mouse-svg     { animation: mc-en-run 240ms steps(2) infinite;      transform-origin: center bottom; }
+.mouse-wrap.mc-entrance-skid .mouse-svg    { animation: mc-en-skid 280ms cubic-bezier(.2,0,0,1); transform-origin: center bottom; }
+.mouse-wrap.mc-entrance-beat .mouse-svg    { animation: mc-en-beat 760ms cubic-bezier(.34,1.56,.64,1); transform-origin: center bottom; }
+.mouse-wrap.mc-entrance-stretch .mouse-svg { animation: mc-en-stretch 620ms cubic-bezier(.34,1.56,.64,1); transform-origin: center bottom; }
+
+/* 表情拍：蹦跶/探头时抖耳甩尾 —— 鼠/猫/狐耳朵摆，蛙(.mc-ear-frog)眼鼓气，
+   狐尾(.mc-tail-fox 不存在于真实 PixelMouse → 用通用 .mc-tail 即可，狐尾本就大) */
+.mouse-wrap.mc-entrance-beat .mc-ear:not(.mc-ear-frog),
+.mouse-wrap.mc-entrance-peek .mc-ear:not(.mc-ear-frog) { animation: mc-en-ear 600ms ease-in-out; }
+.mouse-wrap.mc-entrance-beat .mc-ear-frog,
+.mouse-wrap.mc-entrance-peek .mc-ear-frog              { animation: mc-en-frog 600ms ease-in-out; }
+.mouse-wrap.mc-entrance-beat .mc-tail                  { animation: mc-en-tail 520ms cubic-bezier(.34,1.56,.64,1) 2; }
+
+@keyframes mc-en-peek    { 0%,100% { transform: rotate(-7deg); } 50% { transform: rotate(7deg); } }
+@keyframes mc-en-run     { 0% { transform: translateY(0) rotate(-3deg); } 50% { transform: translateY(-3px) rotate(0); } 100% { transform: translateY(0) rotate(3deg); } }
+@keyframes mc-en-skid    { 0% { transform: scaleX(1.18) scaleY(.86); } 55% { transform: scaleX(.9) scaleY(1.08); } 100% { transform: scale(1); } }
+@keyframes mc-en-beat {
+  0%   { transform: translateY(0) rotate(0); }
+  22%  { transform: translateY(-15px) rotate(-6deg) scaleY(1.04); }
+  48%  { transform: translateY(0) rotate(5deg) scaleY(.94); }
+  70%  { transform: translateY(-5px) rotate(-3deg); }
+  100% { transform: translateY(0) rotate(0); }
+}
+@keyframes mc-en-stretch { 0% { transform: scaleY(.66) scaleX(1.12); } 45% { transform: scaleY(1.14) scaleX(.94); } 100% { transform: scale(1); } }
+@keyframes mc-en-ear     { 0%,100% { transform: rotate(0); } 30% { transform: rotate(-16deg); } 62% { transform: rotate(11deg); } }
+@keyframes mc-en-frog    { 0%,100% { transform: scale(1); } 50% { transform: scale(1.28); } }
+@keyframes mc-en-tail    { 0%,100% { transform: rotate(0); } 50% { transform: rotate(-20deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  /* 无障碍：精灵不动（窗口横穿那侧由 Rust 读 reduced_motion 跳过，桌宠直接到角落） */
+  .mouse-wrap[class*="mc-entrance-"] .mouse-svg,
+  .mouse-wrap[class*="mc-entrance-"] .mc-ear,
+  .mouse-wrap[class*="mc-entrance-"] .mc-tail { animation: none !important; }
+}
+
 /* Continuing session chain indicator — 3-pixel green block above head */
 .mouse-chain {
   position: absolute;

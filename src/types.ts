@@ -20,6 +20,8 @@ export type ViewKind =
   | { kind: "voice-confirm"; transcript: string; remaining: number }
   // v0.4.0 · 首次使用引导 · 5 步流程
   | { kind: "tour-step"; step: number }
+  // v0.5 · 定时任务确认卡（backend 解析出 [SCHEDULE] 后弹给用户确认）
+  | { kind: "schedule-confirm"; title: string; action: string; schedule: Schedule; nextRun?: string }
   | { kind: "blocked"; reason: string };
 
 export interface Turn {
@@ -56,6 +58,17 @@ export const EV_STREAM_CHUNK = "stream-chunk";
 export const EV_COUNTDOWN    = "countdown-tick";
 export const EV_NUDGE        = "nudge";
 export const EV_SESSION_STATE = "session-state";
+/** v0.5 · 开场调皮入场动画 phase 事件 —— 必须与 Rust `entrance::EV_ENTRANCE` 一致。 */
+export const EV_ENTRANCE = "entrance-phase";
+
+/** 入场动画当前 phase（驱动桌宠精灵的 .mc-entrance-* CSS class）。
+ *  "done" 不出现在前端 state 里 —— 收到时清空（回 idle）。 */
+export type EntrancePhase = "peek" | "run" | "skid" | "beat" | "stretch";
+
+export interface EntrancePayload {
+  phase: EntrancePhase | "done";
+  tier: "loud" | "medium" | "subtle";
+}
 
 /** Session 状态（v0.4.x）—— 驱动链条图标 / 第 N 轮 / 钉住 / 软提示。 */
 export interface SessionState {
@@ -81,3 +94,63 @@ export interface NudgePayload {
   ctaLabel?: string;
   ctaAction?: string;
 }
+
+// ── 定时任务 / 心跳 (v0.5) ── 与 Rust src-tauri/src/schedule.rs 严格对齐 ──
+
+/** 定时方式（kind 五选一）—— 镜像 Rust `Schedule`（serde tag="kind"）。 */
+export type Schedule =
+  | { kind: "daily"; time: string }
+  | { kind: "weekday"; time: string }
+  | { kind: "weekly"; days: number[]; time: string } // 1=周一 .. 7=周日
+  | { kind: "interval"; everyMinutes: number; activeStart?: string; activeEnd?: string }
+  | { kind: "monthly"; day: number; time: string };
+
+export type RunStatus = "ok" | "failed" | "skipped";
+
+export interface RunInfo {
+  at: string; // RFC3339 UTC
+  status: RunStatus;
+  summary: string;
+}
+
+export interface ScheduleTask {
+  id: string;
+  title: string;
+  action: string;
+  schedule: Schedule;
+  enabled: boolean;
+  createdAt: string;
+  lastRun?: RunInfo;
+}
+
+/** list_schedules 返回项 = task 全字段 + 计算出的 nextRun（本地 RFC3339）。 */
+export interface ScheduleView extends ScheduleTask {
+  nextRun?: string;
+}
+
+/** 新建 / 更新任务的输入（无 id / createdAt / lastRun）。 */
+export interface ScheduleInput {
+  title: string;
+  action: string;
+  schedule: Schedule;
+  enabled?: boolean;
+}
+
+export interface RunRecord {
+  taskId: string;
+  title: string;
+  at: string;
+  status: RunStatus;
+  summary: string;
+  output: string;
+}
+
+/** 定时任务执行完成事件 payload（轻气泡）。taskId 为空 = 一次性发现提示。 */
+export interface ScheduleResultPayload {
+  taskId: string;
+  title: string;
+  summary: string;
+  ok: boolean;
+}
+
+export const EV_SCHEDULE_RESULT = "schedule-result";

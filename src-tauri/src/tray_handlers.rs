@@ -10,8 +10,8 @@ use tauri::{menu::MenuEvent, AppHandle, Manager};
 
 use crate::tray_actions::{
     change_language, change_skin, emit_vocab_reloaded, enable_browser_automation,
-    set_workspace_via_picker, summon_via_tray, toggle_autostart, toggle_clipboard_pause,
-    toggle_tts, toggle_voice_ime,
+    set_sfx_volume, set_workspace_via_picker, summon_via_tray, toggle_autostart,
+    toggle_clipboard_pause, toggle_sfx, toggle_tts, toggle_voice_ime,
 };
 use crate::tray_menu::rebuild_tray_menu;
 use crate::tray_windows::{open_about_dialog, open_history_window, open_status_window};
@@ -101,6 +101,11 @@ pub(crate) fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
             }
         }
         "history"         => open_history_window(app),
+        "open-tasks"      => {
+            if let Err(e) = crate::commands::open_tasks_window(app.clone()) {
+                eprintln!("[mouseclaw] open-tasks: {e}");
+            }
+        }
         "open-downloader" => {
             if let Err(e) = crate::commands::open_downloader_window(app.clone()) {
                 eprintln!("[mouseclaw] open-downloader: {e}");
@@ -124,6 +129,10 @@ pub(crate) fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
         "toggle-clipboard-pause" => { toggle_clipboard_pause(app); rebuild_tray_menu(app); }
         "toggle-autostart" => { toggle_autostart(app); rebuild_tray_menu(app); }
         "toggle-tts" => { toggle_tts(app); rebuild_tray_menu(app); }
+        "toggle-sfx" => { toggle_sfx(app); rebuild_tray_menu(app); }
+        "sfx-vol:low"  => { set_sfx_volume(app, 0.25); rebuild_tray_menu(app); }
+        "sfx-vol:mid"  => { set_sfx_volume(app, 0.45); rebuild_tray_menu(app); }
+        "sfx-vol:high" => { set_sfx_volume(app, 0.70); rebuild_tray_menu(app); }
         // v0.4.0 P1 · 术语表
         "vocab-edit" => {
             if let Err(e) = crate::commands::vocab_open_user_file() {

@@ -98,6 +98,14 @@ pub async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppStat
     let app_chunks = app.clone();
     let transcript_chunks = transcript.clone();
     let mut last_emit = std::time::Instant::now() - Duration::from_secs(1);
+    // v0.5 · 定时任务的 [SCHEDULE] JSON 不该流式喷给用户看 —— 见到标记就切到"正在设定"
+    //   状态，等流完再弹确认卡（否则用户会看到一坨 JSON 在气泡里长出来）。
+    let sched_msg = if crate::config::Config::load().language == "en" {
+        "⏰ Setting up a scheduled task…"
+    } else {
+        "⏰ 正在设定定时任务…"
+    };
+    let mut sched_shown = false;
     // v0.4 · AI 任务串行队列 —— 若有 reactive action / 另一次召唤在跑，这里 await 等它完成。
     //   ticket 持有到 ask_streaming 结束（drop 在本作用域末）。期间桌宠显示忙碌。
     //   听写（fn IME）不走队列，不受影响。见 CLAUDE.md "AI 任务串行 + 听写即时"。
@@ -110,6 +118,20 @@ pub async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppStat
         cursor_ctx.as_ref(),
         trail_summary.as_deref(),
         |accumulated| {
+            // 定时任务标记一出现就不再流式回显 JSON，改显示"正在设定"（只切一次）。
+            if accumulated.contains("[SCHEDULE]") {
+                if !sched_shown {
+                    sched_shown = true;
+                    emit_view(
+                        &app_chunks,
+                        &ViewKind::Thinking {
+                            transcript: transcript_chunks.clone(),
+                            status: Some(sched_msg.to_string()),
+                        },
+                    );
+                }
+                return;
+            }
             let now = std::time::Instant::now();
             if now.duration_since(last_emit) >= Duration::from_millis(90) {
                 last_emit = now;
@@ -161,6 +183,33 @@ pub async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppStat
     // AI 调用结束 → 立即放锁，让下一个排队任务能进来（Mode A/B 输出 / session 存盘
     // 不需要 AI 锁，不该让它们继续阻塞队列）。
     drop(_ai_ticket);
+
+    // v0.5 · 定时任务：backend 回了 [SCHEDULE] 标记 → 弹确认卡，不走普通 reply，也不记 session
+    // （这次召唤是"设个定时"，不是一轮对话）。用户确认后前端调 create_schedule。
+    if let Some(json) = crate::claude_cli::parse_schedule_directive(&reply) {
+        match crate::schedule::parse_input(&json) {
+            Ok(input) => {
+                let next_run = input
+                    .schedule
+                    .next_after(chrono::Local::now())
+                    .map(|d| d.to_rfc3339());
+                emit_view(
+                    &app,
+                    &ViewKind::ScheduleConfirm {
+                        title: input.title,
+                        action: input.action,
+                        schedule: input.schedule,
+                        next_run,
+                    },
+                );
+                // 用户没操作就 45s 后收起（忽略 = 不创建，最安全的默认）。
+                // 点「确认 / 改一下」前端会主动 dismiss；Esc 也走 dismiss。
+                schedule_auto_hide(&app, &state, 45_000);
+                return;
+            }
+            Err(e) => eprintln!("[mouseclaw] schedule 解析失败，按普通回复处理：{e:#}"),
+        }
+    }
 
     // 4. Record turns into session history
     {
@@ -709,7 +758,7 @@ fn format_progress(p: &crate::model_downloader::ProgressEvent) -> String {
     }
 }
 
-fn friendly_backend_error(raw: &str, backend: crate::backend::Backend) -> String {
+pub fn friendly_backend_error(raw: &str, backend: crate::backend::Backend) -> String {
     let lower = raw.to_lowercase();
     let bin = backend.binary_name();
     if lower.contains("找不到") || lower.contains("no such file") || lower.contains("not found")
