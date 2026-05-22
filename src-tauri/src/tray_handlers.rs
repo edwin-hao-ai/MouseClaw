@@ -9,9 +9,9 @@
 use tauri::{menu::MenuEvent, AppHandle, Manager};
 
 use crate::tray_actions::{
-    change_language, change_skin, emit_vocab_reloaded, enable_browser_automation,
-    set_sfx_volume, set_workspace_via_picker, summon_via_tray, toggle_autostart,
-    toggle_clipboard_pause, toggle_sfx, toggle_tts, toggle_voice_ime,
+    change_backend, change_language, change_skin, emit_vocab_reloaded, enable_browser_automation,
+    recommend_backend_install, set_sfx_volume, set_workspace_via_picker, summon_via_tray,
+    toggle_autostart, toggle_clipboard_pause, toggle_sfx, toggle_tts, toggle_voice_ime,
 };
 use crate::tray_menu::rebuild_tray_menu;
 use crate::tray_windows::{open_about_dialog, open_history_window, open_status_window};
@@ -40,6 +40,12 @@ pub(crate) fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
     // 召唤 AI 快捷键子菜单：id 形如 "summon-shortcut:Super+Shift+Space"
     if let Some(sc) = id.strip_prefix("summon-shortcut:") {
         crate::shortcut_menu::change_summon_shortcut(app, sc);
+        rebuild_tray_menu(app);
+        return;
+    }
+    // v0.4.4 · AI 后端切换子菜单：id 形如 "backend:gemini" / "backend:kiro-cli"
+    if let Some(slug) = id.strip_prefix("backend:") {
+        change_backend(app, slug);
         rebuild_tray_menu(app);
         return;
     }
@@ -118,6 +124,7 @@ pub(crate) fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
                 eprintln!("[mouseclaw] open-picker: {e}");
             }
         }
+        "backend-install" => recommend_backend_install(app),
         "status"          => open_status_window(app),
         // toggle-tidy removed in v0.3.3 — tidy_up is default-on via Haiku
         "toggle-voice-ime"=> { toggle_voice_ime(app); rebuild_tray_menu(app); }

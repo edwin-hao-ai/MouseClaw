@@ -4,7 +4,8 @@
 //!   - `overlay`     —— 老鼠窗口显示/隐藏 + 视图事件广播 + 自动隐藏
 //!   - `pipeline`    —— 截屏+转写+AI+输出模式 的核心流程；push-to-talk handler
 //!   - `commands`    —— 所有 #[tauri::command]
-//!   - `backend`     —— 多 AI 后端抽象（Claude / Codex / OpenClaw CLI）
+//!   - `backend`     —— 多 AI 后端抽象（Claude / Codex / Gemini / Copilot / OpenCode /
+//!                       Cline / Kimi / Kiro / Antigravity / Vibe / Pi / OpenClaw / Hermes）
 //!   - `claude_cli`  —— Claude Code CLI 流式调用
 //!   - `audio` / `transcribe_stream` —— cpal 录音 + sherpa-onnx 流式转写
 //!   - `screenshot` / `mode_b` / `permissions` / `sessions` / `config` / `tray` / `events`
@@ -15,6 +16,7 @@ pub mod ai_queue;
 pub mod anchor;
 pub mod audio;
 pub mod backend;
+pub mod backend_menu;
 pub mod browser_bridge;
 pub mod nudge;
 pub mod presence;
