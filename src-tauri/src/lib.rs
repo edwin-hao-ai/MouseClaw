@@ -352,6 +352,7 @@ pub fn run() {
             memory::memory_list_turns,
             memory::memory_get_profile,
             memory::memory_get_graph,
+            memory::memory_get_story,
             memory::memory_delete_turn,
             memory::memory_delete_profile_item,
             memory::memory_clear_all,
