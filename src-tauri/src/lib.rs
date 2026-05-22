@@ -375,6 +375,7 @@ pub fn run() {
             commands::resume_session,
             commands::open_downloader_window,
             commands::retry_model_downloads,
+            commands::prefetch_models,
             commands::get_model_status,
             commands::voice_confirm_send,
             commands::voice_confirm_cancel,

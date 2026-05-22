@@ -779,6 +779,19 @@ pub fn retry_model_downloads(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// v0.4.x · Onboarding 一打开就后台预取语音模型(~260MB)。
+/// 把下载提前到向导期间,等用户点完 7 步基本下好,消灭"装完才开始下"的死等。
+/// download() 自带并发锁(try_lock_download),与 onboarding 完成时 save_shortcut 的
+/// kick_off 不会重复下载;权限重启打断后 .part 续传,已下字节不浪费。
+/// (注:这有意改变了原"未 onboarded 不预下"的设计 —— 用户拍板"先下载可以",
+///  代价是中途放弃 onboarding 的人也会起一次下载,用户已接受。)
+#[tauri::command]
+pub fn prefetch_models(app: AppHandle) -> Result<(), String> {
+    crate::transcribe_stream::kick_off_download_if_missing(app.clone());
+    crate::punctuation::kick_off_download_if_missing(app);
+    Ok(())
+}
+
 /// v0.4.0 · DownloaderView 挂载时调一次拿当前所有模型的状态快照。
 /// 没监听到 emit 也能正确显示「✅ 已就绪」或「等待开始」等状态。
 #[tauri::command]

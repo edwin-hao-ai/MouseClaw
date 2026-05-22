@@ -118,6 +118,12 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   useEffect(() => {
     invoke<boolean>("get_autostart").then(setAutostart).catch(() => setAutostart(true));
   }, []);
+
+  // v0.4.x · 一进向导就后台预取语音模型(~260MB) —— 把下载提前到 onboarding 期间,
+  // 等用户点完 7 步基本下好。后端 download() 自带并发锁,完成时 save_shortcut 再调不会重复。
+  useEffect(() => {
+    invoke("prefetch_models").catch(() => { /* dev browser / 已在下都无所谓 */ });
+  }, []);
   const [perms, setPerms] = useState<PermissionStatus>({
     accessibility: false,
     screen_recording: false,
