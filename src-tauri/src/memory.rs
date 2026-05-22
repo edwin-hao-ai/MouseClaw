@@ -13,6 +13,7 @@ use once_cell::sync::Lazy;
 use rusqlite::{params, Connection};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 /// 单连接 + Mutex 串行访问(记忆读写量小,SELECT < 10ms)。Connection 是 Send。
@@ -27,6 +28,26 @@ pub struct UsedItem {
     pub text: String,
 }
 static LAST_ITEMS: Lazy<Mutex<Vec<UsedItem>>> = Lazy::new(|| Mutex::new(Vec::new()));
+
+/// reflection 串行闸 —— 防 pipeline(满 6 条触发) 与 idle 定时器并发 spawn `run_reflection`,
+/// 两者在 fetch_unprocessed→acquire 窗口里拿到同一批 turn → 重复写 insight/边。一次只许一个反思在跑。
+static REFLECTING: AtomicBool = AtomicBool::new(false);
+
+/// RAII 认领 reflection。已有反思在跑 → `try_acquire()` 返回 None,调用方直接 return。
+struct ReflectGuard;
+impl ReflectGuard {
+    fn try_acquire() -> Option<Self> {
+        REFLECTING
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .ok()
+            .map(|_| ReflectGuard)
+    }
+}
+impl Drop for ReflectGuard {
+    fn drop(&mut self) {
+        REFLECTING.store(false, Ordering::SeqCst);
+    }
+}
 
 /// 读并清空(pipeline 在 AI 调用后读一次)。
 pub fn take_last_used_items() -> Vec<UsedItem> {
@@ -508,6 +529,11 @@ pub async fn run_reflection() -> Result<()> {
     if !enabled() {
         return Ok(());
     }
+    // 串行闸:已有反思在跑(另一处 spawn)就直接退,避免同批 turn 被消化两次 → 重复 insight。
+    let _reflect_guard = match ReflectGuard::try_acquire() {
+        Some(g) => g,
+        None => return Ok(()),
+    };
     let batch = with_db(|c| fetch_unprocessed(c, 12)).unwrap_or_default();
     if batch.is_empty() {
         return Ok(());
