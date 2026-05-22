@@ -25,10 +25,13 @@ describe("soundEventsForTransition", () => {
     expect(soundEventsForTransition(base, { ...base, mouseState: "paste" })).toEqual(["insert"]);
   });
 
-  it("companion 进入 waking/hop/dizzy 各触发对应音", () => {
-    expect(soundEventsForTransition(base, { ...base, companionState: "waking" })).toEqual(["wake"]);
+  it("companion 进入 hop/dizzy 各触发对应音", () => {
     expect(soundEventsForTransition(base, { ...base, companionState: "hop" })).toEqual(["hop"]);
     expect(soundEventsForTransition(base, { ...base, companionState: "dizzy" })).toEqual(["dizzy"]);
+  });
+
+  it("waking 故意不发声（防回到桌面被起床音骚扰 · 2026-05-23）", () => {
+    expect(soundEventsForTransition(base, { ...base, companionState: "waking" })).toEqual([]);
   });
 
   it("clicked / excited 故意不自动触发（防吵）", () => {
