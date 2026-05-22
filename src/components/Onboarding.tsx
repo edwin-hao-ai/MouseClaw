@@ -16,6 +16,7 @@ import { useState, useEffect, useCallback, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { PixelMouse } from "./PixelMouse";
 import { OnboardingInstall } from "./OnboardingInstall";
+import { OnboardingBackendStep } from "./OnboardingBackendStep";
 import type { BackendChoice, SkinId, PetAnchor } from "../types";
 import { SKINS, DEFAULT_SKIN } from "../skins";
 import { useT } from "../i18n";
@@ -54,7 +55,7 @@ interface OnboardingProps {
   ) => void;
 }
 
-// OPTIONS / BACKENDS / PERMISSIONS — 函数化，每次渲染时按当前语言重建
+// OPTIONS / PERMISSIONS — 函数化，每次渲染时按当前语言重建
 function buildOptions(t: ReturnType<typeof useT>) {
   return [
     { id: "hold-option" as ShortcutChoice,
@@ -64,81 +65,6 @@ function buildOptions(t: ReturnType<typeof useT>) {
       label: t("onboarding.shortcut.hint").includes("Hold") ? "Hold ⌃ + ⌘ + M" : "按住 ⌃ + ⌘ + M",
       keyHint: "⌃ ⌘ M" },
   ];
-}
-
-const BACKENDS_META: Array<{ id: BackendChoice; label: string; descKey: string; tag?: string }> = [
-  { id: "claude-cli", label: "Claude Code CLI", descKey: "claude", tag: "common.recommended" },
-  { id: "codex-cli",  label: "OpenAI Codex CLI", descKey: "codex" },
-  { id: "gemini-cli", label: "Gemini CLI", descKey: "gemini" },
-  { id: "copilot-cli", label: "GitHub Copilot CLI", descKey: "copilot" },
-  { id: "opencode-cli", label: "OpenCode", descKey: "opencode-sst" },
-  { id: "cline-cli", label: "Cline CLI", descKey: "cline" },
-  { id: "kimi-cli", label: "Kimi Code CLI", descKey: "kimi" },
-  { id: "kiro-cli", label: "Kiro CLI", descKey: "kiro" },
-  { id: "antigravity-cli", label: "Antigravity CLI", descKey: "antigravity" },
-  { id: "vibe-cli", label: "Mistral Vibe CLI", descKey: "vibe" },
-  { id: "pi-agent", label: "Pi Coding Agent", descKey: "pi" },
-  { id: "openclaw-cli", label: "OpenClaw CLI",  descKey: "openclaw" },
-  { id: "hermes-agent", label: "Hermes Agent (Nous Research)", descKey: "hermes" },
-];
-
-function backendDesc(id: BackendChoice, t: ReturnType<typeof useT>): string {
-  // 这块描述不上升到 i18n key 表（太琐碎），直接走双语 inline
-  const en = t("onboarding.shortcut.hint").includes("Hold");
-  switch (id) {
-    case "claude-cli":
-      return en
-        ? "Most mature · native agentic + image reading. Needs claude installed & logged in."
-        : "最成熟 · 原生 agentic + 读图。需已装并登录 claude。";
-    case "codex-cli":
-      return en
-        ? "codex exec non-interactive mode. Needs npm i -g @openai/codex + OpenAI key."
-        : "codex exec 非交互模式。需 npm i -g @openai/codex 并配好 key。";
-    case "openclaw-cli":
-      return en
-        ? "openclaw agent --local. Needs npm i -g openclaw + provider key in shell."
-        : "openclaw agent --local。需 npm i -g openclaw 并配好 provider key。";
-    case "hermes-agent":
-      return en
-        ? "Hermes -z one-shot mode. Self-improving agent from Nous Research. Needs hermes installed + setup."
-        : "hermes -z 单次模式。Nous Research 的自学习 agent。需先装 hermes 并配 provider key。";
-    case "gemini-cli":
-      return en
-        ? "gemini -p headless mode. Google's open-source CLI. Needs npm i -g @google/gemini-cli + a Gemini key."
-        : "gemini -p 无头模式。Google 官方开源 CLI。需 npm i -g @google/gemini-cli 并配 Gemini key。";
-    case "copilot-cli":
-      return en
-        ? "copilot -p (the standalone GitHub Copilot CLI, not the VS Code extension). Needs npm i -g @github/copilot + Copilot subscription."
-        : "copilot -p（GitHub 官方独立 Copilot CLI，非 VS Code 插件）。需 npm i -g @github/copilot 并有 Copilot 订阅。";
-    case "opencode-cli":
-      return en
-        ? "opencode run, SST's terminal agent. Install via opencode.ai/install. Pick a provider/model in its config."
-        : "opencode run，SST 出品的终端 agent。装：opencode.ai/install。在它配置里选 provider/model。";
-    case "cline-cli":
-      return en
-        ? "cline -y headless mode. The autonomous agent's standalone CLI. Needs npm i -g cline + a provider key."
-        : "cline -y 无头模式。Cline 自主 agent 的独立 CLI。需 npm i -g cline 并配 provider key。";
-    case "kimi-cli":
-      return en
-        ? "kimi --quiet -p print mode. Moonshot AI's Kimi Code CLI. Install via code.kimi.com + a Kimi key."
-        : "kimi --quiet -p 打印模式。Moonshot 月之暗面的 Kimi Code CLI。装：code.kimi.com 并配 Kimi key。";
-    case "kiro-cli":
-      return en
-        ? "kiro-cli chat --no-interactive. AWS's agentic CLI. Install via cli.kiro.dev + sign in / API key."
-        : "kiro-cli chat --no-interactive。AWS 的 agent CLI。装：cli.kiro.dev 并登录 / 配 API key。";
-    case "antigravity-cli":
-      return en
-        ? "agy -p mode. Google's Antigravity CLI (successor to Gemini CLI, May 2026). Install via antigravity.google/cli."
-        : "agy -p 模式。Google Antigravity CLI（2026-05 接替 Gemini CLI）。装：antigravity.google/cli。";
-    case "vibe-cli":
-      return en
-        ? "vibe --prompt mode. Mistral's open-source CLI (Devstral). Install via uv tool install mistral-vibe + Mistral key."
-        : "vibe --prompt 模式。Mistral 开源 CLI（Devstral）。装：uv tool install mistral-vibe 并配 Mistral key。";
-    case "pi-agent":
-      return en
-        ? "pi -p print mode. Lightweight 4-tool coding agent. Needs npm i -g @mariozechner/pi-coding-agent + a provider key."
-        : "pi -p 打印模式。轻量四工具编码 agent。需 npm i -g @mariozechner/pi-coding-agent 并配 provider key。";
-  }
 }
 
 function buildPermissions(t: ReturnType<typeof useT>) {
@@ -165,10 +91,6 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   const voiceLang: VoiceLang = "zh-en";
   // v0.1.27 · 默认 bottom-right —— 最不挡视线
   const [petAnchor, setPetAnchor] = useState<PetAnchor>("bottom-right");
-  // v0.1.28 · 后端 CLI 安装状态（id → {installed, installCmd, installUrl}）
-  const [backendStatus, setBackendStatus] = useState<
-    Record<string, { installed: boolean; installCmd: string; installUrl: string } | "loading">
-  >({});
   // v0.1.26 · 开机自启动 —— 进 step 5 时拉一次系统真实状态，用户切换调 set_autostart
   const [autostart, setAutostart] = useState<boolean>(true);
   useEffect(() => {
@@ -203,26 +125,6 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     return () => clearInterval(timer);
   }, [step, refreshPerms]);
 
-  // v0.1.28 · 进 step 2 时并发检测全部 backend CLI 是否装在 PATH（v0.4.4 扩到 13 个）
-  useEffect(() => {
-    if (step !== 2) return;
-    const ids: BackendChoice[] = BACKENDS_META.map(b => b.id);
-    // mark all as loading first so UI doesn't flicker
-    setBackendStatus(Object.fromEntries(ids.map(id => [id, "loading" as const])));
-    ids.forEach((id) => {
-      invoke<{ installed: boolean; installCmd: string; installUrl: string }>(
-        "check_backend_installed", { backend: id }
-      ).then((res) => {
-        setBackendStatus(prev => ({ ...prev, [id]: res }));
-      }).catch(() => {
-        // browser-only mode 或 invoke 失败 —— 当成 "已装" 不挡用户
-        setBackendStatus(prev => ({
-          ...prev,
-          [id]: { installed: true, installCmd: "", installUrl: "" },
-        }));
-      });
-    });
-  }, [step]);
 
   // 一个权限算"搞定" = 真的查到已授权 OR (是屏幕录制 且 已点过请求)
   const isDone = (key: keyof PermissionStatus): boolean => {
@@ -280,85 +182,16 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     );
   }
 
-  // ── Step 2: 选 AI 后端 ────────────────────────────────────────────────────
+  // ── Step 2: 选 AI 后端（已安装优先 · v0.4.4，逻辑在 OnboardingBackendStep）
   if (step === 2) {
     return (
-      <div className="ob-root">
-        <div className="ob-mouse-stage">
-          <PixelMouse state="think" size={96} skin={skin} />
-        </div>
-        <h1 className="ob-title">{t("onboarding.backend.title")}</h1>
-        <p className="ob-subtitle">
-          {t("onboarding.backend.subtitle")}<br />
-          {t("onboarding.backend.uncertain_hint")}
-        </p>
-        {/* v0.4.4 · 13 个后端会超出 700×760 窗口高度 —— 把列表框成可滚动区，
-            标题 + 副标题 + 底部「下一步」CTA 始终可见，推荐项（Claude）在滚动顶部默认露出。 */}
-        <div
-          className="ob-options"
-          role="radiogroup"
-          aria-label={t("onboarding.backend.title")}
-          style={{ maxHeight: "44vh", overflowY: "auto", paddingRight: 4 }}
-        >
-          {BACKENDS_META.map(b => {
-            const st = backendStatus[b.id];
-            const isLoading = st === "loading";
-            const stObj = (st && st !== "loading") ? st : null;
-            const installed = stObj?.installed === true;
-            const missing = stObj?.installed === false;
-            return (
-              <button
-                key={b.id}
-                type="button"
-                role="radio"
-                aria-checked={backend === b.id}
-                className={`ob-option ${backend === b.id ? "selected" : ""}`}
-                onClick={() => setBackend(b.id)}
-              >
-                <span className="ob-label">
-                  {b.label}
-                  {isLoading && (
-                    <span className="ob-install-pill ob-install-loading">…</span>
-                  )}
-                  {installed && (
-                    <span className="ob-install-pill ob-install-ok">{t("backend.installed")}</span>
-                  )}
-                  {missing && (
-                    <span className="ob-install-pill ob-install-missing">{t("backend.missing")}</span>
-                  )}
-                </span>
-                <span className="ob-perm-desc">{backendDesc(b.id, t)}</span>
-                {missing && stObj && (
-                  <div
-                    className="ob-install-hint"
-                    onClick={(e) => e.stopPropagation()} // 别冒泡到 button 触发 select
-                  >
-                    <code className="ob-install-cmd">{stObj.installCmd}</code>
-                    <a
-                      href={stObj.installUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="ob-install-link"
-                    >
-                      {t("backend.install_open")} ↗
-                    </a>
-                  </div>
-                )}
-                {b.tag && <span className="ob-tag">{t(b.tag as "common.recommended")}</span>}
-              </button>
-            );
-          })}
-        </div>
-        <button
-          type="button"
-          className="ob-cta"
-          onClick={() => setStep(3)}
-        >
-          {t("onboarding.cta.next_skin")}
-        </button>
-      </div>
+      <OnboardingBackendStep
+        skin={skin}
+        onNext={b => { setBackend(b); setStep(3); }}
+      />
     );
   }
+
 
   // ── Step 3: 挑桌宠 ────────────────────────────────────────────────────────
   if (step === 3) {
