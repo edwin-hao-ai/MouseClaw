@@ -341,6 +341,7 @@ pub fn run() {
             commands::restart_app,
             commands::save_skin,
             commands::get_skin,
+            commands::get_sfx_config,
             commands::enable_browser_automation,
             commands::capability_status,
             commands::install_cli,
