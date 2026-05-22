@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MouseClaw · 起名交互重设计 + 眼球追踪调参 (2026-05-23)</title>
+<style>
+  /* ── DESIGN.md tokens（§9 cheatsheet）── */
+  :root {
+    --surface-deep: #0a0e1a;
+    --surface-glass: rgba(255, 255, 255, 0.06);
+    --bubble-bg: rgba(255, 255, 255, 0.97);
+    --panel-bg: rgba(252, 252, 254, 0.98);
+    --bubble-border: rgba(0, 0, 0, 0.06);
+    --text-primary: #1a1a1a;
+    --text-on-dark: #f5f5f7;
+    --text-dim: #a1a1a8;
+    --accent-primary: #ff6b9d;
+    --accent-soft: #ff9bb8;
+    --accent-gradient: linear-gradient(135deg, #ff6b9d, #ff9bb8);
+    --success: #5cd6a0;
+    --warn: #ffd166;
+    --danger: #ff5f57;
+    --m-body: #cfcfcf; --m-belly: #fff; --m-ear-in: #ff9bb8;
+    --m-eye: #1a1a1a; --m-nose: #d63d6a; --m-tail: #8a8a8a;
+    --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", sans-serif;
+    --radius-pill: 999px; --radius-md: 8px; --radius-xl: 12px; --radius-3xl: 16px;
+    --shadow-bubble: 0 12px 32px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.7);
+    --text-body: 14px; --text-meta: 12px; --text-title: 17px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--surface-deep); color: var(--text-on-dark);
+    font-family: var(--font-system); padding: 32px; line-height: 1.5;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: var(--text-title); margin: 40px 0 6px; display: flex; gap: 8px; align-items: center; }
+  .sub { color: var(--text-dim); font-size: var(--text-meta); margin: 0 0 18px; max-width: 720px; }
+  .row { display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start; }
+  svg { shape-rendering: crispEdges; image-rendering: pixelated; }
+  .tag { font-size: 11px; padding: 2px 8px; border-radius: var(--radius-pill);
+         background: rgba(255,107,157,.18); color: var(--accent-soft); font-weight: 600; }
+
+  /* ── picker 右侧 panel mock ── */
+  .panel {
+    width: 320px; background: var(--panel-bg); color: var(--text-primary);
+    border-radius: var(--radius-3xl); padding: 22px; box-shadow: var(--shadow-bubble);
+  }
+  .panel-stage { display: flex; justify-content: center; padding: 6px 0 10px; }
+  .panel h3 { text-align: center; margin: 2px 0 2px; font-size: 18px; }
+  .panel .desc { text-align: center; color: var(--text-dim); font-size: var(--text-meta); margin: 0 0 14px; }
+  .id-label { font-size: var(--text-meta); color: var(--text-dim); font-weight: 600;
+              margin: 14px 0 7px; letter-spacing: .02em; }
+
+  /* 名字输入：左侧🎲随机 + 输入 + 字数 */
+  .name-row { display: flex; gap: 8px; align-items: stretch; }
+  .name-input {
+    flex: 1; min-width: 0; font-size: 15px; padding: 11px 13px;
+    border: 1.5px solid var(--bubble-border); border-radius: var(--radius-md);
+    background: #fff; color: var(--text-primary); outline: none; transition: border-color .15s;
+  }
+  .name-input:focus { border-color: var(--accent-primary); }
+  .name-input::placeholder { color: #c4c4cc; }
+  .dice {
+    flex: 0 0 auto; width: 44px; border: 1.5px solid var(--bubble-border);
+    border-radius: var(--radius-md); background: #fff; cursor: pointer; font-size: 18px;
+    transition: transform .3s, background .15s;
+  }
+  .dice:hover { background: #fff5f8; }
+  .dice.spin { transform: rotate(360deg); }
+
+  /* 名字建议 chips */
+  .suggest { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+  .chip {
+    font-size: var(--text-meta); padding: 6px 12px; border-radius: var(--radius-pill);
+    border: 1px solid var(--bubble-border); background: #fff; color: var(--text-primary);
+    cursor: pointer; transition: all .14s;
+  }
+  .chip:hover { border-color: var(--accent-soft); background: #fff5f8; }
+  .chip.on { background: var(--accent-gradient); color: #fff; border-color: transparent; }
+
+  /* 实时打招呼气泡（桌宠用名字说话） */
+  .greet {
+    margin-top: 14px; display: flex; gap: 10px; align-items: center;
+    background: #fff; border: 1px solid var(--bubble-border); border-radius: var(--radius-xl);
+    padding: 11px 13px; box-shadow: 0 2px 8px rgba(0,0,0,.05);
+  }
+  .greet .pet { flex: 0 0 auto; }
+  .greet .txt { font-size: var(--text-body); color: var(--text-primary); }
+  .greet .txt b { color: var(--accent-primary); }
+  .greet .txt .muted { color: var(--text-dim); }
+
+  .persona-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+  .persona { font-size: var(--text-meta); padding: 9px; border-radius: var(--radius-md);
+             border: 1px solid var(--bubble-border); background: #fff; cursor: pointer; text-align: center; }
+  .persona.on { border-color: var(--accent-primary); background: #fff5f8; font-weight: 600; }
+  .actions { display: flex; gap: 10px; margin-top: 18px; }
+  .btn { flex: 1; padding: 12px; border-radius: var(--radius-xl); border: none; cursor: pointer; font-size: var(--text-body); font-weight: 600; }
+  .btn.secondary { background: #f0f0f3; color: var(--text-primary); }
+  .btn.primary { background: var(--accent-gradient); color: #fff; }
+
+  /* ── 眼球 falloff playground ── */
+  .desk {
+    position: relative; height: 360px; border-radius: var(--radius-xl); overflow: hidden;
+    background: linear-gradient(160deg, #1b2740, #0d1322);
+    border: 1px solid rgba(255,255,255,.08); cursor: crosshair;
+  }
+  .desk .hint { position: absolute; top: 14px; left: 16px; color: var(--text-dim); font-size: var(--text-meta); }
+  .desk .pet-slot { position: absolute; bottom: 18px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .desk .pet-slot .cap { font-size: 11px; color: var(--text-dim); }
+  .desk .pet-slot .cap b { color: var(--accent-soft); }
+  .desk .cursor-dot { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px;
+    border-radius: 50%; background: var(--accent-primary); box-shadow: 0 0 12px var(--accent-primary); pointer-events: none; }
+  .ctrl { display: flex; gap: 18px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
+  .ctrl label { font-size: var(--text-meta); color: var(--text-dim); }
+  input[type=range] { width: 240px; accent-color: var(--accent-primary); }
+  .val { font-variant-numeric: tabular-nums; color: var(--accent-soft); font-weight: 700; }
+  code { background: rgba(255,255,255,.08); padding: 1px 6px; border-radius: 5px; font-size: 12px; }
+</style>
+</head>
+<body>
+  <h1>MouseClaw · 起名交互 + 眼球追踪 调参 prototype</h1>
+  <p class="sub">2026-05-23 · 两件事：① picker「起名」交互重设计（修 placeholder 截断 + 更优雅）② 眼球追踪
+    <code>EYE_FALLOFF_PX</code> 调参（修「经常不追」—— 根因是 tanh 在 180px 就饱和，桌宠在角落时光标一远眼睛就钉死）。
+    所有颜色/圆角/阴影走 DESIGN.md token。</p>
+
+  <!-- ════ Section 1 · 起名交互 ════ -->
+  <h2>① 起名交互重设计 <span class="tag">picker 右侧 panel</span></h2>
+  <p class="sub">现状问题：placeholder「给我起个名字…(留空我就先没名字)」16 字被窄输入框切成「…先没名」；且只有一个干巴输入框，没人知道该起啥。
+    重设计：短 placeholder 不截断 · 🎲 一键随机 · 名字建议 chips · 输入时桌宠**用这个名字跟你打招呼**（即时反馈"它接受了这个名字"）。</p>
+
+  <div class="row">
+    <!-- 重设计后 -->
+    <div class="panel">
+      <div class="panel-stage"><span id="bigPet"></span></div>
+      <h3>经典灰</h3>
+      <div class="desc">DESIGN.md 锁定的原版 · 灰身白肚粉耳</div>
+
+      <div class="id-label">名字</div>
+      <div class="name-row">
+        <input id="nameInput" class="name-input" maxlength="12" placeholder="起个名字…" />
+        <button id="dice" class="dice" title="随机起名">🎲</button>
+      </div>
+      <div class="suggest" id="suggest"></div>
+
+      <div class="greet">
+        <span class="pet" id="greetPet"></span>
+        <span class="txt" id="greetTxt"><span class="muted">起个名字，它就会记住自己叫什么～</span></span>
+      </div>
+
+      <div class="id-label">性格</div>
+      <div class="persona-grid">
+        <div class="persona on">🤗 暖心陪伴</div>
+        <div class="persona">😏 毒舌助理</div>
+        <div class="persona">⚡ 极简话少</div>
+        <div class="persona">💬 话痨陪伴</div>
+      </div>
+
+      <div class="actions">
+        <button class="btn secondary">取消</button>
+        <button class="btn primary">应用并关闭</button>
+      </div>
+    </div>
+
+    <div style="max-width:300px">
+      <p class="sub"><b style="color:var(--text-on-dark)">改了什么：</b></p>
+      <ul class="sub" style="line-height:1.9">
+        <li>placeholder 短到「起个名字…」，永不截断</li>
+        <li>🎲 随机：从精选池抽一个可爱名（点了会转一下）</li>
+        <li>4 个建议 chip：点一下即填入并高亮；🎲 会换一批</li>
+        <li>输入即预览：桌宠气泡实时变成「嗨，我是 <b style="color:var(--accent-soft)">{名字}</b>！」，眨眼+轻跳一下表示"收到"</li>
+        <li>留空时气泡显示灰字引导，不报错</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ════ Section 2 · 眼球追踪 ════ -->
+  <h2>② 眼球追踪调参 <span class="tag">EYE_FALLOFF_PX</span></h2>
+  <p class="sub">在下面深色「桌面」里移动鼠标 —— 左边是<b style="color:var(--text-on-dark)">现状 180px</b>，右边是<b style="color:var(--text-on-dark)">可调值</b>。
+    桌宠固定在角落（真实场景），你会发现 180px 时：光标稍微离远，眼睛立刻钉到极限不动了（这就是"经常不追"）。把右边滑块拉大，眼睛在整屏范围都能按比例追。</p>
+
+  <div class="desk" id="desk">
+    <div class="hint">🖱️ 在这片区域移动鼠标 →</div>
+    <div class="pet-slot" style="left: 40px;">
+      <span id="petA"></span>
+      <span class="cap">现状 <b>falloff=180</b></span>
+    </div>
+    <div class="pet-slot" style="right: 40px;">
+      <span id="petB"></span>
+      <span class="cap">建议 <b><span id="fbVal">600</span></b></span>
+    </div>
+    <div class="cursor-dot" id="cursorDot" style="left:-100px;top:-100px"></div>
+  </div>
+  <div class="ctrl">
+    <label>右侧 falloff：<span class="val" id="fVal">600</span> px</label>
+    <input type="range" id="falloff" min="180" max="1000" step="20" value="600" />
+    <label style="color:var(--text-dim)">（当前代码 = 180 · 建议 600 左右）</label>
+  </div>
+
+<script>
+// ── 像素鼠 SVG（classic）：eyes 单独成组，可平移 ──
+function petSVG(size, id) {
+  // 16x16 网格放大。坐标用 1 单位 = (size/16)px
+  const u = size / 16;
+  return `<svg width="${size}" height="${size}" viewBox="0 0 16 16">
+    <!-- 耳 -->
+    <rect x="2"  y="2" width="3" height="3" fill="var(--m-body)"/>
+    <rect x="11" y="2" width="3" height="3" fill="var(--m-body)"/>
+    <rect x="3"  y="3" width="1" height="1" fill="var(--m-ear-in)"/>
+    <rect x="12" y="3" width="1" height="1" fill="var(--m-ear-in)"/>
+    <!-- 头/身 -->
+    <rect x="3" y="4"  width="10" height="9" fill="var(--m-body)"/>
+    <rect x="4" y="5"  width="8"  height="8" fill="var(--m-body)"/>
+    <!-- 白肚 -->
+    <rect x="6" y="9" width="4" height="4" fill="var(--m-belly)"/>
+    <!-- 鼻 -->
+    <rect x="7" y="8" width="2" height="1" fill="var(--m-nose)"/>
+    <!-- 尾 -->
+    <rect x="13" y="10" width="3" height="1" fill="var(--m-tail)"/>
+    <!-- 眼（可移动组） -->
+    <g class="mc-eyes" id="${id}-eyes">
+      <rect x="5"  y="6" width="2" height="2" fill="var(--m-eye)"/>
+      <rect x="9"  y="6" width="2" height="2" fill="var(--m-eye)"/>
+    </g>
+  </svg>`;
+}
+
+const MAX_EYE = 1.4;       // SVG 单位（与 useCompanion MAX_EYE_OFFSET 一致）
+function setEyes(id, dx, dy, falloff, sizePx) {
+  const ex = Math.tanh(dx / falloff) * MAX_EYE;
+  const ey = Math.tanh(dy / falloff) * MAX_EYE * 0.75;
+  const g = document.getElementById(id + "-eyes");
+  if (g) g.setAttribute("transform", `translate(${ex} ${ey})`);
+}
+
+// ── Section 1 渲染 ──
+document.getElementById("bigPet").innerHTML = petSVG(96, "big");
+document.getElementById("greetPet").innerHTML = petSVG(40, "greet");
+
+const NAMES = ["小灰","咪咪","团子","阿鼠","Pixel","糯米","闪电","奶酪","可可","球球","薯条","元宝"];
+const nameInput = document.getElementById("nameInput");
+const greetTxt = document.getElementById("greetTxt");
+const suggest = document.getElementById("suggest");
+const greetPet = document.getElementById("greetPet");
+
+function renderSuggest() {
+  const pool = [...NAMES].sort(() => Math.random() - 0.5).slice(0, 4);
+  suggest.innerHTML = pool.map(n => `<button class="chip" data-n="${n}">${n}</button>`).join("");
+  suggest.querySelectorAll(".chip").forEach(c => c.onclick = () => {
+    nameInput.value = c.dataset.n; updateGreet(); markChip(c);
+  });
+}
+function markChip(el) {
+  suggest.querySelectorAll(".chip").forEach(c => c.classList.toggle("on", c === el));
+}
+function updateGreet() {
+  const n = nameInput.value.trim();
+  if (n) {
+    greetTxt.innerHTML = `嗨，我是 <b>${n}</b>！`;
+    // 收到名字：眨眼 + 轻跳
+    greetPet.style.transition = "transform .18s"; greetPet.style.transform = "translateY(-4px)";
+    setTimeout(() => greetPet.style.transform = "translateY(0)", 180);
+  } else {
+    greetTxt.innerHTML = `<span class="muted">起个名字，它就会记住自己叫什么～</span>`;
+  }
+}
+nameInput.oninput = () => { updateGreet(); suggest.querySelectorAll(".chip").forEach(c=>c.classList.remove("on")); };
+document.getElementById("dice").onclick = (e) => {
+  e.currentTarget.classList.add("spin");
+  setTimeout(() => e.currentTarget.classList.remove("spin"), 300);
+  nameInput.value = NAMES[Math.floor(Math.random()*NAMES.length)];
+  updateGreet(); renderSuggest();
+};
+renderSuggest();
+
+// ── Section 2 渲染 ──
+const SZ = 72;
+document.getElementById("petA").innerHTML = petSVG(SZ, "petA");
+document.getElementById("petB").innerHTML = petSVG(SZ, "petB");
+const desk = document.getElementById("desk");
+const dot = document.getElementById("cursorDot");
+const falloffSlider = document.getElementById("falloff");
+const fVal = document.getElementById("fVal");
+const fbVal = document.getElementById("fbVal");
+falloffSlider.oninput = () => { fVal.textContent = falloffSlider.value; fbVal.textContent = falloffSlider.value; };
+
+desk.addEventListener("mousemove", (e) => {
+  const r = desk.getBoundingClientRect();
+  const cx = e.clientX - r.left, cy = e.clientY - r.top;
+  dot.style.left = cx + "px"; dot.style.top = cy + "px";
+  // 两只桌宠的眼睛中心（slot bottom-left/right + 桌宠中心）
+  const petACenter = { x: 40 + SZ/2, y: r.height - 18 - SZ/2 };
+  const petBCenter = { x: r.width - 40 - SZ/2, y: r.height - 18 - SZ/2 };
+  setEyes("petA", cx - petACenter.x, cy - petACenter.y, 180, SZ);
+  setEyes("petB", cx - petBCenter.x, cy - petBCenter.y, +falloffSlider.value, SZ);
+});
+</script>
+</body>
+</html>
