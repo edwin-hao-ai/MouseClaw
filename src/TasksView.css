@@ -171,6 +171,36 @@
   color: var(--text-link);
   border-color: rgba(255, 107, 157, 0.4);
 }
+.task-ico:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+/* v0.5.1 · 通用转圈 spinner（新建解析中 / 立刻跑执行中）—— 修"静止…像卡死" */
+.tasks-spin {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: tasks-spin 0.7s linear infinite;
+  vertical-align: -1px;
+}
+@keyframes tasks-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tasks-spin { animation-duration: 1.6s; }
+}
+.task-running {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-link);
+  font-size: var(--text-meta);
+  font-weight: 600;
+}
 
 /* ── history ── */
 .task-history {

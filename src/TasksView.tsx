@@ -25,6 +25,9 @@ export default function TasksView() {
   const [runs, setRuns] = useState<Record<string, RunRecord[]>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // v0.5.1 · 手动"立刻跑"进行中的任务 id —— 卡片显示转圈 + "执行中…"，
+  // 收到 schedule-result（成功/失败都 emit）即清掉。防"点了没反应"。
+  const [runningId, setRunningId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -46,7 +49,11 @@ export default function TasksView() {
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     try {
-      listen(EV_SCHEDULE_RESULT, () => {
+      listen<{ taskId?: string }>(EV_SCHEDULE_RESULT, (e) => {
+        // 清掉"执行中"态（手动立刻跑跑完了）。事件带 taskId，匹配则清；
+        // 反正一次只跑一个（ai_queue 串行），保险起见也直接清空。
+        const tid = e?.payload?.taskId;
+        setRunningId((cur) => (cur && (!tid || cur === tid) ? null : cur));
         setRuns({}); // 清结果历史缓存，下次展开重新拉
         refresh();
       })
@@ -88,10 +95,12 @@ export default function TasksView() {
 
   const runNow = useCallback(
     async (task: ScheduleView) => {
+      setRunningId(task.id);
       await invoke("run_schedule_now", { id: task.id }).catch(() => {});
-      flash(`▶ ${task.title}`);
+      // 兜底：万一没收到 schedule-result（极端情况），90s 后强制清掉转圈，不让它永远卡住。
+      window.setTimeout(() => setRunningId((cur) => (cur === task.id ? null : cur)), 90_000);
     },
-    [flash],
+    [],
   );
 
   const toggleExpand = useCallback(
@@ -162,6 +171,7 @@ export default function TasksView() {
                 key={task.id}
                 task={task}
                 expanded={expandedId === task.id}
+                running={runningId === task.id}
                 runs={runs[task.id]}
                 onToggle={(en) => toggle(task.id, en)}
                 onExpand={() => toggleExpand(task.id)}
@@ -197,6 +207,7 @@ function EmptyState() {
 interface CardProps {
   task: ScheduleView;
   expanded: boolean;
+  running: boolean;
   runs?: RunRecord[];
   onToggle: (enabled: boolean) => void;
   onExpand: () => void;
@@ -204,7 +215,7 @@ interface CardProps {
   onDelete: () => void;
   onRunNow: () => void;
 }
-function TaskCard({ task, expanded, runs, onToggle, onExpand, onEdit, onDelete, onRunNow }: CardProps) {
+function TaskCard({ task, expanded, running, runs, onToggle, onExpand, onEdit, onDelete, onRunNow }: CardProps) {
   const t = useT();
   const last = task.lastRun;
   const lastCls = last ? (last.status === "ok" ? "ok" : last.status === "failed" ? "fail" : "skip") : "";
@@ -230,13 +241,21 @@ function TaskCard({ task, expanded, runs, onToggle, onExpand, onEdit, onDelete, 
       </div>
       <div className="task-action">{task.action}</div>
       <div className="task-meta">
-        {task.enabled && task.nextRun && (
-          <span className="task-next">{t("tasks.next", { when: formatWhen(t, task.nextRun) })}</span>
+        {running ? (
+          <span className="task-running"><span className="tasks-spin" />{t("tasks.running")}</span>
+        ) : (
+          <>
+            {task.enabled && task.nextRun && (
+              <span className="task-next">{t("tasks.next", { when: formatWhen(t, task.nextRun) })}</span>
+            )}
+            {!task.enabled && <span className="task-next">{t("tasks.paused")}</span>}
+            <span className={`task-last ${lastCls}`}>{lastText}</span>
+          </>
         )}
-        {!task.enabled && <span className="task-next">{t("tasks.paused")}</span>}
-        <span className={`task-last ${lastCls}`}>{lastText}</span>
         <span className="task-acts">
-          <button className="task-ico" title={t("tasks.run_now")} onClick={onRunNow}>▶</button>
+          <button className="task-ico" title={t("tasks.run_now")} onClick={onRunNow} disabled={running}>
+            {running ? <span className="tasks-spin" /> : "▶"}
+          </button>
           <button className="task-ico" title={t("tasks.history.title")} onClick={onExpand}>
             {expanded ? "▴" : "▾"}
           </button>
@@ -304,7 +323,7 @@ function NewRow({ onCreate }: { onCreate: (input: ScheduleInput) => void }) {
         }}
       />
       <button className="tasks-new-add" disabled={busy} onClick={submit} title={t("common.confirm")}>
-        {busy ? "…" : "＋"}
+        {busy ? <span className="tasks-spin" /> : "＋"}
       </button>
     </div>
   );

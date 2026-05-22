@@ -281,6 +281,7 @@ export const en: Strings = {
   "tasks.last.never": "Never run",
   "tasks.last.running": "running…",
   "tasks.run_now": "Run now",
+  "tasks.running": "Running…",
   "tasks.edit": "Edit",
   "tasks.delete": "Delete",
   "tasks.delete_confirm": "Delete “{title}”?",

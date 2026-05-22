@@ -298,6 +298,7 @@ export interface Strings {
   "tasks.last.never": string;
   "tasks.last.running": string;
   "tasks.run_now": string;
+  "tasks.running": string;
   "tasks.edit": string;
   "tasks.delete": string;
   "tasks.delete_confirm": string;     // "删除「{title}」？"

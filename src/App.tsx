@@ -441,7 +441,11 @@ export default function App() {
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     try {
-      const p = listen<ScheduleResultPayload>(EV_SCHEDULE_RESULT, (e) => setScheduleResult(e.payload));
+      // 只为**成功**的结果弹桌宠气泡 —— 失败事件仍会发（给任务窗清"执行中"态用），
+      // 但不该弹刺眼气泡打扰用户（定时任务红线）。
+      const p = listen<ScheduleResultPayload>(EV_SCHEDULE_RESULT, (e) => {
+        if (e.payload.ok) setScheduleResult(e.payload);
+      });
       p.then((fn) => { unlisten = fn; }).catch(() => {});
     } catch { /* browser-only mode */ }
     return () => { if (unlisten) unlisten(); };

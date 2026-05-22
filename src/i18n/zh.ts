@@ -281,6 +281,7 @@ export const zh: Strings = {
   "tasks.last.never": "还没跑过",
   "tasks.last.running": "执行中…",
   "tasks.run_now": "立刻跑",
+  "tasks.running": "执行中…",
   "tasks.edit": "编辑",
   "tasks.delete": "删除",
   "tasks.delete_confirm": "删除「{title}」？",
