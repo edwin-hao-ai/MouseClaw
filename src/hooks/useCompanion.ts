@@ -35,7 +35,10 @@ export const TYPING_PULSE_SECS = 0.4;
 export const ALERT_PX = 80;
 export const EXCITED_PX = 30;
 export const MAX_EYE_OFFSET = 1.4;       // SVG 单位（16×16 viewBox）
-export const EYE_FALLOFF_PX = 180;       // tanh 软饱和距离（X/Y 各自）
+// tanh 软饱和距离（X/Y 各自）。2026-05-23 从 180→600：桌宠常蹲屏幕角落，光标通常
+// 离它 >400px，180 时 tanh 一远就饱和(±1)钉死 → 用户感知"眼睛经常不追"。600 让眼睛
+// 在整屏范围按比例追（playground 实测拍板，见 docs/prototypes/pet-naming-and-eye-tracking-20260523.html）。
+export const EYE_FALLOFF_PX = 600;
 export const CLICK_FLASH_SECS = 0.25;    // 点击后耳朵抽搐持续
 export const TYPING_STORM_DURATION_SECS = 1.5;
 export const TYPING_STORM_PULSE_THRESH = 0.15;
