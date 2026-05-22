@@ -178,6 +178,40 @@ pub(crate) fn toggle_tts(app: &AppHandle) {
     println!("[mouseclaw] 🔊 tts_enabled → {now_on}");
 }
 
+/// v0.4.x · 广播当前音效配置给所有 webview（托盘改完 → 桌宠实时生效，不重启）
+fn emit_sfx_changed(app: &AppHandle, cfg: &crate::config::Config) {
+    use tauri::Emitter; // Manager 已在模块顶层 use
+    let payload = crate::commands::SfxConfig { enabled: cfg.sfx_enabled, volume: cfg.sfx_volume };
+    for (_, w) in app.webview_windows() {
+        let _ = w.emit("sfx-changed", payload.clone());
+    }
+}
+
+/// v0.4.x · 切换桌宠音效（程序化 chiptune：睡觉鼾声 / 完成提示音等）
+pub(crate) fn toggle_sfx(app: &AppHandle) {
+    let mut cfg = crate::config::Config::load();
+    cfg.sfx_enabled = !cfg.sfx_enabled;
+    let now_on = cfg.sfx_enabled;
+    if let Err(e) = cfg.save() {
+        eprintln!("[mouseclaw] toggle_sfx save: {e}");
+        return;
+    }
+    emit_sfx_changed(app, &cfg);
+    println!("[mouseclaw] 🔉 sfx_enabled → {now_on}");
+}
+
+/// v0.4.x · 设音效音量（托盘 轻/中/响 三档）
+pub(crate) fn set_sfx_volume(app: &AppHandle, volume: f32) {
+    let mut cfg = crate::config::Config::load();
+    cfg.sfx_volume = volume.clamp(0.0, 1.0);
+    if let Err(e) = cfg.save() {
+        eprintln!("[mouseclaw] set_sfx_volume save: {e}");
+        return;
+    }
+    emit_sfx_changed(app, &cfg);
+    println!("[mouseclaw] 🔉 sfx_volume → {}", cfg.sfx_volume);
+}
+
 /// 切换剪贴板暂停（隐私 ⑧）
 pub(crate) fn toggle_clipboard_pause(app: &AppHandle) {
     use tauri::Emitter;

@@ -210,6 +210,7 @@ pub fn emit_view(app: &AppHandle, view: &ViewKind) {
         ViewKind::VoiceConfirm { remaining, transcript } =>
             format!("voice-confirm({remaining}, {} chars)", transcript.chars().count()),
         ViewKind::TourStep { step } => format!("tour-step({step})"),
+        ViewKind::ScheduleConfirm { title, .. } => format!("schedule-confirm({title})"),
         ViewKind::Blocked { reason } => format!("blocked({reason})"),
     };
     // v0.1.8 cursor-follow gating —— 只在 AI 召唤 listening 时跟随鼠标。

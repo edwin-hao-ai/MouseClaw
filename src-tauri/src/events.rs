@@ -80,6 +80,17 @@ pub enum ViewKind {
         #[serde(rename = "insertText")]
         insert_text: String,
     },
+    /// v0.5 · 定时任务确认卡 —— backend 解析出 `[SCHEDULE]` 标记后弹给用户确认。
+    /// 用户「确认」→ 前端调 create_schedule；「改一下」/ Esc → dismiss。
+    #[serde(rename = "schedule-confirm")]
+    ScheduleConfirm {
+        title: String,
+        action: String,
+        schedule: crate::schedule::Schedule,
+        /// 下一次触发时间（本地 RFC3339）—— 前端格式化成"明天 08:00"。
+        #[serde(rename = "nextRun", skip_serializing_if = "Option::is_none")]
+        next_run: Option<String>,
+    },
     Blocked { reason: String },
 }
 
@@ -121,6 +132,19 @@ pub const EV_NUDGE: &str = "nudge";
 /// v0.4.x · Session 状态广播 —— pipeline 每次处理完一轮 / 用户开新对话 / 钉住切换时 emit。
 /// 前端据此显示链条图标 + 「第 N 轮」+ 「📌 任务名」+ 软提示。payload: SessionState。
 pub const EV_SESSION_STATE: &str = "session-state";
+
+/// v0.5 · 定时任务执行完成 —— scheduler emit；前端浮一个轻气泡（不抢焦点、几秒自动消失）。
+/// payload: ScheduleResultPayload。task_id 为空串 = 一次性"发现提示"（点展开打开任务窗）。
+pub const EV_SCHEDULE_RESULT: &str = "schedule-result";
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ScheduleResultPayload {
+    #[serde(rename = "taskId")]
+    pub task_id: String,
+    pub title: String,
+    pub summary: String,
+    pub ok: bool,
+}
 
 /// v0.4+ · 桌宠撞到屏幕边缘 —— overlay 窗口被 clamp 顶住时 emit。
 /// payload: { dir: "left"|"right"|"top"|"bottom" }（撞的是哪面墙）。

@@ -64,6 +64,10 @@ async function bootstrap() {
     makeScrollableDocument("#faf7f2");
     const { default: PickerView } = await import("./PickerView");
     RootComp = PickerView;
+  } else if (view === "tasks") {
+    makeScrollableDocument("#f5f5f7");
+    const { default: TasksView } = await import("./TasksView");
+    RootComp = TasksView;
   } else if (view === "draw") {
     // 全屏透明 overlay，不能用 scrollable document
     document.documentElement.style.background = "transparent";
