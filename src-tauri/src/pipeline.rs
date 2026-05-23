@@ -267,7 +267,6 @@ pub async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppStat
     // v0.4.0 · 桌宠开口说话 —— 用 macOS `say` 朗读 AI 最终回复。
     // 默认 OFF（声音打扰，用户主动从托盘开）。Mode B 跳过（writing 视觉本身就够，
     // 再叠语音反而吵）。
-    #[cfg(target_os = "macos")]
     if mode != ReplyMode::B {
         let cfg_tts = crate::config::Config::load();
         if cfg_tts.tts_enabled {

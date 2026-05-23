@@ -62,6 +62,15 @@ libc = "0.2"
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 keyring = "3"
 arboard = "3"
+xcap = "0.9.4"
+enigo = "0.6.1"
+tts = "0.26.3"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+x11rb = "0.13.2"
+
+[target."cfg(windows)".dependencies]
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_Threading", "Win32_System_ProcessStatus"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"

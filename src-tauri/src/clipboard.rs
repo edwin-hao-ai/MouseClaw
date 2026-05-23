@@ -381,7 +381,10 @@ fn frontmost_app() -> (String, String) {
     })
 }
 #[cfg(not(target_os = "macos"))]
-fn frontmost_app() -> (String, String) { (String::new(), String::new()) }
+fn frontmost_app() -> (String, String) {
+    // Win=exe 名 / X11=WM_CLASS（都已小写）；Wayland 拿不到 → ("","")（不做排除）。
+    crate::platform::frontmost_app()
+}
 
 fn on_clipboard_changed() -> Result<()> {
     if is_paused() {

@@ -21,7 +21,6 @@ pub mod browser_bridge;
 pub mod nudge;
 pub mod presence;
 pub mod punctuation;
-#[cfg(target_os = "macos")]
 pub mod tts;
 pub mod transcribe_stream;
 pub mod model_downloader;
@@ -47,6 +46,9 @@ pub mod frontmost;
 pub mod mode_b;
 pub mod overlay;
 pub mod permissions;
+/// 跨平台（非 macOS）系统能力薄层 —— 截图/光标/前台/注入/TTS 的 Win·Linux 实现。
+#[cfg(not(target_os = "macos"))]
+pub mod platform;
 pub mod pipeline;
 pub mod provider_env;
 pub mod reactive;

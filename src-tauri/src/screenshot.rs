@@ -24,6 +24,7 @@ pub struct CaptureResult {
     pub screen_size: Option<(i32, i32)>,
 }
 
+#[cfg(target_os = "macos")]
 pub async fn capture_main_screen() -> Result<CaptureResult> {
     let ts = chrono::Local::now().format("%Y%m%d-%H%M%S-%3f").to_string();
     let path = std::env::temp_dir().join(format!("mouseclaw-frame-{ts}.png"));
@@ -100,7 +101,73 @@ fn cursor_display_info() -> (Option<u32>, Option<(i32, i32)>, Option<(i32, i32)>
     }
 }
 
+// ───────────────────── 非 macOS：xcap 截图 ─────────────────────
+// 光标所在屏（拿得到光标时）整图；Wayland 拿不到光标 → 主屏。xcap 在 Wayland 走
+// portal/wlr-screencopy，首次可能弹授权框（onboarding 已说明，见跨平台移植 doc）。
 #[cfg(not(target_os = "macos"))]
+pub async fn capture_main_screen() -> Result<CaptureResult> {
+    let ts = chrono::Local::now().format("%Y%m%d-%H%M%S-%3f").to_string();
+    let path = std::env::temp_dir().join(format!("mouseclaw-frame-{ts}.png"));
+    let cursor = crate::platform::global_cursor();
+    let path2 = path.clone();
+    // xcap capture 是阻塞调用 —— 丢到 blocking 池，别堵 async runtime。
+    tokio::task::spawn_blocking(move || capture_via_xcap(&path2, cursor))
+        .await
+        .context("screenshot task join")?
+}
+
+#[cfg(not(target_os = "macos"))]
+fn capture_via_xcap(path: &std::path::Path, cursor: Option<(f64, f64)>) -> Result<CaptureResult> {
+    use xcap::Monitor;
+    let monitor = match cursor {
+        Some((cx, cy)) => Monitor::from_point(cx as i32, cy as i32)
+            .or_else(|_| primary_monitor())
+            .map_err(|e| anyhow::anyhow!("xcap monitor from point: {e}"))?,
+        None => primary_monitor().map_err(|e| anyhow::anyhow!("xcap primary monitor: {e}"))?,
+    };
+    let mx = monitor.x().unwrap_or(0);
+    let my = monitor.y().unwrap_or(0);
+    let mw = monitor.width().unwrap_or(0) as i32;
+    let mh = monitor.height().unwrap_or(0) as i32;
+    let img = monitor
+        .capture_image()
+        .map_err(|e| anyhow::anyhow!("xcap capture: {e}"))?;
+    img.save(path).context("save screenshot png")?;
+    let cursor_local = cursor.map(|(cx, cy)| (cx as i32 - mx, cy as i32 - my));
+    if let Ok(meta) = std::fs::metadata(path) {
+        println!(
+            "[mouseclaw] screenshot(xcap): {} ({:.1} KB, cursor={:?}, screen={:?})",
+            path.display(),
+            meta.len() as f64 / 1024.0,
+            cursor_local,
+            (mw, mh),
+        );
+    }
+    Ok(CaptureResult {
+        path: path.to_path_buf(),
+        cursor: cursor_local,
+        screen_size: Some((mw, mh)),
+    })
+}
+
+/// 主屏（is_primary）；找不到就取第一块。
+#[cfg(not(target_os = "macos"))]
+fn primary_monitor() -> xcap::XCapResult<xcap::Monitor> {
+    let all = xcap::Monitor::all()?;
+    let mut chosen: Option<xcap::Monitor> = None;
+    for m in all {
+        if m.is_primary().unwrap_or(false) {
+            return Ok(m);
+        }
+        if chosen.is_none() {
+            chosen = Some(m);
+        }
+    }
+    chosen.ok_or_else(|| xcap::XCapError::new("no monitor found"))
+}
+
+#[cfg(not(target_os = "macos"))]
+#[allow(dead_code)]
 fn cursor_display_info() -> (Option<u32>, Option<(i32, i32)>, Option<(i32, i32)>) {
     (None, None, None)
 }
