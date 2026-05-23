@@ -6,6 +6,63 @@ versioning follows [SemVer](https://semver.org/).
 
 ---
 
+## [0.4.6] · 2026-05-23
+
+一个大版本：桌宠从"语音问答工具"长成"会记事、会定时干活、有名字有性格"的桌面伙伴。
+15 个 AI 后端任选（含国产 Qwen Code / Trae Agent）、长期记忆（全本地 SQLite 知识图谱）、
+定时任务/心跳（一句话创建 + 统一结果页 + 反幻觉 harness）、桌宠起名 + 9 种性格、程序化
+音效。并根治了"某 app 全屏后桌宠消失"——桌宠现在用真正的 NSPanel 浮在全屏之上。
+A big one: the pet grows from a voice Q&A tool into a desktop companion that remembers,
+runs tasks on a schedule, and has a name + personality. 15 AI backends (incl. China's
+Qwen Code / Trae Agent), long-term memory (fully-local SQLite knowledge graph), scheduled
+tasks (one-line create + unified results page + anti-hallucination harness), pet naming +
+9 personalities, procedural sound effects. Plus the fix everyone wanted: the pet now
+floats over fullscreen apps via a real NSPanel.
+
+### Added
+- **🤖 15 个 AI 后端任选 / 15 AI backend CLIs** —— 在 Claude Code / Codex / Gemini /
+  Copilot / OpenCode / Cline / Kimi / Kiro / Antigravity / Mistral Vibe / Pi / OpenClaw /
+  Hermes 之外，新增国产 **Qwen Code（通义千问）** 和 **Trae Agent（字节跳动）**。Onboarding
+  只列**已安装**的后端，托盘可随时切换。Pick any of 15 backends incl. China's Qwen Code &
+  Trae Agent; onboarding shows only installed ones; switch anytime from the tray.
+- **🧠 长期记忆 / Long-term memory** —— 全本地 SQLite（无向量库）三层记忆：画像 / 情景 /
+  知识图谱。空闲时蒸馏画像、构建实体关系图，召唤时检索相关记忆注入上下文（"更懂你"）。
+  「桌宠记得的事」窗口可看画像 / 历史 / 关系图谱，逐条删除、一键清空、随时暂停。默认开，
+  首次启动透明告知"全部存你本地"。Fully-local SQLite memory (profile / episodic / graph),
+  idle-time reflection, a viewer window to inspect & delete, pause anytime, all on-device.
+- **⏰ 定时任务 / 心跳 / Scheduled tasks** —— 召唤桌宠说一句"每天早上整理 AI 新闻"就建好；
+  到点自动后台跑，结果用轻气泡投递、不打扰；**统一结果页**把所有任务的所有执行倒序排一起
+  （多任务完成一页看全，markdown 渲染、外链走系统浏览器），完成自动跳过去"像看报纸"。
+  **反幻觉 harness**：放开联网/读文件工具去取真实数据 + 真实性铁律（取不到就如实说，绝不编造）。
+  One-line natural-language create; runs in the background; a unified results feed
+  (newest-first, markdown, links open in browser); anti-hallucination harness with real tools.
+- **🐭 桌宠起名 + 9 种性格 / Pet name + 9 personalities** —— 给桌宠起个名字（🎲 随机 +
+  建议名 + 起好打招呼）、选语气（暖心 / 毒舌 / 极简 / 话痨 / 干练 / 元气 / 沉稳 / 好奇 /
+  傲娇 / 自定义）。性格只改语气，绝不影响任务正确性。Name your pet & pick its tone.
+- **🔊 皮肤音效系统 / Procedural sound effects** —— 程序化 chiptune 合成，零素材，9 款皮肤
+  各有音色。可在托盘开关 / 调音量。Zero-asset chiptune synthesis, per-skin timbre.
+
+### Changed
+- **🖥️ 桌宠浮在全屏 app 之上 / Pet floats over fullscreen apps** —— 改用真正的 **NSPanel**
+  （level=ScreenSaver + canJoinAllSpaces|fullScreenAuxiliary），根治"某 app 全屏后桌宠消失"。
+  普通窗口在 release 构建下浮不上全屏（Tauri 已知限制），NSPanel 是 BongoCat / Cap 等同类
+  应用的标准方案。Now uses a real NSPanel so it stays visible over any fullscreen app.
+- **👀 眼球追踪整屏跟手 / Eye-tracking across the whole screen** —— falloff 180→600，桌宠
+  蹲角落时眼睛也能跟着整个屏幕的光标按比例转，不再一远就"钉死"看着不追。
+- **🧹 代码整理 / Internal cleanup** —— `commands.rs` 按职责拆 4 个子模块（1458→751 行），
+  满足单文件 ≤800 行硬规则。
+
+### Fixed
+- **🔇 关掉"起床"音 / Removed the wake-up sound** —— 每次回到桌面桌宠一醒就叫，太骚扰，去掉。
+- **🎬 入场动画 7 个真问题 / 7 entrance-animation bugs** —— 多智能体审计发现并修复：开机即
+  召唤的竞态、被打断时位置错乱、桌宠卡隐藏、首次 loud 入场被误标已见等。
+- **⚡ text-only 调用快 3 秒 / 3s faster short tasks** —— spawn 子进程关掉 stdin，不再傻等
+  "no stdin data received in 3s"，reactive / 定时任务 / 记忆反思都快一截。
+- **🔁 记忆重复条目 / Duplicate memory insights** —— reflection 加串行闸，防 pipeline 与
+  定时器并发蒸馏同一批 → 重复画像。
+- **📋 定时任务体验 / Scheduled-task UX** —— 新建解析时 loading 转起来（不再像卡死）、立刻跑
+  有"执行中"态、结果面板可随窗口拉大、按钮带文字（▶ 立即运行 / 📄 结果 / ✏️ 编辑 / 🗑）。
+
 ## [0.4.3] · 2026-05-21
 
 修桌宠贴屏幕角落点开菜单时的两个老问题：菜单被切 + 桌宠跳。安装包仍 12 MB。
