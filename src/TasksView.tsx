@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useT } from "./i18n";
 import { EV_SCHEDULE_RESULT } from "./types";
 import type { Schedule, ScheduleInput, ScheduleView, RunRecord } from "./types";
@@ -90,6 +91,36 @@ export default function TasksView() {
     setToast(msg);
     window.setTimeout(() => setToast(null), 2600);
   }, []);
+
+  // v0.5.1 · 聚焦某个任务（拉它的历史 + 展开 + 选最新）—— 从完成气泡点开时直达结果，
+  // 不用在列表里找。两条触发：①新开窗口读 URL ?focus= ②已开窗口收 tasks-focus 事件。
+  const focusTask = useCallback(async (id: string) => {
+    try {
+      const r = await invoke<RunRecord[]>("get_schedule_runs", { taskId: id });
+      setRuns((m) => ({ ...m, [id]: r }));
+    } catch {
+      /* dev */
+    }
+    setExpandedId(id);
+    setSelectedRun(0);
+  }, []);
+
+  useEffect(() => {
+    const f = new URLSearchParams(window.location.search).get("focus");
+    if (f) focusTask(f);
+  }, [focusTask]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    try {
+      listen<string>("tasks-focus", (e) => { if (e.payload) focusTask(e.payload); })
+        .then((fn) => { unlisten = fn; })
+        .catch(() => {});
+    } catch {
+      /* dev */
+    }
+    return () => { if (unlisten) unlisten(); };
+  }, [focusTask]);
 
   const toggle = useCallback(
     async (id: string, enabled: boolean) => {
@@ -208,6 +239,16 @@ export default function TasksView() {
   );
 }
 
+/** markdown 结果里点外链 → 走系统浏览器（webview 里直接跳会顶掉任务 UI）。 */
+function handleMdLinkClick(e: React.MouseEvent) {
+  const a = (e.target as HTMLElement).closest("a");
+  const href = a?.getAttribute("href");
+  if (href && /^https?:\/\//i.test(href)) {
+    e.preventDefault();
+    openUrl(href).catch(() => {});
+  }
+}
+
 function EmptyState() {
   const t = useT();
   return (
@@ -319,6 +360,7 @@ function TaskCard({
                   return body ? (
                     <div
                       className="task-out-md"
+                      onClick={handleMdLinkClick}
                       dangerouslySetInnerHTML={{ __html: renderMarkdown(body) }}
                     />
                   ) : (

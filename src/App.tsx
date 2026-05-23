@@ -1246,7 +1246,8 @@ function ScheduleResultBubble({ payload, onDismiss }: { payload: ScheduleResultP
   }, [onDismiss]);
 
   const expand = () => {
-    invoke("open_tasks_window").catch(() => {});
+    // 带上刚跑完的任务 id → 任务窗直接展开它的结果（不用在列表里找）。空 = 发现提示，开到列表。
+    invoke("open_tasks_window", { focusTaskId: payload.taskId || null }).catch(() => {});
     onDismiss();
   };
 

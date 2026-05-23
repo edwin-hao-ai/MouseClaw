@@ -7,18 +7,32 @@ use tauri::{AppHandle, Manager, State};
 use crate::AppState;
 
 /// 打开「⏰ 定时任务」管理窗口（托盘 / 桌宠菜单 / 结果气泡"展开"都走它）。
+/// `focus_task_id`：从完成气泡点开时带上刚跑完的任务 id —— 让窗口直接展开它的结果，
+/// 不用用户再在列表里找（修"点开只看到列表、看不到最新内容"）。
 #[tauri::command]
-pub fn open_tasks_window(app: AppHandle) -> Result<(), String> {
-    use tauri::{WebviewUrl, WebviewWindowBuilder};
+pub fn open_tasks_window(app: AppHandle, focus_task_id: Option<String>) -> Result<(), String> {
+    use tauri::{Emitter, WebviewUrl, WebviewWindowBuilder};
+    // 任务 id 是 URL-safe 的（字母数字+连字符），但保险起见只在匹配安全字符集时拼进 URL。
+    let safe_focus = focus_task_id.as_deref().filter(|s| {
+        !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    });
     if let Some(w) = app.get_webview_window("tasks") {
         let _ = w.show();
         let _ = w.set_focus();
+        // 已开着的窗口：用事件告诉它聚焦哪条（新开窗口走下面的 URL）
+        if let Some(id) = safe_focus {
+            let _ = w.emit("tasks-focus", id.to_string());
+        }
         return Ok(());
     }
+    let url = match safe_focus {
+        Some(id) => format!("index.html?view=tasks&focus={id}"),
+        None => "index.html?view=tasks".to_string(),
+    };
     let result = WebviewWindowBuilder::new(
         &app,
         "tasks",
-        WebviewUrl::App("index.html?view=tasks".into()),
+        WebviewUrl::App(url.into()),
     )
     .title("MouseClaw — 定时任务")
     // v0.5.1 · 调大默认尺寸 + 可拖大（结果面板 44vh 会跟着放大，长结果有地方读）
