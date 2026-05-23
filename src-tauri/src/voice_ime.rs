@@ -185,7 +185,7 @@ mod win_longpress {
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use tauri::AppHandle;
 
-    use windows::Win32::Foundation::{HINSTANCE, LPARAM, LRESULT, WPARAM};
+    use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
     use windows::Win32::UI::Input::KeyboardAndMouse::VK_RCONTROL;
     use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, GetMessageW, SetWindowsHookExW, KBDLLHOOKSTRUCT, MSG,
@@ -238,8 +238,8 @@ mod win_longpress {
         std::thread::Builder::new()
             .name("mouseclaw-win-kbhook".into())
             .spawn(|| unsafe {
-                // hmod：LL 钩子可传 null 模块句柄（MSDN 未标 [optional] → HINSTANCE 而非 Option）。
-                match SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook_proc), HINSTANCE::default(), 0) {
+                // hmod 是 Option<HINSTANCE>（LL 钩子传 None = null 模块句柄）。
+                match SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook_proc), None, 0) {
                     Ok(_h) => {
                         let mut msg = MSG::default();
                         while GetMessageW(&mut msg, None, 0, 0).as_bool() {}

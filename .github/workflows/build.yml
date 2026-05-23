@@ -33,6 +33,10 @@ jobs:
           - os: macos-latest
             bundle: false # 签名需本地 keychain；CI 只做编译验证
     runs-on: ${{ matrix.os }}
+    env:
+      # AppImage 打包用的 linuxdeploy/appimagetool 是 AppImage，GH runner 无 FUSE →
+      # 用解压执行模式，避免 "failed to exec fusermount" 这类 CI 经典失败。
+      APPIMAGE_EXTRACT_AND_RUN: 1
 
     steps:
       - uses: actions/checkout@v4
@@ -47,6 +51,8 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             libasound2-dev \
+            libfuse2 \
+            xdg-utils \
             libssl-dev \
             libxdo-dev \
             libx11-dev libxtst-dev libxi-dev libatspi2.0-dev \
