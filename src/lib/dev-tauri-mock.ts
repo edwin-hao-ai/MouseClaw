@@ -111,6 +111,15 @@ const FIXTURES: Record<string, (args?: any) => unknown> = {
     ],
     edges: [{ src: 1, dst: 2, kind: "about" }, { src: 1, dst: 3, kind: "co_occurs" }],
   }),
+  // v0.4.7 (PR #5) · 「我们的故事」关系页
+  memory_get_story: () => ({
+    has_data: true,
+    days_known: 12,
+    night_sessions: 5,
+    total_turns: 47,
+    profile_line: "用户是 MouseClaw 的作者，重视 UX 与代码整洁",
+  }),
+  prefetch_models: () => null,
   memory_delete_turn: () => null,
   memory_delete_profile_item: () => null,
   memory_clear_all: () => null,
