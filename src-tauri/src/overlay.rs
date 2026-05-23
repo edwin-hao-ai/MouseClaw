@@ -195,13 +195,16 @@ pub fn apply_overlay_window_behavior(window: &WebviewWindow) {
     const STATIONARY: u64 = 1 << 4; // 16
     const IGNORES_CYCLE: u64 = 1 << 6; // 64
     const FULLSCREEN_AUXILIARY: u64 = 1 << 8; // 256
-    const NS_STATUS_WINDOW_LEVEL: i64 = 25;
+    // NSStatusWindowLevel(25) 不够 —— 那是菜单栏层级，全屏时菜单栏自动隐藏、该层级窗口被
+    // 全屏 app 盖住（2026-05-23 用户实测两次仍看不到）。抬到 NSScreenSaverWindowLevel(1000)
+    // ——专门浮在全屏之上的层级（录屏悬浮窗那类用），配 canJoinAllSpaces|fullScreenAux 才真生效。
+    const NS_SCREEN_SAVER_WINDOW_LEVEL: i64 = 1000;
     let Ok(ns_window) = window.ns_window() else { return };
     let behavior: u64 = CAN_JOIN_ALL_SPACES | STATIONARY | IGNORES_CYCLE | FULLSCREEN_AUXILIARY;
     unsafe {
         let ns_window = ns_window as id;
         let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
-        let _: () = msg_send![ns_window, setLevel: NS_STATUS_WINDOW_LEVEL];
+        let _: () = msg_send![ns_window, setLevel: NS_SCREEN_SAVER_WINDOW_LEVEL];
     }
 }
 
