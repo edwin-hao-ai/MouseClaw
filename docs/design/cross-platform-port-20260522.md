@@ -188,33 +188,47 @@ onboarding 的「授权三连」页 macOS 专属 → Win/Linux 改成精简页�
 
 → 凡涉及新 UI/文案的（如精简 onboarding 的平台说明），先按 CLAUDE.md 出 prototype HTML。
 
-## 5. 任务清单（全集 · 回来打勾）
+## 5. 任务清单（全集 · 实时打勾）
 
-**A. 基础设施（可本地/CI 验证）**
-- [ ] `tauri.conf.json` bundle.targets 按平台 + asset scope 加 Win/Linux 路径
-- [ ] Cargo.toml 加 Win/Linux target-gated deps；`security-framework` 移到 `[target.macos]`
-- [ ] `.github/workflows/build.yml` 三平台 matrix 构建
-- [ ] 跨平台发布版文件日志（替 `lib.rs` 的 unix fd 重定向）
+> 验证图例：✅ Linux 本地编译验证 + CI · 🟡 仅 CI 编译（Win/mac）· ⚠️ 运行时未验证（待真机）
 
-**B. 编译级移植（让 Linux/Win 真能 build）**
-- [ ] `clipboard_crypto.rs` 密钥存储拆 `#[cfg]`：mac=security-framework，Win/Linux=keyring（+ 文件兜底）
-- [ ] 引入 `platform/` 抽象薄层：`global_cursor()` / `frontmost()` / `inject_text()` / `screenshot()` / `read_selection()` / `tts()`，各 OS 实现，Wayland 返回降级
-- [ ] 把现有 no-op 兜底替换为真实现（逐文件）
+**A. 基础设施** — ✅ 全部完成（commit `build:` + 后续）
+- [x] `tauri.conf.json` bundle.targets 按平台 + asset scope（$TEMP/$HOME）+ deb depends
+- [x] Cargo.toml Win/Linux target-gated deps；`security-framework`→macOS；`libc`→unix；
+      新增 keyring/arboard/xcap/enigo/tts/x11rb/windows
+- [x] `.github/workflows/build.yml` 三平台 matrix（含 pipewire/drm/gbm/speechd 系统依赖）
+- [x] 跨平台发布版文件日志（unix dup2 覆盖 mac+Linux）
 
-**C. 功能原生实现（编译 CI 验证，运行时用户验证 ⚠️）**
-- [ ] 截图：`xcap`（Win/X11/Wayland-portal）
-- [ ] 剪贴板读 + 选词(primary)：`arboard`
-- [ ] 文本注入：`enigo`（Win/X11；Wayland 降级剪贴板）
-- [ ] TTS：`tts` crate（SAPI / speech-dispatcher）
-- [ ] 前台 app：windows-rs / x11（Wayland 降级）
-- [ ] 点击穿透：Tauri `set_ignore_cursor_events` + 全局光标（Wayland 降级）
-- [ ] 拖文件：Tauri `WindowEvent::DragDrop`
-- [ ] 听写热键：按 §4 决策落地
+**B. 编译级移植** — ✅ 完成（Linux `cargo check --all-targets` green）
+- [x] `clipboard_crypto.rs` 密钥存储拆 `#[cfg]`：mac=Keychain，Win/Linux=keyring(+0600 文件兜底)
+- [x] `platform.rs` 抽象薄层：`is_wayland/can_inject/global_cursor/frontmost_app/type_text/
+      delete_chars/paste_via_ctrl_v/set_clipboard_text/speak`，Win+Linux 实现，Wayland 降级
+- [x] 把 no-op 兜底替换为真实现（screenshot/mode_b/clipboard/selection/overlay/companion/pet_passthrough）
 
-**D. 高风险 / 平台分裂（按 §4 决策 + 真机迭代）**
-- [ ] Wayland Mode B 降级路径 + 文案
-- [ ] Windows UIAutomation 选词（或仅复制路径）
-- [ ] Wayland 全局快捷键 portal（听写触发）
+**C. 功能原生实现** — ⚠️ 已实现，运行时待真机验证
+- [x] 截图：`xcap`（光标所在屏 / Wayland 主屏 portal）⚠️
+- [x] 剪贴板读：`arboard`（thread-local 实例 + 文本哈希探针）⚠️
+- [x] 选词：X11 PRIMARY via `arboard`（Wayland 自禁用，Win 无 primary→no-op）⚠️
+- [x] 文本注入 / Mode B：`enigo`（Win/X11）；Wayland → 剪贴板+「Ctrl+V」提示 ⚠️
+- [x] TTS：`tts` crate（SAPI / speech-dispatcher）⚠️
+- [x] 前台 app：Win 进程 exe / X11 WM_CLASS+_NET_WM_NAME（Wayland → 空）⚠️
+- [x] 点击穿透 + 跟随：`platform::global_cursor`（Win/X11；Wayland→None 自动降级）⚠️
+- [x] 终端写入红线：非 mac 用 exe/WM_CLASS 匹配终端列表 ⚠️
+
+**D. 仍待办（明确理由，非遗漏）**
+- [ ] **听写触发的"监听流"（Win/Linux）** —— §4 决策默认普通全局快捷键。**未做**原因：
+      需新增配置字段 + 改 lib.rs 全局快捷键 handler 的脆弱字符串路由 + 复用有状态音频流，
+      且全程无法在无头容器运行时验证；属高风险盲写。**计划**：注册一个独立全局快捷键
+      → press 复用 `pipeline::on_shortcut_press`（已跨平台）→ release 走"finalize transcript
+      + `mode_b::type_unicode_sync`"（不进 AI）。建议与用户真机迭代。
+- [ ] **Windows「长按修饰键」听写**（§4 的可选项）——`SetWindowsHookEx` 是独立 FFI 子系统，
+      默认全局快捷键已满足主诉求，作为后续可选项。
+- [ ] **精简 onboarding 前端**（§4）——非 mac 权限检查已全 true，现有 onboarding 能跑通
+      （权限页会"自动通过"），属体验打磨非阻塞；改前端需 prototype（CLAUDE.md 规则）。
+- [ ] 剪贴板敏感内容抑制（Win `ExcludeClipboardContentFromMonitorProcessing` / Linux
+      `x-kde-passwordManagerHint`）+ 非 mac 密码管理器排除列表 —— 隐私打磨。
+- [ ] 闲置检测（Win `GetLastInputInfo` / X11 XScreenSaver）→ 让"渐睡"动画在 Win/X11 生效。
+- [ ] 拖文件投喂改 Tauri `WindowEvent::DragDrop`（drag_detector 目前 mac-only）。
 
 ## 6. 取舍记录
 - **优先用成熟跨平台 crate（xcap/arboard/enigo/tts/keyring）** 而非手写每个平台的 FFI——
