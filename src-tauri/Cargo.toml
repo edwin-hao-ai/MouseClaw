@@ -1,6 +1,6 @@
 [package]
 name = "mouseclaw"
-version = "0.4.3"
+version = "0.4.7"
 description = "🦞 鼠标龙虾 — 像素小老鼠 AI 桌面助手"
 authors = ["edwin-hao-ai"]
 edition = "2021"
@@ -50,6 +50,10 @@ block = "0.1"
 core-graphics = "0.24"
 core-foundation = "0.10"
 security-framework = "2"
+# v0.5 · 把桌宠 overlay 转成真正的 NSPanel —— 普通 NSWindow 在 release 下设
+# collectionBehavior/level 浮不到全屏 app 之上（Tauri #5566 / #9556）。NSPanel 是这类
+# "桌宠/HUD 浮全屏"的标准方案（BongoCat / Cap / Screenpipe 都用它）。macOS 专属。
+tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
 
 # 所有 unix（macOS + Linux）：lower_priority 用 setpriority（nice）。Windows 走 no-op 分支。
 [target.'cfg(unix)'.dependencies]

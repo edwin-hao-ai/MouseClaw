@@ -71,7 +71,8 @@ pub fn apply_idle_anchor(app: &AppHandle, anchor: PetAnchor) -> bool {
             let Some(window) = app2.get_webview_window("mouse") else { return };
             let _ = window.set_position(LogicalPosition::new(cx, cy));
             let _ = window.show();
-            let _ = window.set_always_on_top(true);
+            // macOS：NSPanel 自带 always-on-top；不调 set_always_on_top（会压回 floating 浮不上全屏）。
+            crate::overlay::apply_overlay_window_behavior(&window);
         });
         return true;
     }
@@ -93,7 +94,8 @@ pub fn apply_idle_anchor(app: &AppHandle, anchor: PetAnchor) -> bool {
         let (x, y) = corner_position(anchor, sx, sy, sw, sh, win_w, win_h, ANCHOR_PADDING);
         let _ = window.set_position(LogicalPosition::new(x, y));
         let _ = window.show();
-        let _ = window.set_always_on_top(true);
+        // macOS：NSPanel 自带 always-on-top；不调 set_always_on_top（会压回 floating 浮不上全屏）。
+        crate::overlay::apply_overlay_window_behavior(&window);
     });
     true
 }

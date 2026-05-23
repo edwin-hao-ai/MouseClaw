@@ -11,10 +11,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useT } from "./i18n";
 import { EV_SCHEDULE_RESULT } from "./types";
 import type { Schedule, ScheduleInput, ScheduleView, RunRecord } from "./types";
 import { scheduleLabel, scheduleIcon, formatWhen, formatRunTime } from "./lib/schedule-format";
+import { renderMarkdown } from "./lib/markdown";
 import "./TasksView.css";
 
 export default function TasksView() {
@@ -23,8 +25,17 @@ export default function TasksView() {
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [runs, setRuns] = useState<Record<string, RunRecord[]>>({});
+  // v0.5.1 · 结果面板里当前选中的历史条目下标（点左栏切换看不同次执行的完整输出）
+  const [selectedRun, setSelectedRun] = useState(0);
+  // v0.5.2 · 「任务 / 结果」tab —— 默认任务列表；出结果自动跳到结果页（像看报纸）。
+  const [tab, setTab] = useState<"tasks" | "results">("tasks");
+  const [feedRuns, setFeedRuns] = useState<RunRecord[]>([]); // 所有任务的执行记录（倒序）
+  const [feedSel, setFeedSel] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // v0.5.1 · 手动"立刻跑"进行中的任务 id —— 卡片显示转圈 + "执行中…"，
+  // 收到 schedule-result（成功/失败都 emit）即清掉。防"点了没反应"。
+  const [runningId, setRunningId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -46,9 +57,18 @@ export default function TasksView() {
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     try {
-      listen(EV_SCHEDULE_RESULT, () => {
-        setRuns({}); // 清结果历史缓存，下次展开重新拉
-        refresh();
+      listen<{ taskId?: string }>(EV_SCHEDULE_RESULT, async (e) => {
+        // 清掉"执行中"态（手动立刻跑跑完了）。事件带 taskId，匹配则清；
+        // 反正一次只跑一个（ai_queue 串行），保险起见也直接清空。
+        const tid = e?.payload?.taskId;
+        setRunningId((cur) => (cur && (!tid || cur === tid) ? null : cur));
+        await refresh();
+        setRuns({}); // 清 per-task 历史缓存，下次展开重拉
+        // v0.5.2 · 完成即可见 —— 真实任务跑完(taskId 非空)自动跳到「结果」页看最新（像看报纸）。
+        // 多任务接连完成时，结果页一页全看到，不用逐个点。空 taskId 是"发现提示"，不跳。
+        if (tid) {
+          await jumpToResults();
+        }
       })
         .then((fn) => { unlisten = fn; })
         .catch(() => {});
@@ -67,6 +87,40 @@ export default function TasksView() {
     setToast(msg);
     window.setTimeout(() => setToast(null), 2600);
   }, []);
+
+  // v0.5.2 · 拉所有任务的执行记录（统一结果 feed）。
+  const loadFeed = useCallback(async () => {
+    try {
+      const r = await invoke<RunRecord[]>("get_all_schedule_runs");
+      setFeedRuns(r);
+    } catch {
+      /* dev */
+    }
+  }, []);
+
+  // 跳到「结果」页看最新一条 —— 任务跑完自动跳 / 完成提示点开直达（像看报纸）。
+  const jumpToResults = useCallback(async () => {
+    await loadFeed();
+    setFeedSel(0);
+    setTab("results");
+  }, [loadFeed]);
+
+  // 完成提示点开（新窗口 ?focus= / 已开窗口 tasks-focus 事件）→ 直达结果页。
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("focus")) jumpToResults();
+  }, [jumpToResults]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    try {
+      listen<string>("tasks-focus", () => jumpToResults())
+        .then((fn) => { unlisten = fn; })
+        .catch(() => {});
+    } catch {
+      /* dev */
+    }
+    return () => { if (unlisten) unlisten(); };
+  }, [jumpToResults]);
 
   const toggle = useCallback(
     async (id: string, enabled: boolean) => {
@@ -88,10 +142,12 @@ export default function TasksView() {
 
   const runNow = useCallback(
     async (task: ScheduleView) => {
+      setRunningId(task.id);
       await invoke("run_schedule_now", { id: task.id }).catch(() => {});
-      flash(`▶ ${task.title}`);
+      // 兜底：万一没收到 schedule-result（极端情况），90s 后强制清掉转圈，不让它永远卡住。
+      window.setTimeout(() => setRunningId((cur) => (cur === task.id ? null : cur)), 90_000);
     },
-    [flash],
+    [],
   );
 
   const toggleExpand = useCallback(
@@ -101,6 +157,7 @@ export default function TasksView() {
         return;
       }
       setExpandedId(id);
+      setSelectedRun(0); // 展开时默认看最新一条
       if (!runs[id]) {
         try {
           const r = await invoke<RunRecord[]>("get_schedule_runs", { taskId: id });
@@ -138,14 +195,31 @@ export default function TasksView() {
     <div className="tasks-root">
       <header className="tasks-hd">
         <span className="tasks-h">⏰ {t("tasks.title")}</span>
-        {items.length > 0 && (
+        {tab === "tasks" && items.length > 0 && (
           <span className="tasks-c">{t("tasks.count", { n: items.length, on: onCount })}</span>
         )}
+        {/* v0.5.2 · 任务 / 结果 tab */}
+        <div className="tasks-tabs">
+          <button
+            className={`tasks-tab ${tab === "tasks" ? "on" : ""}`}
+            onClick={() => setTab("tasks")}
+          >
+            {t("tasks.tab_tasks")}
+          </button>
+          <button
+            className={`tasks-tab ${tab === "results" ? "on" : ""}`}
+            onClick={() => { setTab("results"); loadFeed(); }}
+          >
+            {t("tasks.tab_results")}
+          </button>
+        </div>
       </header>
 
       {toast && <div className="tasks-toast">{toast}</div>}
 
-      {loading ? null : items.length === 0 ? (
+      {tab === "results" ? (
+        <ResultsFeed runs={feedRuns} sel={feedSel} onSelect={setFeedSel} />
+      ) : loading ? null : items.length === 0 ? (
         <EmptyState />
       ) : (
         <div className="tasks-list">
@@ -162,7 +236,10 @@ export default function TasksView() {
                 key={task.id}
                 task={task}
                 expanded={expandedId === task.id}
+                running={runningId === task.id}
                 runs={runs[task.id]}
+                selectedRun={selectedRun}
+                onSelectRun={setSelectedRun}
                 onToggle={(en) => toggle(task.id, en)}
                 onExpand={() => toggleExpand(task.id)}
                 onEdit={() => setEditingId(task.id)}
@@ -174,9 +251,71 @@ export default function TasksView() {
         </div>
       )}
 
-      <NewRow onCreate={createFromInput} />
+      {tab === "tasks" && <NewRow onCreate={createFromInput} />}
     </div>
   );
+}
+
+/** v0.5.2 · 统一结果 feed —— 所有任务所有执行倒序排一起，左列表 + 右 markdown。 */
+function ResultsFeed({
+  runs, sel, onSelect,
+}: {
+  runs: RunRecord[];
+  sel: number;
+  onSelect: (i: number) => void;
+}) {
+  const t = useT();
+  if (runs.length === 0) {
+    return <div className="tasks-feed-empty">{t("tasks.history.empty")}</div>;
+  }
+  const cur = runs[sel] ?? runs[0];
+  const body = cur?.output?.trim() || cur?.summary || "";
+  const statusText = (s: string) =>
+    s === "ok" ? t("tasks.run.ok") : s === "failed" ? t("tasks.run.fail") : t("tasks.run.skip");
+  return (
+    <div className="tasks-feed">
+      <div className="tasks-feed-list">
+        {runs.map((r, i) => (
+          <button
+            key={i}
+            className={`task-run feed-item ${i === sel ? "sel" : ""}`}
+            onClick={() => onSelect(i)}
+          >
+            <span className="task-run-top">
+              <span className={`task-run-dot ${r.status}`} />
+              {statusText(r.status)}
+            </span>
+            <span className="feed-item-task">{r.title}</span>
+            <span className="task-run-sum">{r.summary}</span>
+            <span className="feed-item-time">{formatRunTime(r.at)}</span>
+          </button>
+        ))}
+      </div>
+      <div className="task-out tasks-feed-out">
+        <div className="feed-out-task">{cur?.title}</div>
+        <div className="feed-out-time">{formatRunTime(cur?.at ?? "")} · {statusText(cur?.status ?? "ok")}</div>
+        {body ? (
+          <div
+            className="task-out-md"
+            onClick={handleMdLinkClick}
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(body) }}
+          />
+        ) : (
+          <div className="task-hist-empty">{t("tasks.history.empty")}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** markdown 结果里点外链 → 走系统浏览器（webview 里直接跳会顶掉任务 UI）。 */
+function handleMdLinkClick(e: React.MouseEvent) {
+  const a = (e.target as HTMLElement).closest("a");
+  const href = a?.getAttribute("href");
+  if (href && /^https?:\/\//i.test(href)) {
+    e.preventDefault();
+    openUrl(href).catch(() => {});
+  }
 }
 
 function EmptyState() {
@@ -197,14 +336,20 @@ function EmptyState() {
 interface CardProps {
   task: ScheduleView;
   expanded: boolean;
+  running: boolean;
   runs?: RunRecord[];
+  selectedRun: number;
+  onSelectRun: (i: number) => void;
   onToggle: (enabled: boolean) => void;
   onExpand: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onRunNow: () => void;
 }
-function TaskCard({ task, expanded, runs, onToggle, onExpand, onEdit, onDelete, onRunNow }: CardProps) {
+function TaskCard({
+  task, expanded, running, runs, selectedRun, onSelectRun,
+  onToggle, onExpand, onEdit, onDelete, onRunNow,
+}: CardProps) {
   const t = useT();
   const last = task.lastRun;
   const lastCls = last ? (last.status === "ok" ? "ok" : last.status === "failed" ? "fail" : "skip") : "";
@@ -213,7 +358,7 @@ function TaskCard({ task, expanded, runs, onToggle, onExpand, onEdit, onDelete, 
     : t("tasks.last.never");
 
   return (
-    <div className={`task ${task.enabled ? "" : "task-off"}`}>
+    <div className={`task ${task.enabled ? "" : "task-off"} ${expanded ? "task-open" : ""}`}>
       <div className="task-row1">
         <span className="task-name">{task.title}</span>
         <button
@@ -230,34 +375,68 @@ function TaskCard({ task, expanded, runs, onToggle, onExpand, onEdit, onDelete, 
       </div>
       <div className="task-action">{task.action}</div>
       <div className="task-meta">
-        {task.enabled && task.nextRun && (
-          <span className="task-next">{t("tasks.next", { when: formatWhen(t, task.nextRun) })}</span>
+        {running ? (
+          <span className="task-running"><span className="tasks-spin" />{t("tasks.running")}</span>
+        ) : (
+          <>
+            {task.enabled && task.nextRun && (
+              <span className="task-next">{t("tasks.next", { when: formatWhen(t, task.nextRun) })}</span>
+            )}
+            {!task.enabled && <span className="task-next">{t("tasks.paused")}</span>}
+            <span className={`task-last ${lastCls}`}>{lastText}</span>
+          </>
         )}
-        {!task.enabled && <span className="task-next">{t("tasks.paused")}</span>}
-        <span className={`task-last ${lastCls}`}>{lastText}</span>
-        <span className="task-acts">
-          <button className="task-ico" title={t("tasks.run_now")} onClick={onRunNow}>▶</button>
-          <button className="task-ico" title={t("tasks.history.title")} onClick={onExpand}>
-            {expanded ? "▴" : "▾"}
-          </button>
-          <button className="task-ico" title={t("tasks.edit")} onClick={onEdit}>✎</button>
-          <button className="task-ico" title={t("tasks.delete")} onClick={onDelete}>🗑</button>
-        </span>
       </div>
+
+      {/* v0.5.1 · 带文字的操作按钮 —— 不再 ▶·✎🗑▾ 猜谜 */}
+      <div className="task-actions">
+        <button className="task-btn primary" onClick={onRunNow} disabled={running}>
+          {running ? <><span className="tasks-spin" />{t("tasks.running")}</> : <>▶ {t("tasks.run_now")}</>}
+        </button>
+        <button className={`task-btn ${expanded ? "on" : ""}`} onClick={onExpand}>
+          📄 {t("tasks.history.title")}
+        </button>
+        <button className="task-btn" onClick={onEdit}>✏️ {t("tasks.edit")}</button>
+        <button className="task-btn icon" title={t("tasks.delete")} onClick={onDelete}>🗑</button>
+      </div>
+
+      {/* v0.5.1 · 结果/历史面板：左栏可切换的执行记录 + 右栏 markdown 渲染输出 */}
       {expanded && (
-        <div className="task-history">
+        <div className="task-result">
           {!runs || runs.length === 0 ? (
             <div className="task-hist-empty">{t("tasks.history.empty")}</div>
           ) : (
             <>
-              {runs[0]?.output && <div className="task-hist-preview">{runs[0].output}</div>}
-              {runs.map((r, i) => (
-                <div className="task-run" key={i}>
-                  <span className={`task-run-dot ${r.status}`} />
-                  <span className="task-run-time">{formatRunTime(r.at)}</span>
-                  <span className="task-run-sum">{r.summary}</span>
-                </div>
-              ))}
+              <div className="task-runs">
+                {runs.map((r, i) => (
+                  <button
+                    key={i}
+                    className={`task-run ${i === selectedRun ? "sel" : ""}`}
+                    onClick={() => onSelectRun(i)}
+                  >
+                    <span className="task-run-top">
+                      <span className={`task-run-dot ${r.status}`} />
+                      {formatRunTime(r.at)}
+                    </span>
+                    <span className="task-run-sum">{r.summary}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="task-out">
+                {(() => {
+                  const r = runs[selectedRun] ?? runs[0];
+                  const body = r?.output?.trim() || r?.summary || "";
+                  return body ? (
+                    <div
+                      className="task-out-md"
+                      onClick={handleMdLinkClick}
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(body) }}
+                    />
+                  ) : (
+                    <div className="task-hist-empty">{t("tasks.history.empty")}</div>
+                  );
+                })()}
+              </div>
             </>
           )}
         </div>
@@ -304,7 +483,7 @@ function NewRow({ onCreate }: { onCreate: (input: ScheduleInput) => void }) {
         }}
       />
       <button className="tasks-new-add" disabled={busy} onClick={submit} title={t("common.confirm")}>
-        {busy ? "…" : "＋"}
+        {busy ? <span className="tasks-spin" /> : "＋"}
       </button>
     </div>
   );

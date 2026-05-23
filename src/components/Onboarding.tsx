@@ -12,15 +12,37 @@
  * 外部前置条件（浏览器自动化已启用 / officecli + 真实文件 / 外部输入框），onboarding
  * 当下未必满足，演示常常落空、误导用户。重点改为「保证 CLI 装好可用」，少一步更顺。
  */
-import { useState, useEffect, useCallback, type CSSProperties } from "react";
+import { useState, useEffect, useCallback, useRef, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { PixelMouse } from "./PixelMouse";
 import { OnboardingInstall } from "./OnboardingInstall";
 import { OnboardingBackendStep } from "./OnboardingBackendStep";
 import type { BackendChoice, SkinId, PetAnchor } from "../types";
 import { SKINS, DEFAULT_SKIN } from "../skins";
+import { useLocalEyeTracking } from "../hooks/useLocalEyeTracking";
 import { useT } from "../i18n";
 import "./Onboarding.css";
+
+/**
+ * 向导主舞台上那只桌宠 —— v0.4.x 让它"活"起来:眼球追光标 + 贴近抬头反应。
+ * 复用桌面桌宠同一套 companion 数学(useLocalEyeTracking → deriveCompanionFrame),
+ * 9 款皮肤一视同仁。皮肤选择网格 / anchor 预览里的小桌宠**不**追(它们是选项,不是陪伴)。
+ */
+function StagePet({ skin }: { skin: SkinId }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const { companionState, eyeOffset } = useLocalEyeTracking(ref);
+  return (
+    <div className="ob-mouse-stage" ref={ref}>
+      <PixelMouse
+        state="listen"
+        size={96}
+        skin={skin}
+        companionState={companionState}
+        eyeOffset={eyeOffset}
+      />
+    </div>
+  );
+}
 
 export type ShortcutChoice =
   | "double-option"
@@ -96,6 +118,12 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   useEffect(() => {
     invoke<boolean>("get_autostart").then(setAutostart).catch(() => setAutostart(true));
   }, []);
+
+  // v0.4.x · 一进向导就后台预取语音模型(~260MB) —— 把下载提前到 onboarding 期间,
+  // 等用户点完 7 步基本下好。后端 download() 自带并发锁,完成时 save_shortcut 再调不会重复。
+  useEffect(() => {
+    invoke("prefetch_models").catch(() => { /* dev browser / 已在下都无所谓 */ });
+  }, []);
   const [perms, setPerms] = useState<PermissionStatus>({
     accessibility: false,
     screen_recording: false,
@@ -155,9 +183,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   if (step === 1) {
     return (
       <div className="ob-root">
-        <div className="ob-mouse-stage">
-          <PixelMouse state="listen" size={96} skin={skin} />
-        </div>
+        <StagePet skin={skin} />
         <h1 className="ob-title">{t("onboarding.welcome.title")}</h1>
         <p className="ob-subtitle">{t("onboarding.welcome.subtitle")}</p>
         <div className="ob-options" role="radiogroup" aria-label="选择触发快捷键">
@@ -202,9 +228,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   if (step === 3) {
     return (
       <div className="ob-root">
-        <div className="ob-mouse-stage">
-          <PixelMouse state="listen" size={96} skin={skin} />
-        </div>
+        <StagePet skin={skin} />
         <h1 className="ob-title">{t("onboarding.skin.title")}</h1>
         <p className="ob-subtitle">{t("onboarding.skin.subtitle")}</p>
         <div
@@ -250,9 +274,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     const isZhUi = t("onboarding.voice_ime.title").includes("语音");
     return (
       <div className="ob-root">
-        <div className="ob-mouse-stage">
-          <PixelMouse state="listen" size={96} skin={skin} />
-        </div>
+        <StagePet skin={skin} />
         <h1 className="ob-title">{t("onboarding.voice_setup.title")}</h1>
         <p className="ob-subtitle">{t("onboarding.voice_setup.subtitle")}</p>
 
@@ -331,9 +353,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     ];
     return (
       <div className="ob-root">
-        <div className="ob-mouse-stage">
-          <PixelMouse state="listen" size={96} skin={skin} />
-        </div>
+        <StagePet skin={skin} />
         <h1 className="ob-title">{t("onboarding.anchor.title")}</h1>
         <p className="ob-subtitle">{t("onboarding.anchor.subtitle")}</p>
         <div

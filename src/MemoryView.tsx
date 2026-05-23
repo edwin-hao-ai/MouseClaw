@@ -17,6 +17,13 @@ interface Pref { id: number; key: string; value: string; confidence: number }
 interface Turn { id: number; ts: number; app: string | null; role: string; summary: string; importance: number }
 interface GraphNode { id: number; kind: string; name: string; freq: number }
 interface GraphEdge { src: number; dst: number; kind: string }
+interface StoryData {
+  has_data: boolean;
+  days_known: number;
+  night_sessions: number;
+  total_turns: number;
+  profile_line: string | null;
+}
 
 const KIND_ICON: Record<string, string> = {
   project: "📦", app: "🪟", file: "📄", topic: "💡", tool: "🛠", person: "🙂",
@@ -33,7 +40,7 @@ function timeAgo(ts: number, lang: string): string {
 
 export default function MemoryView() {
   const t = useT();
-  const [tab, setTab] = useState<"profile" | "history" | "graph">("profile");
+  const [tab, setTab] = useState<"story" | "profile" | "history" | "graph">("story");
   const [paused, setPaused] = useState(false);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [prefs, setPrefs] = useState<Pref[]>([]);
@@ -41,6 +48,8 @@ export default function MemoryView() {
   const [search, setSearch] = useState("");
   const [nodes, setNodes] = useState<GraphNode[]>([]);
   const [edges, setEdges] = useState<GraphEdge[]>([]);
+  const [story, setStory] = useState<StoryData | null>(null);
+  const [petName, setPetName] = useState("");
 
   const loadProfile = useCallback(() => {
     invoke<{ insights: Insight[]; preferences: Pref[] }>("memory_get_profile")
@@ -57,14 +66,20 @@ export default function MemoryView() {
       .then(g => { setNodes(g.nodes ?? []); setEdges(g.edges ?? []); })
       .catch(() => {});
   }, []);
+  const loadStory = useCallback(() => {
+    invoke<StoryData>("memory_get_story").then(setStory).catch(() => {});
+  }, []);
 
   useEffect(() => {
     invoke<{ enabled: boolean; paused: boolean }>("memory_get_settings")
       .then(s => setPaused(!!s.paused)).catch(() => {});
+    invoke<{ name: string }>("get_pet_identity")
+      .then(id => setPetName(id?.name ?? "")).catch(() => {});
+    loadStory();
     loadProfile();
     loadTurns("");
     loadGraph();
-  }, [loadProfile, loadTurns, loadGraph]);
+  }, [loadStory, loadProfile, loadTurns, loadGraph]);
 
   const togglePaused = () => {
     const next = !paused;
@@ -84,7 +99,7 @@ export default function MemoryView() {
   const clearAll = () => {
     if (!window.confirm(t("memory.clear_confirm"))) return;
     invoke("memory_clear_all").catch(() => {});
-    setInsights([]); setPrefs([]); setTurns([]); setNodes([]); setEdges([]);
+    setInsights([]); setPrefs([]); setTurns([]); setNodes([]); setEdges([]); setStory(null);
   };
 
   const onSearch = (q: string) => { setSearch(q); loadTurns(q); };
@@ -109,6 +124,8 @@ export default function MemoryView() {
       {paused && <div className="mem-banner">{t("memory.paused_banner")}</div>}
 
       <div className="mem-tabs">
+        <button type="button" className={`mem-tab ${tab === "story" ? "sel" : ""}`}
+          onClick={() => setTab("story")}>{t("memory.tab.story")}</button>
         <button type="button" className={`mem-tab ${tab === "profile" ? "sel" : ""}`}
           onClick={() => setTab("profile")}>{t("memory.tab.profile")}</button>
         <button type="button" className={`mem-tab ${tab === "history" ? "sel" : ""}`}
@@ -116,6 +133,55 @@ export default function MemoryView() {
         <button type="button" className={`mem-tab ${tab === "graph" ? "sel" : ""}`}
           onClick={() => setTab("graph")}>{t("memory.tab.graph")}</button>
       </div>
+
+      {tab === "story" && (
+        <section className="mem-pane">
+          <div className="mem-story-head">
+            <div className="mem-story-avatar" aria-hidden>🐭</div>
+            <div className="mem-story-who">
+              {t("memory.story.who", { name: petName || t("memory.story.default_name") })}
+            </div>
+          </div>
+          {(!story || !story.has_data || story.total_turns < 3) ? (
+            <>
+              <div className="mem-story-seed">
+                <div className="mem-story-seed-title">{t("memory.story.seed_title")}</div>
+                <div className="mem-story-seed-grow">{t("memory.story.seed_grow")}</div>
+              </div>
+              <div className="mem-story-metric ghost">
+                <span>🌙 {t("memory.story.nights_label")}</span><b>{t("memory.story.locked")}</b>
+              </div>
+              <div className="mem-story-metric ghost">
+                <span>🤝 {t("memory.story.times_label")}</span><b>{t("memory.story.locked")}</b>
+              </div>
+              <div className="mem-story-metric ghost">
+                <span>💭 {t("memory.story.eyes_label")}</span><b>{t("memory.story.locked")}</b>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="mem-story-metric">
+                <span>🗓 {t("memory.story.days_label")}</span>
+                <b>{t("memory.story.days_value", { n: story.days_known })}</b>
+              </div>
+              <div className="mem-story-metric">
+                <span>🌙 {t("memory.story.nights_label")}</span>
+                <b>{t("memory.story.nights_value", { n: story.night_sessions })}</b>
+              </div>
+              <div className="mem-story-metric">
+                <span>🤝 {t("memory.story.times_label")}</span>
+                <b>{t("memory.story.times_value", { n: story.total_turns })}</b>
+              </div>
+              <div className={`mem-story-eyes ${story.profile_line ? "" : "pending"}`}>
+                <div className="mem-story-eyes-cap">💭 {t("memory.story.eyes_label")}</div>
+                <div className="mem-story-eyes-body">
+                  {story.profile_line ? story.profile_line : t("memory.story.eyes_pending")}
+                </div>
+              </div>
+            </>
+          )}
+        </section>
+      )}
 
       {tab === "profile" && (
         <section className="mem-pane">

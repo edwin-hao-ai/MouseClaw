@@ -244,3 +244,100 @@
   cursor: pointer;
 }
 .mem-clear:hover { text-decoration: underline; }
+
+/* ── 「我们的故事」关系页 (v0.4.x) ── */
+.mem-story-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+.mem-story-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--accent-gradient);
+  display: grid;
+  place-items: center;
+  font-size: var(--text-body-lg);
+  flex: none;
+}
+.mem-story-who {
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.mem-story-seed {
+  text-align: center;
+  padding: var(--space-4) var(--space-2) var(--space-2);
+}
+.mem-story-seed-title {
+  font-size: var(--text-headline);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.mem-story-seed-grow {
+  font-size: var(--text-body-sm);
+  color: var(--text-dim);
+  line-height: 1.7;
+  margin-top: var(--space-2);
+}
+
+.mem-story-metric {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 0;
+  border-bottom: 1px dashed var(--surface-glass-strong);
+  font-size: var(--text-body);
+  color: var(--text-primary);
+}
+.mem-story-metric span {
+  color: var(--text-dim);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.mem-story-metric b {
+  font-size: var(--text-body-lg);
+  color: var(--accent-primary);
+  font-variant-numeric: tabular-nums;
+}
+.mem-story-metric.ghost { opacity: 0.5; }
+.mem-story-metric.ghost b {
+  color: var(--text-dim);
+  font-size: var(--text-body-sm);
+  font-weight: 600;
+}
+
+.mem-story-eyes {
+  margin-top: var(--space-3);
+  background: #fff;
+  border-left: 3px solid var(--accent-primary);
+  border-radius: var(--radius-lg);
+  padding: 11px 13px;
+  box-shadow: var(--shadow-card);
+}
+.mem-story-eyes.pending {
+  border-left-color: var(--text-dim);
+  box-shadow: none;
+  background: var(--surface-glass);
+}
+.mem-story-eyes-cap {
+  font-size: var(--text-micro);
+  font-weight: 700;
+  color: var(--accent-primary);
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+.mem-story-eyes.pending .mem-story-eyes-cap { color: var(--text-dim); }
+.mem-story-eyes-body {
+  font-size: var(--text-body-sm);
+  color: var(--text-primary);
+  line-height: 1.65;
+}
+.mem-story-eyes.pending .mem-story-eyes-body {
+  color: var(--text-dim);
+  font-style: italic;
+}

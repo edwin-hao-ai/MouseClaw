@@ -30,6 +30,7 @@ export const BACKENDS_META: Array<{
   { id: "pi-agent",        label: "Pi Coding Agent",              descKey: "pi" },
   { id: "openclaw-cli",    label: "OpenClaw CLI",                 descKey: "openclaw" },
   { id: "hermes-agent",    label: "Hermes Agent (Nous Research)", descKey: "hermes" },
+  { id: "qwen-code",       label: "Qwen Code (通义千问)",         descKey: "qwen",   tag: "common.domestic" },
 ];
 
 export function backendDesc(id: BackendChoice, en: boolean): string {
@@ -86,6 +87,10 @@ export function backendDesc(id: BackendChoice, en: boolean): string {
       return en
         ? "pi -p print mode. Lightweight 4-tool coding agent. Needs npm i -g @mariozechner/pi-coding-agent + a provider key."
         : "pi -p 打印模式。轻量四工具编码 agent。需 npm i -g @mariozechner/pi-coding-agent 并配 provider key。";
+    case "qwen-code":
+      return en
+        ? "Alibaba's open-source CLI (gemini-cli fork), one-shot mode. Install npm i -g @qwen-code/qwen-code + a Qwen / OpenAI-compatible key."
+        : "阿里通义开源 CLI（gemini-cli 同源），one-shot 模式。装 npm i -g @qwen-code/qwen-code 并配 Qwen / OpenAI 兼容 key。";
   }
 }
 

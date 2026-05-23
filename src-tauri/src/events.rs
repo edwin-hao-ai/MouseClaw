@@ -195,6 +195,9 @@ pub enum NudgeKind {
     MemoryIntro,
     /// v0.4.4 · 起名可发现性:还没起名的桌宠,一次性提示「给我起个名字?」+ CTA 开 picker。
     NameHint,
+    /// v0.4.x · 主动记忆提醒:基于**真实**高频实体(项目/话题/文件/工具),偶尔(≥6h 冷却 +
+    /// 自然停顿)来一句「还在忙 X 吗」。完全由 memory.db 真实数据驱动 —— 无数据不发,绝不编造。
+    MemoryGlance,
 }
 
 impl NudgeKind {
@@ -210,6 +213,7 @@ impl NudgeKind {
             NudgeKind::LongFocus   => "long-focus",
             NudgeKind::MemoryIntro => "memory-intro",
             NudgeKind::NameHint    => "name-hint",
+            NudgeKind::MemoryGlance => "memory-glance",
         }
     }
 }

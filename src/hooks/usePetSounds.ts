@@ -30,7 +30,8 @@ const MOUSE_ON_ENTER: Partial<Record<MouseState, SfxEvent>> = {
 };
 
 const COMPANION_ON_ENTER: Partial<Record<CompanionState, SfxEvent>> = {
-  waking: "wake",
+  // waking 故意**不**发声（2026-05-23 用户反馈：每次回到桌面桌宠一醒就"起床"音，
+  // 太骚扰）。`wake` 音色保留在 petAudio，留作未来手动触发，但不再自动响。
   hop: "hop",
   dizzy: "dizzy",
 };

@@ -30,11 +30,15 @@ export interface Strings {
   "common.search": string;
   "common.loading": string;
   "common.recommended": string;
+  "common.domestic": string;
 
   // ── 桌宠身份:起名 + 性格 (v0.4.4) ──
   "picker.identity.heading": string;
   "picker.identity.name_label": string;
   "picker.identity.name_placeholder": string;
+  "picker.identity.name_suggestions": string;
+  "picker.identity.greet": string;
+  "picker.identity.greet_empty": string;
   "picker.identity.personality_label": string;
   "picker.identity.persona_hint": string;
   "picker.identity.custom_placeholder": string;
@@ -68,6 +72,21 @@ export interface Strings {
   "memory.local_note": string;
   "memory.delete": string;
   "memory.importance": string;
+  // ── 「我们的故事」关系页 (v0.4.x) ──
+  "memory.tab.story": string;
+  "memory.story.who": string;
+  "memory.story.default_name": string;
+  "memory.story.seed_title": string;
+  "memory.story.seed_grow": string;
+  "memory.story.locked": string;
+  "memory.story.days_label": string;
+  "memory.story.days_value": string;
+  "memory.story.nights_label": string;
+  "memory.story.nights_value": string;
+  "memory.story.times_label": string;
+  "memory.story.times_value": string;
+  "memory.story.eyes_label": string;
+  "memory.story.eyes_pending": string;
 
   // ── 桌宠 / 主气泡 ──
   "bubble.expand_to_panel": string;        // "💬 继续追问"
@@ -296,6 +315,12 @@ export interface Strings {
   "tasks.last.never": string;
   "tasks.last.running": string;
   "tasks.run_now": string;
+  "tasks.running": string;
+  "tasks.tab_tasks": string;
+  "tasks.tab_results": string;
+  "tasks.run.ok": string;
+  "tasks.run.fail": string;
+  "tasks.run.skip": string;
   "tasks.edit": string;
   "tasks.delete": string;
   "tasks.delete_confirm": string;     // "删除「{title}」？"

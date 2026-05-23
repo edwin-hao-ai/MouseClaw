@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MouseClaw · 定时任务结果/历史交互重设计 (2026-05-23)</title>
+<style>
+  /* picker/tasks 既有暖色调（与 TasksView.css 一致）+ DESIGN.md accent */
+  :root {
+    --accent: #ff6b9d; --accent-deep: #d63d6a; --accent-glow: rgba(255,107,157,.12);
+    --ink: #2b2622; --ink-dim: #8a8178; --line: #ece6dd; --card: #fff;
+    --bg: #faf7f2; --ok: #5cd6a0; --fail: #ff5f57;
+    --font: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+    --r-sm: 7px; --r-md: 10px; --r-lg: 14px; --r-pill: 999px;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:#0e0e12; color:#eee; font-family:var(--font); padding:28px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:#9a9aa4; font-size:12px; max-width:760px; margin:0 0 8px; line-height:1.6; }
+  .cols { display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start; margin-top:18px; }
+  .col-cap { font-size:12px; color:#9a9aa4; margin:0 0 8px; font-weight:600; }
+  .bad { color:#ff8b8b; } .good { color:#7fe0b0; }
+
+  /* ── 任务窗 mock ── */
+  .win {
+    width: 480px; background:#fcfcfe; color:var(--ink); border-radius:14px;
+    box-shadow:0 16px 50px rgba(0,0,0,.4); overflow:hidden;
+  }
+  .win-hd { display:flex; align-items:center; gap:8px; padding:14px 18px; border-bottom:1px solid var(--line); }
+  .win-hd .t { font-weight:700; font-size:15px; }
+  .win-hd .c { color:var(--ink-dim); font-size:12px; }
+  .win-body { padding:14px; }
+
+  .task { border:1px solid var(--line); border-radius:var(--r-lg); padding:14px; background:var(--card); }
+  .task.justran { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-glow); }
+  .task-r1 { display:flex; align-items:center; justify-content:space-between; }
+  .task-name { font-weight:700; font-size:15px; }
+  .tog { width:38px; height:22px; border-radius:var(--r-pill); border:none; cursor:pointer; background:var(--accent); position:relative; }
+  .tog::after { content:""; position:absolute; top:2px; right:2px; width:18px; height:18px; border-radius:50%; background:#fff; }
+  .chip { display:inline-flex; align-items:center; gap:4px; margin-top:8px; font-size:12px; font-weight:600;
+          color:var(--accent-deep); background:#fde7ef; padding:3px 9px; border-radius:var(--r-pill); }
+  .act { color:#5a5048; font-size:13px; line-height:1.5; margin:9px 0 0; }
+  .meta { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:9px; font-size:12px; color:var(--ink-dim); }
+  .meta .ok { color:#3aa17a; }
+
+  /* ── 重设计：清晰带文字的操作按钮 ── */
+  .actions { display:flex; gap:7px; margin-top:12px; }
+  .btn {
+    display:inline-flex; align-items:center; gap:5px; font:inherit; font-size:12px; font-weight:600;
+    padding:7px 12px; border-radius:var(--r-sm); border:1px solid var(--line); background:#fff;
+    color:var(--ink); cursor:pointer; transition:all .12s;
+  }
+  .btn:hover { border-color:var(--accent); background:var(--accent-glow); }
+  .btn.primary { background:linear-gradient(135deg,#ff6b9d,#ff9bb8); color:#fff; border-color:transparent; }
+  .btn.on { border-color:var(--accent-deep); background:var(--accent-glow); color:var(--accent-deep); }
+  .btn.icon-only { padding:7px 9px; }
+  .spin { width:12px;height:12px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;
+          display:inline-block;animation:sp .7s linear infinite; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+
+  /* ── 结果/历史面板（核心）── */
+  .result { display:flex; gap:0; margin-top:12px; border:1px solid var(--line); border-radius:var(--r-md); overflow:hidden; height:300px; }
+  .runs { width:160px; flex:0 0 auto; border-right:1px solid var(--line); overflow-y:auto; background:#faf8f4; }
+  .run { display:block; width:100%; text-align:left; border:none; background:none; cursor:pointer;
+         padding:9px 11px; border-bottom:1px solid var(--line); font:inherit; }
+  .run:hover { background:#fff; }
+  .run.sel { background:#fff; box-shadow:inset 3px 0 0 var(--accent); }
+  .run-top { display:flex; align-items:center; gap:5px; font-size:12px; font-weight:600; color:var(--ink); }
+  .run-dot { width:7px;height:7px;border-radius:50%; flex:0 0 auto; }
+  .run-dot.ok { background:var(--ok); } .run-dot.fail { background:var(--fail); }
+  .run-sum { font-size:11px; color:var(--ink-dim); margin-top:3px; line-height:1.35;
+             display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .out { flex:1; min-width:0; overflow-y:auto; padding:14px 16px; font-size:13px; line-height:1.6; color:#33302c; }
+  /* markdown 渲染样式 */
+  .out h2 { font-size:15px; margin:14px 0 6px; } .out h2:first-child { margin-top:0; }
+  .out h3 { font-size:13px; margin:12px 0 5px; color:#555; }
+  .out p { margin:6px 0; } .out ul,.out ol { margin:6px 0; padding-left:20px; } .out li { margin:3px 0; }
+  .out strong { color:var(--ink); } .out code { background:#f0ece5; padding:1px 5px; border-radius:4px; font-size:12px; }
+  .out a { color:var(--accent-deep); text-decoration:none; } .out a:hover { text-decoration:underline; }
+  .out .src { color:var(--ink-dim); font-size:11px; }
+
+  .pet-bubble { display:inline-flex; align-items:center; gap:8px; background:#fff; border:1px solid var(--line);
+    border-radius:14px; padding:9px 13px; box-shadow:0 8px 24px rgba(0,0,0,.12); }
+  svg { shape-rendering:crispEdges; }
+  .note { font-size:12px; color:#9a9aa4; max-width:300px; line-height:1.8; }
+  .note b { color:#ddd; }
+  .bad-ex { background:#1a1a20; border:1px dashed #444; border-radius:10px; padding:14px; width:300px; }
+</style>
+</head>
+<body>
+  <h1>MouseClaw · 定时任务「结果 / 历史」交互重设计</h1>
+  <p class="sub">2026-05-23 · 参考 OpenClaw（每个 job 有可查的 run history）。修 4 个问题：
+    ① 完成后看不到结果（要点神秘 ▾）② 无 markdown 渲染（裸 <code>## 📰</code> 文本）
+    ③ 不能切换不同历史（只显示最新一条）④ 按钮 icon 看不懂（▶ · ✎ 🗑 ▾）。</p>
+
+  <div class="cols">
+    <!-- 现状问题 -->
+    <div>
+      <p class="col-cap bad">✗ 现状</p>
+      <div class="bad-ex">
+        <div style="font-weight:700;color:#ddd">整理AI新闻</div>
+        <div style="margin-top:8px;font-size:12px;color:#aaa">下次 今天 09:00 · ✓ 已完成</div>
+        <div style="margin-top:10px;display:flex;gap:6px">
+          <span style="border:1px solid #555;border-radius:6px;padding:5px 9px;color:#ccc">▶</span>
+          <span style="border:1px solid #555;border-radius:6px;padding:5px 9px;color:#ccc">·</span>
+          <span style="border:1px solid #555;border-radius:6px;padding:5px 9px;color:#ccc">✎</span>
+          <span style="border:1px solid #555;border-radius:6px;padding:5px 9px;color:#ccc">🗑</span>
+        </div>
+        <div style="margin-top:12px;font-size:11px;color:#888;font-family:monospace;white-space:pre-wrap;border-top:1px dashed #444;padding-top:8px">## 📰 过去24小时 AI 要闻
+### 模型 & 产品发布
+1. **Google I/O...**（裸 markdown 没渲染，且只有最新一条，点别的历史不切换）</div>
+        <div class="note" style="margin-top:8px;color:#ff8b8b">▶·✎🗑▾ 看不懂；完成不主动显示；无 md；历史不可切</div>
+      </div>
+    </div>
+
+    <!-- 重设计 -->
+    <div>
+      <p class="col-cap good">✓ 重设计（点「📄 结果」试试，左边切换不同历史）</p>
+      <div class="win">
+        <div class="win-hd"><span>⏰</span><span class="t">定时任务</span><span class="c">1 个 · 1 启用</span></div>
+        <div class="win-body">
+          <div class="task justran" id="card">
+            <div class="task-r1">
+              <span class="task-name">整理AI新闻</span>
+              <button class="tog" title="启用"></button>
+            </div>
+            <div class="chip">⏰ 每天 09:00</div>
+            <div class="act">搜集过去 24 小时的 AI 行业重要新闻，整理成中文摘要列表发给我，每条含来源链接。</div>
+            <div class="meta">
+              <span>下次 今天 09:00</span>
+              <span class="ok">✓ 刚刚 · 已整理 6 条</span>
+            </div>
+            <!-- 重设计的按钮：带文字，一眼懂 -->
+            <div class="actions">
+              <button class="btn primary" id="runBtn">▶ 立即运行</button>
+              <button class="btn on" id="resBtn">📄 结果 / 历史</button>
+              <button class="btn" title="编辑">✏️ 编辑</button>
+              <button class="btn icon-only" title="删除">🗑</button>
+            </div>
+            <!-- 结果/历史面板：左侧可切换的 run 列表 + 右侧 markdown 渲染输出 -->
+            <div class="result" id="resultPane">
+              <div class="runs" id="runsList"></div>
+              <div class="out" id="outPane"></div>
+            </div>
+          </div>
+
+          <div style="margin-top:14px" class="col-cap">完成时桌宠也会提醒（点 ▶ 立即运行看）：</div>
+          <div class="pet-bubble" id="petBubble" style="display:none">
+            <span id="petSvg"></span>
+            <span style="font-size:13px"><b>整理AI新闻</b> 跑完了 ✓ <span style="color:#888">已整理 6 条 · 点我看</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <p class="col-cap" style="color:#ddd">改了什么</p>
+      <p>① <b>完成即可见</b>：跑完自动展开结果面板（不用找按钮）+ 桌宠气泡提醒「跑完了·点我看」</p>
+      <p>② <b>历史可切换</b>：左栏列出每次执行（✓/✗ + 时间 + 摘要），点哪条右边就显示哪条的完整结果</p>
+      <p>③ <b>markdown 渲染</b>：标题/加粗/列表/链接/来源都正常排版（复用主气泡的 marked）</p>
+      <p>④ <b>按钮带文字</b>：「▶ 立即运行」「📄 结果/历史」「✏️ 编辑」「🗑」——一眼懂，不再 ▶·✎▾ 猜谜</p>
+    </div>
+  </div>
+
+<script>
+function petSVG(s){const u=s/16;return `<svg width="${s}" height="${s}" viewBox="0 0 16 16">
+<rect x="2" y="2" width="3" height="3" fill="#cfcfcf"/><rect x="11" y="2" width="3" height="3" fill="#cfcfcf"/>
+<rect x="3" y="3" width="1" height="1" fill="#ff9bb8"/><rect x="12" y="3" width="1" height="1" fill="#ff9bb8"/>
+<rect x="3" y="4" width="10" height="9" fill="#cfcfcf"/><rect x="6" y="9" width="4" height="4" fill="#fff"/>
+<rect x="7" y="8" width="2" height="1" fill="#d63d6a"/><rect x="5" y="6" width="2" height="2" fill="#1a1a1a"/>
+<rect x="9" y="6" width="2" height="2" fill="#1a1a1a"/></svg>`;}
+document.getElementById("petSvg").innerHTML = petSVG(34);
+
+// 三次模拟执行历史，输出各不同 → 演示「切换历史」
+const RUNS = [
+  { ok:true, time:"刚刚 01:34", sum:"已整理 6 条 · 搜索智能体、企业AI加速…", md:`<h2>📰 过去24小时 AI 要闻（5/22–5/23）</h2>
+<h3>模型 & 产品发布</h3>
+<ol><li><strong>Google I/O 2026 推出 Search「信息智能体」</strong> — 可 24/7 后台运行，追踪市场动态、监控房源等。<br><span class="src">来源：<a href="#">Google I/O 2026 updates</a></span></li>
+<li><strong>Anthropic 发布 Claude Opus 4.7</strong> — 1M 上下文 + 更强 agentic 工具调用。<br><span class="src">来源：<a href="#">anthropic.com/news</a></span></li></ol>
+<h3>融资 & 行业</h3>
+<ul><li>某 AI 编码公司完成 B 轮，估值翻倍。<span class="src">（<a href="#">TechCrunch</a>）</span></li></ul>` },
+  { ok:true, time:"00:47", sum:"AI 行业 24h 速览（5/22–5/23）", md:`<h2>📰 AI 行业 24h 速览</h2>
+<p>今日 <strong>4 条</strong>重点：</p>
+<ul><li>开源模型 GLM-5 登顶 coding 榜<span class="src"> · <a href="#">来源</a></span></li>
+<li>多家厂商跟进「长时记忆」特性</li></ul>` },
+  { ok:false, time:"00:46", sum:"失败：没取到外部数据（已下次重试）", md:`<h2 style="color:#c0392b">✗ 本次失败</h2>
+<p>没能获取到实时新闻数据（WebSearch 超时）。<strong>未编造内容</strong>——按真实性铁律如实报告，下次自动重试。</p>
+<p class="src">错误：fetch timeout after 30s</p>` },
+];
+const runsList = document.getElementById("runsList");
+const outPane = document.getElementById("outPane");
+let sel = 0;
+function render(){
+  runsList.innerHTML = RUNS.map((r,i)=>`<button class="run ${i===sel?'sel':''}" data-i="${i}">
+    <div class="run-top"><span class="run-dot ${r.ok?'ok':'fail'}"></span>${r.time}</div>
+    <div class="run-sum">${r.sum}</div></button>`).join("");
+  runsList.querySelectorAll(".run").forEach(b=>b.onclick=()=>{ sel=+b.dataset.i; render(); });
+  outPane.innerHTML = RUNS[sel].md;
+}
+render();
+
+const resultPane = document.getElementById("resultPane");
+const resBtn = document.getElementById("resBtn");
+let open = true;
+function syncOpen(){ resultPane.style.display = open?"flex":"none"; resBtn.classList.toggle("on",open); }
+resBtn.onclick = ()=>{ open=!open; syncOpen(); };
+syncOpen();
+
+// ▶ 立即运行 → 转圈 → 完成：自动展开结果 + 桌宠气泡
+document.getElementById("runBtn").onclick = (e)=>{
+  const b=e.currentTarget; b.innerHTML='<span class="spin"></span> 执行中…'; b.disabled=true;
+  document.getElementById("petBubble").style.display="none";
+  setTimeout(()=>{
+    b.innerHTML='▶ 立即运行'; b.disabled=false;
+    sel=0; open=true; syncOpen(); render();
+    document.getElementById("card").classList.add("justran");
+    document.getElementById("petBubble").style.display="inline-flex";
+  }, 1400);
+};
+</script>
+</body>
+</html>

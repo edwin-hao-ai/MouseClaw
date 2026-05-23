@@ -444,6 +444,24 @@ pub fn recent_runs(task_id: &str, n: usize) -> Vec<RunRecord> {
     out
 }
 
+/// 读**所有任务**最近 N 条执行记录（统一结果页 feed 用）。最新在前，跨任务混排。
+pub fn recent_runs_all(n: usize) -> Vec<RunRecord> {
+    let _g = FILE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(path) = runs_path() else {
+        return Vec::new();
+    };
+    let Ok(content) = std::fs::read_to_string(&path) else {
+        return Vec::new();
+    };
+    let mut out: Vec<RunRecord> = content
+        .lines()
+        .filter_map(|l| serde_json::from_str::<RunRecord>(l).ok())
+        .collect();
+    out.reverse(); // jsonl 末尾最新 → 倒序后最新在前
+    out.truncate(n);
+    out
+}
+
 /// 解析 backend 吐出的 `[SCHEDULE]` JSON / 任务窗一句话解析结果。
 pub fn parse_input(json: &str) -> Result<ScheduleInput> {
     let mut input: ScheduleInput =

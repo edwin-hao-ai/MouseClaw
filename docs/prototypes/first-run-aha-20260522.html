@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MouseClaw · 首次 aha 旅程 prototype (2026-05-22)</title>
+<style>
+  /* ── DESIGN.md tokens (§9 cheatsheet) ─────────────────────────────── */
+  :root {
+    --surface-deep: #0a0e1a;
+    --surface-glass: rgba(255, 255, 255, 0.06);
+    --bubble-bg: rgba(255, 255, 255, 0.97);
+    --panel-bg: rgba(252, 252, 254, 0.98);
+    --bubble-border: rgba(0, 0, 0, 0.06);
+    --text-primary: #1a1a1a;
+    --text-on-dark: #f5f5f7;
+    --text-dim: #a1a1a8;
+    --accent-primary: #ff6b9d;
+    --accent-soft: #ff9bb8;
+    --accent-gradient: linear-gradient(135deg, #ff6b9d, #ff9bb8);
+    --success: #5cd6a0;
+    --warn: #ffd166;
+    --danger: #ff5f57;
+    /* mouse palette (classic, locked) */
+    --m-body: #cfcfcf; --m-belly: #ffffff; --m-ear-in: #ff9bb8;
+    --m-eye: #1a1a1a; --m-nose: #d63d6a; --m-tail: #8a8a8a; --m-paw: #ffffff;
+    --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", sans-serif;
+    --radius-pill: 999px; --radius-md: 8px; --radius-xl: 12px; --radius-3xl: 16px;
+    --shadow-bubble: 0 12px 32px rgba(0,0,0,0.35), 0 2px 6px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.7);
+    --ease-default: ease-in-out;
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease-tap: cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font-system);
+    color: var(--text-on-dark);
+    background:
+      radial-gradient(1200px 700px at 70% -10%, #1b2236 0%, transparent 60%),
+      linear-gradient(160deg, #0a0e1a 0%, #11152400 40%), var(--surface-deep);
+    min-height: 100%;
+    overflow-x: hidden;
+  }
+
+  /* ── layout ───────────────────────────────────────────────────────── */
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 28px 24px 120px; }
+  .head h1 { font-size: 22px; font-weight: 700; letter-spacing: .2px; }
+  .head p { color: var(--text-dim); font-size: 14px; margin-top: 6px; line-height: 1.6; }
+
+  /* scene stepper */
+  .steps { display: flex; gap: 8px; margin: 22px 0 14px; flex-wrap: wrap; }
+  .step-pill {
+    border: 1px solid var(--surface-glass); background: var(--surface-glass);
+    color: var(--text-dim); border-radius: var(--radius-pill);
+    padding: 7px 14px; font-size: 13px; cursor: pointer; transition: all 200ms var(--ease-tap);
+    white-space: nowrap;
+  }
+  .step-pill.active { background: var(--accent-gradient); color: #fff; border-color: transparent; }
+  .step-pill:hover { color: var(--text-on-dark); }
+
+  /* the mock desktop "stage" where the pet lives */
+  .stage {
+    position: relative; height: 460px; border-radius: var(--radius-3xl);
+    overflow: hidden; border: 1px solid var(--surface-glass);
+    background:
+      radial-gradient(900px 500px at 20% 0%, #2a3350 0%, transparent 55%),
+      linear-gradient(155deg, #20283f 0%, #141a2b 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+    cursor: crosshair;
+  }
+  /* mock menubar + dock */
+  .menubar { position:absolute; inset:0 0 auto 0; height:26px; background:rgba(0,0,0,.35);
+    display:flex; align-items:center; gap:14px; padding:0 14px; font-size:12px; color:#cfd3dc; }
+  .menubar .lobster { color: var(--accent-soft); font-weight:700; }
+  .dock { position:absolute; bottom:8px; left:50%; transform:translateX(-50%);
+    height:42px; padding:0 10px; display:flex; gap:8px; align-items:center;
+    background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.08);
+    border-radius:14px; backdrop-filter: blur(8px); }
+  .dock i { width:30px; height:30px; border-radius:8px; display:block;
+    background:linear-gradient(135deg,#3a4566,#2a3350); }
+  .dock i:nth-child(1){background:linear-gradient(135deg,#5b8def,#3a5fc0);}
+  .dock i:nth-child(2){background:linear-gradient(135deg,#5cd6a0,#2fa37a);}
+  .dock i:nth-child(3){background:linear-gradient(135deg,#ffd166,#e0a93b);}
+  .dock i:nth-child(4){background:var(--accent-gradient);}
+
+  /* mock email/app window (office-worker context) */
+  .app-win {
+    position:absolute; left:46px; top:60px; width:430px; height:320px;
+    background:#f6f7fb; color:#222; border-radius:12px; overflow:hidden;
+    box-shadow:0 20px 50px rgba(0,0,0,.45); opacity:0; transform:translateY(8px);
+    transition:opacity 300ms var(--ease-default), transform 300ms var(--ease-default);
+    pointer-events:none;
+  }
+  .app-win.show { opacity:1; transform:none; }
+  .app-bar { height:34px; background:#e9ebf2; display:flex; align-items:center; gap:7px; padding:0 12px; }
+  .app-bar .d { width:11px; height:11px; border-radius:50%; }
+  .app-bar .d.r{background:#ff5f57;} .app-bar .d.y{background:#ffbd2e;} .app-bar .d.g{background:#28c840;}
+  .app-bar span { margin-left:8px; font-size:12px; color:#8a8f9c; }
+  .mail { padding:14px 16px; font-size:13px; line-height:1.7; }
+  .mail .from { color:#8a8f9c; font-size:12px; }
+  .mail .subj { font-weight:700; margin:3px 0 8px; font-size:14px; }
+  .mail .body { color:#3a3f4b; }
+  .mail .sel { background:#fff2b8; border-radius:3px; box-shadow:0 0 0 2px #ffe07a; }
+
+  /* selection lasso */
+  .lasso { position:absolute; border:2px dashed var(--accent-primary);
+    border-radius:8px; background:rgba(255,107,157,.10); opacity:0; transition:opacity 200ms; }
+  .lasso.show { opacity:1; }
+
+  /* ── the pet ──────────────────────────────────────────────────────── */
+  .pet { position:absolute; right:34px; bottom:30px; width:120px; height:120px;
+    transition: transform 280ms var(--ease-spring); z-index:5; }
+  .pet svg { width:100%; height:100%; overflow:visible; display:block;
+    filter: drop-shadow(0 8px 14px rgba(0,0,0,.45)); }
+  /* idle breathe */
+  @keyframes breathe { 0%,100%{ transform:translateY(0) scaleY(1);} 50%{ transform:translateY(-2px) scaleY(1.02);} }
+  .pet .body-grp { transform-box: fill-box; transform-origin: center bottom; animation: breathe 3.2s var(--ease-default) infinite; }
+  /* blink */
+  @keyframes blink { 0%,92%,100%{ transform:scaleY(1);} 96%{ transform:scaleY(.1);} }
+  .eye-lid { transform-box: fill-box; transform-origin:center; animation: blink 4.4s var(--ease-default) infinite; }
+  /* listen bounce */
+  .pet.listen { animation: lb .6s var(--ease-default) infinite; }
+  @keyframes lb { 0%,100%{transform:translateY(0);} 50%{transform:translateY(-4px);} }
+  /* think wobble */
+  .pet.think { animation: tw 1.4s var(--ease-default) infinite; }
+  @keyframes tw { 0%,100%{transform:rotate(-3deg);} 50%{transform:rotate(3deg);} }
+  /* jump celebrate */
+  .pet.jump { animation: jp .9s var(--ease-spring); }
+  @keyframes jp { 0%{transform:translateY(0);} 35%{transform:translateY(-34px) scale(1.05);} 70%{transform:translateY(0);} 85%{transform:translateY(-10px);} 100%{transform:translateY(0);} }
+  /* ear wiggle (reactive) */
+  .pet.alert .ear { transform-box:fill-box; transform-origin:center bottom; animation: ew .28s var(--ease-default) 3; }
+  @keyframes ew { 0%,100%{transform:rotate(0);} 50%{transform:rotate(-12deg);} }
+
+  /* floating hearts on pat */
+  .heart { position:absolute; right:54px; bottom:120px; font-size:20px; color:var(--accent-primary);
+    opacity:0; pointer-events:none; }
+  .heart.go { animation: hf 1100ms var(--ease-default) forwards; }
+  @keyframes hf { 0%{opacity:0; transform:translateY(0) scale(.6);} 20%{opacity:1;} 100%{opacity:0; transform:translateY(-60px) scale(1.1);} }
+
+  /* speech bubble */
+  .bubble {
+    position:absolute; max-width:300px; background:var(--bubble-bg); color:var(--text-primary);
+    border:1px solid var(--bubble-border); border-radius:var(--radius-3xl);
+    box-shadow:var(--shadow-bubble); padding:14px 16px; font-size:14px; line-height:1.6;
+    opacity:0; transform:translateY(6px) scale(.98); transition:all 200ms var(--ease-default);
+    pointer-events:none; z-index:6;
+  }
+  .bubble.show { opacity:1; transform:none; }
+  .bubble .who { font-size:11px; color:var(--accent-primary); font-weight:700; letter-spacing:.4px; margin-bottom:5px; }
+  .bubble .cd { margin-top:9px; height:4px; border-radius:999px; background:#eee; overflow:hidden; }
+  .bubble .cd>i { display:block; height:100%; width:100%; background:var(--accent-gradient);
+    transform-origin:left; }
+  .bubble.show .cd>i { animation: cdfill 3s linear forwards; }
+  @keyframes cdfill { from{transform:scaleX(1);} to{transform:scaleX(0);} }
+
+  /* reactive ribbon */
+  .ribbon { position:absolute; right:18px; bottom:140px; display:flex; gap:6px;
+    opacity:0; transform:translateY(8px); transition:all 220ms var(--ease-spring); z-index:6; }
+  .ribbon.show { opacity:1; transform:none; }
+  .ribbon button { border:none; cursor:pointer; font-size:12.5px; font-weight:600;
+    padding:8px 12px; border-radius:var(--radius-pill); background:var(--bubble-bg);
+    color:var(--text-primary); box-shadow:0 6px 16px rgba(0,0,0,.3); white-space:nowrap; }
+  .ribbon button:hover { background:var(--accent-soft); }
+
+  /* name + download mini panel (scene 2) */
+  .nudge-card { position:absolute; right:20px; bottom:150px; width:262px; background:var(--panel-bg);
+    color:var(--text-primary); border-radius:var(--radius-3xl); box-shadow:var(--shadow-bubble);
+    padding:15px; opacity:0; transform:translateY(8px); transition:all 220ms var(--ease-default); z-index:6; }
+  .nudge-card.show { opacity:1; transform:none; }
+  .nudge-card h4 { font-size:14px; margin-bottom:4px; }
+  .nudge-card p { font-size:12.5px; color:#6b6f7a; line-height:1.55; }
+  .dl { margin-top:11px; }
+  .dl .lbl { display:flex; justify-content:space-between; font-size:11.5px; color:#8a8f9c; margin-bottom:5px; }
+  .dl .bar { height:6px; border-radius:999px; background:#eceef3; overflow:hidden; }
+  .dl .bar>i { display:block; height:100%; width:0; background:var(--accent-gradient); animation: dlp 6s linear infinite; }
+  @keyframes dlp { 0%{width:8%;} 100%{width:96%;} }
+  .name-row { margin-top:12px; display:flex; gap:7px; }
+  .name-row input { flex:1; border:1px solid #e2e4ea; border-radius:var(--radius-md); padding:8px 10px; font-size:13px; }
+  .name-row button { border:none; background:var(--accent-gradient); color:#fff; font-weight:700;
+    border-radius:var(--radius-md); padding:0 14px; cursor:pointer; font-size:13px; }
+
+  /* our story card (scene 5) */
+  .story { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    width:330px; background:var(--panel-bg); color:var(--text-primary); border-radius:var(--radius-3xl);
+    box-shadow:var(--shadow-bubble); padding:20px; opacity:0; transition:opacity 250ms; z-index:6; pointer-events:auto; }
+  .story.show { opacity:1; }
+  .story h3 { font-size:15px; text-align:center; margin-bottom:14px; }
+  .story .row { display:flex; justify-content:space-between; font-size:13.5px; padding:7px 0; border-bottom:1px dashed #ececf0; }
+  .story .row b { color:var(--accent-primary); }
+  .story .eyes { margin-top:13px; font-size:13px; color:#5a5f6b; background:#faf7f9; border-radius:var(--radius-xl); padding:11px 12px; line-height:1.6; }
+  .story .empty { text-align:center; color:#9aa0ac; font-size:13px; line-height:1.7; padding:14px 4px; }
+  .story-toggle { display:flex; gap:6px; justify-content:center; margin-top:14px; }
+  .story-toggle button { font-size:12px; padding:6px 11px; border-radius:999px; cursor:pointer;
+    border:1px solid #e2e4ea; background:#fff; color:#555; }
+  .story-toggle button.on { background:var(--accent-gradient); color:#fff; border-color:transparent; }
+
+  /* annotation strip under stage */
+  .why { margin-top:16px; background:var(--surface-glass); border:1px solid var(--surface-glass);
+    border-radius:var(--radius-xl); padding:14px 16px; }
+  .why .tag { display:inline-block; font-size:11px; font-weight:700; color:#0a0e1a;
+    background:var(--warn); border-radius:999px; padding:2px 9px; margin-bottom:8px; }
+  .why h3 { font-size:15px; margin-bottom:6px; }
+  .why p { font-size:13.5px; color:#c7cad3; line-height:1.7; }
+  .why .dep { margin-top:9px; font-size:12.5px; }
+  .why .dep .ok { color:var(--success); } .why .dep .no { color:var(--danger); }
+
+  .hint { text-align:center; color:var(--text-dim); font-size:12.5px; margin-top:10px; }
+
+  /* skin swatch acknowledgement */
+  .skins { margin-top:22px; }
+  .skins h4 { font-size:13px; color:var(--text-dim); margin-bottom:9px; }
+  .swatch-row { display:flex; gap:8px; flex-wrap:wrap; }
+  .swatch { display:flex; align-items:center; gap:6px; font-size:11.5px; color:#c7cad3;
+    background:var(--surface-glass); border-radius:999px; padding:5px 10px 5px 6px; }
+  .swatch i { width:16px; height:16px; border-radius:50%; display:block; box-shadow:inset 0 0 0 2px rgba(255,255,255,.2); }
+  .note { margin-top:18px; font-size:12px; color:#8a8f9c; line-height:1.7; border-top:1px solid var(--surface-glass); padding-top:14px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pet .body-grp, .eye-lid, .pet.listen, .pet.think { animation-duration: 6s !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <h1>🦞 MouseClaw · 首次 aha 旅程</h1>
+    <p>把"留住新用户"拆成一条按<b>到达价值时间</b>排序的 aha 阶梯。移动鼠标 → 看桌宠眼睛追你。点上方步骤切换场景。<br>
+       场景全用<b>打工人</b>视角,并诚实区分"零依赖即时可得"与"要等下载/权限/CLI"。</p>
+  </div>
+
+  <div class="steps" id="steps"></div>
+
+  <!-- ── STAGE ─────────────────────────────────────────────────────── -->
+  <div class="stage" id="stage">
+    <div class="menubar"><span class="lobster">🦞 MouseClaw</span><span>邮件</span><span>表格</span><span>文档</span></div>
+
+    <!-- mock email window (office worker) -->
+    <div class="app-win" id="appWin">
+      <div class="app-bar"><span class="d r"></span><span class="d y"></span><span class="d g"></span><span>收件箱 — 李总</span></div>
+      <div class="mail">
+        <div class="from">李总 &lt;boss@company.com&gt;</div>
+        <div class="subj">Re: 这周的项目进度</div>
+        <div class="body" id="mailBody">
+          收到你的初稿。<span class="sel" id="mailSel">麻烦今天之内把修改后的版本发我一份,顺便把上周的数据也补进去。</span>另外周五的汇报你准备一下。
+        </div>
+      </div>
+    </div>
+    <div class="lasso" id="lasso"></div>
+
+    <!-- the pet -->
+    <div class="pet" id="pet">
+      <svg viewBox="0 0 120 120" id="petSvg">
+        <g class="body-grp">
+          <!-- tail -->
+          <path id="tail" d="M40 96 C8 96 8 70 26 64" fill="none" stroke="var(--m-tail)" stroke-width="6" stroke-linecap="round"/>
+          <!-- ears -->
+          <g class="ear"><circle cx="40" cy="34" r="15" fill="var(--m-body)"/><circle cx="40" cy="34" r="8" fill="var(--m-ear-in)"/></g>
+          <g class="ear"><circle cx="80" cy="34" r="15" fill="var(--m-body)"/><circle cx="80" cy="34" r="8" fill="var(--m-ear-in)"/></g>
+          <!-- head/body -->
+          <ellipse cx="60" cy="66" rx="36" ry="34" fill="var(--m-body)"/>
+          <ellipse cx="60" cy="78" rx="22" ry="20" fill="var(--m-belly)"/>
+          <!-- eyes (whites) -->
+          <circle cx="48" cy="60" r="9" fill="#fff"/>
+          <circle cx="72" cy="60" r="9" fill="#fff"/>
+          <!-- pupils (movable) -->
+          <circle class="pupil" cx="48" cy="60" r="4.6" fill="var(--m-eye)"/>
+          <circle class="pupil" cx="72" cy="60" r="4.6" fill="var(--m-eye)"/>
+          <!-- blink lids -->
+          <rect class="eye-lid" x="38" y="51" width="20" height="9" rx="4" fill="var(--m-body)"/>
+          <rect class="eye-lid" x="62" y="51" width="20" height="9" rx="4" fill="var(--m-body)"/>
+          <!-- nose -->
+          <circle cx="60" cy="72" r="3.6" fill="var(--m-nose)"/>
+          <!-- paws -->
+          <circle cx="48" cy="98" r="6" fill="var(--m-paw)"/>
+          <circle cx="72" cy="98" r="6" fill="var(--m-paw)"/>
+        </g>
+      </svg>
+    </div>
+    <div class="heart" id="heart">💗</div>
+
+    <!-- floating UI surfaces (one shown per scene) -->
+    <div class="bubble" id="bubble" style="right:130px; bottom:60px;"></div>
+    <div class="ribbon" id="ribbon">
+      <button>🌐 翻译</button><button>✨ 润色</button><button>💡 解释</button><button>↩︎ 回复</button>
+    </div>
+    <div class="nudge-card" id="nudgeCard">
+      <h4 id="nudgeH">先给它起个名字?</h4>
+      <p id="nudgeP">装备(语音模型)在路上,先陪它玩会儿 —— 摸摸它的头试试。</p>
+      <div class="name-row"><input id="nameIn" placeholder="比如:豆豆 / 阿灰 / 龙虾仔" /><button id="nameBtn">就叫这个</button></div>
+      <div class="dl">
+        <div class="lbl"><span>下载语音模型</span><span>~260 MB</span></div>
+        <div class="bar"><i></i></div>
+      </div>
+    </div>
+    <div class="story" id="story"></div>
+  </div>
+
+  <!-- why-this-step annotation -->
+  <div class="why" id="why"></div>
+  <div class="hint" id="hint"></div>
+
+  <!-- skin acknowledgement -->
+  <div class="skins">
+    <h4>※ 全 9 皮肤(动画按 palette token 驱动,本流程 prototype 以经典灰演示;逐皮肤动画矩阵见另案)</h4>
+    <div class="swatch-row" id="swatches"></div>
+  </div>
+
+  <div class="note" id="note"></div>
+</div>
+
+<script>
+// ── skin palettes (mirror src/skins.ts) ───────────────────────────────
+const SKINS = [
+  ["经典灰","#cfcfcf"],["小白鼠","#fafafa"],["田鼠","#a47148"],["忍者鼠","#3a3a42"],
+  ["机械鼠","#c0c8d0"],["金鼠","#e8c87a"],["小灰猫","#a8a8a8"],["赤狐","#d96e2c"],["树蛙","#7ab84a"]
+];
+document.getElementById("swatches").innerHTML = SKINS.map(([n,c])=>
+  `<span class="swatch"><i style="background:${c}"></i>${n}</span>`).join("");
+
+// ── scenes ─────────────────────────────────────────────────────────────
+const scenes = [
+  {
+    name: "① 第0秒 · 它活了",
+    tag: "零依赖 · 即时可得",
+    why: "它在看我。",
+    desc: "桌宠一出现就眼球追光标、眨眼、呼吸 —— <b>不需要权限/下载/CLI</b>。这是对所有人(尤其打工人)都成立的第一个情感钩子,也最贴品牌。现状 onboarding 里桌宠是静态的;让它从第一屏就追光标,是 ROI 最高、零后端成本的改动。",
+    dep: '<span class="ok">✓ 权限</span> · <span class="ok">✓ 模型下载</span> · <span class="ok">✓ AI CLI</span> —— 全不需要',
+    hint: "👆 在这块画布里移动鼠标,看它的眼睛跟着你",
+  },
+  {
+    name: "② 等下载 · 变成第一次相处",
+    tag: "把死等变成 bonding",
+    why: "260MB 下载的几分钟 = 流失窗口,要填满。",
+    desc: "别只给进度条。让用户<b>起名字、摸它(浮爱心)、看它追光标</b>,配一句'装备在路上'。把等待变成关系的头几分钟。提前在 onboarding 第1步就后台开下,等点完7步基本下好。",
+    dep: '<span class="no">✗ 模型下载中</span> —— 正因如此才要用陪伴填满,而不是干等',
+    hint: "👆 点桌宠摸摸头(浮爱心) · 给它起个名字",
+  },
+  {
+    name: "③ 第一个一定成功的 win",
+    tag: "零外部依赖的稳赢",
+    why: "首个任务绝不能依赖浏览器自动化/officecli/外部输入框(那个 demo 已被删)。",
+    desc: "唯一稳赢 = <b>截图 + AI</b>。打工人版:圈住老板那封看不懂/难回的邮件 → '帮我回'。任何屏幕都成立。成功瞬间桌宠 jump + 庆祝,把情感锚在一次胜利上。",
+    dep: '<span class="ok">✓ 截图(屏幕录制)</span> · <span class="ok">✓ AI CLI</span> · <span class="no">✗ 不依赖</span>浏览器/office/输入框',
+    hint: "👆 自动演示:圈选邮件 → AI 起草回复 → 桌宠庆祝",
+  },
+  {
+    name: "④ 每天都用的钩子 · 复制即弹",
+    tag: "日常留存引擎",
+    why: "骑在'复制'这个人人每天做无数次的习惯上,零学习、不请自来。",
+    desc: "打工人复制任意文字 → 桌宠抖耳 + 头顶弹「翻译/润色/解释/回复」。这才是'不知不觉每天用'的循环,是最强的<b>日常留存</b>机制。确保第1周用户撞见它。",
+    dep: '<span class="ok">✓ 剪贴板监听</span> · ribbon 本身零依赖;点了某项才走 AI CLI',
+    hint: "👆 自动演示:复制 → 抖耳 → 弹出快捷动作",
+  },
+  {
+    name: "⑤ 我们的故事 · 冷启动 vs 用了俩月",
+    tag: "护城河在第4周才上线",
+    why: "记忆/情感是锁,不是钩 —— 第1天是空的,造假会穿帮。",
+    desc: "等 memory 有内容,'它眼里的你'+主动引用历史才启动,切换成本开始复利。<b>必须带冷启动空态</b>:数据不够就老实说'我们才刚认识',绝不显示假数字。下面切换看两种真实状态。",
+    dep: '数据全部来自本地 memory.db(turn.ts/insight),<span class="no">✗ 新用户为空</span> → 必须空态保护',
+    hint: "👆 切换'第1天 / 用了俩月'看诚实的两种状态",
+  },
+];
+
+// ── eye tracking ───────────────────────────────────────────────────────
+const stage = document.getElementById("stage");
+const pet = document.getElementById("pet");
+const pupils = document.querySelectorAll(".pupil");
+const basePupil = [[48,60],[72,60]];
+stage.addEventListener("mousemove", (e) => {
+  const r = pet.getBoundingClientRect();
+  const cx = r.left + r.width/2, cy = r.top + r.height*0.5;
+  const ang = Math.atan2(e.clientY - cy, e.clientX - cx);
+  const dx = Math.cos(ang)*3.0, dy = Math.sin(ang)*2.6;
+  pupils.forEach((p,i)=>{ p.setAttribute("cx", basePupil[i][0]+dx); p.setAttribute("cy", basePupil[i][1]+dy); });
+});
+
+// ── pat → heart ─────────────────────────────────────────────────────────
+const heart = document.getElementById("heart");
+pet.addEventListener("click", () => {
+  heart.classList.remove("go"); void heart.offsetWidth; heart.classList.add("go");
+  pet.classList.add("jump"); setTimeout(()=>pet.classList.remove("jump"), 900);
+});
+
+// ── scene rendering ─────────────────────────────────────────────────────
+const els = {
+  steps: document.getElementById("steps"), why: document.getElementById("why"),
+  hint: document.getElementById("hint"), bubble: document.getElementById("bubble"),
+  ribbon: document.getElementById("ribbon"), nudge: document.getElementById("nudgeCard"),
+  story: document.getElementById("story"), appWin: document.getElementById("appWin"),
+  lasso: document.getElementById("lasso"), mailSel: document.getElementById("mailSel"),
+};
+let cur = 0, timers = [];
+function clearScene(){
+  timers.forEach(clearTimeout); timers=[];
+  ["bubble","ribbon","nudge","story"].forEach(k=>els[k].classList.remove("show"));
+  els.appWin.classList.remove("show"); els.lasso.classList.remove("show");
+  pet.className = "pet";
+}
+function showBubble(html, pos){ els.bubble.innerHTML=html; if(pos) Object.assign(els.bubble.style,pos); els.bubble.classList.add("show"); }
+
+function renderStory(mode){
+  if(mode==="cold"){
+    els.story.innerHTML = `<h3>我们的故事</h3>
+      <div class="empty">我们才认识 <b>1 天</b> 🌱<br>多用几次,这里会长出"我陪你做过的事"<br>和"我眼里的你"。<br><span style="font-size:11.5px;color:#b9bdc8">(诚实:没数据就不编)</span></div>
+      <div class="story-toggle"><button class="on" data-m="cold">第1天</button><button data-m="warm">用了俩月</button></div>`;
+  } else {
+    els.story.innerHTML = `<h3>我们的故事</h3>
+      <div class="row"><span>认识你</span><b>67 天</b></div>
+      <div class="row"><span>陪你的夜晚 🌙</span><b>21 个</b></div>
+      <div class="row"><span>一起处理过</span><b>340 次</b></div>
+      <div class="eyes">它眼里的你:<br>"嘴上喊累,但从没真的摆烂 —— 周报总在最后一刻交得很漂亮。"</div>
+      <div class="story-toggle"><button data-m="cold">第1天</button><button class="on" data-m="warm">用了俩月</button></div>`;
+  }
+  els.story.querySelectorAll("[data-m]").forEach(b=>b.onclick=()=>renderStory(b.dataset.m));
+  els.story.classList.add("show");
+}
+
+function play(i){
+  cur=i; clearScene();
+  document.querySelectorAll(".step-pill").forEach((p,k)=>p.classList.toggle("active",k===i));
+  const s=scenes[i];
+  els.why.innerHTML = `<span class="tag">${s.tag}</span><h3>${s.why}</h3><p>${s.desc}</p><p class="dep">依赖:${s.dep}</p>`;
+  els.hint.textContent = s.hint;
+
+  if(i===0){
+    pet.classList.add("listen");
+    timers.push(setTimeout(()=>{ pet.classList.remove("listen");
+      showBubble(`<div class="who">MOUSECLAW</div>嗨,我在这儿啦~ 试着动动鼠标,我会看着你 👀`, {right:"130px",bottom:"60px"}); }, 700));
+  }
+  if(i===1){
+    els.nudge.classList.add("show");
+  }
+  if(i===2){
+    els.appWin.classList.add("show");
+    timers.push(setTimeout(()=>{ // lasso the boss email selection
+      const sel = els.mailSel.getBoundingClientRect(); const st = stage.getBoundingClientRect();
+      Object.assign(els.lasso.style,{ left:(sel.left-st.left-6)+"px", top:(sel.top-st.top-6)+"px",
+        width:(sel.width+12)+"px", height:(sel.height+12)+"px" });
+      els.lasso.classList.add("show"); pet.classList.add("listen");
+    }, 600));
+    timers.push(setTimeout(()=>{ pet.classList.remove("listen"); pet.classList.add("think");
+      showBubble(`<div class="who">听到了 · 看着这封邮件</div>正在帮你想怎么回得体…`, {right:"130px",bottom:"60px"}); }, 1700));
+    timers.push(setTimeout(()=>{ pet.classList.remove("think");
+      showBubble(`<div class="who">帮你起草了回复 ✨</div>"李总好,收到。修改版我今天下班前发您,上周数据一并补上。周五汇报我也会准备好。"`, {right:"130px",bottom:"60px"}); }, 3600));
+    timers.push(setTimeout(()=>{ pet.classList.add("jump");
+      setTimeout(()=>pet.classList.remove("jump"),900); }, 4000));
+  }
+  if(i===3){
+    timers.push(setTimeout(()=>{
+      showBubble(`<div class="who">📋 你复制了一段文字</div>要我帮你做点什么?`, {right:"130px",bottom:"150px"});
+      pet.classList.add("alert"); setTimeout(()=>pet.classList.remove("alert"),900);
+    }, 500));
+    timers.push(setTimeout(()=>els.ribbon.classList.add("show"), 900));
+  }
+  if(i===4){ renderStory("cold"); }
+}
+
+// build stepper
+els.steps.innerHTML = scenes.map((s,i)=>`<button class="step-pill${i===0?' active':''}" data-i="${i}">${s.name}</button>`).join("");
+els.steps.querySelectorAll(".step-pill").forEach(b=>b.onclick=()=>play(+b.dataset.i));
+
+document.getElementById("nameBtn").onclick=()=>{
+  const v=document.getElementById("nameIn").value.trim()||"豆豆";
+  document.getElementById("nudgeH").textContent=`好耶,以后我就叫「${v}」!`;
+  document.getElementById("nudgeP").textContent="模型快下好了,马上就能听你说话、帮你干活。";
+  heart.classList.remove("go"); void heart.offsetWidth; heart.classList.add("go");
+};
+
+document.getElementById("note").innerHTML =
+  "本 prototype 是<b>首次 aha 旅程的 UX 流程图</b>(用 DESIGN.md tokens),用来对齐'惊艳负责钩 / 实用负责留 / 记忆负责锁'的分层。"+
+  "桌宠以经典灰演示眼球追踪+眨眼+庆祝;<b>逐 9 皮肤的完整动画矩阵是另一个 prototype</b>(动画硬规则要求),不在此文件范围。"+
+  "落地前需你拍板的:①是否做 just-in-time 权限(降门槛) ②模型是否提前到 onboarding 第1步后台下 ③冷启动空态文案。";
+
+play(0);
+</script>
+</body>
+</html>

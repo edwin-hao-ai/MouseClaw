@@ -58,6 +58,10 @@ pub enum Backend {
     VibeCli,        // Mistral Vibe · `vibe --prompt`
     PiAgent,        // Pi Coding Agent · `pi -p`
     AntigravityCli, // Google Antigravity CLI · `agy -p`
+    // v0.4.6 (2026-05-23) · 国产 CLI agent。
+    // 注：曾计划同时加 Trae Agent(字节)，但实测它不在 PyPI、git 装缺一串依赖(docker/pexpect)
+    // 启动即崩、且是 Docker 重型研究 agent 输出冗长，不适合本场景 → 不收。
+    QwenCode,       // 通义 Qwen Code (阿里 QwenLM) · gemini-cli 同源，用位置参数 one-shot
 }
 
 impl Default for Backend {
@@ -83,6 +87,7 @@ impl Backend {
             Backend::VibeCli => "Mistral Vibe CLI",
             Backend::PiAgent => "Pi Coding Agent",
             Backend::AntigravityCli => "Antigravity CLI",
+            Backend::QwenCode => "Qwen Code (通义千问)",
         }
     }
 
@@ -102,6 +107,7 @@ impl Backend {
             Backend::VibeCli => "vibe",
             Backend::PiAgent => "pi",
             Backend::AntigravityCli => "agy",
+            Backend::QwenCode => "qwen",
         }
     }
 
@@ -121,6 +127,7 @@ impl Backend {
             "vibe-cli" | "vibe" => Backend::VibeCli,
             "pi-agent" | "pi" => Backend::PiAgent,
             "antigravity-cli" | "antigravity" | "agy" => Backend::AntigravityCli,
+            "qwen-code" | "qwen" | "qwencode" => Backend::QwenCode,
             _ => Backend::ClaudeCli,
         }
     }
@@ -141,6 +148,7 @@ impl Backend {
             Backend::VibeCli     => "https://github.com/mistralai/mistral-vibe",
             Backend::PiAgent     => "https://pi.dev",
             Backend::AntigravityCli => "https://antigravity.google/docs/cli-using",
+            Backend::QwenCode    => "https://github.com/QwenLM/qwen-code",
         }
     }
 
@@ -160,17 +168,18 @@ impl Backend {
             Backend::VibeCli     => "uv tool install mistral-vibe",
             Backend::PiAgent     => "npm i -g @mariozechner/pi-coding-agent",
             Backend::AntigravityCli => "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+            Backend::QwenCode    => "npm i -g @qwen-code/qwen-code",
         }
     }
 
     /// 所有后端的规范顺序 —— 托盘切换菜单 / onboarding 选择 / 测试遍历共用一处。
     /// Claude 排第一（默认 + 最成熟），其余大致按主流度。
-    pub fn all() -> [Backend; 13] {
+    pub fn all() -> [Backend; 14] {
         [
             Backend::ClaudeCli, Backend::CodexCli, Backend::GeminiCli, Backend::CopilotCli,
             Backend::OpenCodeCli, Backend::ClineCli, Backend::KimiCli, Backend::KiroCli,
             Backend::AntigravityCli, Backend::VibeCli, Backend::PiAgent, Backend::OpenclawCli,
-            Backend::HermesAgent,
+            Backend::HermesAgent, Backend::QwenCode,
         ]
     }
 
@@ -203,9 +212,28 @@ impl Backend {
             Backend::KimiCli => vec!["--quiet".into(), "-p".into(), p],
             Backend::VibeCli => vec!["--prompt".into(), p],
             Backend::PiAgent => vec!["-p".into(), p],
-            Backend::AntigravityCli => vec![
-                "-p".into(), p, "--dangerously-skip-permissions".into(),
+            // agy -p 是 print/headless 非交互模式（gemini-cli 血统），自身不卡工具权限。
+            // 注：早期误加了 `--dangerously-skip-permissions`（那是 Claude 的 flag，agy 没有，
+            // 会当 unknown flag 报错）—— 2026-05-23 web 核对后去掉。
+            Backend::AntigravityCli => vec!["-p".into(), p],
+            // Qwen Code（gemini-cli 同源）：用**位置参数** one-shot（`qwen "PROMPT"`）。
+            // 不用 `-p` —— 官方已把 -p 标 deprecated（实测 2026-05-23），位置参数才是
+            // 推荐的非交互入口，且避免 deprecation 警告污染捕获的 stdout。
+            Backend::QwenCode => vec![p],
+        }
+    }
+
+    /// 同 `oneshot_args`，但**放开工具**（给定时任务联网/读文件取真实数据，反幻觉）。
+    /// 只有 Claude 需要特殊处理：它默认 `--allowedTools ""` 关掉了所有工具；显式放开
+    /// web + 文件 + bash。其余后端的 oneshot_args 本就是 agentic（不禁工具），直接复用。
+    fn oneshot_args_agentic(&self, prompt: &str) -> Vec<String> {
+        match self {
+            Backend::ClaudeCli => vec![
+                "-p".into(), prompt.to_string(),
+                "--permission-mode".into(), "auto".into(),
+                "--allowedTools".into(), "WebSearch,WebFetch,Read,Bash,Grep,Glob".into(),
             ],
+            other => other.oneshot_args(prompt),
         }
     }
 }
@@ -277,6 +305,9 @@ where
     }
     let mut child = cmd
         .args(args)
+        // stdin 给 null —— 否则 claude -p 等非交互 CLI 会先等 ~3s stdin 输入
+        // （"no stdin data received in 3s"），白白拖慢每次 reactive/定时任务/反思调用。
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -324,6 +355,17 @@ where
 pub async fn ask_text_only(backend: Backend, prompt: &str) -> Result<String> {
     let bin = find_backend_binary(backend)?;
     let args = backend.oneshot_args(prompt);
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    spawn_and_stream(&bin, &arg_refs, |_| {}).await
+}
+
+/// 纯文本 → 文本 单次调用，但**放开 agentic 工具**（WebSearch/WebFetch/Bash/Read…）。
+/// 给定时任务这种"到点自动跑、常需要联网/读文件取真实数据"的后台任务用 —— 防止
+/// AI 凭记忆编造（如"整理 AI 新闻"没工具就只能幻觉）。reactive ribbon 的文本变换
+/// 不需要工具，仍走 `ask_text_only`。各后端用各自 CLI 但都允许工具（多后端硬规则）。
+pub async fn ask_text_only_agentic(backend: Backend, prompt: &str) -> Result<String> {
+    let bin = find_backend_binary(backend)?;
+    let args = backend.oneshot_args_agentic(prompt);
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     spawn_and_stream(&bin, &arg_refs, |_| {}).await
 }
@@ -453,7 +495,8 @@ mod tests {
                     | Backend::KimiCli
                     | Backend::VibeCli
                     | Backend::PiAgent
-                    | Backend::AntigravityCli => crate::backend::ask_text_only(b, "x"),
+                    | Backend::AntigravityCli
+                    | Backend::QwenCode => crate::backend::ask_text_only(b, "x"),
                 }.await;
             };
         }

@@ -323,6 +323,37 @@ MouseClaw 支持 4 个 backend，用户在 Onboarding 里选一个：
 - `backend::ask_text_only` 在 clipboard_action / 未来的 short-task 模块里被调
 - 不存在裸的 `find_binary("claude")` 在业务模块里（claude_cli.rs 内部除外）
 
+## 开源策略：默认全开源，闭源要命中红线（硬规则 · v0.4+）
+
+**License = FSL-1.1-MIT**（见 [LICENSE](./LICENSE)）：源码公开可审计，允许任意使用/修改/再分发，
+**唯独禁止"拿去做竞品商用"**；每个版本发布 2 年后自动转 MIT。改 License 文案时 README 的
+License 段必须同步（曾经 LICENSE=BSD / README=MIT 不一致，2026-05-22 已修）。
+
+### 为什么不靠"藏代码"建壁垒
+MouseClaw 是跑在用户机器上的 Tauri 二进制 —— 任何运行中的逻辑（像素动画 / overlay /
+mode_b 写光标 / reactive ribbon）都能被扒。**把已经在用户机器上跑的代码藏进 private repo
+≈ 0 护城河**。真正的壁垒是：①隐私可审计（信任）②执行速度 + 品味 + 品牌 ③未来的服务端层。
+
+### 每个功能的归位规则（接新功能时先跑一遍）
+**默认全部进公开 repo。** 一个东西要进闭源 / 二进制下发，**必须命中下面三条之一**，否则一律开源：
+1. **它跑在我们的服务器上，不在用户机器上**（同步服务 / 托管后端 / 授权校验）—— 扒不出来，真壁垒
+2. **它含密钥 / 凭证**（签名证书 / notarization profile / provider gateway key）—— 本来就不该进任何 repo
+3. **它是可付费内容、且能做成运行时下发的二进制资产**（高级皮肤包 / 季节动画包）—— 引擎开源，**内容**闭源
+
+**反向强制开源（命中任一条就绝不许闭）：**
+- 碰隐私敏感路径（ASR / 截图 / 剪贴板加密 / 本地存储）—— 闭源直接砸"100% 本地"招牌
+- 是动画 / overlay / 交互**引擎本体** —— 藏了也防不住（在用户机器上跑），只损失社区信任
+
+### private repo 的触发时机（现在是 0，别提前建）
+当前 client 里没有任何命中上面三条的东西，**现在不建 private repo**（提前建只有跨 repo 同步的维护地狱，
+见 §发布流程 §8.8 多 session 抢 main 的教训）。**真正该建的那一刻** = 第一次写下"这段代码要跑在我的
+服务器上"或"这是付费才能下载的资产"。建的时候是**新建** `mouseclaw-cloud`，client 通过文档化 API 调它，
+**不是**把现有 client 切一刀。
+
+### 防克隆的真护城河是商标，不是 License
+注册 `MouseClaw` 名字 + 龙虾吉祥物 —— 别人能 fork 代码但不能用名字和形象。这比任何 License 都管用。
+（FSL 的 Trademark 条款已经声明商标不随源码授权，README License 段也写了。）
+
 ## 技术选型（已锁定）
 
 - **GUI**：Tauri 2（理由：Webview 写"漂亮+流式文本"几乎零成本，纯 Rust GUI 在文本布局上是地狱）
