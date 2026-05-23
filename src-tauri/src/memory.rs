@@ -13,6 +13,7 @@ use once_cell::sync::Lazy;
 use rusqlite::{params, Connection};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 /// 单连接 + Mutex 串行访问(记忆读写量小,SELECT < 10ms)。Connection 是 Send。
@@ -27,6 +28,26 @@ pub struct UsedItem {
     pub text: String,
 }
 static LAST_ITEMS: Lazy<Mutex<Vec<UsedItem>>> = Lazy::new(|| Mutex::new(Vec::new()));
+
+/// reflection 串行闸 —— 防 pipeline(满 6 条触发) 与 idle 定时器并发 spawn `run_reflection`,
+/// 两者在 fetch_unprocessed→acquire 窗口里拿到同一批 turn → 重复写 insight/边。一次只许一个反思在跑。
+static REFLECTING: AtomicBool = AtomicBool::new(false);
+
+/// RAII 认领 reflection。已有反思在跑 → `try_acquire()` 返回 None,调用方直接 return。
+struct ReflectGuard;
+impl ReflectGuard {
+    fn try_acquire() -> Option<Self> {
+        REFLECTING
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .ok()
+            .map(|_| ReflectGuard)
+    }
+}
+impl Drop for ReflectGuard {
+    fn drop(&mut self) {
+        REFLECTING.store(false, Ordering::SeqCst);
+    }
+}
 
 /// 读并清空(pipeline 在 AI 调用后读一次)。
 pub fn take_last_used_items() -> Vec<UsedItem> {
@@ -508,6 +529,11 @@ pub async fn run_reflection() -> Result<()> {
     if !enabled() {
         return Ok(());
     }
+    // 串行闸:已有反思在跑(另一处 spawn)就直接退,避免同批 turn 被消化两次 → 重复 insight。
+    let _reflect_guard = match ReflectGuard::try_acquire() {
+        Some(g) => g,
+        None => return Ok(()),
+    };
     let batch = with_db(|c| fetch_unprocessed(c, 12)).unwrap_or_default();
     if batch.is_empty() {
         return Ok(());
@@ -863,4 +889,147 @@ pub fn memory_set_enabled(enabled: bool) -> Result<(), String> {
     let mut cfg = crate::config::Config::load();
     cfg.memory_enabled = enabled;
     cfg.save().map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    //! 记忆核心逻辑用**真·内存 SQLite** 端到端验证（不碰全局 MEM / 不调真 LLM）：
+    //! 召回打分 + 质量闸 + 知识图谱遍历 + 画像有效期 + 反思 JSON 解析。
+    use super::*;
+    use rusqlite::Connection;
+
+    fn test_conn() -> Connection {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(SCHEMA).unwrap();
+        c
+    }
+    fn add_turn(c: &Connection, id: i64, app: &str, text: &str, importance: i64) {
+        c.execute(
+            "INSERT INTO memory_turn (id, ts, app, role, text, importance, processed)
+             VALUES (?1, ?2, ?3, 'user', ?4, ?5, 1)",
+            params![id, Utc::now().timestamp(), app, text, importance],
+        )
+        .unwrap();
+    }
+
+    // ── 纯函数 ──────────────────────────────────────────────
+    #[test]
+    fn query_tokens_handles_cjk_and_ascii() {
+        let toks = query_tokens("rust borrow checker 报错");
+        assert!(toks.iter().any(|t| t == "rust"));
+        assert!(toks.iter().any(|t| t == "borrow"));
+        // CJK 整句兜底也算一个 token（无空格切分时的子串匹配）
+        assert!(toks.iter().any(|t| t.contains("报错") || t == "rust borrow checker 报错"));
+        assert!(toks.len() <= 8); // 截断保护
+    }
+
+    #[test]
+    fn importance_heuristic_scales_with_length_and_question() {
+        assert!(importance_heuristic("hi") < importance_heuristic(&"x".repeat(100)));
+        assert!(importance_heuristic("这是个问题吗？") > importance_heuristic("这是个问题吗"));
+        assert!(importance_heuristic(&"x".repeat(500)) <= 5); // 封顶 5
+    }
+
+    #[test]
+    fn extract_json_strips_prose_around_object() {
+        assert_eq!(extract_json("解释一下:\n{\"a\":1}\n好的"), Some("{\"a\":1}"));
+        assert_eq!(extract_json("没有 JSON"), None);
+    }
+
+    // ── 召回打分 + 质量闸 ────────────────────────────────────
+    #[test]
+    fn relevant_excludes_irrelevant_and_ranks_token_hits_first() {
+        let c = test_conn();
+        add_turn(&c, 1, "VSCode", "rust borrow checker 怎么过", 4); // token 命中
+        add_turn(&c, 2, "VSCode", "今天天气不错", 3);               // 仅同 app
+        add_turn(&c, 3, "Chrome", "完全无关的内容", 3);             // 无信号 → 应被闸掉
+
+        let got = collect_relevant(&c, "rust borrow checker", Some("VSCode"), 8).unwrap();
+        let ids: Vec<i64> = got.iter().map(|t| t.id).collect();
+        assert!(ids.contains(&1), "token 命中的应被召回");
+        assert!(!ids.contains(&3), "无 token 命中 + 不同 app 的应被质量闸排除（不喂噪声给 AI）");
+        assert_eq!(got.first().unwrap().id, 1, "token 命中得分最高，排第一");
+    }
+
+    // ── 知识图谱遍历：seed → 邻居 → 提及的 turn ──────────────
+    #[test]
+    fn graph_traverses_seed_to_neighbor_to_mentioning_turn() {
+        let c = test_conn();
+        c.execute(
+            "INSERT INTO entity (id, kind, name, first_seen, last_seen, freq) VALUES
+             (1,'project','MouseClaw',0,100,5),(2,'tool','Tauri',0,100,3)",
+            [],
+        )
+        .unwrap();
+        // MouseClaw ↔ Tauri 共现；turn 10 提及 Tauri
+        c.execute("INSERT INTO edge (src,dst,kind,weight,ts) VALUES (1,2,'co_occurs',1,0)", []).unwrap();
+        add_turn(&c, 10, "VSCode", "用 Tauri 写了个窗口", 3);
+        c.execute("INSERT INTO edge (src,dst,kind,weight,ts) VALUES (10,2,'mentions',1,0)", []).unwrap();
+
+        // 查 "MouseClaw" → 种子 E1 → 邻居 E2(Tauri) → 提及 E2 的 turn 10
+        let got = collect_graph(&c, "MouseClaw", None, 6).unwrap();
+        assert!(got.iter().any(|t| t.id == 10), "图谱应通过共现邻居召回提及该实体的 turn");
+    }
+
+    #[test]
+    fn graph_returns_empty_when_no_seed_match() {
+        let c = test_conn();
+        c.execute("INSERT INTO entity (id,kind,name,first_seen,last_seen,freq) VALUES (1,'tool','Tauri',0,100,3)", []).unwrap();
+        let got = collect_graph(&c, "完全没出现过的词", None, 6).unwrap();
+        assert!(got.is_empty(), "没有种子命中应返回空，不乱召回");
+    }
+
+    // ── 实体 upsert：冲突即累加 freq、复用同 id ────────────────
+    #[test]
+    fn upsert_entity_increments_freq_on_conflict() {
+        let c = test_conn();
+        let id1 = upsert_entity(&c, "tool", "Tauri", 100).unwrap();
+        let id2 = upsert_entity(&c, "tool", "Tauri", 200).unwrap();
+        assert_eq!(id1, id2, "同 (kind,name) 应复用同一节点");
+        let freq: i64 = c
+            .query_row("SELECT freq FROM entity WHERE id=?1", params![id1], |r| r.get(0))
+            .unwrap();
+        assert_eq!(freq, 2, "再次出现 freq 应 +1");
+    }
+
+    // ── 画像有效期：只取 valid_to IS NULL 的当前画像 ──────────
+    #[test]
+    fn profile_items_only_returns_currently_valid() {
+        let c = test_conn();
+        c.execute(
+            "INSERT INTO insight (kind,text,confidence,valid_from,valid_to,updated) VALUES
+             ('profile','用户用 Rust',0.9,0,NULL,0),
+             ('profile','旧的已失效画像',0.8,0,100,0)",
+            [],
+        )
+        .unwrap();
+        c.execute(
+            "INSERT INTO preference (key,value,confidence,valid_from,valid_to) VALUES
+             ('language','中文',0.95,0,NULL)",
+            [],
+        )
+        .unwrap();
+        let items = collect_profile_items(&c).unwrap();
+        let texts: Vec<String> = items.iter().map(|i| i.text.clone()).collect();
+        assert!(texts.iter().any(|t| t.contains("用 Rust")), "当前有效 insight 应在");
+        assert!(!texts.iter().any(|t| t.contains("已失效")), "失效画像(valid_to 非空)不该出现");
+        assert!(texts.iter().any(|t| t.contains("language") && t.contains("中文")), "有效偏好应在");
+    }
+
+    // ── 反思产物 JSON 能正确反序列化（喂进库的契约）──────────
+    #[test]
+    fn extraction_json_deserializes_full_shape() {
+        let raw = r#"{
+          "insights":[{"kind":"profile","text":"作者重视 UX","confidence":0.9}],
+          "preferences":[{"key":"answer_length","value":"精简","confidence":0.7}],
+          "summaries":[{"i":1,"text":"问了入场动画"}],
+          "entities":[{"kind":"project","name":"MouseClaw"}],
+          "relations":[{"from":"MouseClaw","to":"Tauri","kind":"about"}]
+        }"#;
+        let p: Extraction = serde_json::from_str(extract_json(raw).unwrap()).unwrap();
+        assert_eq!(p.insights.len(), 1);
+        assert_eq!(p.preferences[0].key, "answer_length");
+        assert_eq!(p.entities[0].name, "MouseClaw");
+        assert_eq!(p.relations[0].from, "MouseClaw");
+    }
 }

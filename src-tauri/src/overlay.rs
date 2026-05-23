@@ -73,7 +73,9 @@ pub fn show_mouse(app: &AppHandle) {
             let _ = window.set_position(LogicalPosition::new(pos_x, pos_y));
         }
         let _ = window.show();
-        let _ = window.set_always_on_top(true);
+        // macOS：NSPanel 自带 always-on-top（level=ScreenSaver），**不**调 set_always_on_top
+        // （会把 level 压回 floating 又浮不上全屏）。非 macOS 在此 helper 里 set_always_on_top。
+        apply_overlay_window_behavior(&window);
     });
     // v0.1.8 召唤瞬间起就跟着鼠标走，直到出现气泡才停住
     if let Some(state) = app.try_state::<Arc<AppState>>() {
@@ -104,7 +106,7 @@ pub fn show_mouse_at_anchor(app: &AppHandle) {
     let _ = app.run_on_main_thread(move || {
         if let Some(w) = app2.get_webview_window("mouse") {
             let _ = w.show();
-            let _ = w.set_always_on_top(true);
+            apply_overlay_window_behavior(&w);
         }
     });
 }
@@ -170,6 +172,22 @@ fn primary_screen_height_pts() -> Option<f64> {
 #[cfg(not(target_os = "macos"))]
 fn current_mouse_pos_top_left(_w: &WebviewWindow) -> Option<(f64, f64)> {
     None
+}
+
+/// 召唤 / 显示桌宠后保持它在最上层。
+///
+/// macOS：overlay 已在 setup 里转成 NSPanel（见 `mouse_panel`），level=ScreenSaver +
+/// collectionBehavior 让它常驻并浮在全屏之上，**且 sticky**。这里**故意不**调
+/// `set_always_on_top(true)` —— 那会把 NSPanel 的 level 压回 floating(4)，又浮不上全屏
+/// （这正是 v0.4.x 几次没修好的根因）。所以 macOS 上是 no-op。
+///
+/// 非 macOS（Windows V2 占位）：还没有 NSPanel 等价物，退回 set_always_on_top。
+#[cfg(target_os = "macos")]
+pub fn apply_overlay_window_behavior(_window: &WebviewWindow) {}
+
+#[cfg(not(target_os = "macos"))]
+pub fn apply_overlay_window_behavior(window: &WebviewWindow) {
+    let _ = window.set_always_on_top(true);
 }
 
 /// 把一个 ViewKind 广播给所有 webview 窗口（前端的状态机靠它驱动）。

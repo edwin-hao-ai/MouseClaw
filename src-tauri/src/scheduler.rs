@@ -136,14 +136,15 @@ async fn run_one(
 
     let result = {
         // 串行队列 + 忙碌 badge（drop 即释放）
+        // agentic：放开 WebSearch/WebFetch/Bash 等工具，让 AI 去取真实数据而非编造。
         let _ticket = crate::ai_queue::acquire().await;
-        match crate::backend::ask_text_only(backend, &prompt).await {
+        match crate::backend::ask_text_only_agentic(backend, &prompt).await {
             Ok(t) => Ok(t),
             Err(e) => {
                 // 自动重试一次（断网 / 5xx 等瞬时故障）
                 eprintln!("[mouseclaw] ⏰ '{title}' 第一次失败，5s 后重试一次：{e:#}");
                 sleep(Duration::from_secs(5)).await;
-                crate::backend::ask_text_only(backend, &prompt).await
+                crate::backend::ask_text_only_agentic(backend, &prompt).await
             }
         }
     };
@@ -177,20 +178,22 @@ async fn run_one(
         output,
     });
 
-    // 通知：成功 → 轻气泡；失败 → 安静记录不弹刺眼气泡（见 prototype 红线）。
+    // 通知：成功 → 弹桌宠 + 轻气泡；失败 → 不弹桌宠、不弹气泡（见 prototype 红线，
+    // App.tsx 按 ok 过滤）。但**无论成功失败都 emit 事件** —— 让任务窗清掉"执行中"态、
+    // 刷新出 ✓/✗ 结果（否则手动"立刻跑"失败时前端会一直转圈，用户以为卡死）。
     if status == RunStatus::Ok {
         crate::overlay::show_mouse_at_anchor(app);
-        let payload = ScheduleResultPayload {
-            task_id: id.to_string(),
-            title: title.to_string(),
-            summary,
-            ok: true,
-        };
-        if let Err(e) = app.emit(EV_SCHEDULE_RESULT, &payload) {
-            eprintln!("[mouseclaw] schedule-result emit failed: {e}");
-        }
     } else {
         println!("[mouseclaw] ⏰ '{title}' 失败，已记进任务窗（不弹气泡打扰）");
+    }
+    let payload = ScheduleResultPayload {
+        task_id: id.to_string(),
+        title: title.to_string(),
+        summary,
+        ok: status == RunStatus::Ok,
+    };
+    if let Err(e) = app.emit(EV_SCHEDULE_RESULT, &payload) {
+        eprintln!("[mouseclaw] schedule-result emit failed: {e}");
     }
 }
 
@@ -234,8 +237,17 @@ fn build_action_prompt(action: &str, lang: &str) -> String {
              now running on schedule. There is NO screenshot and NO live conversation — just do \
              what the instruction says and return a result the user can read later. Keep it concise \
              (it shows in a small bubble + a tasks window). Never ask for confirmation, never assume \
-             the user is here to interact.\n\nInstruction: {action}\n\nStart with a one-line summary \
-             (≤ 12 words, for the bubble), then any detail below it."
+             the user is here to interact.\n\n\
+             GROUNDING (critical — this runs unattended, the user will trust the output blindly):\n\
+             - If the task needs real-time or external info (news, email, weather, prices, web pages, \
+               files), you MUST use your tools (WebSearch / WebFetch / Bash / Read) to fetch the \
+               REAL data. Do not answer from memory.\n\
+             - NEVER fabricate specific facts, numbers, headlines, links, dates or names. If you \
+               cannot retrieve something, say so plainly (e.g. \"couldn't fetch X\") — it is far \
+               better to report less than to invent.\n\
+             - Cite sources / links where possible so the user can verify.\n\n\
+             Instruction: {action}\n\nStart with a one-line summary (≤ 12 words, for the bubble), \
+             then the detail below it."
         )
     } else {
         format!(
@@ -243,6 +255,13 @@ fn build_action_prompt(action: &str, lang: &str) -> String {
              没有屏幕截图、没有实时对话——只按下面的指令完成，给出可直接阅读的结果。\
              结果尽量精简（会显示在一个小气泡 + 任务窗口里）。\
              绝不要请求确认，绝不要假设用户正在场互动。\n\n\
+             【真实性铁律】（关键——这是无人值守自动跑的，用户会直接信任结果）：\n\
+             - 任务若需要实时/外部信息（新闻、邮件、天气、股价、网页、文件等），\
+               **必须用你的工具**（WebSearch 搜网 / WebFetch 抓页 / Bash 跑命令 / Read 读文件）\
+               去取**真实数据**，不要凭记忆或想象作答。\n\
+             - **严禁编造**任何具体事实、数字、标题、链接、日期、人名。取不到就如实说\
+               「没能获取到 X」——宁可少说，绝不杜撰。\n\
+             - 尽量给出来源/链接，让用户能自行核对。\n\n\
              任务指令：{action}\n\n\
              请第一行用一句话总结（≤20 字，给气泡用），随后再附详细内容。"
         )

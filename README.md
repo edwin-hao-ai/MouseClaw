@@ -9,7 +9,7 @@
 
 <img src="docs/assets/hero.png" alt="MouseClaw hero" width="720" />
 
-**v0.4 · 12 MB 安装包 · 首启下载 ~260 MB 语音模型 · 100% 本地推理 · 国内无需 VPN**
+**v0.4.6 · 13 MB 安装包 · 首启下载 ~260 MB 语音模型 · 100% 本地推理 · 国内无需 VPN**
 
 </div>
 
@@ -21,7 +21,7 @@
 
 一只睡在你 macOS 屏幕角落的**像素老鼠**。
 
-- **按住 ⌘⇧Space + 说话** → 它截屏 + 听你说 + 调本机的 AI（Claude/Codex/OpenClaw/Hermes）→ 流式回答到气泡
+- **按住 ⌘⇧Space + 说话** → 它截屏 + 听你说 + 调本机的 AI（15 个 CLI 任选：Claude/Codex/Gemini/Qwen Code/Trae…）→ 流式回答到气泡
 - **长按 fn + 说话** → 中英文语音直接打到任何输入框的光标位置（不切输入法）
 - **拖文件给它** → 老鼠"吞下"后你接着说"用三句话总结" → AI 读懂文档帮你
 
@@ -36,12 +36,21 @@
 ### 为什么用得久
 
 - **零切换**：没窗口要打开，没 app 要 focus，老鼠**就在那**
-- **AI 后端你选**：装了 Claude / Codex / Hermes / OpenClaw 都行，托盘菜单切换
+- **AI 后端你选**：15 个 CLI 任选（Claude / Codex / Gemini / Copilot / 国产 Qwen Code / Trae Agent …），托盘菜单随时切换
 - **圈定问题**：按住快捷键 +  **按左键拖动画圈** → AI 拿到的截图带你高亮的部分。试试在 stack trace 上圈
 - **认识你的项目**：托盘指定 workspace path 一次 → AI 的 Read/Write/Bash 都以这个为 cwd。"修这个 bug" 真能修
 - **能动手**：说"打开附近的咖啡馆" → 开 Maps。"把这个网页转成 Word" → 干。macOS URL schemes + osascript + Claude Bash 工具 = AI 真的能做事
 - **浏览器自动化**：托盘一键开 `chrome-devtools-mcp`，AI 能驱动你的真实 Chrome（独立调试 profile）
 - **历史会话**：托盘"📜 查看历史" → 点任意旧对话「💬 继续这个话题」→ 接着聊不丢上下文
+
+### v0.4.6 新功能（2026-05）
+
+- **🤖 15 个 AI 后端任选**：Claude Code / Codex / Gemini / Copilot / OpenCode / Cline / Kimi / Kiro / Antigravity / Mistral Vibe / Pi / OpenClaw / Hermes + 国产 **Qwen Code（通义千问）/ Trae Agent（字节跳动）**。Onboarding 只列已装的，托盘随时切换
+- **🧠 长期记忆（全本地）**：SQLite 三层记忆（画像/情景/知识图谱），空闲蒸馏画像、召唤时检索相关记忆注入上下文。「桌宠记得的事」窗口可看/删/暂停，默认开 + 首启透明告知"全部存你本地"
+- **⏰ 定时任务 / 心跳**：召唤说一句"每天早上整理 AI 新闻"就建好 → 到点后台跑、轻气泡投递；**统一结果页**多任务一页看全（markdown 渲染、外链走浏览器、完成自动跳）；**反幻觉 harness**（放开联网/读文件工具取真实数据 + 真实性铁律）
+- **🐭 桌宠起名 + 9 种性格**：给它起名（🎲 随机 + 建议名）、选语气（暖心/毒舌/极简/话痨/干练/元气/沉稳/好奇/傲娇/自定义）；性格只改语气不影响任务正确性
+- **🔊 皮肤音效**：程序化 chiptune 合成、零素材、9 款皮肤各有音色，托盘可开关/调音量
+- **🖥️ 浮在全屏 app 之上**：桌宠改用真正的 NSPanel，某 app 全屏后桌宠不再消失
 
 ### v0.4 新功能（2026-05）
 
@@ -100,7 +109,7 @@ macOS 11+ · Apple Silicon 推荐（Intel 没仔细测）· Windows/Linux 暂无
 
 A pixel-art mouse that sleeps in the corner of your macOS screen.
 
-- **Hold ⌘⇧Space + speak** → screenshots + transcribes + asks your AI CLI (Claude / Codex / OpenClaw / Hermes) → streams reply into a speech bubble
+- **Hold ⌘⇧Space + speak** → screenshots + transcribes + asks your AI CLI (pick any of 15: Claude / Codex / Gemini / Qwen Code / Trae…) → streams reply into a speech bubble
 - **Hold fn + speak** → voice transcription typed directly into your cursor in any app (no IME switching, English & Chinese)
 - **Drag a file onto the pet** → it "eats" the file, then you say "summarize in 3 sentences" → AI reads it
 
@@ -121,6 +130,15 @@ A pixel-art mouse that sleeps in the corner of your macOS screen.
 - **Computer use built-in.** macOS URL schemes + osascript + Claude's Bash tool → AI actually does things
 - **Browser automation.** Tray enables `chrome-devtools-mcp` against dedicated profile of your real Chrome
 - **Session history.** Tray → "📜 View history" → "💬 Continue this conversation" picks up where you left off
+
+### v0.4.6 highlights (May 2026)
+
+- **🤖 15 AI backends** — Claude Code / Codex / Gemini / Copilot / OpenCode / Cline / Kimi / Kiro / Antigravity / Mistral Vibe / Pi / OpenClaw / Hermes + China's **Qwen Code & Trae Agent**. Onboarding shows only installed ones; switch anytime from the tray
+- **🧠 Long-term memory (fully local)** — SQLite 3-layer memory (profile / episodic / knowledge graph), idle-time reflection, relevant memories injected on summon. A "what it remembers" window to view / delete / pause; on by default with a first-run "all stored on your machine" notice
+- **⏰ Scheduled tasks / heartbeat** — say "summarize AI news every morning" to create one; runs in the background with a gentle bubble; a **unified results page** shows every run newest-first (markdown rendered, links open in your browser, auto-jumps on completion); **anti-hallucination harness** (real web/file tools + a "never fabricate" rule)
+- **🐭 Pet name + 9 personalities** — name it (🎲 random + suggestions), pick its tone (warm / snarky / minimal / chatty / pro / cheerful / calm / curious / tsundere / custom); tone never affects task correctness
+- **🔊 Per-skin sound effects** — zero-asset procedural chiptune, a distinct timbre per skin, toggle / volume in the tray
+- **🖥️ Floats over fullscreen apps** — the pet now uses a real NSPanel, so it no longer disappears when another app goes fullscreen
 
 ### v0.4 highlights (May 2026)
 
@@ -176,7 +194,7 @@ macOS 11+ · Apple Silicon recommended (Intel less tested) · Windows/Linux not 
 - **AES-256-GCM + Keychain** for clipboard at rest
 - **chrome-devtools-mcp** bridge for browser automation
 - **Curl with `-C -`** for resumable model downloads + multi-mirror fallback
-- Multi-backend: Claude Code CLI / OpenAI Codex CLI / OpenClaw / Nous Hermes Agent
+- Multi-backend (15): Claude Code / Codex / Gemini / Copilot / OpenCode / Cline / Kimi / Kiro / Antigravity / Mistral Vibe / Pi / OpenClaw / Hermes / Qwen Code / Trae Agent
 
 App: 12 MB DMG · 35 MB installed · ~260 MB voice models (downloaded first launch) · ~400 MB RAM idle (incl. loaded models) · <1% CPU idle.
 

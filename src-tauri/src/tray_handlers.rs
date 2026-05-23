@@ -108,7 +108,7 @@ pub(crate) fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
         }
         "history"         => open_history_window(app),
         "open-tasks"      => {
-            if let Err(e) = crate::commands::open_tasks_window(app.clone()) {
+            if let Err(e) = crate::commands::open_tasks_window(app.clone(), None) {
                 eprintln!("[mouseclaw] open-tasks: {e}");
             }
         }

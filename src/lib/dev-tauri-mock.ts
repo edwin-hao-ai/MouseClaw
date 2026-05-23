@@ -31,11 +31,91 @@ const FIXTURES: Record<string, (args?: any) => unknown> = {
     return samples[args.action] ?? `mock result for ${args.action}`;
   },
   set_overlay_has_ui: () => null,
+  set_overlay_content_size: () => null,
   get_skin: () => "classic",
   get_language: () => "zh",
   read_history: () => [],
   get_model_status: () => [],
   check_permissions: () => ({ accessibility: true, screen_recording: true, microphone: true }),
+  // v0.4.x · session 状态（App 启动读，少了会 .continuing 崩）
+  get_session_state: () => ({ continuing: false, round: 0, pinned: false, softHint: false }),
+  // v0.5 · 桌宠音效配置
+  get_sfx_config: () => ({ enabled: true, volume: 0.45 }),
+  report_reduced_motion: () => null,
+  // v0.5 · 定时任务 —— 给两条样例任务，方便 TasksView 渲染列表
+  list_schedules: () => [
+    {
+      id: "demo-1", title: "每天早报", action: "总结今天的科技新闻",
+      schedule: { kind: "daily", time: "09:00" }, enabled: true,
+      createdAt: "2026-05-20T09:00:00Z",
+      lastRun: { at: "2026-05-22T09:00:00Z", status: "ok", summary: "已发送早报" },
+      nextRun: "2026-05-23T09:00:00+08:00",
+    },
+    {
+      id: "demo-2", title: "每 30 分钟检查邮件", action: "看看有没有新的重要邮件",
+      schedule: { kind: "interval", everyMinutes: 30, activeStart: "09:00", activeEnd: "18:00" },
+      enabled: false, createdAt: "2026-05-21T10:00:00Z",
+      nextRun: undefined,
+    },
+  ],
+  get_schedule_runs: () => [
+    { taskId: "demo-1", title: "每天早报", at: "2026-05-23T01:34:00Z", status: "ok", summary: "已整理 6 条 · 搜索智能体、企业AI加速",
+      output: "## 📰 过去24小时 AI 要闻（5/22–5/23）\n\n### 模型 & 产品发布\n1. **Google I/O 2026 推出 Search「信息智能体」** — 可 24/7 后台运行。\n   来源：[Google I/O 2026](https://example.com)\n2. **Anthropic 发布 Claude Opus 4.7** — 1M 上下文。\n\n### 融资\n- 某 AI 编码公司完成 B 轮。" },
+    { taskId: "demo-1", title: "每天早报", at: "2026-05-23T00:47:00Z", status: "ok", summary: "AI 行业 24h 速览",
+      output: "## 📰 AI 行业 24h 速览\n\n今日 **4 条**重点：\n- 开源模型 GLM-5 登顶 coding 榜\n- 多家厂商跟进「长时记忆」特性" },
+    { taskId: "demo-1", title: "每天早报", at: "2026-05-23T00:46:00Z", status: "failed", summary: "失败：没取到外部数据",
+      output: "## ✗ 本次失败\n\n没能获取到实时新闻数据（WebSearch 超时）。**未编造内容** —— 按真实性铁律如实报告。" },
+  ],
+  parse_schedule_phrase: (args: { phrase?: string }) => ({
+    title: args?.phrase ? args.phrase.slice(0, 20) : "新任务",
+    action: args?.phrase ?? "做点什么",
+    schedule: { kind: "daily", time: "09:00" }, enabled: true,
+  }),
+  create_schedule: () => null,
+  update_schedule: () => null,
+  delete_schedule: () => true,
+  toggle_schedule: () => null,
+  run_schedule_now: () => null,
+  // v0.4.4 · 长期记忆查看器
+  // v0.5.2 · 统一结果 feed（跨任务倒序）
+  get_all_schedule_runs: () => [
+    { taskId: "demo-1", title: "整理AI新闻", at: "2026-05-23T01:34:00Z", status: "ok", summary: "已整理 6 条 · 搜索智能体、企业AI加速",
+      output: "## 📰 过去24小时 AI 要闻\n\n### 模型 & 产品发布\n1. **Google I/O 2026 推出 Search「信息智能体」**\n   来源：[Google I/O 2026](https://example.com)\n2. **Anthropic 发布 Claude Opus 4.7** — 1M 上下文" },
+    { taskId: "demo-3", title: "检查重要邮件", at: "2026-05-23T01:30:00Z", status: "ok", summary: "2 封待回：合同确认、面试邀约",
+      output: "## 📧 待回邮件 2 封\n- **合同确认**（法务）— 今天截止\n- **面试邀约**（HR）— 需选时间" },
+    { taskId: "demo-4", title: "每日待办梳理", at: "2026-05-23T01:28:00Z", status: "failed", summary: "失败：日历未授权",
+      output: "## ✗ 本次失败\n读不到日历（未授权）。**未编造** —— 如实报告，下次重试。" },
+    { taskId: "demo-1", title: "整理AI新闻", at: "2026-05-22T09:00:00Z", status: "ok", summary: "AI 行业 24h 速览（5/21–22）",
+      output: "## 📰 AI 行业速览\n昨日 **4 条**重点：GLM-5 登顶 coding 榜…" },
+  ],
+  memory_get_settings: () => ({ enabled: true, paused: false }),
+  memory_list_turns: () => [
+    { id: 1, ts: Math.floor(Date.now() / 1000) - 3600, app: "VSCode", role: "user", summary: "问 entrance.rs 的 700ms 竞态怎么修", importance: 4 },
+    { id: 2, ts: Math.floor(Date.now() / 1000) - 7200, app: "Chrome", role: "assistant", summary: "解释了 MouseClaw 的多后端抽象", importance: 3 },
+  ],
+  memory_get_profile: () => ({
+    insights: [
+      { id: 1, kind: "profile", text: "用户是 MouseClaw 的作者，重视 UX 与代码整洁", confidence: 0.9 },
+      { id: 2, kind: "pattern", text: "偏好先做 HTML prototype 再写实现", confidence: 0.8 },
+    ],
+    preferences: [
+      { id: 1, key: "language", value: "中文", confidence: 0.95 },
+      { id: 2, key: "answer_length", value: "精简可执行", confidence: 0.7 },
+    ],
+  }),
+  memory_get_graph: () => ({
+    nodes: [
+      { id: 1, kind: "project", name: "MouseClaw", freq: 42 },
+      { id: 2, kind: "tool", name: "Tauri", freq: 18 },
+      { id: 3, kind: "topic", name: "桌宠动画", freq: 9 },
+    ],
+    edges: [{ src: 1, dst: 2, kind: "about" }, { src: 1, dst: 3, kind: "co_occurs" }],
+  }),
+  memory_delete_turn: () => null,
+  memory_delete_profile_item: () => null,
+  memory_clear_all: () => null,
+  memory_set_paused: () => null,
+  memory_set_enabled: () => null,
   // 其他命令静默 resolve null（test 不关心的）
 };
 
@@ -87,6 +167,9 @@ export function installDevTauriMock(): void {
 
   // Tauri v2 内部接口 —— @tauri-apps/api 的 invoke / listen 走的就是这里
   (w as any).__TAURI_INTERNALS__ = {
+    // getCurrentWindow() 读 metadata.currentWindow.label —— 缺了 PickerView 等
+    // 用 window API 的视图会在挂载时崩（读 undefined.currentWindow）。
+    metadata: { currentWindow: { label: "e2e" }, currentWebview: { windowLabel: "e2e", label: "e2e" } },
     // 关键：listen() 内部调它分配 handler id，然后把 id 作为 invoke 参数发给 Rust
     transformCallback: (handler: AnyFn, _once?: boolean) => {
       const id = nextCallbackId++;

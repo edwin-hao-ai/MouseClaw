@@ -30,11 +30,15 @@ export interface Strings {
   "common.search": string;
   "common.loading": string;
   "common.recommended": string;
+  "common.domestic": string;
 
   // ── 桌宠身份:起名 + 性格 (v0.4.4) ──
   "picker.identity.heading": string;
   "picker.identity.name_label": string;
   "picker.identity.name_placeholder": string;
+  "picker.identity.name_suggestions": string;
+  "picker.identity.greet": string;
+  "picker.identity.greet_empty": string;
   "picker.identity.personality_label": string;
   "picker.identity.persona_hint": string;
   "picker.identity.custom_placeholder": string;
@@ -310,6 +314,12 @@ export interface Strings {
   "tasks.last.never": string;
   "tasks.last.running": string;
   "tasks.run_now": string;
+  "tasks.running": string;
+  "tasks.tab_tasks": string;
+  "tasks.tab_results": string;
+  "tasks.run.ok": string;
+  "tasks.run.fail": string;
+  "tasks.run.skip": string;
   "tasks.edit": string;
   "tasks.delete": string;
   "tasks.delete_confirm": string;     // "删除「{title}」？"

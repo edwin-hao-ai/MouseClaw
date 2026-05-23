@@ -53,6 +53,8 @@ pub mod reactive;
 pub mod schedule;
 pub mod scheduler;
 pub mod screenshot;
+#[cfg(target_os = "macos")]
+pub mod mouse_panel;
 pub mod selection;
 pub mod sessions;
 pub mod skins;
@@ -269,8 +271,11 @@ pub fn run() {
     let cfg = config::Config::load();
     let app_state = Arc::new(AppState::new(cfg.backend).expect("init AppState"));
 
-    tauri::Builder::default()
-        .manage(app_state.clone())
+    let builder = tauri::Builder::default().manage(app_state.clone());
+    // v0.5 · 桌宠 overlay 转 NSPanel 的插件（仅 macOS）—— 让它浮在全屏 app 之上。
+    #[cfg(target_os = "macos")]
+    let builder = builder.plugin(tauri_nspanel::init());
+    builder
         // v0.4 fix (2026-05-20)：喂文件的 enter/leave/drop **统一走 drag_detector**
         // （NSPasteboard 轮询 + 鼠标键状态）。之前这里用 Tauri 的 WindowEvent::DragDrop，
         // 但 WKWebView 会把拖进来的 HTML 文件当导航请求拦截，drop 喂不进去（图片正常）。
@@ -421,12 +426,17 @@ pub fn run() {
             commands::toggle_schedule,
             commands::run_schedule_now,
             commands::get_schedule_runs,
+            commands::get_all_schedule_runs,
             commands::parse_schedule_phrase,
             clipboard_action::process_reactive_action,
         ])
         .setup(move |app| {
             set_accessory_activation_policy();
             println!("[mouseclaw] activation policy = Accessory (no dock icon)");
+            // v0.5 · 把桌宠 overlay 转成 NSPanel —— 浮在全屏 app 之上（普通 NSWindow 在
+            // release 下浮不上去，Tauri #5566/#9556）。仅 macOS；失败退化为普通窗口。
+            #[cfg(target_os = "macos")]
+            mouse_panel::convert_mouse_to_panel(&app.handle());
             println!("[mouseclaw] 后端 = {}", cfg.backend.display_name());
             emit_view(&app.handle(), &ViewKind::Idle);
 
