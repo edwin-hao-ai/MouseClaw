@@ -39,6 +39,14 @@ const FOCUS_BREAK_GAP: f64 = 5.0 * 60.0;
 /// LongFocus 只在"自然停顿"时发：距上次键击在这个区间（停了打字但人还在）
 const FOCUS_PAUSE_MIN: f64 = 3.0;
 const FOCUS_PAUSE_MAX: f64 = 120.0;
+/// v0.4.x · 主动记忆提醒:罕见(6h 冷却)、只在自然停顿、且有真实高频实体才发。
+const MEMORY_GLANCE_COOLDOWN_SECS: i64 = 6 * 60 * 60;
+/// 实体 freq 至少这么高才算"常做的事"(避免一次性出现的东西被当回事)。
+const MEMORY_GLANCE_MIN_FREQ: i64 = 3;
+/// "用户在场"窗口:最近这么久内有键/鼠标活动算人还在。
+const PRESENT_WINDOW_SECS: f64 = 5.0 * 60.0;
+/// "自然停顿":距上次敲键超过这个秒数(停了打字但人还在)。
+const MEMORY_GLANCE_PAUSE_SECS: f64 = 8.0;
 
 /// IDE bundle id 关键字（大小写不敏感子串匹配）。
 /// 主要的代码编辑器都覆盖；不全也无所谓 —— 不命中只是不触发 Stuck，无害。
@@ -82,6 +90,14 @@ impl NudgeState {
         match self.last_fired.get(&kind) {
             None => true,
             Some(t) => now - t > COOLDOWN_SECS,
+        }
+    }
+
+    /// 自定义冷却时长的检查 —— 给 MemoryGlance 这类要更长间隔(6h)的 nudge 用。
+    pub fn cooldown_ok_for(&self, kind: NudgeKind, now: i64, cooldown_secs: i64) -> bool {
+        match self.last_fired.get(&kind) {
+            None => true,
+            Some(t) => now - t > cooldown_secs,
         }
     }
 
@@ -270,6 +286,58 @@ pub fn pick_nudge(
 // Public spawn / state
 // ──────────────────────────────────────────────────────────────────
 
+/// v0.4.x · 性格染色 —— 给任意 nudge 文案上一层薄薄的语气。
+/// 克制:默认/极简/专业/沉稳/好奇/自定义都**原样返回**(跑 50 次也不烦);
+/// 只有表现欲强的几个性格加一句短尾巴。Warm 是默认 → 绝大多数用户零变化。
+fn flavor_nudge(base: &str, p: crate::config::Personality, en: bool) -> String {
+    use crate::config::Personality as P;
+    match p {
+        P::Snarky => if en { format!("{base} (or don't — your call.)") }
+                     else { format!("{base}(听不听随你啦)") },
+        P::Cheerful => if en { format!("{base} You got this! ✨") }
+                       else { format!("{base} 加油鸭!✨") },
+        P::Tsundere => if en { format!("{base} …not that I care or anything.") }
+                       else { format!("{base}……才、才不是关心你呢。") },
+        P::Companion => if en { format!("{base} I'm right here with you.") }
+                        else { format!("{base} 我一直在这儿陪你呢。") },
+        _ => base.to_string(),
+    }
+}
+
+/// v0.4.x · 主动记忆提醒:没有别的要说时,偶尔基于**真实**高频实体来一句。
+/// 守门(全满足才发):不在 nap + 过了 6h 长冷却 + 用户在场 + 此刻自然停顿(停了打字) +
+/// 不在心流高强度敲键 + memory 里有 freq≥3 的常做实体。数据驱动 —— 无实体不发,绝不编造。
+/// 返回**未染色**的 base payload(染色在 spawn loop 里对所有 nudge 统一做)。
+fn maybe_memory_glance(
+    buf: &PresenceBuffer, state: &NudgeState, now: i64, lang_en: bool,
+) -> Option<NudgePayload> {
+    if state.in_nap(now) { return None; }
+    if !state.cooldown_ok_for(NudgeKind::MemoryGlance, now, MEMORY_GLANCE_COOLDOWN_SECS) {
+        return None;
+    }
+    let latest = buf.latest()?;
+    let present = latest.secs_since_keyboard < PRESENT_WINDOW_SECS
+        || latest.secs_since_mouse_move < PRESENT_WINDOW_SECS;
+    let paused = latest.secs_since_keyboard > MEMORY_GLANCE_PAUSE_SECS;
+    if !(present && paused) { return None; }
+    // 心流保护:最近 30min 高强度敲键就别打扰
+    if buf.keyboard_active_count(now, FOCUS_PROTECTION_WINDOW) >= FOCUS_PROTECTION_HITS {
+        return None;
+    }
+    let (_kind, name) = crate::memory::top_recurring_entity(MEMORY_GLANCE_MIN_FREQ)?;
+    let message = if lang_en {
+        format!("💭 Still on “{name}”? I remember that one.")
+    } else {
+        format!("💭 还在忙「{name}」吗?那个我记着呢。")
+    };
+    Some(NudgePayload {
+        kind: NudgeKind::MemoryGlance,
+        message,
+        cta_label: None,
+        cta_action: None,
+    })
+}
+
 pub fn spawn(
     app: AppHandle,
     buffer: Arc<RwLock<PresenceBuffer>>,
@@ -302,7 +370,20 @@ pub fn spawn(
                 pick_nudge(&buf_g, &st_g, now, lang_en)
             };
 
-            if let Some(payload) = nudge {
+            // v0.4.x · 没有别的要说 → 偶尔来一句基于真实记忆的主动提醒。
+            let raw = match nudge {
+                Some(p) => Some(p),
+                None => {
+                    let buf_g = match buffer.read() { Ok(g) => g, Err(_) => continue };
+                    let st_g  = match state.read()  { Ok(g) => g, Err(_) => continue };
+                    maybe_memory_glance(&buf_g, &st_g, now, lang_en)
+                }
+            };
+
+            if let Some(mut payload) = raw {
+                // v0.4.x · 性格染色 —— 对所有 nudge(含主动记忆)统一上一层语气
+                payload.message = flavor_nudge(
+                    &payload.message, crate::config::Config::load().personality, lang_en);
                 // 标记 fired —— 防止同一规则连发
                 if let Ok(mut st) = state.write() {
                     st.mark_fired(payload.kind, now);

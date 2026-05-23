@@ -772,6 +772,74 @@ pub fn memory_get_graph() -> serde_json::Value {
     .unwrap_or_else(|_| serde_json::json!({ "nodes": [], "edges": [] }))
 }
 
+/// v0.4.x · "我们的故事" 关系数据(给关系可见化页 / 未来主动气泡)。
+/// 全部来自本地 memory.db —— 认识天数 / 夜晚陪伴 / 互动次数 / "它眼里的你"(profile insight)。
+/// **数据不够时如实返回 has_data=false**(冷启动诚实,绝不编数字 —— 见 aha 旅程设计 §⑤)。
+#[tauri::command]
+pub fn memory_get_story() -> serde_json::Value {
+    use chrono::{Local, TimeZone, Timelike};
+    with_db(|c| {
+        // 所有 user turn 的时间戳 —— 认识天数 / 夜晚陪伴 / 互动次数都从它算
+        let mut st = c.prepare(
+            "SELECT ts FROM memory_turn WHERE role = 'user' ORDER BY ts ASC",
+        )?;
+        let tss: Vec<i64> = st
+            .query_map([], |r| r.get::<_, i64>(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+        let total = tss.len() as i64;
+        let now = Utc::now().timestamp();
+        // 认识天数:第一次交互到现在(含当天 → +1,新用户当天显示"第 1 天")
+        let days_known = tss.first().map(|&first| ((now - first).max(0) / 86400) + 1).unwrap_or(0);
+        // 夜晚陪伴:本地时间 20:00–05:00 之间有交互的不同日期数
+        let mut night_days: HashSet<String> = HashSet::new();
+        for &ts in &tss {
+            if let Some(dt) = Local.timestamp_opt(ts, 0).single() {
+                let h = dt.hour();
+                if h >= 20 || h < 5 {
+                    night_days.insert(dt.format("%Y-%m-%d").to_string());
+                }
+            }
+        }
+        // "它眼里的你":最高置信、当前有效的 profile insight(没有就 None,前端不显示这块)
+        let profile_line: Option<String> = c
+            .query_row(
+                "SELECT text FROM insight WHERE valid_to IS NULL AND kind = 'profile'
+                 ORDER BY confidence DESC LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .ok();
+        Ok(serde_json::json!({
+            "has_data": total > 0,
+            "days_known": days_known,
+            "night_sessions": night_days.len(),
+            "total_turns": total,
+            "profile_line": profile_line,
+        }))
+    })
+    .unwrap_or_else(|_| serde_json::json!({ "has_data": false }))
+}
+
+/// v0.4.x · 取当前最高频的"常做的事"实体(项目/话题/文件/工具),供主动记忆提醒用。
+/// 只返回 freq >= min_freq 的(真反复出现过才算"常做",避免一次性的东西被当回事)。
+/// 禁用 / 无符合 → None —— 主动提醒据此不发,绝不编造。
+pub fn top_recurring_entity(min_freq: i64) -> Option<(String, String)> {
+    if !enabled() {
+        return None;
+    }
+    with_db(|c| {
+        c.query_row(
+            "SELECT kind, name FROM entity
+             WHERE kind IN ('project','topic','file','tool') AND freq >= ?1
+             ORDER BY freq DESC, last_seen DESC LIMIT 1",
+            params![min_freq],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+        )
+    })
+    .ok()
+}
+
 #[tauri::command]
 pub fn memory_delete_turn(id: i64) -> Result<(), String> {
     with_db(|c| { c.execute("DELETE FROM memory_turn WHERE id = ?1", params![id])?; Ok(()) })
