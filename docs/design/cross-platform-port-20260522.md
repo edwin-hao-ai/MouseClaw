@@ -164,13 +164,13 @@ onboarding 的「授权三连」页 macOS 专属 → Win/Linux 改成精简页�
 |---|---|---|---|
 | macOS | `dmg`（现状） | Developer ID + notarize（现状脚本） | 不动 |
 | Windows | `nsis`（安装器）+ 可选 `msi` | 暂不签名（或后续 EV 证书 / Azure Trusted Signing） | 未签名会有 SmartScreen 警告，文档说明 |
-| Linux | `deb`（v0.5 先只出 deb） | 暂不签名 | deb 声明依赖（webkit2gtk / pipewire / speechd 等） |
+| Linux | `deb` + `appimage`（CI 跑在 ubuntu-24.04） | 暂不签名 | deb 声明依赖（webkit2gtk / pipewire / speechd 等） |
 
-> **AppImage 暂缓**（2026-05-23）：本地 `tauri build` 能出 AppImage（装 xdg-utils 后），
-> 但 GitHub Actions ubuntu-22.04 runner 上 AppImage 打包仍失败在 bundle 步（xdg-open 之后，
-> 疑似 linuxdeploy / 无 FUSE）。已加 xdg-utils + libfuse2 + APPIMAGE_EXTRACT_AND_RUN 仍红，
-> 而本环境拿不到 Actions 日志、也无 docker 复现 22.04，无法精确定位 → 先 deb-only 保证 CI 绿 +
-> 出可装的 Linux 包；AppImage 待能读 CI 日志时按真实报错修。
+> **CI 用 ubuntu-24.04**（2026-05-23）：22.04 runner 上 bundle 步一直失败，但读不到 Actions
+> 日志、也无 docker 复现 22.04，定位不到 22.04 专属差异。本地开发机是 24.04，完整 `tauri build`
+> 能稳定出 **deb + AppImage**（xdg-utils + `APPIMAGE_EXTRACT_AND_RUN=1`，无需 libfuse2）。
+> 故 CI 直接用已验证的 24.04 环境。代价：deb/AppImage 需较新 glibc（24.04+），老发行版兼容性
+> 让步换取"能出包"。若日后要兼容老系统，再回头查 22.04 的具体报错。
 
 - `tauri.conf.json` 的 `bundle.targets` 由 `"dmg"` 改为按平台。Tauri 会按当前 OS 只产对应包。
 - Cargo.toml 加 `[target.'cfg(windows)'.dependencies]`（windows-rs）和
