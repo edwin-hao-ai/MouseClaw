@@ -74,6 +74,8 @@ pub fn show_mouse(app: &AppHandle) {
         }
         let _ = window.show();
         let _ = window.set_always_on_top(true);
+        // 重新应用 spaces/level —— set_always_on_top 会把它们冲回默认（修全屏看不到）。
+        apply_overlay_window_behavior(&window);
     });
     // v0.1.8 召唤瞬间起就跟着鼠标走，直到出现气泡才停住
     if let Some(state) = app.try_state::<Arc<AppState>>() {
@@ -105,6 +107,7 @@ pub fn show_mouse_at_anchor(app: &AppHandle) {
         if let Some(w) = app2.get_webview_window("mouse") {
             let _ = w.show();
             let _ = w.set_always_on_top(true);
+            apply_overlay_window_behavior(&w);
         }
     });
 }
@@ -174,31 +177,44 @@ fn current_mouse_pos_top_left(_w: &WebviewWindow) -> Option<(f64, f64)> {
 
 /// v0.4.6 · 让桌宠 overlay **浮在全屏 app 之上**（修"某 app 全屏后桌宠消失"）。
 ///
-/// 根因：Tauri `alwaysOnTop` 只设了 NSFloatingWindowLevel，没设 collectionBehavior。
-/// macOS 全屏 app 自成一个 Space，普通窗口留在原 Space 就被全屏画面盖住。
-/// 设 `canJoinAllSpaces | fullScreenAuxiliary | stationary | ignoresCycle`：
-///   - canJoinAllSpaces：窗口出现在**所有** Space（含当前全屏 Space）
-///   - fullScreenAuxiliary：允许与全屏窗口同屏共存
-///   - stationary：切 Space / Mission Control 时不被当普通窗口搬走
-///   - ignoresCycle：不进 Cmd+` 窗口循环（桌宠不是"窗口"）
-/// collectionBehavior 是 sticky 的（设一次即可，不被后续 set_always_on_top 重置）。
-/// 在 setup() 主线程调用一次。
+/// 根因：① Tauri `alwaysOnTop` 只设 NSFloatingWindowLevel(3)，没设 collectionBehavior，
+/// macOS 全屏 app 自成一个 Space，普通窗口留原 Space 被盖；② **更隐蔽**：每次
+/// `set_always_on_top(true)`（show_mouse / apply_idle_anchor 都调）会被 Tauri 重置
+/// collectionBehavior + 把 level 压回 floating —— 所以光在 setup 设一次会被后续 show 冲掉。
+///
+/// 解法：把这套行为做成可重复调用的 fn，在**每次 set_always_on_top 之后**重新应用：
+///   - collectionBehavior = canJoinAllSpaces | fullScreenAuxiliary | stationary | ignoresCycle
+///     （出现在所有 Space 含全屏 / 与全屏窗口共存 / 切 Space 不被搬走 / 不进 Cmd+` 循环）
+///   - level = NSStatusWindowLevel(25)：高于普通+floating，全屏 Space 内也压得住，
+///     又不至于像 screenSaver(1000) 那样盖住系统 UI。
 #[cfg(target_os = "macos")]
-pub fn make_overlay_join_all_spaces(app: &AppHandle) {
+pub fn apply_overlay_window_behavior(window: &WebviewWindow) {
     use cocoa::base::id;
     use objc::{msg_send, sel, sel_impl};
     const CAN_JOIN_ALL_SPACES: u64 = 1 << 0; // 1
     const STATIONARY: u64 = 1 << 4; // 16
     const IGNORES_CYCLE: u64 = 1 << 6; // 64
     const FULLSCREEN_AUXILIARY: u64 = 1 << 8; // 256
-    let Some(window) = app.get_webview_window("mouse") else { return };
+    const NS_STATUS_WINDOW_LEVEL: i64 = 25;
     let Ok(ns_window) = window.ns_window() else { return };
     let behavior: u64 = CAN_JOIN_ALL_SPACES | STATIONARY | IGNORES_CYCLE | FULLSCREEN_AUXILIARY;
     unsafe {
         let ns_window = ns_window as id;
         let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
+        let _: () = msg_send![ns_window, setLevel: NS_STATUS_WINDOW_LEVEL];
     }
-    println!("[mouseclaw] overlay collectionBehavior = canJoinAllSpaces|fullScreenAux|stationary (浮在全屏 app 之上)");
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn apply_overlay_window_behavior(_window: &WebviewWindow) {}
+
+/// setup() 启动时调一次（拿 mouse 窗口应用上面的行为）。后续 show 路径会各自重applied。
+#[cfg(target_os = "macos")]
+pub fn make_overlay_join_all_spaces(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("mouse") {
+        apply_overlay_window_behavior(&window);
+        println!("[mouseclaw] overlay collectionBehavior+level applied (浮在全屏 app 之上)");
+    }
 }
 
 #[cfg(not(target_os = "macos"))]

@@ -3,9 +3,11 @@
 .tasks-root {
   font-family: var(--font-system);
   color: var(--text-primary);
-  max-width: 460px;
+  /* v0.5.1 · 放宽到 760（原 460 太窄，拉宽窗口结果区也跟着宽，长 markdown 好读）。
+     用 height:100vh + 不滚动外层，让内部 list 吃满高度（展开的结果区随之变高）。 */
+  max-width: 760px;
   margin: 0 auto;
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
 }
@@ -46,10 +48,19 @@
 /* ── list ── */
 .tasks-list {
   flex: 1;
+  min-height: 0; /* 让 flex 子项能正确收缩 + 内部滚动 */
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
+}
+/* 展开结果的卡片撑满剩余高度，结果区随窗口变高（用户要"可放大"）。 */
+.task.task-open {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .task {
@@ -236,8 +247,11 @@
   border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: var(--radius-md);
   overflow: hidden;
-  height: 44vh;
-  min-height: 220px;
+  /* 在展开卡片里 flex 撑满剩余高度（卡片又撑满 list）→ 拉大窗口结果区跟着变高。
+     min/max 兜底：窗口很矮时不至于太挤、很高时不至于无限长。 */
+  flex: 1 1 auto;
+  min-height: 240px;
+  max-height: 78vh;
 }
 .task-runs {
   width: 150px;
