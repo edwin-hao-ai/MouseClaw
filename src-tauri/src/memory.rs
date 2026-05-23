@@ -795,6 +795,25 @@ pub fn memory_get_story() -> serde_json::Value {
     .unwrap_or_else(|_| serde_json::json!({ "has_data": false }))
 }
 
+/// v0.4.x · 取当前最高频的"常做的事"实体(项目/话题/文件/工具),供主动记忆提醒用。
+/// 只返回 freq >= min_freq 的(真反复出现过才算"常做",避免一次性的东西被当回事)。
+/// 禁用 / 无符合 → None —— 主动提醒据此不发,绝不编造。
+pub fn top_recurring_entity(min_freq: i64) -> Option<(String, String)> {
+    if !enabled() {
+        return None;
+    }
+    with_db(|c| {
+        c.query_row(
+            "SELECT kind, name FROM entity
+             WHERE kind IN ('project','topic','file','tool') AND freq >= ?1
+             ORDER BY freq DESC, last_seen DESC LIMIT 1",
+            params![min_freq],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+        )
+    })
+    .ok()
+}
+
 #[tauri::command]
 pub fn memory_delete_turn(id: i64) -> Result<(), String> {
     with_db(|c| { c.execute("DELETE FROM memory_turn WHERE id = ?1", params![id])?; Ok(()) })

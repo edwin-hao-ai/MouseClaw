@@ -100,7 +100,8 @@ export type NudgeKind =
   | "learned-cli"                        // v0.4.x · 老用户升级提示
   | "long-focus"                         // v0.4+ · 连续专注 2h 提醒休息
   | "memory-intro"                       // v0.4.4 · 记忆首次透明告知
-  | "name-hint";                         // v0.4.4 · 起名提示
+  | "name-hint"                          // v0.4.4 · 起名提示
+  | "memory-glance";                     // v0.4.x · 主动记忆提醒(基于真实高频实体)
 
 export interface NudgePayload {
   kind: NudgeKind;

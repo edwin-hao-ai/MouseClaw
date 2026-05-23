@@ -472,6 +472,7 @@ pub fn dismiss_nudge(
         "water"        => NudgeKind::Water,
         "good-morning" => NudgeKind::GoodMorning,
         "lunch"        => NudgeKind::Lunch,
+        "memory-glance" => NudgeKind::MemoryGlance,
         other => return Err(format!("unknown nudge kind: {other}")),
     };
     let now = chrono::Local::now().timestamp();
