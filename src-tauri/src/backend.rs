@@ -58,9 +58,10 @@ pub enum Backend {
     VibeCli,        // Mistral Vibe · `vibe --prompt`
     PiAgent,        // Pi Coding Agent · `pi -p`
     AntigravityCli, // Google Antigravity CLI · `agy -p`
-    // v0.4.6 (2026-05-23) · 国产 CLI agent
-    QwenCode,       // 通义 Qwen Code (阿里 QwenLM) · `qwen -p`（gemini-cli 同源）
-    TraeAgent,      // Trae Agent (字节跳动) · `trae-cli run`
+    // v0.4.6 (2026-05-23) · 国产 CLI agent。
+    // 注：曾计划同时加 Trae Agent(字节)，但实测它不在 PyPI、git 装缺一串依赖(docker/pexpect)
+    // 启动即崩、且是 Docker 重型研究 agent 输出冗长，不适合本场景 → 不收。
+    QwenCode,       // 通义 Qwen Code (阿里 QwenLM) · gemini-cli 同源，用位置参数 one-shot
 }
 
 impl Default for Backend {
@@ -87,7 +88,6 @@ impl Backend {
             Backend::PiAgent => "Pi Coding Agent",
             Backend::AntigravityCli => "Antigravity CLI",
             Backend::QwenCode => "Qwen Code (通义千问)",
-            Backend::TraeAgent => "Trae Agent (字节跳动)",
         }
     }
 
@@ -108,7 +108,6 @@ impl Backend {
             Backend::PiAgent => "pi",
             Backend::AntigravityCli => "agy",
             Backend::QwenCode => "qwen",
-            Backend::TraeAgent => "trae-cli",
         }
     }
 
@@ -129,7 +128,6 @@ impl Backend {
             "pi-agent" | "pi" => Backend::PiAgent,
             "antigravity-cli" | "antigravity" | "agy" => Backend::AntigravityCli,
             "qwen-code" | "qwen" | "qwencode" => Backend::QwenCode,
-            "trae-agent" | "trae" | "trae-cli" => Backend::TraeAgent,
             _ => Backend::ClaudeCli,
         }
     }
@@ -151,7 +149,6 @@ impl Backend {
             Backend::PiAgent     => "https://pi.dev",
             Backend::AntigravityCli => "https://antigravity.google/docs/cli-using",
             Backend::QwenCode    => "https://github.com/QwenLM/qwen-code",
-            Backend::TraeAgent   => "https://github.com/bytedance/trae-agent",
         }
     }
 
@@ -172,18 +169,17 @@ impl Backend {
             Backend::PiAgent     => "npm i -g @mariozechner/pi-coding-agent",
             Backend::AntigravityCli => "curl -fsSL https://antigravity.google/cli/install.sh | bash",
             Backend::QwenCode    => "npm i -g @qwen-code/qwen-code",
-            Backend::TraeAgent   => "uv tool install trae-agent",
         }
     }
 
     /// 所有后端的规范顺序 —— 托盘切换菜单 / onboarding 选择 / 测试遍历共用一处。
     /// Claude 排第一（默认 + 最成熟），其余大致按主流度。
-    pub fn all() -> [Backend; 15] {
+    pub fn all() -> [Backend; 14] {
         [
             Backend::ClaudeCli, Backend::CodexCli, Backend::GeminiCli, Backend::CopilotCli,
             Backend::OpenCodeCli, Backend::ClineCli, Backend::KimiCli, Backend::KiroCli,
             Backend::AntigravityCli, Backend::VibeCli, Backend::PiAgent, Backend::OpenclawCli,
-            Backend::HermesAgent, Backend::QwenCode, Backend::TraeAgent,
+            Backend::HermesAgent, Backend::QwenCode,
         ]
     }
 
@@ -219,10 +215,10 @@ impl Backend {
             Backend::AntigravityCli => vec![
                 "-p".into(), p, "--dangerously-skip-permissions".into(),
             ],
-            // Qwen Code 是 gemini-cli 同源：`qwen -p "..."`，默认 text 输出（适合 stdout 捕获）。
-            Backend::QwenCode => vec!["-p".into(), p],
-            // Trae Agent：`trae-cli run "..."` 非交互单任务。
-            Backend::TraeAgent => vec!["run".into(), p],
+            // Qwen Code（gemini-cli 同源）：用**位置参数** one-shot（`qwen "PROMPT"`）。
+            // 不用 `-p` —— 官方已把 -p 标 deprecated（实测 2026-05-23），位置参数才是
+            // 推荐的非交互入口，且避免 deprecation 警告污染捕获的 stdout。
+            Backend::QwenCode => vec![p],
         }
     }
 
@@ -499,8 +495,7 @@ mod tests {
                     | Backend::VibeCli
                     | Backend::PiAgent
                     | Backend::AntigravityCli
-                    | Backend::QwenCode
-                    | Backend::TraeAgent => crate::backend::ask_text_only(b, "x"),
+                    | Backend::QwenCode => crate::backend::ask_text_only(b, "x"),
                 }.await;
             };
         }

@@ -31,7 +31,6 @@ export const BACKENDS_META: Array<{
   { id: "openclaw-cli",    label: "OpenClaw CLI",                 descKey: "openclaw" },
   { id: "hermes-agent",    label: "Hermes Agent (Nous Research)", descKey: "hermes" },
   { id: "qwen-code",       label: "Qwen Code (通义千问)",         descKey: "qwen",   tag: "common.domestic" },
-  { id: "trae-agent",      label: "Trae Agent (字节跳动)",        descKey: "trae",   tag: "common.domestic" },
 ];
 
 export function backendDesc(id: BackendChoice, en: boolean): string {
@@ -90,12 +89,8 @@ export function backendDesc(id: BackendChoice, en: boolean): string {
         : "pi -p 打印模式。轻量四工具编码 agent。需 npm i -g @mariozechner/pi-coding-agent 并配 provider key。";
     case "qwen-code":
       return en
-        ? "qwen -p headless mode. Alibaba's open-source CLI (gemini-cli fork). Install npm i -g @qwen-code/qwen-code + a Qwen / OpenAI-compatible key."
-        : "qwen -p 无头模式。阿里通义开源 CLI（gemini-cli 同源）。装 npm i -g @qwen-code/qwen-code 并配 Qwen / OpenAI 兼容 key。";
-    case "trae-agent":
-      return en
-        ? "trae-cli run, ByteDance's SWE agent. Install via uv tool install trae-agent + a provider key. Output can be verbose."
-        : "trae-cli run，字节跳动的软件工程 agent。装：uv tool install trae-agent 并配 provider key。输出可能偏长。";
+        ? "Alibaba's open-source CLI (gemini-cli fork), one-shot mode. Install npm i -g @qwen-code/qwen-code + a Qwen / OpenAI-compatible key."
+        : "阿里通义开源 CLI（gemini-cli 同源），one-shot 模式。装 npm i -g @qwen-code/qwen-code 并配 Qwen / OpenAI 兼容 key。";
   }
 }
 
