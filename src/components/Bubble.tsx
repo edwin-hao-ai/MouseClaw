@@ -7,24 +7,9 @@
  * 安全：marked 默认会逃逸 HTML，不会 XSS。
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { marked } from "marked";
 import { useT } from "../i18n";
+import { renderMarkdown } from "../lib/markdown";
 import "./Bubble.css";
-
-// 配置 marked：极简 + 安全
-marked.setOptions({
-  gfm: true,        // 表格、删除线、autolink
-  breaks: true,     // 单换行 = <br>（更贴近聊天直觉）
-});
-
-function renderMarkdown(text: string): string {
-  try {
-    return marked.parse(text, { async: false }) as string;
-  } catch {
-    // 流式中间状态可能 parse 失败 —— 兜底原文
-    return text;
-  }
-}
 
 export type BubbleVariant = "default" | "success" | "warn" | "danger";
 

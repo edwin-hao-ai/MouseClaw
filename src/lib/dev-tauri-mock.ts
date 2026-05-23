@@ -59,7 +59,12 @@ const FIXTURES: Record<string, (args?: any) => unknown> = {
     },
   ],
   get_schedule_runs: () => [
-    { taskId: "demo-1", title: "每天早报", at: "2026-05-22T09:00:00Z", status: "ok", summary: "已发送早报", output: "（mock 输出）" },
+    { taskId: "demo-1", title: "每天早报", at: "2026-05-23T01:34:00Z", status: "ok", summary: "已整理 6 条 · 搜索智能体、企业AI加速",
+      output: "## 📰 过去24小时 AI 要闻（5/22–5/23）\n\n### 模型 & 产品发布\n1. **Google I/O 2026 推出 Search「信息智能体」** — 可 24/7 后台运行。\n   来源：[Google I/O 2026](https://example.com)\n2. **Anthropic 发布 Claude Opus 4.7** — 1M 上下文。\n\n### 融资\n- 某 AI 编码公司完成 B 轮。" },
+    { taskId: "demo-1", title: "每天早报", at: "2026-05-23T00:47:00Z", status: "ok", summary: "AI 行业 24h 速览",
+      output: "## 📰 AI 行业 24h 速览\n\n今日 **4 条**重点：\n- 开源模型 GLM-5 登顶 coding 榜\n- 多家厂商跟进「长时记忆」特性" },
+    { taskId: "demo-1", title: "每天早报", at: "2026-05-23T00:46:00Z", status: "failed", summary: "失败：没取到外部数据",
+      output: "## ✗ 本次失败\n\n没能获取到实时新闻数据（WebSearch 超时）。**未编造内容** —— 按真实性铁律如实报告。" },
   ],
   parse_schedule_phrase: (args: { phrase?: string }) => ({
     title: args?.phrase ? args.phrase.slice(0, 20) : "新任务",

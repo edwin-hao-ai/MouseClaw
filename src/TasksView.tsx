@@ -15,6 +15,7 @@ import { useT } from "./i18n";
 import { EV_SCHEDULE_RESULT } from "./types";
 import type { Schedule, ScheduleInput, ScheduleView, RunRecord } from "./types";
 import { scheduleLabel, scheduleIcon, formatWhen, formatRunTime } from "./lib/schedule-format";
+import { renderMarkdown } from "./lib/markdown";
 import "./TasksView.css";
 
 export default function TasksView() {
@@ -23,6 +24,8 @@ export default function TasksView() {
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [runs, setRuns] = useState<Record<string, RunRecord[]>>({});
+  // v0.5.1 · 结果面板里当前选中的历史条目下标（点左栏切换看不同次执行的完整输出）
+  const [selectedRun, setSelectedRun] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   // v0.5.1 · 手动"立刻跑"进行中的任务 id —— 卡片显示转圈 + "执行中…"，
@@ -49,13 +52,26 @@ export default function TasksView() {
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     try {
-      listen<{ taskId?: string }>(EV_SCHEDULE_RESULT, (e) => {
+      listen<{ taskId?: string }>(EV_SCHEDULE_RESULT, async (e) => {
         // 清掉"执行中"态（手动立刻跑跑完了）。事件带 taskId，匹配则清；
         // 反正一次只跑一个（ai_queue 串行），保险起见也直接清空。
         const tid = e?.payload?.taskId;
         setRunningId((cur) => (cur && (!tid || cur === tid) ? null : cur));
-        setRuns({}); // 清结果历史缓存，下次展开重新拉
-        refresh();
+        await refresh();
+        // v0.5.1 · 完成即可见 —— 真实任务跑完(taskId 非空)自动展开它的结果 + 选中最新一条，
+        // 不用用户再去找按钮。空 taskId 是"发现提示"，不展开。
+        if (tid) {
+          try {
+            const r = await invoke<RunRecord[]>("get_schedule_runs", { taskId: tid });
+            setRuns({ [tid]: r });
+          } catch {
+            setRuns({});
+          }
+          setExpandedId(tid);
+          setSelectedRun(0);
+        } else {
+          setRuns({});
+        }
       })
         .then((fn) => { unlisten = fn; })
         .catch(() => {});
@@ -110,6 +126,7 @@ export default function TasksView() {
         return;
       }
       setExpandedId(id);
+      setSelectedRun(0); // 展开时默认看最新一条
       if (!runs[id]) {
         try {
           const r = await invoke<RunRecord[]>("get_schedule_runs", { taskId: id });
@@ -173,6 +190,8 @@ export default function TasksView() {
                 expanded={expandedId === task.id}
                 running={runningId === task.id}
                 runs={runs[task.id]}
+                selectedRun={selectedRun}
+                onSelectRun={setSelectedRun}
                 onToggle={(en) => toggle(task.id, en)}
                 onExpand={() => toggleExpand(task.id)}
                 onEdit={() => setEditingId(task.id)}
@@ -209,13 +228,18 @@ interface CardProps {
   expanded: boolean;
   running: boolean;
   runs?: RunRecord[];
+  selectedRun: number;
+  onSelectRun: (i: number) => void;
   onToggle: (enabled: boolean) => void;
   onExpand: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onRunNow: () => void;
 }
-function TaskCard({ task, expanded, running, runs, onToggle, onExpand, onEdit, onDelete, onRunNow }: CardProps) {
+function TaskCard({
+  task, expanded, running, runs, selectedRun, onSelectRun,
+  onToggle, onExpand, onEdit, onDelete, onRunNow,
+}: CardProps) {
   const t = useT();
   const last = task.lastRun;
   const lastCls = last ? (last.status === "ok" ? "ok" : last.status === "failed" ? "fail" : "skip") : "";
@@ -224,7 +248,7 @@ function TaskCard({ task, expanded, running, runs, onToggle, onExpand, onEdit, o
     : t("tasks.last.never");
 
   return (
-    <div className={`task ${task.enabled ? "" : "task-off"}`}>
+    <div className={`task ${task.enabled ? "" : "task-off"} ${expanded ? "task-open" : ""}`}>
       <div className="task-row1">
         <span className="task-name">{task.title}</span>
         <button
@@ -252,31 +276,56 @@ function TaskCard({ task, expanded, running, runs, onToggle, onExpand, onEdit, o
             <span className={`task-last ${lastCls}`}>{lastText}</span>
           </>
         )}
-        <span className="task-acts">
-          <button className="task-ico" title={t("tasks.run_now")} onClick={onRunNow} disabled={running}>
-            {running ? <span className="tasks-spin" /> : "▶"}
-          </button>
-          <button className="task-ico" title={t("tasks.history.title")} onClick={onExpand}>
-            {expanded ? "▴" : "▾"}
-          </button>
-          <button className="task-ico" title={t("tasks.edit")} onClick={onEdit}>✎</button>
-          <button className="task-ico" title={t("tasks.delete")} onClick={onDelete}>🗑</button>
-        </span>
       </div>
+
+      {/* v0.5.1 · 带文字的操作按钮 —— 不再 ▶·✎🗑▾ 猜谜 */}
+      <div className="task-actions">
+        <button className="task-btn primary" onClick={onRunNow} disabled={running}>
+          {running ? <><span className="tasks-spin" />{t("tasks.running")}</> : <>▶ {t("tasks.run_now")}</>}
+        </button>
+        <button className={`task-btn ${expanded ? "on" : ""}`} onClick={onExpand}>
+          📄 {t("tasks.history.title")}
+        </button>
+        <button className="task-btn" onClick={onEdit}>✏️ {t("tasks.edit")}</button>
+        <button className="task-btn icon" title={t("tasks.delete")} onClick={onDelete}>🗑</button>
+      </div>
+
+      {/* v0.5.1 · 结果/历史面板：左栏可切换的执行记录 + 右栏 markdown 渲染输出 */}
       {expanded && (
-        <div className="task-history">
+        <div className="task-result">
           {!runs || runs.length === 0 ? (
             <div className="task-hist-empty">{t("tasks.history.empty")}</div>
           ) : (
             <>
-              {runs[0]?.output && <div className="task-hist-preview">{runs[0].output}</div>}
-              {runs.map((r, i) => (
-                <div className="task-run" key={i}>
-                  <span className={`task-run-dot ${r.status}`} />
-                  <span className="task-run-time">{formatRunTime(r.at)}</span>
-                  <span className="task-run-sum">{r.summary}</span>
-                </div>
-              ))}
+              <div className="task-runs">
+                {runs.map((r, i) => (
+                  <button
+                    key={i}
+                    className={`task-run ${i === selectedRun ? "sel" : ""}`}
+                    onClick={() => onSelectRun(i)}
+                  >
+                    <span className="task-run-top">
+                      <span className={`task-run-dot ${r.status}`} />
+                      {formatRunTime(r.at)}
+                    </span>
+                    <span className="task-run-sum">{r.summary}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="task-out">
+                {(() => {
+                  const r = runs[selectedRun] ?? runs[0];
+                  const body = r?.output?.trim() || r?.summary || "";
+                  return body ? (
+                    <div
+                      className="task-out-md"
+                      dangerouslySetInnerHTML={{ __html: renderMarkdown(body) }}
+                    />
+                  ) : (
+                    <div className="task-hist-empty">{t("tasks.history.empty")}</div>
+                  );
+                })()}
+              </div>
             </>
           )}
         </div>

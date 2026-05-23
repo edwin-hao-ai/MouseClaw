@@ -21,8 +21,9 @@ pub fn open_tasks_window(app: AppHandle) -> Result<(), String> {
         WebviewUrl::App("index.html?view=tasks".into()),
     )
     .title("MouseClaw — 定时任务")
-    .inner_size(460.0, 600.0)
-    .min_inner_size(400.0, 420.0)
+    // v0.5.1 · 调大默认尺寸 + 可拖大（结果面板 44vh 会跟着放大，长结果有地方读）
+    .inner_size(540.0, 700.0)
+    .min_inner_size(440.0, 460.0)
     .resizable(true)
     .decorations(true)
     .focused(true)
