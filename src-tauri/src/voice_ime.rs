@@ -18,19 +18,33 @@
 //! 永久 CFRunLoop。Tap 在那个 loop 里 dispatch 事件，回调里把状态发到 tokio
 //! 的 mpsc，主 runtime 收到再 emit + 跑 pipeline。
 
-#![cfg(target_os = "macos")]
+//! 跨平台说明（v0.5 跨平台移植）：本模块的**配置层**（`ImeTrigger` 枚举、`set_enabled`/
+//! `set_trigger`、`MONITOR` 原子缓存）在所有平台编译，供托盘 / commands 调用。**事件监听
+//! 实现**（CGEventTap）目前仅 macOS；Win/Linux 的全局热键触发待 §4 UX 决策后接入
+//! （见 docs/design/cross-platform-port-20260522.md）。`spawn` 仅在 macOS 调用。
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
-use std::time::{Duration, Instant};
-use tauri::{AppHandle, Manager};
 
+#[cfg(target_os = "macos")]
+use std::sync::Arc;
+#[cfg(target_os = "macos")]
+use std::time::{Duration, Instant};
+#[cfg(target_os = "macos")]
+use tauri::{AppHandle, Manager};
+#[cfg(any(target_os = "macos", windows))]
 use crate::AppState;
 
 /// 短按阈值 —— < 300ms 当误触不响应
+#[cfg(target_os = "macos")]
 const LONG_PRESS_MS: u128 = 300;
 /// 录音上限 —— 防止误触后忘了松开
+#[cfg(target_os = "macos")]
 const MAX_RECORDING_MS: u64 = 60_000;
+
+/// 非 macOS 听写触发快捷键（§4 决策：默认普通全局快捷键，按住说话、松开键入）。
+/// 选 KeyI（input/dictation），避开召唤(Space/M/D)与 Hub(V)。Win 长按手势是后续可选项。
+#[cfg(not(target_os = "macos"))]
+pub const DICTATION_SHORTCUT: &str = "Control+Alt+KeyI";
 
 /// 触发键 —— 用户在 Onboarding / 托盘选。
 ///
@@ -114,6 +128,7 @@ impl ImeTrigger {
 /// ⚠️ v0.1.14 修：tap_callback 在 FFI hot path 上，**不能**调 Config::load()
 ///   （那会每次按键都读 + parse JSON 文件，跟其他线程写 config 也会撞）。
 /// 所以这里把 trigger 的 keycodes 和 flag_bit 缓存进 atomic，set_trigger 时更新。
+#[allow(dead_code)] // 非 macOS 上部分字段（keycode/flag 缓存）暂未被事件监听消费
 struct ImeMonitor {
     pressed_at: AtomicI64,    // micros since UNIX_EPOCH, 0 = not pressed
     triggered: AtomicBool,    // 长按已触发 = 等松开做 stop
@@ -151,13 +166,136 @@ pub fn set_trigger(t: ImeTrigger) {
 }
 
 #[inline]
+#[cfg(target_os = "macos")]
 fn cached_matches(keycode: i64) -> bool {
     let kc1 = MONITOR.trigger_kc1.load(Ordering::Relaxed);
     let kc2 = MONITOR.trigger_kc2.load(Ordering::Relaxed);
     keycode == kc1 || (kc2 >= 0 && keycode == kc2)
 }
 
+// ───────────────── Windows：长按右 Ctrl 听写（§4 可选项）─────────────────
+// 默认全局快捷键之外的额外手势，逼近 macOS「按住 fn」体验。低层键盘钩子（WH_KEYBOARD_LL）
+// 跑在专用消息循环线程，只更新原子；watcher 线程据原子起停听写流。
+// ⚠️ Windows 专属，本地无法编译验证（仅 CI）+ 运行时未验证 —— 需真机迭代。
+#[cfg(windows)]
+mod win_longpress {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, AtomicI64};
+    use std::sync::Arc;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use tauri::AppHandle;
+
+    use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+    use windows::Win32::UI::Input::KeyboardAndMouse::VK_RCONTROL;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CallNextHookEx, GetMessageW, SetWindowsHookExW, KBDLLHOOKSTRUCT, MSG,
+        WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    };
+
+    const LONG_PRESS_MS: i64 = 300;
+
+    /// 目标键（右 Ctrl）按下的时刻（ms since epoch）；0 = 未按下。
+    static DOWN_AT: AtomicI64 = AtomicI64::new(0);
+    /// 目标键按下期间是否被其它键"污染"（说明是组合键，不是长按听写）。
+    static POLLUTED: AtomicBool = AtomicBool::new(false);
+
+    fn now_ms() -> i64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0)
+    }
+
+    unsafe extern "system" fn hook_proc(ncode: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+        if ncode >= 0 {
+            let kb = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
+            let vk = kb.vkCode;
+            let target = VK_RCONTROL.0 as u32;
+            let msg = wparam.0 as u32;
+            let is_down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
+            let is_up = msg == WM_KEYUP || msg == WM_SYSKEYUP;
+            if vk == target {
+                if is_down {
+                    if DOWN_AT.load(Ordering::Relaxed) == 0 {
+                        DOWN_AT.store(now_ms(), Ordering::Relaxed);
+                        POLLUTED.store(false, Ordering::Relaxed);
+                    }
+                } else if is_up {
+                    DOWN_AT.store(0, Ordering::Relaxed);
+                }
+            } else if is_down && DOWN_AT.load(Ordering::Relaxed) != 0 {
+                // 按住目标键期间按了别的键 → 组合键，不是听写
+                POLLUTED.store(true, Ordering::Relaxed);
+            }
+        }
+        // hhk 在 MSDN 标 [optional] → windows-rs 建模为 Option，传 None 让系统找下一个钩子。
+        CallNextHookEx(None, ncode, wparam, lparam)
+    }
+
+    /// 起钩子线程（消息循环）+ watcher 线程（据原子起停听写流）。
+    pub fn spawn(app: AppHandle, state: Arc<AppState>) {
+        // 钩子线程：装 WH_KEYBOARD_LL + 跑消息循环（钩子需要消息泵）。
+        std::thread::Builder::new()
+            .name("mouseclaw-win-kbhook".into())
+            .spawn(|| unsafe {
+                // hmod 是 Option<HINSTANCE>（LL 钩子传 None = null 模块句柄）。
+                match SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook_proc), None, 0) {
+                    Ok(_h) => {
+                        let mut msg = MSG::default();
+                        while GetMessageW(&mut msg, None, 0, 0).as_bool() {}
+                    }
+                    Err(e) => eprintln!("[mouseclaw] 🎙️ SetWindowsHookExW 失败: {e}"),
+                }
+            })
+            .expect("spawn win kbhook thread");
+
+        // watcher：长按 ≥300ms 且未污染 → 起听写；松开 → 停。
+        std::thread::Builder::new()
+            .name("mouseclaw-win-dictation".into())
+            .spawn(move || {
+                let mut dictating = false;
+                loop {
+                    std::thread::sleep(Duration::from_millis(50));
+                    if !is_enabled() {
+                        continue;
+                    }
+                    let down_at = DOWN_AT.load(Ordering::Relaxed);
+                    if down_at != 0
+                        && !dictating
+                        && !POLLUTED.load(Ordering::Relaxed)
+                        && now_ms() - down_at >= LONG_PRESS_MS
+                    {
+                        dictating = true;
+                        let a = app.clone();
+                        let s = state.clone();
+                        tauri::async_runtime::spawn(async move {
+                            crate::pipeline::on_shortcut_press(a, s).await;
+                        });
+                    }
+                    if down_at == 0 && dictating {
+                        dictating = false;
+                        let a = app.clone();
+                        let s = state.clone();
+                        tauri::async_runtime::spawn(async move {
+                            crate::pipeline::on_dictation_release(a, s).await;
+                        });
+                    }
+                }
+            })
+            .expect("spawn win dictation watcher");
+        println!("[mouseclaw] 🎙️ Windows 长按右 Ctrl 听写已启用（可选手势）");
+    }
+}
+
+/// Windows 长按听写入口（lib.rs setup 调）。
+#[cfg(windows)]
+pub fn spawn_longpress(app: tauri::AppHandle, state: std::sync::Arc<AppState>) {
+    win_longpress::spawn(app, state);
+}
+
 /// 主入口 —— lib.rs setup 时调一次。起后台线程跑 CGEventTap。
+/// 仅 macOS：调用点在 lib.rs 已 `#[cfg(target_os = "macos")]` 包裹。
+#[cfg(target_os = "macos")]
 pub fn spawn(app: AppHandle, state: Arc<AppState>) {
     let cfg = crate::config::Config::load();
     MONITOR.enabled.store(cfg.voice_ime_enabled, Ordering::Relaxed);
@@ -172,14 +310,17 @@ pub fn spawn(app: AppHandle, state: Arc<AppState>) {
         .expect("spawn ime tap thread");
 }
 
-// ────────────────── CGEventTap 部分 ──────────────────
+// ────────────────── CGEventTap 部分（仅 macOS）──────────────────
 
+#[cfg(target_os = "macos")]
 #[repr(transparent)]
 #[derive(Copy, Clone)]
 #[allow(dead_code)] // 保留给后续扩展（事件回调里手动构造 event ref）
 struct CGEventRef(*mut std::ffi::c_void);
+#[cfg(target_os = "macos")]
 unsafe impl Send for CGEventRef {}
 
+#[cfg(target_os = "macos")]
 type CGEventTapCallBack = unsafe extern "C" fn(
     proxy: *mut std::ffi::c_void,
     event_type: u32,
@@ -187,6 +328,7 @@ type CGEventTapCallBack = unsafe extern "C" fn(
     user_info: *mut std::ffi::c_void,
 ) -> *mut std::ffi::c_void;
 
+#[cfg(target_os = "macos")]
 #[link(name = "ApplicationServices", kind = "framework")]
 extern "C" {
     fn CGEventTapCreate(
@@ -203,6 +345,7 @@ extern "C" {
     fn CGEventGetIntegerValueField(event: *mut std::ffi::c_void, field: u32) -> i64;
 }
 
+#[cfg(target_os = "macos")]
 #[link(name = "CoreFoundation", kind = "framework")]
 extern "C" {
     fn CFMachPortCreateRunLoopSource(
@@ -223,6 +366,7 @@ extern "C" {
 }
 
 /// Tap 接收回调（C ABI）—— 用 keycode 字段精确识别用户选的 trigger 键
+#[cfg(target_os = "macos")]
 unsafe extern "C" fn tap_callback(
     _proxy: *mut std::ffi::c_void,
     event_type: u32,
@@ -276,6 +420,7 @@ fn trigger_to_flag_bit(t: ImeTrigger) -> u64 {
     }
 }
 
+#[cfg(target_os = "macos")]
 #[derive(Debug)]
 enum ImeEvent {
     PressedDown,
@@ -284,10 +429,12 @@ enum ImeEvent {
     ReleasedShortTap,
 }
 
+#[cfg(target_os = "macos")]
 struct TapState {
     tx: std::sync::mpsc::Sender<ImeEvent>,
 }
 
+#[cfg(target_os = "macos")]
 fn run_event_tap(app: AppHandle, state: Arc<AppState>) {
     let (tx, rx) = std::sync::mpsc::channel::<ImeEvent>();
 
@@ -325,6 +472,7 @@ fn run_event_tap(app: AppHandle, state: Arc<AppState>) {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn handle_fn_events(rx: std::sync::mpsc::Receiver<ImeEvent>, app: AppHandle, state: Arc<AppState>) {
     while let Ok(ev) = rx.recv() {
         match ev {
@@ -394,6 +542,7 @@ fn is_secure_input_active() -> bool { false }
 
 // ────────────────── 录音 → sherpa ASR → paste 流程 ──────────────────
 
+#[cfg(target_os = "macos")]
 fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
     // 已经在录音（被 ⌘⇧Space 占着）→ 跳过
     if state.recorder.lock().unwrap().is_some() {
@@ -590,6 +739,7 @@ fn frontmost_bundle() -> String {
 #[cfg(not(target_os = "macos"))]
 fn frontmost_bundle() -> String { String::new() }
 
+#[cfg(target_os = "macos")]
 fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
     // v0.3.1 · 停止 streaming poller —— 让它最后一帧完成后退出
     state.streaming_active.store(false, Ordering::SeqCst);
@@ -715,6 +865,7 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
 
 /// v0.4.0 P2 · 执行纠错动作 —— Replace 走 backspace + write，UndoAll 走 backspace，
 /// NotFound 仅气泡反馈不写入。所有路径走完发个气泡 + 自动 hide。
+#[cfg(target_os = "macos")]
 async fn handle_correction(
     app: &AppHandle,
     action: crate::voice_correct::CorrectionAction,

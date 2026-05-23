@@ -21,7 +21,6 @@ pub mod browser_bridge;
 pub mod nudge;
 pub mod presence;
 pub mod punctuation;
-#[cfg(target_os = "macos")]
 pub mod tts;
 pub mod transcribe_stream;
 pub mod model_downloader;
@@ -47,6 +46,9 @@ pub mod frontmost;
 pub mod mode_b;
 pub mod overlay;
 pub mod permissions;
+/// 跨平台（非 macOS）系统能力薄层 —— 截图/光标/前台/注入/TTS 的 Win·Linux 实现。
+#[cfg(not(target_os = "macos"))]
+pub mod platform;
 pub mod pipeline;
 pub mod provider_env;
 pub mod reactive;
@@ -200,10 +202,13 @@ impl AppState {
     }
 }
 
-/// Release builds run as a `.app` bundle where stdout/stderr go nowhere.
+/// Release builds run as a bundled GUI app where stdout/stderr go nowhere.
 /// Redirect both to `~/.mouseclaw/mouseclaw.log` so users (and us) can debug.
 /// Dev builds (`bun tauri dev`) keep console output — no redirect.
-#[cfg(all(target_os = "macos", not(debug_assertions)))]
+///
+/// 跨平台：macOS + Linux 都走 unix `dup2`（libc 是 unix 依赖）。Windows GUI 子系统
+/// 无 console，且无 `dup2`；release 版日志暂不落盘（已知降级，见 cross-platform-port doc）。
+#[cfg(all(unix, not(debug_assertions)))]
 fn init_file_logging() {
     use std::os::unix::io::IntoRawFd;
     let home = std::env::var("HOME").unwrap_or_default();
@@ -228,7 +233,7 @@ fn init_file_logging() {
     }
 }
 
-#[cfg(not(all(target_os = "macos", not(debug_assertions))))]
+#[cfg(not(all(unix, not(debug_assertions))))]
 fn init_file_logging() {}
 
 #[cfg(target_os = "macos")]
@@ -310,6 +315,25 @@ pub fn run() {
                             state.voice_confirm_action
                                 .store(crate::VC_CANCEL, std::sync::atomic::Ordering::SeqCst);
                             println!("[mouseclaw] ⎋ voice-confirm Esc → 取消");
+                        }
+                        return;
+                    }
+                    // 非 macOS 听写快捷键（Control+Alt+KeyI）：press 复用录音流，
+                    // release 走 finalize+键入（不进 AI）。macOS 不注册此键（用 fn）。
+                    #[cfg(not(target_os = "macos"))]
+                    if sk.contains("KeyI") || sk.contains("Code(I)") {
+                        match event.state() {
+                            ShortcutState::Pressed => {
+                                show_mouse(app);
+                                tauri::async_runtime::spawn(async move {
+                                    on_shortcut_press(app_handle, state).await;
+                                });
+                            }
+                            ShortcutState::Released => {
+                                tauri::async_runtime::spawn(async move {
+                                    pipeline::on_dictation_release(app_handle, state).await;
+                                });
+                            }
                         }
                         return;
                     }
@@ -647,6 +671,26 @@ pub fn run() {
                         Ok(()) => println!("[mouseclaw] ✓ ⌘⇧V → Hub 剪贴板 注册成功"),
                         Err(e) => eprintln!("[mouseclaw] ⌘⇧V 注册失败（可能被其它 app 占）：{e}"),
                     }
+                }
+                // v0.5 · 非 macOS 听写快捷键（macOS 用 fn 长按 = voice_ime CGEventTap）。
+                // §4 决策：Win/Linux 默认普通全局快捷键 → 按住说话、松开本地 ASR 键入光标。
+                #[cfg(not(target_os = "macos"))]
+                if config::Config::load().voice_ime_enabled {
+                    if let Ok(dict_sc) = Shortcut::from_str(crate::voice_ime::DICTATION_SHORTCUT) {
+                        match app.global_shortcut().register(dict_sc) {
+                            Ok(()) => println!(
+                                "[mouseclaw] ✓ 听写快捷键注册成功: {}",
+                                crate::voice_ime::DICTATION_SHORTCUT
+                            ),
+                            Err(e) => eprintln!(
+                                "[mouseclaw] 听写快捷键 {} 注册失败（可能被占）：{e}",
+                                crate::voice_ime::DICTATION_SHORTCUT
+                            ),
+                        }
+                    }
+                    // Windows 额外手势：长按右 Ctrl 听写（§4 可选项）。
+                    #[cfg(windows)]
+                    crate::voice_ime::spawn_longpress(app.handle().clone(), app_state.clone());
                 }
                 // v0.5 · 开场调皮入场动画 —— 按场景分档（首次炸 / 冷启中 / 自启轻）。
                 //   内部判定档位 + 延迟 ~700ms 起跑（等前端挂载 + 上报 reduced-motion）。

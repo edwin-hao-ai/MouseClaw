@@ -26,7 +26,6 @@ use aes_gcm::{
     Aes256Gcm, Key, Nonce,
 };
 use base64::{Engine, engine::general_purpose::STANDARD as B64};
-use security_framework::passwords::{get_generic_password, set_generic_password};
 use std::sync::OnceLock;
 
 /// ⚠️ v0.1.14 修：cipher 用 OnceLock 缓存，**不要**每次写盘都打开 Keychain。
@@ -37,17 +36,16 @@ const KEYCHAIN_SERVICE: &str = "com.mouseclaw.clipboard";
 const KEYCHAIN_ACCOUNT: &str = "encryption-key-v1";
 const FILE_MAGIC: &str = "__mc_v1";
 
-/// 拿 / 生成 256-bit master key（base64 存 Keychain）。
+/// 拿 / 生成 256-bit master key。存储后端按平台分（见 Cargo.toml 注释）：
+///   macOS → Keychain（security-framework）
+///   Win/Linux → OS keystore（keyring）；keyring 不可用时退回 0600 文件
 fn ensure_key() -> Result<[u8; 32]> {
-    if let Ok(bytes) = get_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT) {
-        let s = std::str::from_utf8(&bytes).context("keychain bytes not utf8")?;
-        let raw = B64.decode(s).context("decode keychain b64")?;
+    if let Some(raw) = load_key_b64().and_then(|s| B64.decode(s.trim()).ok()) {
         if raw.len() == 32 {
             let mut out = [0u8; 32];
             out.copy_from_slice(&raw);
             return Ok(out);
         }
-        // 长度不对就重生成
         println!("[mouseclaw] 🔐 clipboard key 损坏，重生成");
     }
     // 新生成
@@ -55,10 +53,70 @@ fn ensure_key() -> Result<[u8; 32]> {
     use rand::RngCore;
     rand::thread_rng().fill_bytes(&mut key);
     let b64 = B64.encode(key);
-    set_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, b64.as_bytes())
-        .map_err(|e| anyhow!("write Keychain: {e}"))?;
-    println!("[mouseclaw] 🔐 clipboard key 已生成 + 存入 Keychain");
+    store_key_b64(&b64)?;
+    println!("[mouseclaw] 🔐 clipboard key 已生成 + 存入安全存储");
     Ok(key)
+}
+
+// ───────────────────── 平台密钥存储后端 ─────────────────────
+
+/// macOS：Keychain（保留 v0.1.14 起的条目语义，不迁移现有用户）。
+#[cfg(target_os = "macos")]
+fn load_key_b64() -> Option<String> {
+    use security_framework::passwords::get_generic_password;
+    let bytes = get_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT).ok()?;
+    String::from_utf8(bytes).ok()
+}
+#[cfg(target_os = "macos")]
+fn store_key_b64(b64: &str) -> Result<()> {
+    use security_framework::passwords::set_generic_password;
+    set_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, b64.as_bytes())
+        .map_err(|e| anyhow!("write Keychain: {e}"))
+}
+
+/// Win/Linux：keyring（Win=Credential Manager / Linux=Secret Service）。
+/// keyring 不可用（如无 Secret Service daemon 的 headless Linux）→ 退回 0600 文件，
+/// 并打日志告警（威胁模型见本文件顶部；文件存储弱于 OS keystore，属已知降级）。
+#[cfg(not(target_os = "macos"))]
+fn keyring_entry() -> Option<keyring::Entry> {
+    keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT).ok()
+}
+#[cfg(not(target_os = "macos"))]
+fn load_key_b64() -> Option<String> {
+    if let Some(s) = keyring_entry().and_then(|e| e.get_password().ok()) {
+        return Some(s);
+    }
+    std::fs::read_to_string(key_file_path()?).ok()
+}
+#[cfg(not(target_os = "macos"))]
+fn store_key_b64(b64: &str) -> Result<()> {
+    if let Some(entry) = keyring_entry() {
+        if entry.set_password(b64).is_ok() {
+            return Ok(());
+        }
+    }
+    // keyring 不可用 → 0600 文件兜底
+    let path = key_file_path().ok_or_else(|| anyhow!("no home dir for clipboard key file"))?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).context("create key dir")?;
+    }
+    std::fs::write(&path, b64).context("write key file")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    }
+    eprintln!(
+        "[mouseclaw] ⚠️ OS keystore 不可用，clipboard key 退回文件 {} (0600)",
+        path.display()
+    );
+    Ok(())
+}
+#[cfg(not(target_os = "macos"))]
+fn key_file_path() -> Option<std::path::PathBuf> {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))?;
+    Some(std::path::PathBuf::from(home).join(".mouseclaw").join("clipkey"))
 }
 
 fn cipher() -> Result<&'static Aes256Gcm> {

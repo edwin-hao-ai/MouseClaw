@@ -46,7 +46,13 @@ pub fn spawn_capture_loop() {
         .name("mouseclaw-selection".into())
         .spawn(|| run_loop())
         .expect("spawn selection thread");
-    // 非 macOS 直接 no-op
+    // Linux：X11 PRIMARY selection 轮询（Wayland 内部自检后 no-op）。
+    #[cfg(target_os = "linux")]
+    std::thread::Builder::new()
+        .name("mouseclaw-selection".into())
+        .spawn(|| run_loop())
+        .expect("spawn selection thread");
+    // Windows：无 PRIMARY selection 概念 → no-op（用复制路径）。
 }
 
 #[cfg(target_os = "macos")]
@@ -215,7 +221,56 @@ fn cfstring_to_string(cf: CFStringRef) -> Option<String> {
     Some(cfs.to_string())
 }
 
-#[cfg(not(target_os = "macos"))]
+// ───────────────────── Linux：X11 PRIMARY selection（选中即入 primary）─────────────────────
+#[cfg(target_os = "linux")]
+fn run_loop() {
+    if crate::platform::is_wayland() {
+        // Wayland 下 primary-selection 各合成器支持参差 → 不轮询，避免误报。复制路径仍可用。
+        println!("[mouseclaw] 🔤 Wayland 选词轮询禁用（请用复制路径）");
+        return;
+    }
+    let mut last_text: Option<String> = None;
+    let mut last_emit_at: Option<Instant> = None;
+    println!("[mouseclaw] 🔤 selection capture (X11 PRIMARY, poll {POLL_INTERVAL_MS}ms, min {MIN_SELECTION_CHARS})");
+    loop {
+        std::thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
+        if is_paused() || crate::clipboard::is_paused() {
+            continue;
+        }
+        let Some(text) = current_selection_text() else {
+            last_text = None;
+            continue;
+        };
+        if text.chars().count() < MIN_SELECTION_CHARS {
+            continue;
+        }
+        if last_text.as_deref() == Some(text.as_str()) {
+            if let Some(when) = last_emit_at {
+                if when.elapsed() < Duration::from_secs(COOLDOWN_SECS) {
+                    continue;
+                }
+            }
+        }
+        last_text = Some(text.clone());
+        last_emit_at = Some(Instant::now());
+        let (bundle, _name) = crate::clipboard::frontmost_app_pub();
+        crate::reactive::on_new_text(crate::reactive::Source::Selection, &text, &bundle);
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn current_selection_text() -> Option<String> {
+    use arboard::{Clipboard, GetExtLinux, LinuxClipboardKind};
+    let mut cb = Clipboard::new().ok()?;
+    let s = cb.get().clipboard(LinuxClipboardKind::Primary).text().ok()?;
+    if s.trim().is_empty() {
+        None
+    } else {
+        Some(s)
+    }
+}
+
+#[cfg(all(not(target_os = "macos"), not(target_os = "linux")))]
 #[allow(dead_code)]
 fn current_selection_text() -> Option<String> { None }
 

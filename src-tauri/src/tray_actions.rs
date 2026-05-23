@@ -170,7 +170,6 @@ pub(crate) fn toggle_tts(app: &AppHandle) {
         eprintln!("[mouseclaw] toggle_tts save: {e}");
         return;
     }
-    #[cfg(target_os = "macos")]
     if !now_on {
         crate::tts::stop();
     }

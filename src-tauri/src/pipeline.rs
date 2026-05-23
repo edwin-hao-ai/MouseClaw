@@ -267,7 +267,6 @@ pub async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppStat
     // v0.4.0 · 桌宠开口说话 —— 用 macOS `say` 朗读 AI 最终回复。
     // 默认 OFF（声音打扰，用户主动从托盘开）。Mode B 跳过（writing 视觉本身就够，
     // 再叠语音反而吵）。
-    #[cfg(target_os = "macos")]
     if mode != ReplyMode::B {
         let cfg_tts = crate::config::Config::load();
         if cfg_tts.tts_enabled {
@@ -599,7 +598,72 @@ pub async fn on_shortcut_release(app: AppHandle, state: Arc<AppState>) {
     });
 }
 
-/// 把后端 CLI 抛回来的吓人英文 stderr 翻译成用户能执行的中文一句话。
+/// 听写松开（仅非 macOS）：复用录音/sherpa 流，finalize 后**直接键入光标**（不走 AI、不倒数）。
+/// 听写即所见 —— 跟 macOS voice_ime 的体验对齐。终端不拦（用户主动口述的文字，不会自动回车）。
+/// ⚠️ 运行时未在真机验证（无头容器）。
+#[cfg(not(target_os = "macos"))]
+pub async fn on_dictation_release(app: AppHandle, state: Arc<AppState>) {
+    let recorder = {
+        let mut g = state.recorder.lock().unwrap();
+        g.take()
+    };
+    let Some(recorder) = recorder else { return; };
+    state
+        .streaming_active
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    emit_view(&app, &ViewKind::Thinking { transcript: "(转写中…)".into(), status: None });
+
+    let app_clone = app.clone();
+    let state_clone = state.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let remaining = match recorder.stop_drain_remaining_16k() {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[mouseclaw] 🎙️ dictation drain: {e:#}");
+                hide_overlay(&app_clone);
+                return;
+            }
+        };
+        let session = {
+            let mut g = state_clone.stream_session.lock().unwrap();
+            g.take()
+        };
+        let transcript = if let Some(mut sess) = session {
+            if !remaining.is_empty() { sess.accept(&remaining); }
+            sess.finalize().unwrap_or_default()
+        } else {
+            String::new()
+        };
+        if transcript.trim().is_empty() {
+            hide_overlay(&app_clone);
+            return;
+        }
+        let cfg = crate::config::Config::load();
+        let light = crate::tidy_up::light_clean(&transcript, &cfg.language);
+        let punctuated = crate::punctuation::add_punctuation(&light);
+        // 直接键入（enigo / Wayland 兜底剪贴板）。
+        match crate::mode_b::type_unicode_sync(&punctuated) {
+            Ok(()) => emit_view(&app_clone, &ViewKind::Reply {
+                transcript: punctuated.clone(),
+                reply: format!("⌨️ 已输入：{punctuated}"),
+                mode: ReplyMode::A,
+                insert_text: None,
+                streaming: false,
+            }),
+            Err(e) => {
+                let _ = crate::mode_b::set_clipboard(&punctuated);
+                emit_view(&app_clone, &ViewKind::Reply {
+                    transcript: punctuated.clone(),
+                    reply: format!("📋 没法直接键入（{e}），已复制 · Ctrl+V：\n{punctuated}"),
+                    mode: ReplyMode::A,
+                    insert_text: None,
+                    streaming: false,
+                });
+            }
+        }
+        schedule_auto_hide(&app_clone, &state_clone, 4000);
+    });
+}
 /// 常见 case：
 ///   - 找不到二进制 → 给出 npm install 命令
 ///   - 登录过期 / 没 API key → 提示 `claude login` / 检查 env

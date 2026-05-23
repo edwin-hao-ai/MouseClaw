@@ -67,6 +67,33 @@ pub const EXCLUDED_BUNDLES: &[&str] = &[
     "co.zeit.hyper",
 ];
 
+/// 非 macOS 的敏感 app 排除（按 exe 名 / WM_CLASS 子串小写匹配）。
+/// 密码管理器 + 终端不记录其复制内容。Win 的剪贴板格式标志抑制（ExcludeClipboard…）
+/// 待 follow-up（arboard 未暴露格式枚举）。
+#[cfg(not(target_os = "macos"))]
+const NON_MAC_EXCLUDED: &[&str] = &[
+    // 密码管理器
+    "1password", "bitwarden", "keepassxc", "keepass", "dashlane", "lastpass", "enpass", "proton pass",
+    // 终端
+    "windowsterminal", "cmd.exe", "powershell", "pwsh", "conhost", "wezterm", "alacritty", "kitty",
+    "gnome-terminal", "konsole", "xterm", "tilix", "terminator", "mintty", "xfce4-terminal",
+];
+
+/// 当前前台 app 是否在排除名单（mac=bundle id 全等；非 mac=exe/WM_CLASS 子串）。
+fn is_excluded_app(bundle: &str) -> bool {
+    if EXCLUDED_BUNDLES.iter().any(|b| b.eq_ignore_ascii_case(bundle)) {
+        return true;
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let b = bundle.to_lowercase();
+        if !b.is_empty() && NON_MAC_EXCLUDED.iter().any(|x| b.contains(x)) {
+            return true;
+        }
+    }
+    false
+}
+
 /// 全局 in-memory 历史（Arc<RwLock> —— 读多写少）
 pub static HISTORY: once_cell::sync::Lazy<Arc<RwLock<VecDeque<ClipItem>>>> =
     once_cell::sync::Lazy::new(|| Arc::new(RwLock::new(VecDeque::with_capacity(64))));
@@ -267,8 +294,25 @@ fn current_change_count() -> i64 {
         c
     })
 }
+// ───────────────────── 非 macOS：arboard 后端 ─────────────────────
+// macOS 没有「剪贴板变化事件」，靠 NSPasteboard.changeCount 轮询。arboard 没有等价的
+// changeCount，所以用「当前文本的哈希」当变化探针：文本变 → 哈希变 → 触发记录。
+// 持有一个 thread-local Clipboard 实例（X11 下 new() 会起后台线程持有 selection，
+// 不能每轮重建），整个捕获循环都在同一 std::thread 上，thread_local 安全。
 #[cfg(not(target_os = "macos"))]
-fn current_change_count() -> i64 { -1 }
+thread_local! {
+    static CLIPBOARD: std::cell::RefCell<Option<arboard::Clipboard>> =
+        std::cell::RefCell::new(arboard::Clipboard::new().ok());
+}
+
+#[cfg(not(target_os = "macos"))]
+fn current_change_count() -> i64 {
+    use std::hash::{Hash, Hasher};
+    let text = current_pasteboard_text().unwrap_or_default();
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut h);
+    h.finish() as i64
+}
 
 /// 读当前 NSPasteboard 的 type 列表，判断是否含 transient/concealed 标志
 #[cfg(target_os = "macos")]
@@ -297,7 +341,11 @@ fn is_transient() -> bool {
     })
 }
 #[cfg(not(target_os = "macos"))]
-fn is_transient() -> bool { false }
+fn is_transient() -> bool {
+    // Windows：密码管理器设 ExcludeClipboardContentFromMonitorProcessing 格式 → 跳过记录。
+    // Linux：暂无统一标志（app 名单兜底）。
+    crate::platform::clipboard_excluded()
+}
 
 /// 读当前 NSPasteboard 的 plain-text 内容
 #[cfg(target_os = "macos")]
@@ -323,7 +371,20 @@ fn current_pasteboard_text() -> Option<String> {
     })
 }
 #[cfg(not(target_os = "macos"))]
-fn current_pasteboard_text() -> Option<String> { None }
+fn current_pasteboard_text() -> Option<String> {
+    CLIPBOARD.with(|c| {
+        let mut guard = c.borrow_mut();
+        if guard.is_none() {
+            // 上次初始化失败（如 X11/Wayland 尚未就绪）→ 重试一次
+            *guard = arboard::Clipboard::new().ok();
+        }
+        let cb = guard.as_mut()?;
+        match cb.get_text() {
+            Ok(s) if !s.is_empty() => Some(s),
+            _ => None,
+        }
+    })
+}
 
 /// 公共导出 —— selection.rs / 其它 ambient 通道也需要这条 frontmost app 信息
 /// 来命中 SENSITIVE_BUNDLES。重复实现成本高于直接 re-export。
@@ -351,7 +412,10 @@ fn frontmost_app() -> (String, String) {
     })
 }
 #[cfg(not(target_os = "macos"))]
-fn frontmost_app() -> (String, String) { (String::new(), String::new()) }
+fn frontmost_app() -> (String, String) {
+    // Win=exe 名 / X11=WM_CLASS（都已小写）；Wayland 拿不到 → ("","")（不做排除）。
+    crate::platform::frontmost_app()
+}
 
 fn on_clipboard_changed() -> Result<()> {
     if is_paused() {
@@ -365,7 +429,7 @@ fn on_clipboard_changed() -> Result<()> {
     if text.is_empty() { return Ok(()); }
 
     let (bundle, name) = frontmost_app();
-    if EXCLUDED_BUNDLES.iter().any(|b| b.eq_ignore_ascii_case(&bundle)) {
+    if is_excluded_app(&bundle) {
         println!("[mouseclaw] 📋 排除应用 {bundle} —— 跳过记录");
         return Ok(());
     }

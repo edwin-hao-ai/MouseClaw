@@ -159,4 +159,7 @@ fn global_cursor_top_left() -> Option<(f64, f64)> {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn global_cursor_top_left() -> Option<(f64, f64)> { None }
+fn global_cursor_top_left() -> Option<(f64, f64)> {
+    // Win/X11 经平台层拿全局光标；Wayland 返回 None（穿透 hit-test 退化为始终接收）。
+    crate::platform::global_cursor()
+}

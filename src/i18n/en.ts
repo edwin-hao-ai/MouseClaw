@@ -156,6 +156,7 @@ export const en: Strings = {
   "onboarding.cta.next_backend": "Next: Pick AI backend →",
   "onboarding.cta.next_skin": "Next: Pick your pet →",
   "onboarding.cta.next_perms": "Next: Permissions →",
+  "onboarding.cta.next_capabilities": "Next: extra powers →",
   "onboarding.cta.finish": "Finish & restart MouseClaw 🦞",
   "onboarding.cta.skip": "I granted them manually → Finish & restart",
   "onboarding.skip_hint.all_done": "Clicking will restart the app — required to make screen recording take effect.",

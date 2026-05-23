@@ -171,7 +171,8 @@ fn primary_screen_height_pts() -> Option<f64> {
 
 #[cfg(not(target_os = "macos"))]
 fn current_mouse_pos_top_left(_w: &WebviewWindow) -> Option<(f64, f64)> {
-    None
+    // Win/X11 经平台层；Wayland 返回 None → 跟随静默 no-op（§4：Wayland 不跟随）。
+    crate::platform::global_cursor()
 }
 
 /// 召唤 / 显示桌宠后保持它在最上层。

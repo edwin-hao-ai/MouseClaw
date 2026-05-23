@@ -217,5 +217,29 @@ pub fn install(app: tauri::AppHandle, state: std::sync::Arc<crate::AppState>) {
     imp::install(app, state);
 }
 
+/// 非 macOS：用 Tauri 的窗口级 DragDrop 事件（WebView2 / webkit2gtk 不像 WKWebView 那样
+/// 吞文件）。限制：只在文件**拖到桌宠窗口上**时触发（非全屏检测，那需 OS 级 detector）。
+/// ⚠️ 运行时未在真机验证。
 #[cfg(not(target_os = "macos"))]
-pub fn install(_app: tauri::AppHandle, _state: std::sync::Arc<crate::AppState>) {}
+pub fn install(app: tauri::AppHandle, state: std::sync::Arc<crate::AppState>) {
+    use tauri::{DragDropEvent, Manager, WindowEvent};
+    let Some(win) = app.get_webview_window("mouse") else {
+        eprintln!("[mouseclaw] drag_detector: mouse window 不存在，跳过");
+        return;
+    };
+    let app2 = app.clone();
+    let state2 = state.clone();
+    win.on_window_event(move |ev| {
+        if let WindowEvent::DragDrop(dd) = ev {
+            match dd {
+                DragDropEvent::Enter { .. } => crate::feed_flow::on_drag_enter(&app2, &state2),
+                DragDropEvent::Leave => crate::feed_flow::on_drag_leave(&app2, &state2),
+                DragDropEvent::Drop { paths, .. } => {
+                    crate::feed_flow::on_files_dropped(app2.clone(), state2.clone(), paths.clone())
+                }
+                _ => {}
+            }
+        }
+    });
+    println!("[mouseclaw] drag_detector: Tauri DragDrop 已挂到 mouse 窗口");
+}

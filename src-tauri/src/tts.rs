@@ -15,20 +15,26 @@
 //! - 取消和后悔：新 AI 回复来了 → 老 `say` 被 SIGKILL 替换
 //! - 失败模式：`say` 命令找不到 / 进程挂 → silent，不打扰主流程
 
-#![cfg(target_os = "macos")]
+//! 跨平台（v0.5）：macOS 用 `say`；Win/Linux 走 `crate::platform::speak`
+//! （tts crate：SAPI / speech-dispatcher）。Linux 需 speech-dispatcher 在跑，否则静默降级。
 
+#[cfg(target_os = "macos")]
 use std::process::{Child, Command, Stdio};
+#[cfg(target_os = "macos")]
 use std::sync::Mutex;
+#[cfg(target_os = "macos")]
 use once_cell::sync::Lazy;
 
 /// 最长朗读字符数 —— 超过截断 + 加省略号
 const MAX_SPEAK_CHARS: usize = 600;
 
 /// 上一个还在跑的 `say` 进程 —— 新 reply 来了就 kill 它，不要叠播
+#[cfg(target_os = "macos")]
 static CURRENT_SAY: Lazy<Mutex<Option<Child>>> = Lazy::new(|| Mutex::new(None));
 
 /// 朗读 `text`，spawn 后立刻返回。Safe to call from any thread.
 /// `lang` = "zh" / "en" 决定声音偏好。
+#[cfg(target_os = "macos")]
 pub fn speak(text: &str, lang: &str) {
     let trimmed = text.trim();
     if trimmed.is_empty() { return; }
@@ -66,6 +72,7 @@ pub fn speak(text: &str, lang: &str) {
 }
 
 /// 强制停止当前朗读（Esc / 切 view 时调）。
+#[cfg(target_os = "macos")]
 pub fn stop() {
     if let Ok(mut guard) = CURRENT_SAY.lock() {
         if let Some(mut child) = guard.take() {
@@ -73,6 +80,20 @@ pub fn stop() {
             let _ = child.wait();
         }
     }
+}
+
+/// 非 macOS：截断后交给平台 TTS（tts crate）。
+#[cfg(not(target_os = "macos"))]
+pub fn speak(text: &str, lang: &str) {
+    let trimmed = text.trim();
+    if trimmed.is_empty() { return; }
+    let to_say = truncate_chars(trimmed, MAX_SPEAK_CHARS);
+    crate::platform::speak(&to_say, lang);
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn stop() {
+    crate::platform::stop_speak();
 }
 
 fn truncate_chars(s: &str, max: usize) -> String {

@@ -94,8 +94,27 @@ fn sample(app: &AppHandle) -> CompanionTick {
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = app;
-        CompanionTick { x: -1.0, y: -1.0, since_key: 999.0, since_mouse: 999.0, since_click: 999.0 }
+        // Win/X11：拿全局光标 → 桌宠跟随 / 眼球追踪可用。Wayland：global_cursor 返回 None
+        // → 不跟随（§4 决策：Wayland 陪伴动效降级关闭）。
+        // 闲置检测（CGEventSource 等价物）跨平台暂缺 → 报 0（清醒），不强制渐睡（follow-up）。
+        match crate::platform::global_cursor() {
+            Some((gx, gy)) => {
+                let (wx, wy) = mouse_window_origin(app);
+                // 闲置秒数（Win GetLastInputInfo / X11 screensaver）→ 渐睡判定；
+                // 拿不到（不支持）→ 0（清醒，不强制睡）。三个 since_* 用同一聚合值近似。
+                let idle = crate::platform::idle_seconds().unwrap_or(0.0);
+                CompanionTick {
+                    x: gx - wx,
+                    y: gy - wy,
+                    since_key: idle,
+                    since_mouse: idle,
+                    since_click: idle,
+                }
+            }
+            None => {
+                CompanionTick { x: -1.0, y: -1.0, since_key: 999.0, since_mouse: 999.0, since_click: 999.0 }
+            }
+        }
     }
 }
 

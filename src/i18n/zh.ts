@@ -156,6 +156,7 @@ export const zh: Strings = {
   "onboarding.cta.next_backend": "下一步：选 AI 后端 →",
   "onboarding.cta.next_skin": "下一步：挑桌宠 →",
   "onboarding.cta.next_perms": "下一步：开启权限 →",
+  "onboarding.cta.next_capabilities": "下一步：增强能力 →",
   "onboarding.cta.finish": "完成并重启 MouseClaw 🦞",
   "onboarding.cta.skip": "已在系统设置里开好了 → 完成并重启",
   "onboarding.skip_hint.all_done": "点击后会重启 App —— 这是让屏幕录制权限生效的必要步骤。",

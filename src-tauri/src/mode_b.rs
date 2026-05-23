@@ -57,8 +57,25 @@ pub fn assert_writable() -> Result<()> {
     Ok(())
 }
 
+/// 非 macOS 的终端识别（Win=exe 名 / Linux=WM_CLASS，均小写，用 contains 宽松匹配）。
 #[cfg(not(target_os = "macos"))]
-pub fn assert_writable() -> Result<()> { Ok(()) }
+const NON_MAC_BLOCKED_FRONT: &[&str] = &[
+    // Windows
+    "windowsterminal.exe", "cmd.exe", "powershell.exe", "pwsh.exe", "conhost.exe",
+    "wezterm-gui.exe", "wezterm.exe", "alacritty.exe", "mintty.exe",
+    // Linux WM_CLASS
+    "gnome-terminal", "org.gnome.terminal", "konsole", "org.kde.konsole",
+    "xterm", "kitty", "alacritty", "wezterm", "tilix", "terminator", "xfce4-terminal",
+];
+
+#[cfg(not(target_os = "macos"))]
+pub fn assert_writable() -> Result<()> {
+    let (id, name) = crate::platform::frontmost_app();
+    if !id.is_empty() && NON_MAC_BLOCKED_FRONT.iter().any(|t| id.contains(t)) {
+        bail!("终端窗口禁止写入（{}）", if !name.is_empty() { name } else { id });
+    }
+    Ok(())
+}
 
 /// Best-effort: get the bundle ID of the frontmost app via NSWorkspace.
 #[cfg(target_os = "macos")]
@@ -96,9 +113,16 @@ pub fn frontmost_app_name() -> Option<String> {
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn frontmost_app_bundle_id() -> Option<String> { None }
+pub fn frontmost_app_bundle_id() -> Option<String> {
+    let (id, _) = crate::platform::frontmost_app();
+    if id.is_empty() { None } else { Some(id) }
+}
 #[cfg(not(target_os = "macos"))]
-pub fn frontmost_app_name() -> Option<String> { None }
+pub fn frontmost_app_name() -> Option<String> {
+    let (id, name) = crate::platform::frontmost_app();
+    let s = if !name.is_empty() { name } else { id };
+    if s.is_empty() { None } else { Some(s) }
+}
 
 /// Decide which write strategy to use for the frontmost app.
 /// 富文本/Electron/浏览器 → clipboard paste；其它 → direct CGEvent unicode keystrokes。
@@ -136,8 +160,15 @@ pub async fn write_at_cursor(text: &str) -> Result<()> {
 }
 
 #[cfg(not(target_os = "macos"))]
-pub async fn write_at_cursor(_text: &str) -> Result<()> {
-    bail!("Mode B not implemented on non-macOS yet")
+pub async fn write_at_cursor(text: &str) -> Result<()> {
+    // §4 决策：能注入（Win/X11）→ enigo 直接键入；不能（Wayland）→ 留剪贴板 + 返回 Err，
+    // pipeline 会落剪贴板并提示「已复制 · Ctrl+V」。
+    if crate::platform::can_inject() {
+        crate::platform::type_text(text)
+    } else {
+        crate::platform::set_clipboard_text(text)?;
+        bail!("Wayland 合成器不支持自动键入，已复制到剪贴板，请按 Ctrl+V")
+    }
 }
 
 /// v0.4.x · 仅把 text 写进系统剪贴板（不 paste、不还原）—— Mode B 续写时
@@ -168,7 +199,7 @@ pub fn set_clipboard(text: &str) -> Result<()> {
     }
 }
 #[cfg(not(target_os = "macos"))]
-pub fn set_clipboard(_text: &str) -> Result<()> { bail!("set_clipboard only on macOS") }
+pub fn set_clipboard(text: &str) -> Result<()> { crate::platform::set_clipboard_text(text) }
 
 /// v0.3.1 · 流式语音输入用 —— 同步快速 paste，不走 clipboard 路径。
 /// 直接用 unicode keyboard event 注入，不污染剪贴板，跟 paste_via_clipboard 区分。
@@ -178,8 +209,8 @@ pub fn type_unicode_sync(text: &str) -> Result<()> {
     type_unicode_string(text)
 }
 #[cfg(not(target_os = "macos"))]
-pub fn type_unicode_sync(_text: &str) -> Result<()> {
-    bail!("type_unicode_sync only on macOS")
+pub fn type_unicode_sync(text: &str) -> Result<()> {
+    crate::platform::type_text(text)
 }
 
 /// v0.3.1 · 流式语音输入用 —— 删除光标前 `n` 个 char。
@@ -211,8 +242,9 @@ pub fn delete_chars(n: usize) -> Result<()> {
     Ok(())
 }
 #[cfg(not(target_os = "macos"))]
-pub fn delete_chars(_n: usize) -> Result<()> {
-    bail!("delete_chars only on macOS")
+pub fn delete_chars(n: usize) -> Result<()> {
+    if n == 0 { return Ok(()); }
+    crate::platform::delete_chars(n)
 }
 
 /// Clipboard-paste fallback for rich/Electron editors.
