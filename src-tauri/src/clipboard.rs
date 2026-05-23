@@ -341,7 +341,11 @@ fn is_transient() -> bool {
     })
 }
 #[cfg(not(target_os = "macos"))]
-fn is_transient() -> bool { false }
+fn is_transient() -> bool {
+    // Windows：密码管理器设 ExcludeClipboardContentFromMonitorProcessing 格式 → 跳过记录。
+    // Linux：暂无统一标志（app 名单兜底）。
+    crate::platform::clipboard_excluded()
+}
 
 /// 读当前 NSPasteboard 的 plain-text 内容
 #[cfg(target_os = "macos")]

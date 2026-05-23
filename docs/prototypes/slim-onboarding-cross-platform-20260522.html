@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>跨平台精简 Onboarding · macOS vs Windows/Linux</title>
+<style>
+  /* DESIGN.md tokens（onboarding 实测取色：#2c2e44→#1e2034 渐变背景 + 粉色 accent #ff6b9d）*/
+  :root{
+    --bg-0:#1e2034; --bg-1:#2c2e44; --panel:rgba(0,0,0,.4);
+    --ink:#f4f4f8; --ink-dim:rgba(255,255,255,.55);
+    --accent:#ff6b9d; --accent-soft:rgba(255,107,157,.10);
+    --skip:rgba(255,255,255,.07); --skip-ink:rgba(255,255,255,.32);
+    --radius:14px; --gap:16px; --text-body:15px; --text-meta:12.5px;
+    font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;color:var(--ink);
+    background:linear-gradient(180deg,var(--bg-1) 0%,var(--bg-0) 100%);
+    display:flex;flex-direction:column;align-items:center;gap:24px;padding:40px 20px}
+  h1{font-size:22px;font-weight:700;margin:0;text-align:center}
+  .sub{color:var(--ink-dim);font-size:var(--text-meta);text-align:center;max-width:640px;line-height:1.6}
+  .cols{display:flex;gap:32px;flex-wrap:wrap;justify-content:center;width:100%;max-width:980px}
+  .col{flex:1;min-width:300px;background:var(--panel);border-radius:var(--radius);
+    padding:20px;display:flex;flex-direction:column;gap:10px;
+    border:1px solid rgba(255,255,255,.06)}
+  .col h2{margin:0 0 6px;font-size:16px;display:flex;align-items:center;gap:8px}
+  .badge{font-size:11px;padding:2px 9px;border-radius:999px;font-weight:600}
+  .badge.mac{background:var(--accent-soft);color:var(--accent)}
+  .badge.xp{background:rgba(120,180,255,.12);color:#8ab8ff}
+  .step{display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:10px;
+    background:rgba(255,255,255,.04);font-size:var(--text-body);
+    transition:transform .15s ease}
+  .step .n{width:24px;height:24px;border-radius:50%;flex:none;display:grid;place-items:center;
+    font-size:12px;font-weight:700;background:var(--accent);color:#1e2034}
+  .step .label{flex:1}
+  .step .tag{font-size:11px;color:var(--ink-dim)}
+  .step.skip{background:var(--skip);color:var(--skip-ink)}
+  .step.skip .n{background:transparent;border:1.5px dashed var(--skip-ink);color:var(--skip-ink)}
+  .step.skip .label{text-decoration:line-through;text-decoration-color:var(--skip-ink)}
+  .step.skip .tag{color:var(--accent)}
+  .arrow{height:6px}
+  .note{max-width:980px;background:var(--accent-soft);border:1px solid rgba(255,107,157,.25);
+    border-radius:var(--radius);padding:16px 18px;font-size:var(--text-meta);
+    color:var(--ink);line-height:1.7}
+  .note b{color:var(--accent)}
+  code{background:rgba(0,0,0,.35);padding:1px 6px;border-radius:5px;font-size:12px}
+</style>
+</head>
+<body>
+  <h1>跨平台精简 Onboarding</h1>
+  <p class="sub">§4 决策 #3「精简版（跳过权限页）」的落地预览。非 macOS 平台没有 TCC 权限三连，
+  听写也改用固定全局快捷键（不需要选 mac 修饰键），所以 onboarding 从 7 步缩到 5 步。
+  每个保留步骤的视觉跟现有 macOS onboarding 完全一致 —— 这里只展示"哪些步骤被跳过"。</p>
+
+  <div class="cols">
+    <!-- macOS -->
+    <div class="col">
+      <h2>🍎 macOS <span class="badge mac">7 步（不变）</span></h2>
+      <div class="step"><span class="n">1</span><span class="label">召唤快捷键</span></div>
+      <div class="step"><span class="n">2</span><span class="label">AI 后端</span></div>
+      <div class="step"><span class="n">3</span><span class="label">挑桌宠皮肤</span></div>
+      <div class="step"><span class="n">4</span><span class="label">语音触发键</span><span class="tag">按住 fn/⌥/⌃…</span></div>
+      <div class="step"><span class="n">5</span><span class="label">桌宠住哪（anchor）</span></div>
+      <div class="step"><span class="n">6</span><span class="label">权限三连</span><span class="tag">辅助功能/录屏/麦克风</span></div>
+      <div class="step"><span class="n">7</span><span class="label">浏览器 + Office 能力</span></div>
+    </div>
+
+    <!-- Windows / Linux -->
+    <div class="col">
+      <h2>🪟🐧 Windows / Linux <span class="badge xp">5 步（精简）</span></h2>
+      <div class="step"><span class="n">1</span><span class="label">召唤快捷键</span></div>
+      <div class="step"><span class="n">2</span><span class="label">AI 后端</span></div>
+      <div class="step"><span class="n">3</span><span class="label">挑桌宠皮肤</span></div>
+      <div class="step skip"><span class="n">4</span><span class="label">语音触发键</span><span class="tag">跳过 · 用 Ctrl+Alt+I</span></div>
+      <div class="step"><span class="n">5</span><span class="label">桌宠住哪（anchor）</span></div>
+      <div class="step skip"><span class="n">6</span><span class="label">权限三连</span><span class="tag">跳过 · 无 TCC</span></div>
+      <div class="step"><span class="n">7</span><span class="label">浏览器 + Office 能力</span></div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>实现方式</b>：前端用 <code>navigator.userAgent</code> 判平台，非 mac 时
+    第 3 步「下一步」直接跳到第 5 步、第 5 步「下一步」直接跳到第 7 步；被跳过的第 4/6 步不再渲染。
+    按钮文案也随之切换（"下一步：选个家" / "下一步：增强能力"）。<br/>
+    <b>Wayland 补充</b>：首次截图时桌面 portal 会弹一次授权框（不在 onboarding 里，属系统级），
+    这是 Wayland 的运行时授权，无法前置。<br/>
+    <b>待你拍板</b>：若想在非 mac 也保留一个"提示页"（例如告诉 Linux 用户装 speech-dispatcher
+    才有 TTS），告诉我，我加一页轻提示而不是直接跳过。
+  </div>
+</body>
+</html>

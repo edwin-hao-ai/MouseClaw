@@ -105,6 +105,11 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   // 必须重启 app 才生效），所以靠「点过请求」+ 重启来兜。
   const [requested, setRequested] = useState<Set<keyof PermissionStatus>>(new Set());
 
+  // v0.5 跨平台：非 macOS 走精简 onboarding —— 跳过「语音触发键」(mac 修饰键专属) 和
+  // 「权限三连」(Win/Linux 无 TCC) 两页。听写在非 mac 用固定全局快捷键，无需选修饰键。
+  const isMac =
+    typeof navigator !== "undefined" && /Mac/i.test(navigator.userAgent);
+
   // 轮询权限状态（accessibility / microphone 授权后会实时变绿；
   // screen_recording 不会 —— 需重启，所以用 requested 集合兜底）
   const refreshPerms = useCallback(async () => {
@@ -229,9 +234,9 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         <button
           type="button"
           className="ob-cta"
-          onClick={() => setStep(4)}
+          onClick={() => setStep(isMac ? 4 : 5)}
         >
-          {t("onboarding.cta.next_voice_ime")}
+          {t(isMac ? "onboarding.cta.next_voice_ime" : "onboarding.cta.next_anchor")}
         </button>
       </div>
     );
@@ -364,9 +369,9 @@ export function Onboarding({ onComplete }: OnboardingProps) {
         <button
           type="button"
           className="ob-cta"
-          onClick={() => setStep(6)}
+          onClick={() => setStep(isMac ? 6 : 7)}
         >
-          {t("onboarding.cta.next_perms")}
+          {t(isMac ? "onboarding.cta.next_perms" : "onboarding.cta.next_capabilities")}
         </button>
       </div>
     );

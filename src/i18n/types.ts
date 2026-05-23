@@ -155,6 +155,7 @@ export interface Strings {
   "onboarding.cta.next_backend": string;
   "onboarding.cta.next_skin": string;
   "onboarding.cta.next_perms": string;
+  "onboarding.cta.next_capabilities": string;
   "onboarding.cta.finish": string;
   "onboarding.cta.skip": string;
   "onboarding.skip_hint.all_done": string;

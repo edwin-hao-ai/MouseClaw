@@ -129,6 +129,19 @@ pub fn set_clipboard_text(text: &str) -> Result<()> {
         .map_err(|e| anyhow!("clipboard set: {e}"))
 }
 
+/// 当前剪贴板是否被来源 app 标记为"敏感/不记录"。Windows：检查注册格式
+/// `ExcludeClipboardContentFromMonitorProcessing`（密码管理器常设）。Linux：暂无统一标志 → false。
+pub fn clipboard_excluded() -> bool {
+    #[cfg(windows)]
+    {
+        win::clipboard_excluded()
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
 // ───────────────────── TTS（tts crate：Win SAPI / Linux speech-dispatcher）─────────────────────
 
 static TTS: once_cell::sync::Lazy<std::sync::Mutex<Option<tts::Tts>>> =
@@ -170,6 +183,19 @@ mod win {
             Some((p.x as f64, p.y as f64))
         } else {
             None
+        }
+    }
+
+    /// 剪贴板含"排除监控"格式（密码管理器约定）→ 视为敏感，不记录。
+    pub fn clipboard_excluded() -> bool {
+        use windows::core::w;
+        use windows::Win32::System::DataExchange::{
+            IsClipboardFormatAvailable, RegisterClipboardFormatW,
+        };
+        unsafe {
+            // 仅认 Exclude 标志（其存在即"不记录"）；CanInclude=1 表示允许，故不据其判定。
+            let fmt = RegisterClipboardFormatW(w!("ExcludeClipboardContentFromMonitorProcessing"));
+            fmt != 0 && IsClipboardFormatAvailable(fmt).is_ok()
         }
     }
 

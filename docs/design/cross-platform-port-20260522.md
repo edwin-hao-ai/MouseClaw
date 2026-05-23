@@ -224,13 +224,17 @@ onboarding 的「授权三连」页 macOS 专属 → Win/Linux 改成精简页�
 - [x] 剪贴板敏感 app 排除：非 mac 密码管理器 + 终端列表（exe/WM_CLASS 子串）⚠️
 - [x] 拖文件投喂：非 mac Tauri `WindowEvent::DragDrop`（拖到桌宠窗口）⚠️
 
-**E. 明确不做（有理由）**
-- [ ] **精简 onboarding 前端** —— 非 mac 权限检查已全 true，现有 7 步 onboarding 能跑通
-      （权限页"自动通过"、听写触发页在非 mac 是 no-op picker），属**体验打磨非阻塞**。
-      改这块是 UI 变更，按 CLAUDE.md **prototype-first 硬规则**必须先出可点 demo 再写；
-      且开发容器无浏览器/无 node_modules，无法验证。→ 留作 prototype 流程的独立任务。
-- [ ] Win 剪贴板格式标志抑制（`ExcludeClipboardContentFromMonitorProcessing`）——
-      arboard 未暴露格式枚举，app 名单已覆盖密码管理器主要场景，格式标志留 follow-up。
+**E. 收尾（全部完成）**
+- [x] **精简 onboarding 前端** —— 非 mac 用 `navigator.userAgent` 判平台，跳过「语音触发键」(step4)
+      和「权限三连」(step6)，7 步→5 步。按钮文案随平台切换；新增 i18n key `next_capabilities`。
+      prototype：`docs/prototypes/slim-onboarding-cross-platform-20260522.html`。
+      🟡 前端本地无法 tsc（容器 npm 镜像 403，无 node_modules）→ 由 CI `bun run build` 验证 ⚠️
+- [x] **Win 剪贴板敏感格式抑制** —— `platform::clipboard_excluded()` 检查 Windows 注册格式
+      `ExcludeClipboardContentFromMonitorProcessing`（密码管理器约定）→ `is_transient` 跳过记录。
+      🟡 Windows-only，CI 编译验证 ⚠️。Linux app 名单兜底。
+
+> 至此 §5.A–E 全部落地。唯一未做的是"非 Exclude 标志的更细粒度 Win 剪贴板历史控制"
+> 与"Linux 各桌面的敏感标志统一"——属边角，且无统一标准，留观察。
 
 ## 6. 取舍记录
 - **优先用成熟跨平台 crate（xcap/arboard/enigo/tts/keyring）** 而非手写每个平台的 FFI——
