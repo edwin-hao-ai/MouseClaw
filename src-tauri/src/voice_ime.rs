@@ -41,6 +41,11 @@ const LONG_PRESS_MS: u128 = 300;
 #[cfg(target_os = "macos")]
 const MAX_RECORDING_MS: u64 = 60_000;
 
+/// 非 macOS 听写触发快捷键（§4 决策：默认普通全局快捷键，按住说话、松开键入）。
+/// 选 KeyI（input/dictation），避开召唤(Space/M/D)与 Hub(V)。Win 长按手势是后续可选项。
+#[cfg(not(target_os = "macos"))]
+pub const DICTATION_SHORTCUT: &str = "Control+Alt+KeyI";
+
 /// 触发键 —— 用户在 Onboarding / 托盘选。
 ///
 /// 用 macOS keycode 识别（不是 CGEventFlags）—— FlagsChanged 事件里 keycode 字段

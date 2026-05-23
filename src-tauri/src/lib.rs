@@ -313,6 +313,25 @@ pub fn run() {
                         }
                         return;
                     }
+                    // 非 macOS 听写快捷键（Control+Alt+KeyI）：press 复用录音流，
+                    // release 走 finalize+键入（不进 AI）。macOS 不注册此键（用 fn）。
+                    #[cfg(not(target_os = "macos"))]
+                    if sk.contains("KeyI") || sk.contains("Code(I)") {
+                        match event.state() {
+                            ShortcutState::Pressed => {
+                                show_mouse(app);
+                                tauri::async_runtime::spawn(async move {
+                                    on_shortcut_press(app_handle, state).await;
+                                });
+                            }
+                            ShortcutState::Released => {
+                                tauri::async_runtime::spawn(async move {
+                                    pipeline::on_dictation_release(app_handle, state).await;
+                                });
+                            }
+                        }
+                        return;
+                    }
                     match event.state() {
                         ShortcutState::Pressed => {
                             println!("[mouseclaw] 🦞 shortcut PRESS: {shortcut:?}");
@@ -639,6 +658,23 @@ pub fn run() {
                     match app.global_shortcut().register(hub_shortcut) {
                         Ok(()) => println!("[mouseclaw] ✓ ⌘⇧V → Hub 剪贴板 注册成功"),
                         Err(e) => eprintln!("[mouseclaw] ⌘⇧V 注册失败（可能被其它 app 占）：{e}"),
+                    }
+                }
+                // v0.5 · 非 macOS 听写快捷键（macOS 用 fn 长按 = voice_ime CGEventTap）。
+                // §4 决策：Win/Linux 默认普通全局快捷键 → 按住说话、松开本地 ASR 键入光标。
+                #[cfg(not(target_os = "macos"))]
+                if config::Config::load().voice_ime_enabled {
+                    if let Ok(dict_sc) = Shortcut::from_str(crate::voice_ime::DICTATION_SHORTCUT) {
+                        match app.global_shortcut().register(dict_sc) {
+                            Ok(()) => println!(
+                                "[mouseclaw] ✓ 听写快捷键注册成功: {}",
+                                crate::voice_ime::DICTATION_SHORTCUT
+                            ),
+                            Err(e) => eprintln!(
+                                "[mouseclaw] 听写快捷键 {} 注册失败（可能被占）：{e}",
+                                crate::voice_ime::DICTATION_SHORTCUT
+                            ),
+                        }
                     }
                 }
                 // v0.5 · 开场调皮入场动画 —— 按场景分档（首次炸 / 冷启中 / 自启轻）。

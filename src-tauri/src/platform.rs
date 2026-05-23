@@ -71,6 +71,25 @@ pub fn frontmost_app() -> (String, String) {
     }
 }
 
+/// 距上次输入（键/鼠）秒数 —— 给桌宠"渐睡"动画判定。Wayland / 不支持 → None（不强制渐睡）。
+pub fn idle_seconds() -> Option<f64> {
+    #[cfg(windows)]
+    {
+        win::idle_seconds()
+    }
+    #[cfg(target_os = "linux")]
+    {
+        if is_wayland() {
+            return None;
+        }
+        linux::idle_seconds()
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
+    {
+        None
+    }
+}
+
 /// 用 enigo 合成 unicode 文本输入（Mode B 写回 / 听写打字）。
 pub fn type_text(text: &str) -> Result<()> {
     use enigo::{Enigo, Keyboard, Settings};
@@ -151,6 +170,24 @@ mod win {
             Some((p.x as f64, p.y as f64))
         } else {
             None
+        }
+    }
+
+    pub fn idle_seconds() -> Option<f64> {
+        use windows::Win32::System::SystemInformation::GetTickCount;
+        use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
+        unsafe {
+            let mut lii = LASTINPUTINFO {
+                cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32,
+                dwTime: 0,
+            };
+            if GetLastInputInfo(&mut lii).as_bool() {
+                let now = GetTickCount();
+                let idle_ms = now.wrapping_sub(lii.dwTime);
+                Some(idle_ms as f64 / 1000.0)
+            } else {
+                None
+            }
         }
     }
 
@@ -252,6 +289,14 @@ mod linux {
             Some((class, title))
         })
         .unwrap_or((String::new(), String::new()))
+    }
+
+    pub fn idle_seconds() -> Option<f64> {
+        use x11rb::protocol::screensaver::ConnectionExt as _;
+        with_x11(|x| {
+            let info = x.conn.screensaver_query_info(x.root).ok()?.reply().ok()?;
+            Some(info.ms_since_user_input as f64 / 1000.0)
+        })
     }
 
     fn intern(x: &X11, name: &str) -> Option<u32> {

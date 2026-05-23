@@ -67,6 +67,33 @@ pub const EXCLUDED_BUNDLES: &[&str] = &[
     "co.zeit.hyper",
 ];
 
+/// 非 macOS 的敏感 app 排除（按 exe 名 / WM_CLASS 子串小写匹配）。
+/// 密码管理器 + 终端不记录其复制内容。Win 的剪贴板格式标志抑制（ExcludeClipboard…）
+/// 待 follow-up（arboard 未暴露格式枚举）。
+#[cfg(not(target_os = "macos"))]
+const NON_MAC_EXCLUDED: &[&str] = &[
+    // 密码管理器
+    "1password", "bitwarden", "keepassxc", "keepass", "dashlane", "lastpass", "enpass", "proton pass",
+    // 终端
+    "windowsterminal", "cmd.exe", "powershell", "pwsh", "conhost", "wezterm", "alacritty", "kitty",
+    "gnome-terminal", "konsole", "xterm", "tilix", "terminator", "mintty", "xfce4-terminal",
+];
+
+/// 当前前台 app 是否在排除名单（mac=bundle id 全等；非 mac=exe/WM_CLASS 子串）。
+fn is_excluded_app(bundle: &str) -> bool {
+    if EXCLUDED_BUNDLES.iter().any(|b| b.eq_ignore_ascii_case(bundle)) {
+        return true;
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let b = bundle.to_lowercase();
+        if !b.is_empty() && NON_MAC_EXCLUDED.iter().any(|x| b.contains(x)) {
+            return true;
+        }
+    }
+    false
+}
+
 /// 全局 in-memory 历史（Arc<RwLock> —— 读多写少）
 pub static HISTORY: once_cell::sync::Lazy<Arc<RwLock<VecDeque<ClipItem>>>> =
     once_cell::sync::Lazy::new(|| Arc::new(RwLock::new(VecDeque::with_capacity(64))));
@@ -398,7 +425,7 @@ fn on_clipboard_changed() -> Result<()> {
     if text.is_empty() { return Ok(()); }
 
     let (bundle, name) = frontmost_app();
-    if EXCLUDED_BUNDLES.iter().any(|b| b.eq_ignore_ascii_case(&bundle)) {
+    if is_excluded_app(&bundle) {
         println!("[mouseclaw] 📋 排除应用 {bundle} —— 跳过记录");
         return Ok(());
     }
