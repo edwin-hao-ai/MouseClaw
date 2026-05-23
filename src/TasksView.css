@@ -45,6 +45,86 @@
   color: #2d8c5f;
 }
 
+/* v0.5.2 · 任务 / 结果 tab 切换 */
+.tasks-tabs {
+  margin-left: auto;
+  display: flex;
+  gap: 3px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: var(--radius-pill);
+  padding: 3px;
+}
+.tasks-tab {
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: var(--text-meta);
+  font-weight: 600;
+  color: var(--text-bubble-dim);
+  padding: 5px 14px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+.tasks-tab.on {
+  background: #fff;
+  color: var(--text-link);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+/* v0.5.2 · 统一结果 feed —— 撑满窗口（左全局列表 + 右 markdown）。拖大窗口跟着变大。 */
+.tasks-feed {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  margin: var(--space-3) var(--space-4);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.tasks-feed-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-bubble-dim);
+  font-size: var(--text-body-sm);
+}
+.tasks-feed-list {
+  width: 200px;
+  flex: 0 0 auto;
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+  overflow-y: auto;
+  background: rgba(0, 0, 0, 0.02);
+}
+.feed-item-task {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-link);
+  margin-top: 2px;
+}
+.feed-item-time {
+  display: block;
+  font-size: 10px;
+  color: var(--text-bubble-dim);
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.tasks-feed-out {
+  flex: 1;
+}
+.feed-out-task {
+  font-size: var(--text-meta);
+  font-weight: 700;
+  color: var(--text-link);
+}
+.feed-out-time {
+  font-size: 11px;
+  color: var(--text-bubble-dim);
+  margin-bottom: var(--space-2);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── list ── */
 .tasks-list {
   flex: 1;

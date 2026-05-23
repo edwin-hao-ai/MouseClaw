@@ -77,6 +77,17 @@ const FIXTURES: Record<string, (args?: any) => unknown> = {
   toggle_schedule: () => null,
   run_schedule_now: () => null,
   // v0.4.4 · 长期记忆查看器
+  // v0.5.2 · 统一结果 feed（跨任务倒序）
+  get_all_schedule_runs: () => [
+    { taskId: "demo-1", title: "整理AI新闻", at: "2026-05-23T01:34:00Z", status: "ok", summary: "已整理 6 条 · 搜索智能体、企业AI加速",
+      output: "## 📰 过去24小时 AI 要闻\n\n### 模型 & 产品发布\n1. **Google I/O 2026 推出 Search「信息智能体」**\n   来源：[Google I/O 2026](https://example.com)\n2. **Anthropic 发布 Claude Opus 4.7** — 1M 上下文" },
+    { taskId: "demo-3", title: "检查重要邮件", at: "2026-05-23T01:30:00Z", status: "ok", summary: "2 封待回：合同确认、面试邀约",
+      output: "## 📧 待回邮件 2 封\n- **合同确认**（法务）— 今天截止\n- **面试邀约**（HR）— 需选时间" },
+    { taskId: "demo-4", title: "每日待办梳理", at: "2026-05-23T01:28:00Z", status: "failed", summary: "失败：日历未授权",
+      output: "## ✗ 本次失败\n读不到日历（未授权）。**未编造** —— 如实报告，下次重试。" },
+    { taskId: "demo-1", title: "整理AI新闻", at: "2026-05-22T09:00:00Z", status: "ok", summary: "AI 行业 24h 速览（5/21–22）",
+      output: "## 📰 AI 行业速览\n昨日 **4 条**重点：GLM-5 登顶 coding 榜…" },
+  ],
   memory_get_settings: () => ({ enabled: true, paused: false }),
   memory_list_turns: () => [
     { id: 1, ts: Math.floor(Date.now() / 1000) - 3600, app: "VSCode", role: "user", summary: "问 entrance.rs 的 700ms 竞态怎么修", importance: 4 },

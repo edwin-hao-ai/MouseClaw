@@ -110,6 +110,12 @@ pub fn get_schedule_runs(task_id: String) -> Result<Vec<crate::schedule::RunReco
     Ok(crate::schedule::recent_runs(&task_id, 12))
 }
 
+/// 读**所有任务**最近执行记录（统一结果页 feed）。最新在前，跨任务混排。
+#[tauri::command]
+pub fn get_all_schedule_runs() -> Result<Vec<crate::schedule::RunRecord>, String> {
+    Ok(crate::schedule::recent_runs_all(50))
+}
+
 /// 任务窗"一句话新建" —— 把自然语言解析成结构化 ScheduleInput（不创建，只解析，前端确认后再 create）。
 #[tauri::command]
 pub async fn parse_schedule_phrase(

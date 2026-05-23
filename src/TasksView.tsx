@@ -27,6 +27,10 @@ export default function TasksView() {
   const [runs, setRuns] = useState<Record<string, RunRecord[]>>({});
   // v0.5.1 · 结果面板里当前选中的历史条目下标（点左栏切换看不同次执行的完整输出）
   const [selectedRun, setSelectedRun] = useState(0);
+  // v0.5.2 · 「任务 / 结果」tab —— 默认任务列表；出结果自动跳到结果页（像看报纸）。
+  const [tab, setTab] = useState<"tasks" | "results">("tasks");
+  const [feedRuns, setFeedRuns] = useState<RunRecord[]>([]); // 所有任务的执行记录（倒序）
+  const [feedSel, setFeedSel] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   // v0.5.1 · 手动"立刻跑"进行中的任务 id —— 卡片显示转圈 + "执行中…"，
@@ -59,19 +63,11 @@ export default function TasksView() {
         const tid = e?.payload?.taskId;
         setRunningId((cur) => (cur && (!tid || cur === tid) ? null : cur));
         await refresh();
-        // v0.5.1 · 完成即可见 —— 真实任务跑完(taskId 非空)自动展开它的结果 + 选中最新一条，
-        // 不用用户再去找按钮。空 taskId 是"发现提示"，不展开。
+        setRuns({}); // 清 per-task 历史缓存，下次展开重拉
+        // v0.5.2 · 完成即可见 —— 真实任务跑完(taskId 非空)自动跳到「结果」页看最新（像看报纸）。
+        // 多任务接连完成时，结果页一页全看到，不用逐个点。空 taskId 是"发现提示"，不跳。
         if (tid) {
-          try {
-            const r = await invoke<RunRecord[]>("get_schedule_runs", { taskId: tid });
-            setRuns({ [tid]: r });
-          } catch {
-            setRuns({});
-          }
-          setExpandedId(tid);
-          setSelectedRun(0);
-        } else {
-          setRuns({});
+          await jumpToResults();
         }
       })
         .then((fn) => { unlisten = fn; })
@@ -92,35 +88,39 @@ export default function TasksView() {
     window.setTimeout(() => setToast(null), 2600);
   }, []);
 
-  // v0.5.1 · 聚焦某个任务（拉它的历史 + 展开 + 选最新）—— 从完成气泡点开时直达结果，
-  // 不用在列表里找。两条触发：①新开窗口读 URL ?focus= ②已开窗口收 tasks-focus 事件。
-  const focusTask = useCallback(async (id: string) => {
+  // v0.5.2 · 拉所有任务的执行记录（统一结果 feed）。
+  const loadFeed = useCallback(async () => {
     try {
-      const r = await invoke<RunRecord[]>("get_schedule_runs", { taskId: id });
-      setRuns((m) => ({ ...m, [id]: r }));
+      const r = await invoke<RunRecord[]>("get_all_schedule_runs");
+      setFeedRuns(r);
     } catch {
       /* dev */
     }
-    setExpandedId(id);
-    setSelectedRun(0);
   }, []);
 
+  // 跳到「结果」页看最新一条 —— 任务跑完自动跳 / 完成提示点开直达（像看报纸）。
+  const jumpToResults = useCallback(async () => {
+    await loadFeed();
+    setFeedSel(0);
+    setTab("results");
+  }, [loadFeed]);
+
+  // 完成提示点开（新窗口 ?focus= / 已开窗口 tasks-focus 事件）→ 直达结果页。
   useEffect(() => {
-    const f = new URLSearchParams(window.location.search).get("focus");
-    if (f) focusTask(f);
-  }, [focusTask]);
+    if (new URLSearchParams(window.location.search).get("focus")) jumpToResults();
+  }, [jumpToResults]);
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     try {
-      listen<string>("tasks-focus", (e) => { if (e.payload) focusTask(e.payload); })
+      listen<string>("tasks-focus", () => jumpToResults())
         .then((fn) => { unlisten = fn; })
         .catch(() => {});
     } catch {
       /* dev */
     }
     return () => { if (unlisten) unlisten(); };
-  }, [focusTask]);
+  }, [jumpToResults]);
 
   const toggle = useCallback(
     async (id: string, enabled: boolean) => {
@@ -195,14 +195,31 @@ export default function TasksView() {
     <div className="tasks-root">
       <header className="tasks-hd">
         <span className="tasks-h">⏰ {t("tasks.title")}</span>
-        {items.length > 0 && (
+        {tab === "tasks" && items.length > 0 && (
           <span className="tasks-c">{t("tasks.count", { n: items.length, on: onCount })}</span>
         )}
+        {/* v0.5.2 · 任务 / 结果 tab */}
+        <div className="tasks-tabs">
+          <button
+            className={`tasks-tab ${tab === "tasks" ? "on" : ""}`}
+            onClick={() => setTab("tasks")}
+          >
+            {t("tasks.tab_tasks")}
+          </button>
+          <button
+            className={`tasks-tab ${tab === "results" ? "on" : ""}`}
+            onClick={() => { setTab("results"); loadFeed(); }}
+          >
+            {t("tasks.tab_results")}
+          </button>
+        </div>
       </header>
 
       {toast && <div className="tasks-toast">{toast}</div>}
 
-      {loading ? null : items.length === 0 ? (
+      {tab === "results" ? (
+        <ResultsFeed runs={feedRuns} sel={feedSel} onSelect={setFeedSel} />
+      ) : loading ? null : items.length === 0 ? (
         <EmptyState />
       ) : (
         <div className="tasks-list">
@@ -234,7 +251,59 @@ export default function TasksView() {
         </div>
       )}
 
-      <NewRow onCreate={createFromInput} />
+      {tab === "tasks" && <NewRow onCreate={createFromInput} />}
+    </div>
+  );
+}
+
+/** v0.5.2 · 统一结果 feed —— 所有任务所有执行倒序排一起，左列表 + 右 markdown。 */
+function ResultsFeed({
+  runs, sel, onSelect,
+}: {
+  runs: RunRecord[];
+  sel: number;
+  onSelect: (i: number) => void;
+}) {
+  const t = useT();
+  if (runs.length === 0) {
+    return <div className="tasks-feed-empty">{t("tasks.history.empty")}</div>;
+  }
+  const cur = runs[sel] ?? runs[0];
+  const body = cur?.output?.trim() || cur?.summary || "";
+  const statusText = (s: string) =>
+    s === "ok" ? t("tasks.run.ok") : s === "failed" ? t("tasks.run.fail") : t("tasks.run.skip");
+  return (
+    <div className="tasks-feed">
+      <div className="tasks-feed-list">
+        {runs.map((r, i) => (
+          <button
+            key={i}
+            className={`task-run feed-item ${i === sel ? "sel" : ""}`}
+            onClick={() => onSelect(i)}
+          >
+            <span className="task-run-top">
+              <span className={`task-run-dot ${r.status}`} />
+              {statusText(r.status)}
+            </span>
+            <span className="feed-item-task">{r.title}</span>
+            <span className="task-run-sum">{r.summary}</span>
+            <span className="feed-item-time">{formatRunTime(r.at)}</span>
+          </button>
+        ))}
+      </div>
+      <div className="task-out tasks-feed-out">
+        <div className="feed-out-task">{cur?.title}</div>
+        <div className="feed-out-time">{formatRunTime(cur?.at ?? "")} · {statusText(cur?.status ?? "ok")}</div>
+        {body ? (
+          <div
+            className="task-out-md"
+            onClick={handleMdLinkClick}
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(body) }}
+          />
+        ) : (
+          <div className="task-hist-empty">{t("tasks.history.empty")}</div>
+        )}
+      </div>
     </div>
   );
 }

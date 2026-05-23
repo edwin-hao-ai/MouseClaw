@@ -300,6 +300,11 @@ export interface Strings {
   "tasks.last.running": string;
   "tasks.run_now": string;
   "tasks.running": string;
+  "tasks.tab_tasks": string;
+  "tasks.tab_results": string;
+  "tasks.run.ok": string;
+  "tasks.run.fail": string;
+  "tasks.run.skip": string;
   "tasks.edit": string;
   "tasks.delete": string;
   "tasks.delete_confirm": string;     // "删除「{title}」？"

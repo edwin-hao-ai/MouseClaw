@@ -419,6 +419,7 @@ pub fn run() {
             commands::toggle_schedule,
             commands::run_schedule_now,
             commands::get_schedule_runs,
+            commands::get_all_schedule_runs,
             commands::parse_schedule_phrase,
             clipboard_action::process_reactive_action,
         ])
