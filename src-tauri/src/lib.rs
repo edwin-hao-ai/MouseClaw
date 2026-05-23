@@ -676,6 +676,9 @@ pub fn run() {
                             ),
                         }
                     }
+                    // Windows 额外手势：长按右 Ctrl 听写（§4 可选项）。
+                    #[cfg(windows)]
+                    crate::voice_ime::spawn_longpress(app.handle().clone(), app_state.clone());
                 }
                 // v0.5 · 开场调皮入场动画 —— 按场景分档（首次炸 / 冷启中 / 自启轻）。
                 //   内部判定档位 + 延迟 ~700ms 起跑（等前端挂载 + 上报 reduced-motion）。

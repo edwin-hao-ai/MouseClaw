@@ -31,7 +31,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 #[cfg(target_os = "macos")]
 use tauri::{AppHandle, Manager};
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 use crate::AppState;
 
 /// 短按阈值 —— < 300ms 当误触不响应
@@ -171,6 +171,124 @@ fn cached_matches(keycode: i64) -> bool {
     let kc1 = MONITOR.trigger_kc1.load(Ordering::Relaxed);
     let kc2 = MONITOR.trigger_kc2.load(Ordering::Relaxed);
     keycode == kc1 || (kc2 >= 0 && keycode == kc2)
+}
+
+// ───────────────── Windows：长按右 Ctrl 听写（§4 可选项）─────────────────
+// 默认全局快捷键之外的额外手势，逼近 macOS「按住 fn」体验。低层键盘钩子（WH_KEYBOARD_LL）
+// 跑在专用消息循环线程，只更新原子；watcher 线程据原子起停听写流。
+// ⚠️ Windows 专属，本地无法编译验证（仅 CI）+ 运行时未验证 —— 需真机迭代。
+#[cfg(windows)]
+mod win_longpress {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, AtomicI64};
+    use std::sync::Arc;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use tauri::AppHandle;
+
+    use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+    use windows::Win32::UI::Input::KeyboardAndMouse::VK_RCONTROL;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CallNextHookEx, GetMessageW, SetWindowsHookExW, HHOOK, KBDLLHOOKSTRUCT, MSG,
+        WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    };
+
+    const LONG_PRESS_MS: i64 = 300;
+
+    /// 目标键（右 Ctrl）按下的时刻（ms since epoch）；0 = 未按下。
+    static DOWN_AT: AtomicI64 = AtomicI64::new(0);
+    /// 目标键按下期间是否被其它键"污染"（说明是组合键，不是长按听写）。
+    static POLLUTED: AtomicBool = AtomicBool::new(false);
+
+    fn now_ms() -> i64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0)
+    }
+
+    unsafe extern "system" fn hook_proc(ncode: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+        if ncode >= 0 {
+            let kb = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
+            let vk = kb.vkCode;
+            let target = VK_RCONTROL.0 as u32;
+            let msg = wparam.0 as u32;
+            let is_down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
+            let is_up = msg == WM_KEYUP || msg == WM_SYSKEYUP;
+            if vk == target {
+                if is_down {
+                    if DOWN_AT.load(Ordering::Relaxed) == 0 {
+                        DOWN_AT.store(now_ms(), Ordering::Relaxed);
+                        POLLUTED.store(false, Ordering::Relaxed);
+                    }
+                } else if is_up {
+                    DOWN_AT.store(0, Ordering::Relaxed);
+                }
+            } else if is_down && DOWN_AT.load(Ordering::Relaxed) != 0 {
+                // 按住目标键期间按了别的键 → 组合键，不是听写
+                POLLUTED.store(true, Ordering::Relaxed);
+            }
+        }
+        CallNextHookEx(HHOOK::default(), ncode, wparam, lparam)
+    }
+
+    /// 起钩子线程（消息循环）+ watcher 线程（据原子起停听写流）。
+    pub fn spawn(app: AppHandle, state: Arc<AppState>) {
+        // 钩子线程：装 WH_KEYBOARD_LL + 跑消息循环（钩子需要消息泵）。
+        std::thread::Builder::new()
+            .name("mouseclaw-win-kbhook".into())
+            .spawn(|| unsafe {
+                match SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook_proc), None, 0) {
+                    Ok(_h) => {
+                        let mut msg = MSG::default();
+                        while GetMessageW(&mut msg, None, 0, 0).as_bool() {}
+                    }
+                    Err(e) => eprintln!("[mouseclaw] 🎙️ SetWindowsHookExW 失败: {e}"),
+                }
+            })
+            .expect("spawn win kbhook thread");
+
+        // watcher：长按 ≥300ms 且未污染 → 起听写；松开 → 停。
+        std::thread::Builder::new()
+            .name("mouseclaw-win-dictation".into())
+            .spawn(move || {
+                let mut dictating = false;
+                loop {
+                    std::thread::sleep(Duration::from_millis(50));
+                    if !is_enabled() {
+                        continue;
+                    }
+                    let down_at = DOWN_AT.load(Ordering::Relaxed);
+                    if down_at != 0
+                        && !dictating
+                        && !POLLUTED.load(Ordering::Relaxed)
+                        && now_ms() - down_at >= LONG_PRESS_MS
+                    {
+                        dictating = true;
+                        let a = app.clone();
+                        let s = state.clone();
+                        tauri::async_runtime::spawn(async move {
+                            crate::pipeline::on_shortcut_press(a, s).await;
+                        });
+                    }
+                    if down_at == 0 && dictating {
+                        dictating = false;
+                        let a = app.clone();
+                        let s = state.clone();
+                        tauri::async_runtime::spawn(async move {
+                            crate::pipeline::on_dictation_release(a, s).await;
+                        });
+                    }
+                }
+            })
+            .expect("spawn win dictation watcher");
+        println!("[mouseclaw] 🎙️ Windows 长按右 Ctrl 听写已启用（可选手势）");
+    }
+}
+
+/// Windows 长按听写入口（lib.rs setup 调）。
+#[cfg(windows)]
+pub fn spawn_longpress(app: tauri::AppHandle, state: std::sync::Arc<AppState>) {
+    win_longpress::spawn(app, state);
 }
 
 /// 主入口 —— lib.rs setup 时调一次。起后台线程跑 CGEventTap。

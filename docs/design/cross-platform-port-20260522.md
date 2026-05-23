@@ -215,20 +215,22 @@ onboarding 的「授权三连」页 macOS 专属 → Win/Linux 改成精简页�
 - [x] 点击穿透 + 跟随：`platform::global_cursor`（Win/X11；Wayland→None 自动降级）⚠️
 - [x] 终端写入红线：非 mac 用 exe/WM_CLASS 匹配终端列表 ⚠️
 
-**D. 仍待办（明确理由，非遗漏）**
-- [ ] **听写触发的"监听流"（Win/Linux）** —— §4 决策默认普通全局快捷键。**未做**原因：
-      需新增配置字段 + 改 lib.rs 全局快捷键 handler 的脆弱字符串路由 + 复用有状态音频流，
-      且全程无法在无头容器运行时验证；属高风险盲写。**计划**：注册一个独立全局快捷键
-      → press 复用 `pipeline::on_shortcut_press`（已跨平台）→ release 走"finalize transcript
-      + `mode_b::type_unicode_sync`"（不进 AI）。建议与用户真机迭代。
-- [ ] **Windows「长按修饰键」听写**（§4 的可选项）——`SetWindowsHookEx` 是独立 FFI 子系统，
-      默认全局快捷键已满足主诉求，作为后续可选项。
-- [ ] **精简 onboarding 前端**（§4）——非 mac 权限检查已全 true，现有 onboarding 能跑通
-      （权限页会"自动通过"），属体验打磨非阻塞；改前端需 prototype（CLAUDE.md 规则）。
-- [ ] 剪贴板敏感内容抑制（Win `ExcludeClipboardContentFromMonitorProcessing` / Linux
-      `x-kde-passwordManagerHint`）+ 非 mac 密码管理器排除列表 —— 隐私打磨。
-- [ ] 闲置检测（Win `GetLastInputInfo` / X11 XScreenSaver）→ 让"渐睡"动画在 Win/X11 生效。
-- [ ] 拖文件投喂改 Tauri `WindowEvent::DragDrop`（drag_detector 目前 mac-only）。
+**D. 收尾批次** — ⚠️ 已实现，运行时待真机验证
+- [x] **听写监听流（Win/Linux）** —— 默认全局快捷键 `Control+Alt+KeyI`：press 复用
+      `pipeline::on_shortcut_press`，release 走 `on_dictation_release`（finalize+键入，不进 AI）⚠️
+- [x] **Windows 长按右 Ctrl 听写**（§4 可选项）—— `WH_KEYBOARD_LL` 钩子线程 + watcher。
+      🟡 仅 CI 编译验证（Windows-only，本地编不了）+ ⚠️ 运行时未验证，**这块最可能要真机迭代**
+- [x] 闲置检测 → 渐睡：`platform::idle_seconds`（Win `GetLastInputInfo` / X11 screensaver）⚠️
+- [x] 剪贴板敏感 app 排除：非 mac 密码管理器 + 终端列表（exe/WM_CLASS 子串）⚠️
+- [x] 拖文件投喂：非 mac Tauri `WindowEvent::DragDrop`（拖到桌宠窗口）⚠️
+
+**E. 明确不做（有理由）**
+- [ ] **精简 onboarding 前端** —— 非 mac 权限检查已全 true，现有 7 步 onboarding 能跑通
+      （权限页"自动通过"、听写触发页在非 mac 是 no-op picker），属**体验打磨非阻塞**。
+      改这块是 UI 变更，按 CLAUDE.md **prototype-first 硬规则**必须先出可点 demo 再写；
+      且开发容器无浏览器/无 node_modules，无法验证。→ 留作 prototype 流程的独立任务。
+- [ ] Win 剪贴板格式标志抑制（`ExcludeClipboardContentFromMonitorProcessing`）——
+      arboard 未暴露格式枚举，app 名单已覆盖密码管理器主要场景，格式标志留 follow-up。
 
 ## 6. 取舍记录
 - **优先用成熟跨平台 crate（xcap/arboard/enigo/tts/keyring）** 而非手写每个平台的 FFI——
