@@ -8,8 +8,23 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [0.4.7] · 2026-05-23
 
-后端可用性核对版（紧跟 0.4.6）。逐个验证了所有后端 CLI 的命令行旗标 + 安装命令是否真的对得上。
-A backend-verification follow-up to 0.4.6: every backend CLI's flags + install command was checked.
+紧跟 0.4.6：补上三个"陪伴感"功能（首次 aha / 我们的故事 / 主动记忆提醒）+ 后端可用性核对。
+Follow-up to 0.4.6: three companionship touches (first-run aha / our story / proactive memory
+glances) + a backend-verification pass.
+
+### Added
+- **✨ 首次 aha —— 向导里桌宠就"活"了 / First-run aha** —— Onboarding 向导窗口里的桌宠
+  眼球就开始追你的光标、贴近抬头（复用桌面同一套 companion 数学，9 皮肤通吃）；并在进向导
+  那一刻就**后台预取语音模型**，等你点完几步基本下好，消灭"装完才开始下"的死等。
+  The pet comes alive during onboarding (eyes track your cursor) + voice models prefetch while you click through.
+- **💗 "我们的故事" / "Our story"** —— 记忆查看器新增一页：认识天数 / 夜晚陪伴次数 / 一起做过
+  多少次 / "它眼里的你"，全部来自本地 memory.db。**数据不够时如实说"才刚开始"，绝不编数字**。
+  A relationship page (days known / nights together / times / how it sees you), all from local data — honest when sparse.
+- **💭 主动记忆提醒 / Proactive memory glances** —— 没别的要说时，偶尔基于**真实**高频实体
+  （你反复在做的项目/话题）轻轻来一句「还在忙 X 吗」。多重守门：6h 长冷却 + 你在场 + 自然停顿 +
+  非心流敲键 + 真有 freq≥3 的常做实体才发，无数据绝不打扰、绝不编造。性格还会给它上一层语气。
+  Occasional, heavily-gated "still on X?" nudges from real recurring entities — never fabricated, never spammy.
+- **📄 开源许可改为 FSL / Switched to Functional Source License (FSL)** —— 见 LICENSE。
 
 ### Fixed
 - **移除 Trae Agent（不可用）/ Removed Trae Agent (not usable)** —— 实测它不在 PyPI，
