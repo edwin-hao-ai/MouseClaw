@@ -68,6 +68,21 @@ export interface Strings {
   "memory.local_note": string;
   "memory.delete": string;
   "memory.importance": string;
+  // ── 「我们的故事」关系页 (v0.4.x) ──
+  "memory.tab.story": string;
+  "memory.story.who": string;
+  "memory.story.default_name": string;
+  "memory.story.seed_title": string;
+  "memory.story.seed_grow": string;
+  "memory.story.locked": string;
+  "memory.story.days_label": string;
+  "memory.story.days_value": string;
+  "memory.story.nights_label": string;
+  "memory.story.nights_value": string;
+  "memory.story.times_label": string;
+  "memory.story.times_value": string;
+  "memory.story.eyes_label": string;
+  "memory.story.eyes_pending": string;
 
   // ── 桌宠 / 主气泡 ──
   "bubble.expand_to_panel": string;        // "💬 继续追问"
