@@ -185,10 +185,10 @@ mod win_longpress {
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use tauri::AppHandle;
 
-    use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+    use windows::Win32::Foundation::{HINSTANCE, LPARAM, LRESULT, WPARAM};
     use windows::Win32::UI::Input::KeyboardAndMouse::VK_RCONTROL;
     use windows::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, GetMessageW, SetWindowsHookExW, HHOOK, KBDLLHOOKSTRUCT, MSG,
+        CallNextHookEx, GetMessageW, SetWindowsHookExW, KBDLLHOOKSTRUCT, MSG,
         WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
     };
 
@@ -228,7 +228,8 @@ mod win_longpress {
                 POLLUTED.store(true, Ordering::Relaxed);
             }
         }
-        CallNextHookEx(HHOOK::default(), ncode, wparam, lparam)
+        // hhk 在 MSDN 标 [optional] → windows-rs 建模为 Option，传 None 让系统找下一个钩子。
+        CallNextHookEx(None, ncode, wparam, lparam)
     }
 
     /// 起钩子线程（消息循环）+ watcher 线程（据原子起停听写流）。
@@ -237,7 +238,8 @@ mod win_longpress {
         std::thread::Builder::new()
             .name("mouseclaw-win-kbhook".into())
             .spawn(|| unsafe {
-                match SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook_proc), None, 0) {
+                // hmod：LL 钩子可传 null 模块句柄（MSDN 未标 [optional] → HINSTANCE 而非 Option）。
+                match SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook_proc), HINSTANCE::default(), 0) {
                     Ok(_h) => {
                         let mut msg = MSG::default();
                         while GetMessageW(&mut msg, None, 0, 0).as_bool() {}
