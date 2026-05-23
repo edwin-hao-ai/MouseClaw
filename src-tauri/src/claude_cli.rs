@@ -734,7 +734,9 @@ mod tests {
         // 不管哪种状态，system_prompt 都必须告诉 Claude 它的"能 / 不能"边界。
         // 三档：CDP 活着 / agent-browser 装了 / 都没有
         let p = system_prompt();
-        assert!(p.starts_with("你是 MouseClaw 桌面助手"));
+        // v0.4.4 起 system_prompt 以「你的名字是「…」,是用户的桌面助手桌宠」开头
+        // （注入名字 + 性格头）。这里校验基础身份始终在场。
+        assert!(p.contains("桌面助手"));
         let cdp_alive = crate::browser_bridge::cdp_is_alive();
         let has_ab = find_binary("agent-browser").is_ok();
         if cdp_alive {
