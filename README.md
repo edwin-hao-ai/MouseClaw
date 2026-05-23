@@ -21,7 +21,7 @@
 
 一只睡在你 macOS 屏幕角落的**像素老鼠**。
 
-- **按住 ⌘⇧Space + 说话** → 它截屏 + 听你说 + 调本机的 AI（15 个 CLI 任选：Claude/Codex/Gemini/Qwen Code/Trae…）→ 流式回答到气泡
+- **按住 ⌘⇧Space + 说话** → 它截屏 + 听你说 + 调本机的 AI（14 个 CLI 任选：Claude/Codex/Gemini/Qwen Code…）→ 流式回答到气泡
 - **长按 fn + 说话** → 中英文语音直接打到任何输入框的光标位置（不切输入法）
 - **拖文件给它** → 老鼠"吞下"后你接着说"用三句话总结" → AI 读懂文档帮你
 
@@ -36,7 +36,7 @@
 ### 为什么用得久
 
 - **零切换**：没窗口要打开，没 app 要 focus，老鼠**就在那**
-- **AI 后端你选**：15 个 CLI 任选（Claude / Codex / Gemini / Copilot / 国产 Qwen Code / Trae Agent …），托盘菜单随时切换
+- **AI 后端你选**：14 个 CLI 任选（Claude / Codex / Gemini / Copilot / 国产 Qwen Code 通义千问 …），托盘菜单随时切换
 - **圈定问题**：按住快捷键 +  **按左键拖动画圈** → AI 拿到的截图带你高亮的部分。试试在 stack trace 上圈
 - **认识你的项目**：托盘指定 workspace path 一次 → AI 的 Read/Write/Bash 都以这个为 cwd。"修这个 bug" 真能修
 - **能动手**：说"打开附近的咖啡馆" → 开 Maps。"把这个网页转成 Word" → 干。macOS URL schemes + osascript + Claude Bash 工具 = AI 真的能做事
@@ -45,7 +45,7 @@
 
 ### v0.4.6 新功能（2026-05）
 
-- **🤖 15 个 AI 后端任选**：Claude Code / Codex / Gemini / Copilot / OpenCode / Cline / Kimi / Kiro / Antigravity / Mistral Vibe / Pi / OpenClaw / Hermes + 国产 **Qwen Code（通义千问）/ Trae Agent（字节跳动）**。Onboarding 只列已装的，托盘随时切换
+- **🤖 14 个 AI 后端任选**：Claude Code / Codex / Gemini / Copilot / OpenCode / Cline / Kimi / Kiro / Antigravity / Mistral Vibe / Pi / OpenClaw / Hermes + 国产 **Qwen Code（通义千问）**。Onboarding 只列已装的，托盘随时切换
 - **🧠 长期记忆（全本地）**：SQLite 三层记忆（画像/情景/知识图谱），空闲蒸馏画像、召唤时检索相关记忆注入上下文。「桌宠记得的事」窗口可看/删/暂停，默认开 + 首启透明告知"全部存你本地"
 - **⏰ 定时任务 / 心跳**：召唤说一句"每天早上整理 AI 新闻"就建好 → 到点后台跑、轻气泡投递；**统一结果页**多任务一页看全（markdown 渲染、外链走浏览器、完成自动跳）；**反幻觉 harness**（放开联网/读文件工具取真实数据 + 真实性铁律）
 - **🐭 桌宠起名 + 9 种性格**：给它起名（🎲 随机 + 建议名）、选语气（暖心/毒舌/极简/话痨/干练/元气/沉稳/好奇/傲娇/自定义）；性格只改语气不影响任务正确性
@@ -109,7 +109,7 @@ macOS 11+ · Apple Silicon 推荐（Intel 没仔细测）· Windows/Linux 暂无
 
 A pixel-art mouse that sleeps in the corner of your macOS screen.
 
-- **Hold ⌘⇧Space + speak** → screenshots + transcribes + asks your AI CLI (pick any of 15: Claude / Codex / Gemini / Qwen Code / Trae…) → streams reply into a speech bubble
+- **Hold ⌘⇧Space + speak** → screenshots + transcribes + asks your AI CLI (pick any of 14: Claude / Codex / Gemini / Qwen Code…) → streams reply into a speech bubble
 - **Hold fn + speak** → voice transcription typed directly into your cursor in any app (no IME switching, English & Chinese)
 - **Drag a file onto the pet** → it "eats" the file, then you say "summarize in 3 sentences" → AI reads it
 
@@ -133,7 +133,7 @@ A pixel-art mouse that sleeps in the corner of your macOS screen.
 
 ### v0.4.6 highlights (May 2026)
 
-- **🤖 15 AI backends** — Claude Code / Codex / Gemini / Copilot / OpenCode / Cline / Kimi / Kiro / Antigravity / Mistral Vibe / Pi / OpenClaw / Hermes + China's **Qwen Code & Trae Agent**. Onboarding shows only installed ones; switch anytime from the tray
+- **🤖 14 AI backends** — Claude Code / Codex / Gemini / Copilot / OpenCode / Cline / Kimi / Kiro / Antigravity / Mistral Vibe / Pi / OpenClaw / Hermes + China's **Qwen Code**. Onboarding shows only installed ones; switch anytime from the tray
 - **🧠 Long-term memory (fully local)** — SQLite 3-layer memory (profile / episodic / knowledge graph), idle-time reflection, relevant memories injected on summon. A "what it remembers" window to view / delete / pause; on by default with a first-run "all stored on your machine" notice
 - **⏰ Scheduled tasks / heartbeat** — say "summarize AI news every morning" to create one; runs in the background with a gentle bubble; a **unified results page** shows every run newest-first (markdown rendered, links open in your browser, auto-jumps on completion); **anti-hallucination harness** (real web/file tools + a "never fabricate" rule)
 - **🐭 Pet name + 9 personalities** — name it (🎲 random + suggestions), pick its tone (warm / snarky / minimal / chatty / pro / cheerful / calm / curious / tsundere / custom); tone never affects task correctness
@@ -194,7 +194,7 @@ macOS 11+ · Apple Silicon recommended (Intel less tested) · Windows/Linux not 
 - **AES-256-GCM + Keychain** for clipboard at rest
 - **chrome-devtools-mcp** bridge for browser automation
 - **Curl with `-C -`** for resumable model downloads + multi-mirror fallback
-- Multi-backend (15): Claude Code / Codex / Gemini / Copilot / OpenCode / Cline / Kimi / Kiro / Antigravity / Mistral Vibe / Pi / OpenClaw / Hermes / Qwen Code / Trae Agent
+- Multi-backend (14): Claude Code / Codex / Gemini / Copilot / OpenCode / Cline / Kimi / Kiro / Antigravity / Mistral Vibe / Pi / OpenClaw / Hermes / Qwen Code
 
 App: 12 MB DMG · 35 MB installed · ~260 MB voice models (downloaded first launch) · ~400 MB RAM idle (incl. loaded models) · <1% CPU idle.
 

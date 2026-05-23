@@ -6,25 +6,42 @@ versioning follows [SemVer](https://semver.org/).
 
 ---
 
+## [0.4.7] · 2026-05-23
+
+后端可用性核对版（紧跟 0.4.6）。逐个验证了所有后端 CLI 的命令行旗标 + 安装命令是否真的对得上。
+A backend-verification follow-up to 0.4.6: every backend CLI's flags + install command was checked.
+
+### Fixed
+- **移除 Trae Agent（不可用）/ Removed Trae Agent (not usable)** —— 实测它不在 PyPI，
+  从 git 装会缺一串依赖（docker → pexpect → …）启动即崩，且是 Docker 重型研究 agent、输出
+  冗长，不适合本场景。后端从 15 → **14**。It crashes on launch (broken packaging) and is a
+  heavyweight Docker-based research agent — a poor fit, so it's out (15 → 14 backends).
+- **Antigravity 去掉错误的 flag / Antigravity flag fix** —— 早期误加了 `--dangerously-skip-permissions`
+  （那是 Claude 的 flag，`agy` 没有，会当 unknown flag 报错）。`agy -p` 自身就是 headless。
+- **Qwen Code 改用位置参数 / Qwen Code positional prompt** —— 官方已把 `-p` 标 deprecated，
+  改 `qwen "PROMPT"` one-shot，避免未来失效 + deprecation 警告污染输出。
+- 其余后端（Gemini / Copilot / Kiro / Kimi / Vibe / Pi + 已装的 Claude/Codex/OpenClaw/Hermes/
+  OpenCode/Cline）旗标 + 安装命令均经官方文档 / `--help` 核对确认正确。
+
 ## [0.4.6] · 2026-05-23
 
 一个大版本：桌宠从"语音问答工具"长成"会记事、会定时干活、有名字有性格"的桌面伙伴。
-15 个 AI 后端任选（含国产 Qwen Code / Trae Agent）、长期记忆（全本地 SQLite 知识图谱）、
+14 个 AI 后端任选（含国产 Qwen Code 通义千问）、长期记忆（全本地 SQLite 知识图谱）、
 定时任务/心跳（一句话创建 + 统一结果页 + 反幻觉 harness）、桌宠起名 + 9 种性格、程序化
 音效。并根治了"某 app 全屏后桌宠消失"——桌宠现在用真正的 NSPanel 浮在全屏之上。
 A big one: the pet grows from a voice Q&A tool into a desktop companion that remembers,
-runs tasks on a schedule, and has a name + personality. 15 AI backends (incl. China's
-Qwen Code / Trae Agent), long-term memory (fully-local SQLite knowledge graph), scheduled
+runs tasks on a schedule, and has a name + personality. 14 AI backends (incl. China's
+Qwen Code), long-term memory (fully-local SQLite knowledge graph), scheduled
 tasks (one-line create + unified results page + anti-hallucination harness), pet naming +
 9 personalities, procedural sound effects. Plus the fix everyone wanted: the pet now
 floats over fullscreen apps via a real NSPanel.
 
 ### Added
-- **🤖 15 个 AI 后端任选 / 15 AI backend CLIs** —— 在 Claude Code / Codex / Gemini /
+- **🤖 14 个 AI 后端任选 / 14 AI backend CLIs** —— Claude Code / Codex / Gemini /
   Copilot / OpenCode / Cline / Kimi / Kiro / Antigravity / Mistral Vibe / Pi / OpenClaw /
-  Hermes 之外，新增国产 **Qwen Code（通义千问）** 和 **Trae Agent（字节跳动）**。Onboarding
-  只列**已安装**的后端，托盘可随时切换。Pick any of 15 backends incl. China's Qwen Code &
-  Trae Agent; onboarding shows only installed ones; switch anytime from the tray.
+  Hermes + 国产 **Qwen Code（通义千问）**。Onboarding
+  只列**已安装**的后端，托盘可随时切换。Pick any of 14 backends incl. China's Qwen Code;
+  onboarding shows only installed ones; switch anytime from the tray.
 - **🧠 长期记忆 / Long-term memory** —— 全本地 SQLite（无向量库）三层记忆：画像 / 情景 /
   知识图谱。空闲时蒸馏画像、构建实体关系图，召唤时检索相关记忆注入上下文（"更懂你"）。
   「桌宠记得的事」窗口可看画像 / 历史 / 关系图谱，逐条删除、一键清空、随时暂停。默认开，

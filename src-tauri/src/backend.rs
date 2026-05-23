@@ -212,9 +212,10 @@ impl Backend {
             Backend::KimiCli => vec!["--quiet".into(), "-p".into(), p],
             Backend::VibeCli => vec!["--prompt".into(), p],
             Backend::PiAgent => vec!["-p".into(), p],
-            Backend::AntigravityCli => vec![
-                "-p".into(), p, "--dangerously-skip-permissions".into(),
-            ],
+            // agy -p 是 print/headless 非交互模式（gemini-cli 血统），自身不卡工具权限。
+            // 注：早期误加了 `--dangerously-skip-permissions`（那是 Claude 的 flag，agy 没有，
+            // 会当 unknown flag 报错）—— 2026-05-23 web 核对后去掉。
+            Backend::AntigravityCli => vec!["-p".into(), p],
             // Qwen Code（gemini-cli 同源）：用**位置参数** one-shot（`qwen "PROMPT"`）。
             // 不用 `-p` —— 官方已把 -p 标 deprecated（实测 2026-05-23），位置参数才是
             // 推荐的非交互入口，且避免 deprecation 警告污染捕获的 stdout。
