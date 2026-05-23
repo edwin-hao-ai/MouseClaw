@@ -47,6 +47,10 @@ block = "0.1"
 core-graphics = "0.24"
 core-foundation = "0.10"
 libc = "0.2"
+# v0.5 · 把桌宠 overlay 转成真正的 NSPanel —— 普通 NSWindow 在 release 下设
+# collectionBehavior/level 浮不到全屏 app 之上（Tauri #5566 / #9556）。NSPanel 是这类
+# "桌宠/HUD 浮全屏"的标准方案（BongoCat / Cap / Screenpipe 都用它）。
+tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
 
 [dev-dependencies]
 tempfile = "3.27.0"

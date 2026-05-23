@@ -73,8 +73,8 @@ pub fn show_mouse(app: &AppHandle) {
             let _ = window.set_position(LogicalPosition::new(pos_x, pos_y));
         }
         let _ = window.show();
-        let _ = window.set_always_on_top(true);
-        // 重新应用 spaces/level —— set_always_on_top 会把它们冲回默认（修全屏看不到）。
+        // macOS：NSPanel 自带 always-on-top（level=ScreenSaver），**不**调 set_always_on_top
+        // （会把 level 压回 floating 又浮不上全屏）。非 macOS 在此 helper 里 set_always_on_top。
         apply_overlay_window_behavior(&window);
     });
     // v0.1.8 召唤瞬间起就跟着鼠标走，直到出现气泡才停住
@@ -106,7 +106,6 @@ pub fn show_mouse_at_anchor(app: &AppHandle) {
     let _ = app.run_on_main_thread(move || {
         if let Some(w) = app2.get_webview_window("mouse") {
             let _ = w.show();
-            let _ = w.set_always_on_top(true);
             apply_overlay_window_behavior(&w);
         }
     });
@@ -175,53 +174,21 @@ fn current_mouse_pos_top_left(_w: &WebviewWindow) -> Option<(f64, f64)> {
     None
 }
 
-/// v0.4.6 · 让桌宠 overlay **浮在全屏 app 之上**（修"某 app 全屏后桌宠消失"）。
+/// 召唤 / 显示桌宠后保持它在最上层。
 ///
-/// 根因：① Tauri `alwaysOnTop` 只设 NSFloatingWindowLevel(3)，没设 collectionBehavior，
-/// macOS 全屏 app 自成一个 Space，普通窗口留原 Space 被盖；② **更隐蔽**：每次
-/// `set_always_on_top(true)`（show_mouse / apply_idle_anchor 都调）会被 Tauri 重置
-/// collectionBehavior + 把 level 压回 floating —— 所以光在 setup 设一次会被后续 show 冲掉。
+/// macOS：overlay 已在 setup 里转成 NSPanel（见 `mouse_panel`），level=ScreenSaver +
+/// collectionBehavior 让它常驻并浮在全屏之上，**且 sticky**。这里**故意不**调
+/// `set_always_on_top(true)` —— 那会把 NSPanel 的 level 压回 floating(4)，又浮不上全屏
+/// （这正是 v0.4.x 几次没修好的根因）。所以 macOS 上是 no-op。
 ///
-/// 解法：把这套行为做成可重复调用的 fn，在**每次 set_always_on_top 之后**重新应用：
-///   - collectionBehavior = canJoinAllSpaces | fullScreenAuxiliary | stationary | ignoresCycle
-///     （出现在所有 Space 含全屏 / 与全屏窗口共存 / 切 Space 不被搬走 / 不进 Cmd+` 循环）
-///   - level = NSStatusWindowLevel(25)：高于普通+floating，全屏 Space 内也压得住，
-///     又不至于像 screenSaver(1000) 那样盖住系统 UI。
+/// 非 macOS（Windows V2 占位）：还没有 NSPanel 等价物，退回 set_always_on_top。
 #[cfg(target_os = "macos")]
-pub fn apply_overlay_window_behavior(window: &WebviewWindow) {
-    use cocoa::base::id;
-    use objc::{msg_send, sel, sel_impl};
-    const CAN_JOIN_ALL_SPACES: u64 = 1 << 0; // 1
-    const STATIONARY: u64 = 1 << 4; // 16
-    const IGNORES_CYCLE: u64 = 1 << 6; // 64
-    const FULLSCREEN_AUXILIARY: u64 = 1 << 8; // 256
-    // NSStatusWindowLevel(25) 不够 —— 那是菜单栏层级，全屏时菜单栏自动隐藏、该层级窗口被
-    // 全屏 app 盖住（2026-05-23 用户实测两次仍看不到）。抬到 NSScreenSaverWindowLevel(1000)
-    // ——专门浮在全屏之上的层级（录屏悬浮窗那类用），配 canJoinAllSpaces|fullScreenAux 才真生效。
-    const NS_SCREEN_SAVER_WINDOW_LEVEL: i64 = 1000;
-    let Ok(ns_window) = window.ns_window() else { return };
-    let behavior: u64 = CAN_JOIN_ALL_SPACES | STATIONARY | IGNORES_CYCLE | FULLSCREEN_AUXILIARY;
-    unsafe {
-        let ns_window = ns_window as id;
-        let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
-        let _: () = msg_send![ns_window, setLevel: NS_SCREEN_SAVER_WINDOW_LEVEL];
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
 pub fn apply_overlay_window_behavior(_window: &WebviewWindow) {}
 
-/// setup() 启动时调一次（拿 mouse 窗口应用上面的行为）。后续 show 路径会各自重applied。
-#[cfg(target_os = "macos")]
-pub fn make_overlay_join_all_spaces(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("mouse") {
-        apply_overlay_window_behavior(&window);
-        println!("[mouseclaw] overlay collectionBehavior+level applied (浮在全屏 app 之上)");
-    }
-}
-
 #[cfg(not(target_os = "macos"))]
-pub fn make_overlay_join_all_spaces(_app: &AppHandle) {}
+pub fn apply_overlay_window_behavior(window: &WebviewWindow) {
+    let _ = window.set_always_on_top(true);
+}
 
 /// 把一个 ViewKind 广播给所有 webview 窗口（前端的状态机靠它驱动）。
 /// 全链路日志 —— 每个 emit 都打出 kind，配合 panic hook 能定位"气泡不显示"问题。
