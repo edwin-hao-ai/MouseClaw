@@ -50,6 +50,8 @@ jobs:
             libssl-dev \
             libxdo-dev \
             libx11-dev libxtst-dev libxi-dev libatspi2.0-dev \
+            libpipewire-0.3-dev libdrm-dev libgbm-dev \
+            libspeechd-dev \
             patchelf file
 
       - name: Install Rust toolchain
