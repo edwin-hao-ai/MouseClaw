@@ -288,6 +288,11 @@ pub async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppStat
         }
         emit_view(&app, &ViewKind::ModeBInserting { insert_text: text.clone() });
 
+        // v0.5.x · 防御性：写光标前强制 resign overlay 的 key window —— 否则若 overlay 残留
+        //   key 状态（toggle 召唤 make_key 后未干净 resign），write_at_cursor 合成的键盘事件
+        //   会进 overlay 自己而不是目标 app（用户报"丢光标 / 写不进去"的根因之一）。
+        crate::overlay::set_overlay_key_window(&app, false);
+
         // v0.4.x · 续写前先把光标焦点还原到召唤时那个 app —— 倒数 / AI 处理期间
         // 用户可能切走了。还原成功 = 光标回到原输入框；还原不了（app 关了 / 切到
         // 别处拿不回） = 光标丢了 → 落剪贴板让用户自己 ⌘V，绝不盲插到错的地方。
@@ -359,15 +364,18 @@ pub async fn run_pipeline(transcript: String, app: AppHandle, state: Arc<AppStat
 async fn restore_cursor_for_insert(state: &Arc<AppState>) -> bool {
     let prev_pid = *state.prev_frontmost_pid.lock().unwrap();
     let Some(pid) = prev_pid else { return false; };
-    if crate::frontmost::current_frontmost_pid() == Some(pid) {
-        return true; // 原 app 还在前台，光标没丢
+    let already_frontmost = crate::frontmost::current_frontmost_pid() == Some(pid);
+    // v0.5.x · 不能因 frontmost==pid 就当"光标没丢" —— overlay 借过键盘焦点（make_key）
+    //   会让原 app 的文本控件失去 first responder（光标停止/丢失），即使它仍是 frontmost app。
+    //   所以**无条件** activate 一次，强制原 app 的 key window 重新 becomeKey + 文本控件恢复
+    //   insertion point（NSTextView 失焦保留插入点，重新 key 时恢复）。
+    let activated = crate::frontmost::activate_pid(pid);
+    if !activated && !already_frontmost {
+        return false; // 原本就不在前台、又 activate 不回（app 关了）→ 剪贴板兜底
     }
-    // 用户切走了 → 尝试把原 app 拉回前台
-    if !crate::frontmost::activate_pid(pid) {
-        return false; // activate 失败（app 已关 / 拉不回）
-    }
-    tokio::time::sleep(Duration::from_millis(120)).await;
-    crate::frontmost::current_frontmost_pid() == Some(pid) // 再确认真的回来了
+    // 已 frontmost 只需短等恢复 first responder；切走过的多等让 activation 真生效。
+    tokio::time::sleep(Duration::from_millis(if already_frontmost { 80 } else { 120 })).await;
+    crate::frontmost::current_frontmost_pid() == Some(pid)
 }
 #[cfg(not(target_os = "macos"))]
 async fn restore_cursor_for_insert(_state: &Arc<AppState>) -> bool { true }

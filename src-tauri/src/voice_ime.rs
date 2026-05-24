@@ -818,6 +818,10 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
 
             #[cfg(target_os = "macos")]
             {
+                // v0.5.x · 防御性：写光标前强制 resign overlay 的 key window。voice IME 自己
+                //   不 make_key，但若之前 toggle 召唤 make_key 后残留 key 状态，合成的键盘事件
+                //   会进 overlay 而非目标 app → 字写不进光标（用户报的回归）。先 resign 再 activate。
+                crate::overlay::set_overlay_key_window(&app2, false);
                 let pid_opt = *state2.prev_frontmost_pid.lock().unwrap();
                 if let Some(pid) = pid_opt {
                     crate::frontmost::activate_pid(pid);
