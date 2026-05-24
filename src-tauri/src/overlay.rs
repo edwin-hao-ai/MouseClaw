@@ -26,21 +26,31 @@ pub fn reposition_to_cursor(app: &AppHandle) {
             let scale = window.scale_factor().unwrap_or(1.0);
             let win_w = ww / scale;
             let win_h = wh / scale;
+            // 当前窗口左上角（逻辑像素）
+            let (cur_x, cur_y) = match window.outer_position() {
+                Ok(p) => (p.x as f64 / scale, p.y as f64 / scale),
+                Err(_) => (f64::NAN, f64::NAN),
+            };
+            // v0.5.x · 冻结跟随 —— 鼠标移进 overlay 的**上半区**（气泡 / 「⌨️打字」按钮所在）
+            //   就停止跟随，让用户能点到按钮。鼠标在下半区（桌宠附近，跟随常态位置）照常跟。
+            //   解决「按钮跟着鼠标跑点不中」：你抬手去够按钮的那一刻，老鼠就定住了。
+            if cur_x.is_finite()
+                && x >= cur_x && x <= cur_x + win_w
+                && y >= cur_y && y <= cur_y + win_h * 0.55
+            {
+                return;
+            }
             let raw_x = x - win_w / 2.0;
             let raw_y = y - win_h + 32.0;
             // v0.4+ · clamp 让桌宠本体不跑出屏幕 + 撞边回弹（窗口透明边距可溢出，桌宠不被切）。
             let (pos_x, pos_y, bonk) =
                 crate::overlay_size::clamp_follow_with_bonk(raw_x, raw_y, win_w, win_h);
             // v0.5.x · 缓动跟随（慢半拍）：每帧只挪向目标一部分，鼠标先到、老鼠过一会才追上。
-            //   用户能从容把鼠标移到气泡按钮上点击（之前 30fps 直接 snap → 按钮跟着跑点不中）。
-            //   ALPHA 越小越懒；0.08 @ 30fps ≈ 1s 才追上，鼠标先到、能从容点气泡按钮。
+            //   ALPHA 越小越懒；0.08 @ 30fps ≈ 1s 才追上。
             const ALPHA: f64 = 0.08;
-            let (cur_x, cur_y) = match window.outer_position() {
-                Ok(p) => (p.x as f64 / scale, p.y as f64 / scale),
-                Err(_) => (pos_x, pos_y),
-            };
-            let eased_x = cur_x + (pos_x - cur_x) * ALPHA;
-            let eased_y = cur_y + (pos_y - cur_y) * ALPHA;
+            let (sx, sy) = if cur_x.is_finite() { (cur_x, cur_y) } else { (pos_x, pos_y) };
+            let eased_x = sx + (pos_x - sx) * ALPHA;
+            let eased_y = sy + (pos_y - sy) * ALPHA;
             let _ = window.set_position(LogicalPosition::new(eased_x, eased_y));
             // 接近目标边缘才回弹（缓动下很少真贴边，避免每帧虚假 bonk）。
             if bonk.is_some() && (pos_x - eased_x).abs() < 1.0 && (pos_y - eased_y).abs() < 1.0 {
