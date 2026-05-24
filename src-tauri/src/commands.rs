@@ -178,12 +178,9 @@ pub fn save_shortcut(
 /// 恢复"不抢焦点"的默认气质。
 #[tauri::command]
 pub fn set_overlay_focusable(focusable: bool, app: AppHandle) -> Result<(), String> {
-    if let Some(w) = app.get_webview_window("mouse") {
-        let _ = w.set_focusable(focusable);
-        if focusable {
-            let _ = w.set_focus();
-        }
-    }
+    // ⚠️ 走 nspanel make_key/resign，不能用 tao set_focusable（MousePanel 没 focusable ivar → abort）。
+    //   见 overlay::set_overlay_key_window 注释。
+    crate::overlay::set_overlay_key_window(&app, focusable);
     Ok(())
 }
 
@@ -685,15 +682,12 @@ pub async fn start_recording(
     let state = state.inner().clone();
     // 触发 show_mouse + 进入 listening。和 lib.rs 全局快捷键 PRESS 分支等价。
     crate::overlay::show_mouse(&app);
-    // v0.5.x · toggle 召唤（点菜单/托盘/双击，非 push-to-talk）让 overlay 获焦 ——
-    //   listening 是 focus:false 的非激活 NSPanel，物理键盘事件发给前台 app、到不了
-    //   webview（见 pipeline.rs voice-confirm 注释），不获焦的话「敲键即切文字」收不到键。
-    //   离开 listening 会关回 false：转写走 on_shortcut_release、取消走 hide_overlay、
-    //   切文字走前端 text-input effect。push-to-talk（按住）不走这里，保持不获焦。
-    if let Some(w) = app.get_webview_window("mouse") {
-        let _ = w.set_focusable(true);
-        let _ = w.set_focus();
-    }
+    // v0.5.x · toggle 召唤（点菜单/托盘/双击，非 push-to-talk）让 overlay 成 key window ——
+    //   overlay 平时 focus:false 收不到物理键盘；nonactivating panel 成 key 只借键盘焦点、
+    //   不改系统 frontmost app（不污染 Mode B 续写光标），用户敲字符键即可切文字输入。
+    //   离开 listening 会 resign：转写走 on_shortcut_release、取消走 hide_overlay、切文字走
+    //   前端 text-input effect。push-to-talk（按住）不走这里，保持不获焦（手在键上用不上）。
+    crate::overlay::set_overlay_key_window(&app, true);
     tauri::async_runtime::spawn(async move { on_shortcut_press(app, state).await });
     Ok(())
 }

@@ -191,6 +191,34 @@ pub fn apply_overlay_window_behavior(window: &WebviewWindow) {
     let _ = window.set_always_on_top(true);
 }
 
+/// v0.5.x · 让桌宠 overlay 成为 / 退出 **key window**（接收物理键盘）。
+///
+/// ⚠️ **必须**走 nspanel 的 `make_key_window` / `resign_key_window`，**不能**用 tao 的
+/// `window.set_focusable()` —— overlay 是自定义 NSPanel 子类（`MousePanel`，见 mouse_panel.rs），
+/// `set_focusable()` 通过 KVO 找 `focusable` ivar，该类没有 → objc 抛异常 → Rust 无法 catch
+/// foreign exception → **整个 app abort**（2026-05-24 真机 crash 根因）。
+///
+/// `MousePanel` 是 **nonactivating** panel：成为 key window 只"借"键盘焦点，**不改变系统
+/// frontmost app**（`NSWorkspace.frontmostApplication` 仍是用户原来的 app）。所以让 listening
+/// 获焦接收"敲键即切文字"的按键，**不污染** Mode B 的 `prev_frontmost_pid`、不破坏续写光标。
+///
+/// marshal 到主线程 —— `makeKeyWindow` 碰 AppKit，非主线程会崩。
+#[cfg(target_os = "macos")]
+pub fn set_overlay_key_window(app: &AppHandle, key: bool) {
+    use tauri_nspanel::{ManagerExt, Panel};
+    let app2 = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        match app2.get_webview_panel("mouse") {
+            Ok(panel) => {
+                if key { panel.make_key_window(); } else { panel.resign_key_window(); }
+            }
+            Err(e) => eprintln!("[mouseclaw] set_overlay_key_window: get_webview_panel 失败 ({e:?})"),
+        }
+    });
+}
+#[cfg(not(target_os = "macos"))]
+pub fn set_overlay_key_window(_app: &AppHandle, _key: bool) {}
+
 /// 把一个 ViewKind 广播给所有 webview 窗口（前端的状态机靠它驱动）。
 /// 全链路日志 —— 每个 emit 都打出 kind，配合 panic hook 能定位"气泡不显示"问题。
 pub fn emit_view(app: &AppHandle, view: &ViewKind) {
@@ -273,10 +301,8 @@ pub fn emit_view(app: &AppHandle, view: &ViewKind) {
 /// ⚠️ window.hide() / set_position marshal 到主线程 —— 同 show_mouse，
 /// 避免 AppKit 跨线程崩溃。
 pub fn hide_overlay(app: &AppHandle) {
-    // v0.5.x · 关掉 toggle 召唤可能开过的键盘焦点 —— 回 idle 不需要焦点（没开过 = no-op）。
-    if let Some(w) = app.get_webview_window("mouse") {
-        let _ = w.set_focusable(false);
-    }
+    // v0.5.x · 关掉 toggle 召唤可能开过的键盘焦点 —— 回 idle 不需要（没开过 = no-op）。
+    set_overlay_key_window(app, false);
     let anchor = crate::config::Config::load().pet_anchor;
     // v0.4 fix (2026-05-20): 顺序很关键 ——
     // 1. 先 emit_view(Idle) 触发 shrink_to_compact (320→80)，窗口尺寸先正确
