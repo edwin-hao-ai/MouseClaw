@@ -578,7 +578,13 @@ pub async fn on_shortcut_release(app: AppHandle, state: Arc<AppState>) {
         };
         println!("[mouseclaw] transcript (raw): {transcript:?}");
         if transcript.is_empty() {
-            hide_overlay(&app_clone);
+            // v0.5.x · 没说话（或 ASR 没识别到）→ 不消失，进文字输入态让用户打字。
+            //   hold 模式"按一下不说话即打字"的核心：松开后空录音 = 想打字 → 弹输入框。
+            //   text-input 是锁定态（不倒数 / 不 auto-hide，只 Enter 发 / Esc 取消），
+            //   所以松开后窗口不会消失（满足"切了打字松开不消失"）。ASR 完全失败也走这里
+            //   当兜底，比直接消失友好。重新成 key window 让输入框收物理键盘（release 开头 resign 过）。
+            crate::overlay::set_overlay_key_window(&app_clone, true);
+            emit_view(&app_clone, &ViewKind::TextInput { initial: String::new() });
             return;
         }
         // v0.3.4 · 只跑 light_clean（regex, 5ms）—— LLM polish 删除
