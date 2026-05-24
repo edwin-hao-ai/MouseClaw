@@ -817,13 +817,40 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
             println!("[mouseclaw] 🎯 punctuated → {punctuated:?}");
         }
 
+        // v0.6 · B 方案 · 同句内自我纠正 —— 用户在一段话里先说正文、再用
+        // "哦/不对/等等 + 去掉/删掉/改成" 纠正自己（"…喝了一碗汤。哦，把那个喝汤去掉。"）。
+        // 文字还没写出去，只改 transcript、无 backspace。命中后跳过跨句 voice_correct
+        // （这句是"正文+自我纠正"，不是对上一次写入的纠正）。
+        let (final_paste, inline_note, inline_fired) =
+            match crate::voice_correct_inline::try_parse_inline(&punctuated) {
+                Some(r) => {
+                    println!("[mouseclaw] ✂️ inline self-correction: {punctuated:?} → {:?}", r.text);
+                    let note = if cfg.language == "en" { r.note_en } else { r.note_zh };
+                    (r.text, Some(note), true)
+                }
+                None => (punctuated, None, false),
+            };
+
+        // "重说/算了" → 空文本，直接不写入，给个气泡反馈即可。
+        if inline_fired && final_paste.trim().is_empty() {
+            crate::overlay::emit_view(&app, &crate::events::ViewKind::Reply {
+                transcript: "voice IME".into(),
+                reply: inline_note.unwrap_or_else(|| "↶ 已重说".into()),
+                mode: crate::events::ReplyMode::A,
+                insert_text: None,
+                streaming: false,
+            });
+            crate::overlay::schedule_auto_hide(&app, &state, 1500);
+            return;
+        }
+
         // v0.3.8 · Plan B —— streaming poller 不 type，只在 fn 松开后一次性写。
         // 跟 Whisper batch timing 一致：fn 松开 → 等焦点回到原 app → activate + paste。
         // 不再有 LCP delta（streaming 没 type 任何东西，typed 永远是空）。
         let app2 = app.clone();
         let state2 = state.clone();
         tauri::async_runtime::spawn(async move {
-            let final_text = punctuated.clone();
+            let final_text = final_paste;
             println!("[mouseclaw] 🎙️ ready to paste final → {:?}", final_text);
 
             // 关键 timing：fn 松开后 macOS fn 系统行为结束，但焦点回到原 app
@@ -845,12 +872,14 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
                 }
             }
 
-            // v0.4.0 P2 · 3 秒规则纠错 —— 在写之前检查 transcript 是不是「把 X 改成 Y / 重说」等指令
+            // v0.4.0 P2 · 3 秒规则跨句纠错 —— 仅当本句不是"同句自我纠正"时才尝试。
+            // inline 命中说明这句是正文（含自我纠正），不该再被当成对上一次写入的纠正。
             let current_bundle = frontmost_bundle();
-            let correction = crate::voice_correct::try_parse(&final_text, &current_bundle);
-            if let Some(action) = correction {
-                handle_correction(&app2, action, &current_bundle).await;
-                return;
+            if !inline_fired {
+                if let Some(action) = crate::voice_correct::try_parse(&final_text, &current_bundle) {
+                    handle_correction(&app2, action, &current_bundle).await;
+                    return;
+                }
             }
 
             match crate::mode_b::write_at_cursor(&final_text).await {
@@ -859,7 +888,11 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
                     crate::voice_correct::record_write(&final_text, &current_bundle);
                     crate::overlay::emit_view(&app2, &crate::events::ViewKind::Reply {
                         transcript: "voice IME".into(),
-                        reply: format!("✍️ {final_text}"),
+                        // inline 命中时把"已去掉/已替换"提示和写入内容一起显示，给用户确认反馈
+                        reply: match &inline_note {
+                            Some(note) => format!("{note}\n✍️ {final_text}"),
+                            None => format!("✍️ {final_text}"),
+                        },
                         mode: crate::events::ReplyMode::A,
                         insert_text: None,
                         streaming: false,

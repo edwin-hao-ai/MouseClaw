@@ -65,6 +65,7 @@ pub mod update_check;
 pub mod shortcut_menu;
 pub mod voice_ime;
 pub mod voice_correct;
+pub mod voice_correct_inline;
 pub mod vocab;
 // transcribe (Whisper) deleted in v0.3 — superseded by transcribe_stream (sherpa-onnx)
 pub mod tray;
