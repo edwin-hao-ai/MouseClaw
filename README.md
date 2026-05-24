@@ -95,7 +95,7 @@
 
 ### 系统要求
 
-macOS 11+ · Apple Silicon 推荐（Intel 没仔细测）· Windows/Linux 暂无
+macOS 11+ · Apple Silicon 推荐（Intel 没仔细测）· **Windows 10/11 + Linux 测试版**（v0.5.0 起，在 [releases](https://github.com/edwin-hao-ai/MouseClaw/releases) 下；运行时仍在打磨，欢迎反馈）
 
 ### 状态
 
@@ -176,7 +176,7 @@ First-launch onboarding picks shortcut, AI backend, skin, **voice language**, vo
 
 ### Requirements
 
-macOS 11+ · Apple Silicon recommended (Intel less tested) · Windows/Linux not yet.
+macOS 11+ · Apple Silicon recommended (Intel less tested) · **Windows 10/11 + Linux beta** (since v0.5.0, on [releases](https://github.com/edwin-hao-ai/MouseClaw/releases); runtime still being polished — feedback welcome).
 
 ### Status
 

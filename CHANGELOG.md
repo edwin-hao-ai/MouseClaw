@@ -6,6 +6,34 @@ versioning follows [SemVer](https://semver.org/).
 
 ---
 
+## [0.5.0] · 2026-05-24
+
+🪟🐧 **MouseClaw 登陆 Windows + Linux（测试版）**。macOS 之外，现在 Windows 10/11 与
+Linux（X11 完整 / Wayland 降级）都能跑同一只桌宠。
+MouseClaw now runs on **Windows + Linux** (beta), alongside macOS.
+
+> ⚠️ **Windows / Linux 为测试版**：编译 + 打包已由 CI 三平台验证通过并产出安装器，但**运行时
+> 行为（截图/Mode B 键入/选词/托盘/穿透/热键）尚未在真机充分验证** —— 欢迎试用并反馈。macOS
+> 不受影响、行为与 0.4.7 一致。Windows installer 暂未代码签名（SmartScreen 会提示"未知发布者"，
+> 点「更多信息 → 仍要运行」即可）。
+> Windows/Linux are **beta**: CI verifies compile+bundle on all 3 OSes, but runtime behavior is
+> not yet fully verified on real hardware. macOS unchanged. The Windows installer is unsigned for now.
+
+### Added
+- **🪟 Windows 10/11 支持** —— 截图(xcap)/Mode B 键入(enigo SendInput)/剪贴板/前台 app(Win32)/
+  TTS(SAPI5)/闲置检测/托盘/全局快捷键。听写默认普通全局快捷键 `Ctrl+Alt+I`（另可选长按右 Ctrl）。
+- **🐧 Linux 支持（X11 完整 / Wayland 降级）** —— X11：xcap 截图 + XQueryPointer 光标 + PRIMARY
+  选区 + WM_CLASS 前台 + enigo(XTest) 注入；提供 x86_64 与 **arm64** 两种 `.deb`/`.AppImage`。
+  Wayland 安全模型受限 → 自动降级：Mode B 改「复制到剪贴板 + 提示 Ctrl+V」、眼球追踪/跟随关闭、
+  首次截图走 portal 授权。
+- **🧩 跨平台抽象 `platform.rs`** + 按平台密钥存储（macOS Keychain 不变 / Win Credential Manager /
+  Linux Secret Service，缺时降级 0600 文件）+ 精简版 onboarding（Win/Linux 跳过权限三连页）。
+- **⚙️ CI 三平台构建矩阵** —— Windows / Linux(x64+arm64) 完整打包出安装器，macOS 编译验证。
+
+### Note
+- macOS 自动更新通道（version.json）**故意停在 0.4.7** —— 本版对 macOS 用户无新功能，不打扰。
+  Win/Linux 测试用户从 GitHub release 页手动下载。
+
 ## [0.4.7] · 2026-05-23
 
 紧跟 0.4.6：补上三个"陪伴感"功能（首次 aha / 我们的故事 / 主动记忆提醒）+ 后端可用性核对。
