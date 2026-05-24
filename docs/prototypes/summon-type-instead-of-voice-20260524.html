@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MouseClaw · 召唤后改用打字（敲键即切 + 提示）2026-05-24</title>
+<style>
+  /* ── DESIGN.md tokens（§9 cheatsheet）── */
+  :root {
+    --surface-deep: #0a0e1a;
+    --surface-glass: rgba(255,255,255,.06);
+    --surface-glass-strong: rgba(255,255,255,.10);
+    --bubble-bg: rgba(255,255,255,.97);
+    --panel-bg: rgba(252,252,254,.98);
+    --bubble-border: rgba(0,0,0,.06);
+    --text-primary: #1a1a1a;
+    --text-on-dark: #f5f5f7;
+    --text-dim: #a1a1a8;
+    --text-bubble-dim: #6c6c70;
+    --accent-primary: #ff6b9d;
+    --accent-soft: #ff9bb8;
+    --accent-gradient: linear-gradient(135deg,#ff6b9d,#ff9bb8);
+    --accent-glow: rgba(255,107,157,.15);
+    --success: #5cd6a0;
+    --warn: #ffd166;
+    --danger: #ff5f57;
+    --m-body: #cfcfcf; --m-belly: #fff; --m-ear-in: #ff9bb8;
+    --m-eye: #1a1a1a; --m-nose: #d63d6a; --m-tail: #8a8a8a;
+    --font-system: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", sans-serif;
+    --font-mono: ui-monospace, "SF Mono", monospace;
+    --radius-pill: 999px; --radius-md: 8px; --radius-lg: 10px;
+    --radius-xl: 12px; --radius-3xl: 16px;
+    --shadow-bubble: 0 12px 32px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.7);
+    --shadow-input-focus: 0 0 0 3px rgba(255,107,157,.15);
+    --text-display: 38px; --text-headline: 22px; --text-title: 16px;
+    --text-body-lg: 14px; --text-body: 13px; --text-meta: 11px; --text-micro: 10px;
+    --ease-default: ease-in-out; --ease-tap: cubic-bezier(.2,0,0,1);
+    --ease-spring: cubic-bezier(.34,1.56,.64,1);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--surface-deep); color: var(--text-on-dark);
+    font-family: var(--font-system); padding: 32px; line-height: 1.5;
+  }
+  h1 { font-size: var(--text-headline); margin: 0 0 6px; letter-spacing: -.02em; }
+  h2 { font-size: var(--text-title); margin: 44px 0 8px; display: flex; gap: 8px; align-items: center; }
+  .sub { color: var(--text-dim); font-size: var(--text-meta); margin: 0 0 18px; max-width: 760px; line-height: 1.7; }
+  .sub b { color: var(--text-on-dark); }
+  svg { shape-rendering: crispEdges; image-rendering: pixelated; }
+  code { background: var(--surface-glass-strong); padding: 1px 6px; border-radius: 5px; font-size: 12px; font-family: var(--font-mono); }
+  .tag { font-size: var(--text-meta); padding: 2px 8px; border-radius: var(--radius-pill);
+         background: var(--accent-glow); color: var(--accent-soft); font-weight: 600; }
+
+  /* ════ mock 桌面（真实场景背景）════ */
+  .desk {
+    position: relative; height: 460px; border-radius: var(--radius-xl); overflow: hidden;
+    background: linear-gradient(160deg,#243250,#11182b);
+    border: 1px solid rgba(255,255,255,.08);
+    box-shadow: 0 30px 80px rgba(0,0,0,.5);
+  }
+  /* 底下 mock 一个文档编辑器窗口，让老鼠是"叠加"在上面 */
+  .doc-win {
+    position: absolute; left: 40px; top: 40px; right: 40px; bottom: 40px;
+    background: rgba(255,255,255,.96); border-radius: var(--radius-lg);
+    box-shadow: 0 20px 50px rgba(0,0,0,.4); overflow: hidden; color: #222;
+  }
+  .doc-bar { height: 36px; background: #f1f1f4; border-bottom: 1px solid #e3e3e8;
+    display: flex; align-items: center; gap: 7px; padding: 0 14px; }
+  .doc-bar .dot { width: 11px; height: 11px; border-radius: 50%; }
+  .doc-bar .r { background: #ff5f57; } .doc-bar .y { background: #febc2e; } .doc-bar .g { background: #28c840; }
+  .doc-bar .ttl { margin-left: 10px; font-size: 12px; color: #888; font-weight: 600; }
+  .doc-body { padding: 22px 26px; font-size: 14px; line-height: 1.9; color: #3a3a40; }
+  .doc-body .ph { height: 11px; background: #e8e8ee; border-radius: 4px; margin: 0 0 13px; }
+  .doc-body .ph.s { width: 55%; } .doc-body .ph.m { width: 80%; } .doc-body .ph.l { width: 95%; }
+  .doc-caret { display: inline-block; width: 2px; height: 16px; background: #2a6df0; vertical-align: -3px;
+    animation: docblink 1s steps(2) infinite; }
+  @keyframes docblink { 50% { opacity: 0; } }
+
+  /* ════ 桌宠 + 气泡 stage（浮在桌面上）════ */
+  .stage {
+    position: absolute; left: 50%; bottom: 54px; transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; z-index: 5;
+  }
+  .mouse-wrap { filter: drop-shadow(0 4px 8px rgba(0,0,0,.4)); }
+  /* listen 弹跳 + 耳朵抖 */
+  .mouse-wrap.listen { animation: listenBounce .6s var(--ease-default) infinite; }
+  @keyframes listenBounce { 0%,100% { transform: translateY(0);} 50% { transform: translateY(-3px);} }
+  .mc-ear { transform-box: fill-box; transform-origin: bottom center; }
+  .mouse-wrap.listen .mc-ear { animation: earWiggle .4s var(--ease-default) infinite; }
+  @keyframes earWiggle { 0%,100% { transform: rotate(-12deg);} 50% { transform: rotate(12deg);} }
+  .mouse-wrap.type { transform: rotate(-3deg); }
+  .mouse-wrap.think { animation: thinkWobble 1.4s var(--ease-default) infinite; }
+  @keyframes thinkWobble { 0%,100% { transform: rotate(-3deg);} 50% { transform: rotate(3deg);} }
+
+  /* 气泡 */
+  .bubble {
+    position: relative; margin-bottom: 12px; min-width: 200px; max-width: 300px;
+    background: var(--bubble-bg); color: var(--text-primary);
+    border: 1px solid var(--bubble-border); border-radius: var(--radius-xl);
+    padding: 14px 14px 12px; box-shadow: var(--shadow-bubble);
+    animation: bubbleIn .2s var(--ease-default);
+  }
+  @keyframes bubbleIn { from { opacity: 0; transform: translateY(6px) scale(.96);} to { opacity:1; transform: none;} }
+  .bubble::after {
+    content: ""; position: absolute; bottom: -7px; left: 50%; margin-left: -7px;
+    width: 14px; height: 14px; background: var(--bubble-bg); transform: rotate(45deg);
+    border-right: 1px solid var(--bubble-border); border-bottom: 1px solid var(--bubble-border);
+  }
+  .bubble .head { display: flex; align-items: center; gap: 9px; font-size: var(--text-body-lg); font-weight: 600; }
+  /* voice bars (§4.6) */
+  .bars { display: inline-flex; gap: 3px; align-items: flex-end; height: 16px; }
+  .bars i { width: 3px; background: var(--accent-primary); border-radius: 2px; transform-origin: bottom;
+    animation: barpulse .7s var(--ease-default) infinite; }
+  .bars i:nth-child(1){ height:10px; animation-delay:0s;}
+  .bars i:nth-child(2){ height:16px; animation-delay:.1s;}
+  .bars i:nth-child(3){ height:8px;  animation-delay:.2s;}
+  .bars i:nth-child(4){ height:14px; animation-delay:.3s;}
+  @keyframes barpulse { 0%,100% { transform: scaleY(.6);} 50% { transform: scaleY(1);} }
+
+  /* 提示行（方案 3 的"提示"） */
+  .hint-row { margin-top: 10px; display: flex; align-items: center; gap: 6px;
+    font-size: var(--text-meta); color: var(--text-bubble-dim); }
+  .kbd { font-family: var(--font-mono); font-size: var(--text-micro); font-weight: 700;
+    padding: 2px 6px; border-radius: 5px; background: rgba(0,0,0,.06);
+    border: 1px solid rgba(0,0,0,.10); color: var(--text-primary); }
+  .hint-row .glow { color: var(--accent-primary); font-weight: 600; }
+
+  /* 文字输入气泡态 */
+  .ti-row { display: flex; gap: 8px; align-items: center; }
+  .ti {
+    flex: 1; min-width: 0; font-size: var(--text-body-lg); font-family: var(--font-system);
+    padding: 9px 11px; border: 1.5px solid var(--bubble-border); border-radius: var(--radius-md);
+    background: #fff; color: var(--text-primary); outline: none; transition: border-color .15s, box-shadow .15s;
+  }
+  .ti:focus { border-color: var(--accent-primary); box-shadow: var(--shadow-input-focus); }
+  .ti::placeholder { color: #c4c4cc; }
+  .send { flex: 0 0 auto; width: 32px; height: 32px; border: none; border-radius: var(--radius-md);
+    background: var(--accent-gradient); color: #fff; cursor: pointer; font-size: 15px; font-weight: 700; }
+  .ti-foot { margin-top: 8px; font-size: var(--text-meta); color: var(--text-bubble-dim); display: flex; gap: 10px; }
+
+  /* think / 回答态 */
+  .ans { font-size: var(--text-body); color: var(--text-primary); line-height: 1.55; }
+  .ans .you { display: block; font-style: italic; color: var(--text-bubble-dim);
+    border-left: 3px solid var(--accent-soft); padding-left: 8px; margin-bottom: 8px; }
+
+  .desk-hint { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 6;
+    font-size: var(--text-meta); color: #fff; background: rgba(0,0,0,.45); padding: 6px 14px;
+    border-radius: var(--radius-pill); backdrop-filter: blur(8px); }
+  .reset { position: absolute; top: 12px; right: 14px; z-index: 6; font-size: var(--text-meta);
+    color: var(--text-on-dark); background: var(--surface-glass-strong); border: 1px solid var(--surface-border);
+    border: 1px solid rgba(255,255,255,.15); padding: 6px 12px; border-radius: var(--radius-pill); cursor: pointer; }
+  .reset:hover { background: rgba(255,255,255,.16); }
+
+  /* ════ Section 2 · 提示形态对比 ════ */
+  .variants { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; margin-top: 6px; }
+  .vcard { width: 300px; background: var(--surface-glass); border: 1px solid rgba(255,255,255,.10);
+    border-radius: var(--radius-3xl); padding: 22px 20px 18px; backdrop-filter: blur(20px); }
+  .vcard .vt { font-size: var(--text-title); font-weight: 700; margin: 0 0 4px; }
+  .vcard .vd { font-size: var(--text-meta); color: var(--text-dim); margin: 0 0 18px; line-height: 1.6; min-height: 46px; }
+  .vstage { display: flex; flex-direction: column; align-items: center; }
+  /* card 内气泡复用，但深底上演示 */
+  .vcard .bubble { animation: none; }
+  .vcard .mouse-wrap { animation: none; }
+  .pro { font-size: var(--text-meta); color: var(--success); margin-top: 14px; }
+  .con { font-size: var(--text-meta); color: var(--warn); margin-top: 2px; }
+
+  /* 双 chip 提示（变体 B） */
+  .mode-chips { display: flex; gap: 8px; margin-top: 10px; }
+  .mchip { flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px;
+    font-size: var(--text-meta); font-weight: 600; padding: 7px 8px; border-radius: var(--radius-pill);
+    border: 1px solid var(--bubble-border); background: #fff; color: var(--text-primary); cursor: pointer; }
+  .mchip.on { background: var(--accent-glow); border-color: rgba(255,107,157,.5); color: var(--accent-primary); }
+  .mchip .k { font-family: var(--font-mono); font-size: 9px; opacity: .6; }
+
+  /* 角标提示（变体 C） */
+  .corner-kbd { position: absolute; top: 8px; right: 8px; width: 22px; height: 22px; border-radius: 6px;
+    background: var(--accent-glow); display: flex; align-items: center; justify-content: center; font-size: 12px; }
+
+  .note { margin-top: 10px; padding: 16px 18px; background: var(--surface-glass);
+    border: 1px solid rgba(255,255,255,.08); border-radius: var(--radius-xl); max-width: 820px; }
+  .note h4 { margin: 0 0 8px; font-size: var(--text-body-lg); }
+  .note ul { margin: 0; padding-left: 18px; }
+  .note li { font-size: var(--text-meta); color: var(--text-dim); line-height: 1.9; }
+  .note li b { color: var(--text-on-dark); }
+</style>
+</head>
+<body>
+  <h1>召唤老鼠后，不想语音 → 直接打字</h1>
+  <p class="sub">2026-05-24 · 方案 <b>1（敲键即切）</b> 为主 + 方案 <b>3（二选一提示）</b> 融进 listening 气泡。
+    召唤出来默认在听，<b>你只要敲任意一个字符键，立刻取消录音、原地变成文字输入框，已敲的字符不丢</b>。
+    下方 §2 给三种"提示"强度让你挑用哪个。所有 color/spacing/radius/动效走 DESIGN.md token。</p>
+
+  <!-- ════ Section 1 · 可交互主 demo ════ -->
+  <h2>① 主交互（真能敲键试）<span class="tag">listening → 敲键 → 打字 → 提交</span></h2>
+  <p class="sub">下面是模拟的桌面（底下是个文档窗口，老鼠叠在上面）。
+    现在老鼠在「听着呢」。<b>把光标放进这片区域，随便敲几个字母</b>，看它怎么切成打字态。
+    打完按 <span class="kbd">↵</span> 提交，<span class="kbd">Esc</span> 取消回到听。</p>
+
+  <div class="desk" id="desk" tabindex="0">
+    <div class="desk-hint" id="deskHint">🖱️ 点这里聚焦，然后敲键盘试试 ⌨️</div>
+    <button class="reset" id="reset">↺ 重新召唤</button>
+    <div class="doc-win">
+      <div class="doc-bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        <span class="ttl">未命名文档.md</span></div>
+      <div class="doc-body">
+        <div class="ph l"></div><div class="ph m"></div><div class="ph l"></div>
+        <div class="ph s"></div><div class="ph m"></div>
+        <div class="ph" style="width:38%; display:inline-block; margin:0;"></div><span class="doc-caret"></span>
+      </div>
+    </div>
+    <div class="stage" id="stage"></div>
+  </div>
+
+  <!-- ════ Section 2 · 提示形态 A/B/C ════ -->
+  <h2>② "提示"用哪种？<span class="tag">挑一个</span></h2>
+  <p class="sub">三种都支持「敲键即切」，区别只在<b>怎么告诉用户"还能打字"</b>——发现性 vs 干净度的权衡。</p>
+
+  <div class="variants">
+    <!-- A -->
+    <div class="vcard">
+      <div class="vt">A · 一行键盘提示</div>
+      <div class="vd">气泡里 voice bars 下方一行小灰字。最轻、最不抢戏，靠文字告诉用户。</div>
+      <div class="vstage">
+        <div class="bubble" style="max-width:240px">
+          <div class="head">🎙 听着呢… <span class="bars"><i></i><i></i><i></i><i></i></span></div>
+          <div class="hint-row">或 <span class="glow">直接打字</span> ⌨️ 也行</div>
+        </div>
+        <div class="mouse-wrap" id="vpetA"></div>
+      </div>
+      <div class="pro">✓ 最干净，符合"安静优先"</div>
+      <div class="con">△ 发现性偏弱，得读那行字</div>
+    </div>
+
+    <!-- B -->
+    <div class="vcard">
+      <div class="vt">B · 双入口可点 chip</div>
+      <div class="vd">气泡底部两个 pill，「说话」默认高亮，「打字」可直接点切（也支持敲键）。最可发现。</div>
+      <div class="vstage">
+        <div class="bubble" style="max-width:248px">
+          <div class="head">🎙 听着呢… <span class="bars"><i></i><i></i><i></i><i></i></span></div>
+          <div class="mode-chips">
+            <div class="mchip on">🎤 说话</div>
+            <div class="mchip">⌨️ 打字 <span class="k">任意键</span></div>
+          </div>
+        </div>
+        <div class="mouse-wrap" id="vpetB"></div>
+      </div>
+      <div class="pro">✓ 一眼看到两条路，可点可敲</div>
+      <div class="con">△ 占高度，每次都摆两个按钮稍重</div>
+    </div>
+
+    <!-- C -->
+    <div class="vcard">
+      <div class="vt">C · 角标图标</div>
+      <div class="vd">气泡右上角一个 ⌨️ 小图标，悬停才解释。最隐蔽，老用户友好、新用户可能错过。</div>
+      <div class="vstage">
+        <div class="bubble" style="max-width:230px">
+          <div class="corner-kbd">⌨️</div>
+          <div class="head">🎙 听着呢… <span class="bars"><i></i><i></i><i></i><i></i></span></div>
+        </div>
+        <div class="mouse-wrap" id="vpetC"></div>
+      </div>
+      <div class="pro">✓ 视觉最省，老用户零干扰</div>
+      <div class="con">△ 新用户大概率发现不了</div>
+    </div>
+  </div>
+
+  <!-- 实现要点 -->
+  <h2>③ 实现要点（拍板后给 Rust/TS 用）</h2>
+  <div class="note">
+    <h4>敲键即切的判定（前端 listening 视图全局 keydown）</h4>
+    <ul>
+      <li><b>触发切换</b>：<code>e.key.length === 1</code>（单个可打印字符）且 <b>无</b> <code>metaKey/ctrlKey/altKey</code> → 取消录音、进文字态、把这个字符塞进 input 并 focus</li>
+      <li><b>不触发</b>：方向键 / Tab / Shift / Backspace / 功能键（length≠1）—— 留给"未来快捷键"，不误触</li>
+      <li><b>Esc</b>：listening 态 = 取消召唤；typing 态 = 退回 listening（不是直接消失，给反悔空间）</li>
+      <li><b>中文</b>：拼音首字母就是单字符，敲下即切；切后 input 拿到 IME composition，正常拼。无需特判</li>
+      <li><b>录音处理</b>：切走时 <code>stop & discard</code> 这一小段音频（别偷偷转写混进文字）—— 干净切换</li>
+      <li><b>桌宠状态</b>：listening（耳立+弹跳）→ 一敲键切 <code>type</code> 态（黄铅笔+前倾，盯输入），提交后 <code>think</code></li>
+      <li><b>提交路径</b>：文字 = 语音转写出来的同一条 transcript，<b>走同一个主 pipeline + ai_queue 串行</b>，下游无差别</li>
+      <li><b>窗口尺寸</b>：input 气泡比 listening 气泡高 → 走 <code>useAdaptiveOverlay</code> 自适应，别拍 EXPANDED_SIZE</li>
+    </ul>
+  </div>
+
+<script>
+  // ── 像素鼠 SVG（classic）。state: listen | type | think ──
+  function petSVG(size, state) {
+    const pencil = state === 'type' ? `
+      <!-- 黄铅笔（左爪举起，warn 色杆 + 深笔尖）-->
+      <g transform="rotate(-32 2.5 11)">
+        <rect x="-1" y="10.5" width="5" height="1.6" fill="var(--warn)"/>
+        <rect x="-1" y="10.5" width="1"   height="1.6" fill="var(--text-primary)"/>
+        <rect x="3.6" y="10.5" width=".7" height="1.6" fill="var(--m-nose)"/>
+      </g>` : '';
+    const qmark = state === 'think' ? `
+      <rect x="12.5" y="0" width="2" height="2" fill="var(--accent-primary)"/>
+      <rect x="13"   y="2" width="1" height="1" fill="var(--accent-primary)"/>
+      <rect x="13"   y="3.5" width="1" height="1" fill="var(--accent-primary)"/>` : '';
+    // type 态眼睛专注（窄一点），其余圆眼
+    const eyeH = state === 'type' ? 1.3 : 2;
+    const eyeY = state === 'type' ? 6.4 : 6;
+    return `<svg class="mouse-svg" width="${size}" height="${size}" viewBox="-2 -1 18 16">
+      ${qmark}
+      <!-- 耳（可抖动组） -->
+      <rect class="mc-ear" x="2"  y="2" width="3" height="3" fill="var(--m-body)"/>
+      <rect class="mc-ear" x="11" y="2" width="3" height="3" fill="var(--m-body)"/>
+      <rect x="3"  y="3" width="1" height="1" fill="var(--m-ear-in)"/>
+      <rect x="12" y="3" width="1" height="1" fill="var(--m-ear-in)"/>
+      <!-- 头/身 -->
+      <rect x="3" y="4"  width="10" height="9" fill="var(--m-body)"/>
+      <rect x="4" y="5"  width="8"  height="8" fill="var(--m-body)"/>
+      <!-- 白肚 -->
+      <rect x="6" y="9" width="4" height="4" fill="var(--m-belly)"/>
+      <!-- 鼻 -->
+      <rect x="7" y="8" width="2" height="1" fill="var(--m-nose)"/>
+      <!-- 尾 -->
+      <rect x="13" y="10" width="3" height="1" fill="var(--m-tail)"/>
+      <!-- 眼 -->
+      <rect x="5" y="${eyeY}" width="2" height="${eyeH}" fill="var(--m-eye)"/>
+      <rect x="9" y="${eyeY}" width="2" height="${eyeH}" fill="var(--m-eye)"/>
+      ${pencil}
+    </svg>`;
+  }
+
+  // ── Section 2 静态预览 ──
+  document.getElementById('vpetA').innerHTML = petSVG(64, 'listen');
+  document.getElementById('vpetB').innerHTML = petSVG(64, 'listen');
+  document.getElementById('vpetC').innerHTML = petSVG(64, 'listen');
+  // chip 可点切换演示
+  document.querySelectorAll('.mode-chips').forEach(g => {
+    g.querySelectorAll('.mchip').forEach(c => c.onclick = () => {
+      g.querySelectorAll('.mchip').forEach(x => x.classList.remove('on'));
+      c.classList.add('on');
+    });
+  });
+
+  // ── Section 1 状态机 ──
+  const stage = document.getElementById('stage');
+  const desk = document.getElementById('desk');
+  const deskHint = document.getElementById('deskHint');
+  let state = 'listening';   // listening | typing | thinking
+  let firstChar = '';
+
+  function render() {
+    if (state === 'listening') {
+      stage.innerHTML = `
+        <div class="bubble">
+          <div class="head">🎙 听着呢… <span class="bars"><i></i><i></i><i></i><i></i></span></div>
+          <div class="hint-row">不想说？<span class="glow">直接打字</span> ⌨️ 就行（敲任意键）</div>
+        </div>
+        <div class="mouse-wrap listen">${petSVG(72,'listen')}</div>`;
+      deskHint.textContent = '🖱️ 点这里聚焦，然后敲键盘试试 ⌨️';
+    } else if (state === 'typing') {
+      stage.innerHTML = `
+        <div class="bubble">
+          <div class="ti-row">
+            <input class="ti" id="ti" placeholder="打字问我…" />
+            <button class="send" id="send">↑</button>
+          </div>
+          <div class="ti-foot"><span><span class="kbd">↵</span> 发送</span><span><span class="kbd">Esc</span> 回到听</span></div>
+        </div>
+        <div class="mouse-wrap type">${petSVG(72,'type')}</div>`;
+      const ti = document.getElementById('ti');
+      ti.value = firstChar;
+      ti.focus();
+      ti.setSelectionRange(ti.value.length, ti.value.length);
+      ti.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); submit(ti.value); }
+        else if (e.key === 'Escape') { e.preventDefault(); state = 'listening'; render(); desk.focus(); }
+      });
+      document.getElementById('send').onclick = () => submit(ti.value);
+      deskHint.textContent = '✏️ 打字态：已切走录音，老鼠举起铅笔等你';
+    } else if (state === 'thinking') {
+      stage.innerHTML = `
+        <div class="bubble">
+          <div class="ans"><span class="you">你：${escapeHtml(firstChar) || '（空）'}</span>🤔 让我看看…</div>
+        </div>
+        <div class="mouse-wrap think">${petSVG(72,'think')}</div>`;
+      deskHint.textContent = '🧠 已提交，走主 pipeline（和语音转写出来的 transcript 完全一样）';
+      setTimeout(() => {
+        if (state !== 'thinking') return;
+        const b = stage.querySelector('.ans');
+        if (b) b.innerHTML = `<span class="you">你：${escapeHtml(firstChar) || '（空）'}</span>好的！这就是打字提问的结果气泡——和语音问的长一样。`;
+      }, 1400);
+    }
+  }
+  function submit(v) { firstChar = (v || '').trim(); state = 'thinking'; render(); }
+  function escapeHtml(s){ return (s||'').replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+  // 全局 keydown：listening 态下敲单字符即切
+  document.addEventListener('keydown', (e) => {
+    if (state !== 'listening') return;
+    // demo 范围：只在 desk 聚焦时响应，避免干扰页面其它地方
+    if (document.activeElement !== desk && !desk.contains(document.activeElement)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === 'Escape') { deskHint.textContent = '（真实里这会取消召唤、老鼠跑回角落）'; return; }
+    if (e.key.length === 1) {
+      e.preventDefault();
+      firstChar = e.key;
+      state = 'typing';
+      render();
+    }
+  });
+
+  document.getElementById('reset').onclick = () => { state = 'listening'; firstChar=''; render(); desk.focus(); };
+  desk.addEventListener('click', () => { if (state === 'listening') desk.focus(); });
+  render();
+</script>
+</body>
+</html>
