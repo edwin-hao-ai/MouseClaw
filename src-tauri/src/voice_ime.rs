@@ -62,6 +62,8 @@ pub enum ImeTrigger {
     RightShift,
     RightCommand,
     RightOption,
+    LeftShift,    // v0.5.x · 录制自定义补充（右⇧已有，补左⇧）
+    LeftCommand,  // v0.5.x · 补左⌘
 }
 
 impl ImeTrigger {
@@ -72,6 +74,8 @@ impl ImeTrigger {
             "right-shift"   => ImeTrigger::RightShift,
             "right-command" => ImeTrigger::RightCommand,
             "right-option"  => ImeTrigger::RightOption,
+            "left-shift"    => ImeTrigger::LeftShift,
+            "left-command"  => ImeTrigger::LeftCommand,
             _               => ImeTrigger::Fn,
         }
     }
@@ -83,6 +87,8 @@ impl ImeTrigger {
             ImeTrigger::RightShift    => "right-shift",
             ImeTrigger::RightCommand  => "right-command",
             ImeTrigger::RightOption   => "right-option",
+            ImeTrigger::LeftShift     => "left-shift",
+            ImeTrigger::LeftCommand   => "left-command",
         }
     }
     /// 返回这个 trigger 关心哪些 keycode（按下任意一个就算激活）
@@ -94,6 +100,8 @@ impl ImeTrigger {
             ImeTrigger::RightShift    => &[60],
             ImeTrigger::RightCommand  => &[54],
             ImeTrigger::RightOption   => &[61],
+            ImeTrigger::LeftShift     => &[56],
+            ImeTrigger::LeftCommand   => &[55],
         }
     }
     /// 显示名（en）
@@ -105,6 +113,8 @@ impl ImeTrigger {
             ImeTrigger::RightShift    => "Hold right ⇧",
             ImeTrigger::RightCommand  => "Hold right ⌘",
             ImeTrigger::RightOption   => "Hold right ⌥",
+            ImeTrigger::LeftShift     => "Hold left ⇧",
+            ImeTrigger::LeftCommand   => "Hold left ⌘",
         }
     }
     pub fn display_zh(&self) -> &'static str {
@@ -115,11 +125,14 @@ impl ImeTrigger {
             ImeTrigger::RightShift    => "按住 右 ⇧",
             ImeTrigger::RightCommand  => "按住 右 ⌘",
             ImeTrigger::RightOption   => "按住 右 ⌥",
+            ImeTrigger::LeftShift     => "按住 左 ⇧",
+            ImeTrigger::LeftCommand   => "按住 左 ⌘",
         }
     }
     pub fn all() -> &'static [ImeTrigger] {
         &[ImeTrigger::Fn, ImeTrigger::Option, ImeTrigger::Control,
-          ImeTrigger::RightShift, ImeTrigger::RightCommand, ImeTrigger::RightOption]
+          ImeTrigger::RightShift, ImeTrigger::RightCommand, ImeTrigger::RightOption,
+          ImeTrigger::LeftShift, ImeTrigger::LeftCommand]
     }
 }
 
@@ -417,6 +430,8 @@ fn trigger_to_flag_bit(t: ImeTrigger) -> u64 {
         ImeTrigger::RightShift    => 1 << 17, // kCGEventFlagMaskShift
         ImeTrigger::RightCommand  => 1 << 20, // kCGEventFlagMaskCommand
         ImeTrigger::RightOption   => 1 << 19, // kCGEventFlagMaskAlternate
+        ImeTrigger::LeftShift     => 1 << 17, // kCGEventFlagMaskShift
+        ImeTrigger::LeftCommand   => 1 << 20, // kCGEventFlagMaskCommand
     }
 }
 

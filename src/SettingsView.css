@@ -96,5 +96,13 @@
 }
 .settings-root .slider { width: 140px; accent-color: var(--accent-primary); }
 
+/* 快捷键 / 修饰键录制器 */
+.settings-root .rec-wrap { display: inline-flex; align-items: center; gap: var(--space-2); }
+.settings-root .btn.rec-on {
+  background: var(--accent-primary); color: #fff; border-color: var(--accent-primary);
+  animation: rec-blink 1s var(--ease-default, ease-in-out) infinite;
+}
+@keyframes rec-blink { 50% { opacity: .65; } }
+
 /* 诊断分页内嵌 StatusView —— 去掉它自带的外边距让它贴合 */
 .settings-root .diag-embed { display: block; }

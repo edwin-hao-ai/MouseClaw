@@ -50,7 +50,8 @@ pub fn get_voice_ime() -> bool {
 #[tauri::command]
 pub fn save_voice_ime_trigger(trigger: String) -> Result<(), String> {
     // 校验是已知值
-    let allowed = ["fn", "option", "control", "right-shift", "right-command", "right-option"];
+    let allowed = ["fn", "option", "control", "right-shift", "right-command", "right-option",
+                   "left-shift", "left-command"];
     if !allowed.contains(&trigger.as_str()) {
         return Err(format!("未知 trigger: {trigger}（允许 {:?}）", allowed));
     }
@@ -213,6 +214,17 @@ pub fn save_sfx(enabled: bool, volume: f32, app: AppHandle) -> Result<(), String
 #[tauri::command]
 pub fn save_memory_enabled(enabled: bool) -> Result<(), String> {
     crate::memory::memory_set_enabled(enabled)
+}
+
+/// 设置召唤快捷键（任意组合键）—— 包 change_summon_shortcut：热切换 unregister 旧 +
+/// register 新，注册失败（被别的 app 占用）自动回滚到旧键 + 弹气泡提示，不会让用户没键可用。
+#[tauri::command]
+pub fn set_summon_shortcut(shortcut: String, app: AppHandle) -> Result<(), String> {
+    if shortcut.trim().is_empty() {
+        return Err("空快捷键".into());
+    }
+    crate::shortcut_menu::change_summon_shortcut(&app, &shortcut);
+    Ok(())
 }
 
 /// 工作目录选择器（osascript 选文件夹 → 存 config）。复用托盘那条逻辑。

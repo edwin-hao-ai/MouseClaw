@@ -448,6 +448,7 @@ pub fn run() {
             commands::save_sfx,
             commands::save_memory_enabled,
             commands::save_backend,
+            commands::set_summon_shortcut,
             commands::pick_workspace_folder,
             commands::open_settings_window,
             commands::open_tasks_window,

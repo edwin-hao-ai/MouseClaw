@@ -25,7 +25,82 @@ const TRIGGER_LABEL: Record<string, string> = {
   "fn": L("按住 fn", "Hold fn"), "option": L("按住 ⌥ option", "Hold ⌥ option"),
   "control": L("按住 ⌃ control", "Hold ⌃ control"), "right-shift": L("按住 右 ⇧", "Hold right ⇧"),
   "right-command": L("按住 右 ⌘", "Hold right ⌘"), "right-option": L("按住 右 ⌥", "Hold right ⌥"),
+  "left-shift": L("按住 左 ⇧", "Hold left ⇧"), "left-command": L("按住 左 ⌘", "Hold left ⌘"),
 };
+
+/* 召唤组合键漂亮显示：Super+Shift+KeyM → ⌘⇧M */
+function prettyChord(chord: string): string {
+  if (!chord) return "—";
+  return chord.split("+").map((p) => {
+    if (p === "Super" || p === "Meta" || p === "Command") return "⌘";
+    if (p === "Control" || p === "Ctrl") return "⌃";
+    if (p === "Alt" || p === "Option") return "⌥";
+    if (p === "Shift") return "⇧";
+    return p.replace(/^Key/, "").replace(/^Digit/, "");
+  }).join("");
+}
+/* JS e.code 修饰键 → ImeTrigger 字符串 */
+const MOD_TO_TRIGGER: Record<string, string> = {
+  ShiftLeft: "left-shift", ShiftRight: "right-shift",
+  ControlLeft: "control", ControlRight: "control",
+  AltLeft: "option", AltRight: "option",
+  MetaLeft: "left-command", MetaRight: "right-command",
+};
+
+/* 录制组合键（召唤快捷键）：需 ≥1 修饰键 + 1 主键。Esc 取消。 */
+function ShortcutRecorder({ value, onCapture }: { value: string; onCapture: (chord: string) => void }) {
+  const [rec, setRec] = useState(false);
+  useEffect(() => {
+    if (!rec) return;
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault(); e.stopPropagation();
+      if (e.key === "Escape") { setRec(false); return; }
+      const code = e.code;
+      const isMod = /^(Meta|Control|Alt|Shift)/.test(code) || code === "CapsLock";
+      if (isMod) return; // 还没按主键，继续等
+      const mods: string[] = [];
+      if (e.metaKey) mods.push("Super");
+      if (e.ctrlKey) mods.push("Control");
+      if (e.altKey) mods.push("Alt");
+      if (e.shiftKey) mods.push("Shift");
+      if (mods.length === 0) return; // 纯主键不接受（全局快捷键必须带修饰键）
+      setRec(false);
+      onCapture([...mods, code].join("+"));
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [rec, onCapture]);
+  return (
+    <span className="rec-wrap">
+      <span className="kbd">{prettyChord(value)}</span>
+      <button type="button" className={`btn ${rec ? "rec-on" : ""}`} onClick={() => setRec((r) => !r)}>
+        {rec ? L("按组合键…Esc 取消", "Press keys…Esc") : L("⌨️ 录制", "⌨️ Record")}
+      </button>
+    </span>
+  );
+}
+/* 录制修饰键（语音触发键）：按下任一修饰键即绑定。Esc 取消。 */
+function ModifierRecorder({ onCapture }: { onCapture: (trigger: string) => void }) {
+  const [rec, setRec] = useState(false);
+  useEffect(() => {
+    if (!rec) return;
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault(); e.stopPropagation();
+      if (e.key === "Escape") { setRec(false); return; }
+      const t = MOD_TO_TRIGGER[e.code];
+      if (!t) return; // 等一个修饰键
+      setRec(false);
+      onCapture(t);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [rec, onCapture]);
+  return (
+    <button type="button" className={`btn ${rec ? "rec-on" : ""}`} onClick={() => setRec((r) => !r)}>
+      {rec ? L("按修饰键…Esc 取消", "Press modifier…Esc") : L("⌨️ 录制", "⌨️ Record")}
+    </button>
+  );
+}
 const ANCHOR_LABEL: Record<string, string> = {
   "bottom-right": L("右下", "↘"), "bottom-left": L("左下", "↙"), "top-right": L("右上", "↗"),
   "top-left": L("左上", "↖"), "follow": L("跟随", "Follow"), "hidden": L("隐藏", "Hidden"),
@@ -58,7 +133,7 @@ const BACKENDS = [
   ["gemini-cli", "Gemini CLI"], ["opencode-cli", "OpenCode"],
   ["copilot-cli", "Copilot CLI"], ["qwen-code", "Qwen Code"],
 ] as const;
-const TRIGGERS = ["fn", "option", "control", "right-shift", "right-command", "right-option"] as const;
+const TRIGGERS = ["fn", "option", "control", "right-shift", "right-command", "right-option", "left-shift", "left-command"] as const;
 const ANCHORS = ["bottom-right", "bottom-left", "top-right", "top-left", "follow", "hidden"] as const;
 const PERSONAS = ["warm", "snarky", "minimal", "companion", "pro", "cheerful", "calm", "curious", "tsundere", "custom"] as const;
 
@@ -142,7 +217,10 @@ export default function SettingsView() {
             <h2>{t("set.cat.summon")}</h2>
             <div className="group">
               <Row name={t("set.shortcut")} hint={t("set.shortcut.hint")}>
-                <span className="kbd">{s.shortcut || "⌘⇧Space"}</span>
+                <ShortcutRecorder value={s.shortcut} onCapture={(chord) => {
+                  invoke("set_summon_shortcut", { shortcut: chord })
+                    .then(() => invoke<Settings>("get_settings").then(setS)).catch(() => {});
+                }} />
               </Row>
               <Row name={t("set.backend")} hint={t("set.backend.hint")}>
                 <select className="sel" value={s.backend}
@@ -162,10 +240,13 @@ export default function SettingsView() {
                 <Toggle on={s.voice_ime_enabled} onChange={(v) => { set("voice_ime_enabled", v); invoke("save_voice_ime", { enabled: v }).catch(() => {}); }} />
               </Row>
               <Row name={t("set.trigger")} hint={t("set.trigger.hint")}>
-                <select className="sel" value={trigger}
-                  onChange={(e) => { setTrigger(e.target.value); invoke("save_voice_ime_trigger", { trigger: e.target.value }).catch(() => {}); }}>
-                  {TRIGGERS.map((v) => <option key={v} value={v}>{TRIGGER_LABEL[v]}</option>)}
-                </select>
+                <span className="rec-wrap">
+                  <select className="sel" value={trigger}
+                    onChange={(e) => { setTrigger(e.target.value); invoke("save_voice_ime_trigger", { trigger: e.target.value }).catch(() => {}); }}>
+                    {TRIGGERS.map((v) => <option key={v} value={v}>{TRIGGER_LABEL[v]}</option>)}
+                  </select>
+                  <ModifierRecorder onCapture={(tr) => { setTrigger(tr); invoke("save_voice_ime_trigger", { trigger: tr }).catch(() => {}); }} />
+                </span>
               </Row>
               <Row name={t("set.vocab")} hint={t("set.vocab.hint")}>
                 <Toggle on={s.vocab_builtin_enabled} onChange={(v) => { set("vocab_builtin_enabled", v); invoke("vocab_set_builtin_enabled", { enabled: v }).catch(() => {}); }} />
