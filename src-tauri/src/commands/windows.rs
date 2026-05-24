@@ -316,6 +316,36 @@ pub fn open_picker_window(app: AppHandle) -> Result<(), String> {
     }
 }
 
+/// v0.5.x · 打开「设置」窗口 —— 收拢原先散在托盘里的所有开关（召唤/语音/桌宠/声音/通用/隐私 + 诊断）。
+#[tauri::command]
+pub fn open_settings_window(app: AppHandle) -> Result<(), String> {
+    use tauri::WebviewWindowBuilder;
+    use tauri::WebviewUrl;
+
+    if let Some(w) = app.get_webview_window("settings") {
+        let _ = w.show();
+        let _ = w.set_focus();
+        return Ok(());
+    }
+
+    let result = WebviewWindowBuilder::new(
+        &app, "settings",
+        WebviewUrl::App("index.html?view=settings".into()),
+    )
+    .title("MouseClaw — 设置")
+    .inner_size(760.0, 600.0)
+    .min_inner_size(680.0, 520.0)
+    .resizable(true)
+    .decorations(true)
+    .focused(true)
+    .build();
+
+    match result {
+        Ok(w) => { let _ = w.set_focus(); Ok(()) }
+        Err(e) => Err(format!("打开 settings 窗口失败：{e:#}")),
+    }
+}
+
 /// v0.4.4 · 打开「桌宠记得的事」窗口(画像 / 历史 / 暂停)。
 #[tauri::command]
 pub fn open_memory_window(app: AppHandle) -> Result<(), String> {

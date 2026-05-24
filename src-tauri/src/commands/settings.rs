@@ -171,3 +171,68 @@ pub fn vocab_set_builtin_enabled(enabled: bool) -> Result<usize, String> {
     println!("[mouseclaw] 📝 builtin vocab → {enabled}, {n} entries active");
     Ok(n)
 }
+
+// ───────────────────── v0.5.x · 设置窗 (SettingsView) commands ─────────────────────
+// 收拢原先散在托盘里的开关。设置页一次 get_settings 读全部现值填表单，改一项调对应 save_*。
+
+/// 设置窗一次性读当前全部配置 —— 前端填表单用（避免十几个 getter）。Config 本身 Serialize。
+#[tauri::command]
+pub fn get_settings() -> config::Config {
+    config::Config::load()
+}
+
+/// 朗读 AI 回复（TTS）开关。关掉时立刻停掉正在朗读的。
+#[tauri::command]
+pub fn save_tts(enabled: bool) -> Result<(), String> {
+    let mut cfg = config::Config::load();
+    cfg.tts_enabled = enabled;
+    cfg.save().map_err(|e| format!("保存失败：{e}"))?;
+    if !enabled {
+        crate::tts::stop();
+    }
+    println!("[mouseclaw] 🔊 tts_enabled → {enabled}");
+    Ok(())
+}
+
+/// 桌宠音效开关 + 音量（一次设）。广播 sfx-changed 让 overlay 实时生效（不重启）。
+#[tauri::command]
+pub fn save_sfx(enabled: bool, volume: f32, app: AppHandle) -> Result<(), String> {
+    let mut cfg = config::Config::load();
+    cfg.sfx_enabled = enabled;
+    cfg.sfx_volume = volume.clamp(0.0, 1.0);
+    cfg.save().map_err(|e| format!("保存失败：{e}"))?;
+    let payload = crate::commands::SfxConfig { enabled: cfg.sfx_enabled, volume: cfg.sfx_volume };
+    for (_, w) in app.webview_windows() {
+        let _ = w.emit("sfx-changed", payload.clone());
+    }
+    println!("[mouseclaw] 🔉 sfx → enabled={enabled} volume={}", cfg.sfx_volume);
+    Ok(())
+}
+
+/// 长期记忆开关（关 = 不再记录 + 蒸馏）。复用 memory 模块的 set_enabled（同步 config）。
+#[tauri::command]
+pub fn save_memory_enabled(enabled: bool) -> Result<(), String> {
+    crate::memory::memory_set_enabled(enabled)
+}
+
+/// 工作目录选择器（osascript 选文件夹 → 存 config）。复用托盘那条逻辑。
+#[tauri::command]
+pub fn pick_workspace_folder(app: AppHandle) -> Result<(), String> {
+    crate::tray_actions::set_workspace_via_picker(&app);
+    Ok(())
+}
+
+/// 切 AI 后端 —— 同步 config + 运行期 state.backend（否则不重启不生效）。
+#[tauri::command]
+pub async fn save_backend(
+    backend: String,
+    state: tauri::State<'_, std::sync::Arc<crate::AppState>>,
+) -> Result<(), String> {
+    let b = crate::backend::Backend::from_choice(&backend);
+    let mut cfg = config::Config::load();
+    cfg.backend = b;
+    cfg.save().map_err(|e| format!("保存失败：{e}"))?;
+    *state.backend.lock().await = b;
+    println!("[mouseclaw] 🤖 backend → {}", b.display_name());
+    Ok(())
+}
