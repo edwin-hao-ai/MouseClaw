@@ -173,6 +173,35 @@ pub fn vocab_set_builtin_enabled(enabled: bool) -> Result<usize, String> {
     Ok(n)
 }
 
+/// v0.6 · 加词（去权重）—— 用户输一个词就进词表，自动 CJK 分字、无 score。
+/// status: "added" | "exists" | "empty"。Added 时重生成 active.txt + 失效 recognizer。
+#[derive(serde::Serialize)]
+pub struct VocabAddResult {
+    pub status: String,
+    pub stored: String,
+    pub total: usize,
+}
+
+#[tauri::command]
+pub fn vocab_add_word(word: String) -> Result<VocabAddResult, String> {
+    use crate::vocab::AddOutcome;
+    let outcome = crate::vocab::add_user_word(&word).map_err(|e| format!("add word: {e}"))?;
+    match outcome {
+        AddOutcome::Empty => Ok(VocabAddResult { status: "empty".into(), stored: String::new(), total: 0 }),
+        AddOutcome::Exists { stored } => {
+            // 已存在 → 不必重生成（已在 active 里），直接返回
+            Ok(VocabAddResult { status: "exists".into(), stored, total: 0 })
+        }
+        AddOutcome::Added { stored } => {
+            let cfg = config::Config::load();
+            let total = crate::vocab::regenerate_active(cfg.vocab_builtin_enabled)
+                .map_err(|e| format!("regen: {e}"))?;
+            crate::transcribe_stream::invalidate_recognizer();
+            Ok(VocabAddResult { status: "added".into(), stored, total })
+        }
+    }
+}
+
 // ───────────────────── v0.5.x · 设置窗 (SettingsView) commands ─────────────────────
 // 收拢原先散在托盘里的开关。设置页一次 get_settings 读全部现值填表单，改一项调对应 save_*。
 

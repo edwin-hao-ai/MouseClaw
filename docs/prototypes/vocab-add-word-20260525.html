@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>词表 · 加词（去权重）prototype · v0.6</title>
+<style>
+  :root{
+    --panel-bg:#fcfcfe; --row-bg:#fff; --text-primary:#1a1a1a; --text-dim:#8a8a92;
+    --border:rgba(0,0,0,.08); --accent:#ff6b9d; --accent-soft:#ff9bb8; --success:#2e9e6b;
+    --radius-md:8px; --radius-xl:12px; --font-system:-apple-system,BlinkMacSystemFont,"SF Pro Display",system-ui,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --panel-bg:#13151c; --row-bg:#1a1d26; --text-primary:#f5f5f7; --text-dim:#a1a1a8; --border:rgba(255,255,255,.08); }
+  }
+  body{ font-family:var(--font-system); background:var(--panel-bg); color:var(--text-primary);
+    margin:0; padding:40px; line-height:1.5; }
+  .wrap{ max-width:620px; margin:0 auto; }
+  h1{ font-size:18px; margin:0 0 4px; }
+  .sub{ color:var(--text-dim); font-size:13px; margin:0 0 24px; }
+  h2{ font-size:13px; color:var(--text-dim); text-transform:uppercase; letter-spacing:.04em; margin:24px 0 8px; }
+  .group{ background:var(--row-bg); border:1px solid var(--border); border-radius:var(--radius-xl); overflow:hidden; }
+  .row{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px;
+    padding:14px 16px; border-bottom:1px solid var(--border); }
+  .row:last-child{ border-bottom:none; }
+  .name{ font-size:14px; font-weight:500; }
+  .hint{ font-size:12px; color:var(--text-dim); margin-top:2px; max-width:300px; }
+  .ctrl{ display:flex; align-items:center; gap:8px; flex-shrink:0; }
+  .txt{ font:inherit; font-size:13px; padding:6px 10px; border:1px solid var(--border);
+    border-radius:var(--radius-md); background:var(--panel-bg); color:var(--text-primary); width:180px; }
+  .txt:focus{ outline:2px solid var(--accent-soft); outline-offset:1px; border-color:var(--accent); }
+  .btn{ font:inherit; font-size:13px; padding:6px 14px; border:none; border-radius:var(--radius-md);
+    background:var(--accent); color:#fff; cursor:pointer; }
+  .btn:hover{ background:var(--accent-soft); }
+  .sw{ width:38px; height:22px; border-radius:999px; background:var(--accent); border:none; position:relative; }
+  .sw::after{ content:""; position:absolute; top:2px; right:2px; width:18px; height:18px; border-radius:50%; background:#fff; }
+  .msg{ font-size:12px; color:var(--success); }
+  .note{ margin-top:28px; padding:14px 16px; background:var(--row-bg); border:1px solid var(--border);
+    border-radius:var(--radius-md); font-size:13px; color:var(--text-dim); }
+  .note b{ color:var(--text-primary); }
+  code{ font-family:ui-monospace,"SF Mono",monospace; font-size:12px; background:rgba(127,127,127,.12); padding:1px 5px; border-radius:4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>设置 · 语音 / Settings · Voice</h1>
+  <p class="sub">词表"加词"——输一个词就进，不出现权重。Add a word — no weights, ever.</p>
+
+  <h2>🎙️ 语音 / Voice</h2>
+  <div class="group">
+    <div class="row">
+      <div><div class="name">内置术语词表</div><div class="hint">把 OPENAI→OpenAI、USEEFFECT→useEffect 还原成正确大小写。</div></div>
+      <div class="ctrl"><button class="sw" aria-pressed="true"></button></div>
+    </div>
+    <div class="row">
+      <div><div class="name">加一个词</div><div class="hint">输一个词直接进词表，中文自动处理，不用设权重。</div></div>
+      <div class="ctrl">
+        <input class="txt" placeholder="如：心房颤动、useEffect" value="心房颤动">
+        <button class="btn">添加</button>
+        <span class="msg">✓ 已添加</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>用户看不到的机器（藏在后面）：</b><br>
+    · 中文自动拆字喂 sherpa：<code>心房颤动</code> → 写进 <code>~/.mouseclaw/vocab/user.txt</code> 为 <code>心 房 颤 动</code><br>
+    · 英文整词保留：<code>useEffect</code> → <code>useEffect</code>；混排 <code>GPT模型</code> → <code>GPT 模 型</code><br>
+    · 权重(score)一律省略 → 用全局默认 2.0。<b>用户从头到尾不碰权重。</b><br>
+    · 加完自动重生成 active.txt + 失效 recognizer，下次说话即生效。
+  </div>
+</div>
+</body>
+</html>

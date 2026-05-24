@@ -154,6 +154,7 @@ const FIXTURES: Record<string, (args?: any) => unknown> = {
   save_tts: () => null, save_sfx: () => null, save_memory_enabled: () => null,
   save_backend: () => null, save_voice_ime: () => null, save_voice_ime_trigger: () => null,
   vocab_set_builtin_enabled: () => 127, save_pet_anchor: () => null, save_pet_identity: () => null,
+  vocab_add_word: (a: Record<string, unknown> = {}) => ({ status: String(a.word || "").trim() ? "added" : "empty", stored: String(a.word || ""), total: 128 }),
   save_language: () => null, set_autostart: () => true, save_clipboard_paused: () => null,
   set_summon_shortcut: () => null,
   pick_workspace_folder: () => null, open_picker_window: () => null,

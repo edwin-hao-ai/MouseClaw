@@ -168,6 +168,8 @@ export default function SettingsView() {
   const [name, setName] = useState("");
   const [persona, setPersona] = useState("warm");
   const [custom, setCustom] = useState("");
+  const [vocabWord, setVocabWord] = useState("");
+  const [vocabMsg, setVocabMsg] = useState("");
 
   // 读身份（名字/性格/自定义）—— picker 窗也能改，要能跨窗同步。
   const loadIdentity = useCallback(() => {
@@ -206,6 +208,20 @@ export default function SettingsView() {
   const saveIdentity = useCallback((n: string, p: string, c: string) => {
     invoke("save_pet_identity", { name: n, personality: p, custom: c }).catch(() => {});
   }, []);
+
+  // v0.6 · 加词（去权重）—— 输一个词就进，自动 CJK 分字、无 score，全程不出现权重。
+  const addVocab = useCallback(() => {
+    const w = vocabWord.trim();
+    if (!w) return;
+    invoke<{ status: string; stored: string; total: number }>("vocab_add_word", { word: w })
+      .then((r) => {
+        setVocabMsg(r.status === "added" ? t("set.vocab.add.ok")
+          : r.status === "exists" ? t("set.vocab.add.dup") : "");
+        if (r.status === "added" || r.status === "exists") setVocabWord("");
+        window.setTimeout(() => setVocabMsg(""), 2500);
+      })
+      .catch(() => setVocabMsg(t("set.vocab.add.err")));
+  }, [vocabWord, t]);
 
   if (!s) return <div className="settings-root"><div className="loading">…</div></div>;
 
@@ -271,6 +287,16 @@ export default function SettingsView() {
               </Row>
               <Row name={t("set.vocab")} hint={t("set.vocab.hint")}>
                 <Toggle on={s.vocab_builtin_enabled} onChange={(v) => { set("vocab_builtin_enabled", v); invoke("vocab_set_builtin_enabled", { enabled: v }).catch(() => {}); }} />
+              </Row>
+              <Row name={t("set.vocab.add")} hint={t("set.vocab.add.hint")}>
+                <span className="rec-wrap">
+                  <input className="txt" value={vocabWord} placeholder={t("set.vocab.add.ph")}
+                    data-testid="vocab-add-input"
+                    onChange={(e) => setVocabWord(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") addVocab(); }} />
+                  <button type="button" className="btn" data-testid="vocab-add-btn" onClick={addVocab}>{t("set.vocab.add.btn")}</button>
+                  {vocabMsg && <span className="hint" data-testid="vocab-add-msg">{vocabMsg}</span>}
+                </span>
               </Row>
             </div>
           </section>

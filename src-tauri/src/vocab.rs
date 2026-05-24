@@ -145,6 +145,83 @@ const USER_FILE_TEMPLATE: &str = "\
 ";
 
 // ============================================================================
+// v0.6 · 加词（去权重）—— 用户输一个词就进，自动处理中文分字，永不暴露 score
+// ============================================================================
+//
+// sherpa 中文 hotwords 需要字级分词（"心房颤动" 要写成 "心 房 颤 动"），英文整词。
+// 这个细节不该糊用户脸上 —— 加词 UI 只让用户打自然的词，转换在这里默默做。
+// score 一律省略（regenerate_active 会用全局默认 2.0），用户从头到尾看不到权重。
+
+/// CJK / 假名范围 —— 这些字符要逐字空格分开喂 sherpa。
+fn is_cjk(c: char) -> bool {
+    matches!(c as u32,
+        0x3040..=0x30FF |   // 平假名 / 片假名
+        0x3400..=0x4DBF |   // CJK 扩展 A
+        0x4E00..=0x9FFF |   // CJK 基本
+        0xF900..=0xFAFF |   // CJK 兼容
+        0x20000..=0x2A6DF)  // CJK 扩展 B
+}
+
+/// 把用户输入的词转成 sherpa hotword 形式：CJK 逐字空格分开，ASCII 串保持整体。
+/// "心房颤动"→"心 房 颤 动"；"useEffect"→"useEffect"；"GPT模型"→"GPT 模 型"。
+pub fn to_hotword_form(raw: &str) -> String {
+    let mut out: Vec<String> = Vec::new();
+    let mut ascii_run = String::new();
+    for ch in raw.trim().chars() {
+        if ch.is_whitespace() {
+            if !ascii_run.is_empty() { out.push(std::mem::take(&mut ascii_run)); }
+        } else if is_cjk(ch) {
+            if !ascii_run.is_empty() { out.push(std::mem::take(&mut ascii_run)); }
+            out.push(ch.to_string());
+        } else {
+            ascii_run.push(ch);
+        }
+    }
+    if !ascii_run.is_empty() { out.push(ascii_run); }
+    out.join(" ")
+}
+
+/// 加词结果。
+#[derive(Debug, PartialEq, Eq)]
+pub enum AddOutcome {
+    Added { stored: String },
+    Exists { stored: String },
+    Empty,
+}
+
+/// 给定现有 user.txt 文本，判断 stored 这个词是否已存在（按词面去重，忽略 score）。
+fn word_exists(existing_text: &str, stored: &str) -> bool {
+    let mut entries = Vec::new();
+    collect_entries(existing_text, &mut entries);
+    entries.iter().any(|(w, _)| w == stored)
+}
+
+/// 把用户输入的词追加进 user.txt（无 score）。自动 CJK 分字、去重、补换行。
+/// 不负责 regenerate/reload —— 调用方（command）做，以便控制 recognizer 失效时机。
+pub fn add_user_word(raw: &str) -> Result<AddOutcome> {
+    let stored = to_hotword_form(raw);
+    if stored.is_empty() {
+        return Ok(AddOutcome::Empty);
+    }
+    ensure_user_file()?;
+    let path = user_file_path()?;
+    let text = fs::read_to_string(&path).unwrap_or_default();
+    if word_exists(&text, &stored) {
+        return Ok(AddOutcome::Exists { stored });
+    }
+    let mut f = fs::OpenOptions::new()
+        .append(true)
+        .open(&path)
+        .with_context(|| format!("append {}", path.display()))?;
+    if !text.is_empty() && !text.ends_with('\n') {
+        writeln!(f)?;
+    }
+    writeln!(f, "{stored}")?;
+    println!("[mouseclaw] 📝 vocab + word: {stored:?}");
+    Ok(AddOutcome::Added { stored })
+}
+
+// ============================================================================
 // 英文大小写还原 (v0.4.1) —— 修 "中英混合英文全是大写字母"
 // ============================================================================
 //
@@ -386,6 +463,46 @@ mod tests {
         // template 模板必须中英对照（用户文档）
         assert!(USER_FILE_TEMPLATE.contains("中文"));
         assert!(USER_FILE_TEMPLATE.contains("Example") || USER_FILE_TEMPLATE.contains("example"));
+    }
+
+    // ── v0.6 加词（去权重）──
+    #[test]
+    fn hotword_form_splits_chinese_chars() {
+        assert_eq!(to_hotword_form("心房颤动"), "心 房 颤 动");
+        assert_eq!(to_hotword_form("爱德文"), "爱 德 文");
+    }
+
+    #[test]
+    fn hotword_form_keeps_english_whole() {
+        assert_eq!(to_hotword_form("useEffect"), "useEffect");
+        assert_eq!(to_hotword_form("RuVector"), "RuVector");
+    }
+
+    #[test]
+    fn hotword_form_mixed_zh_en() {
+        assert_eq!(to_hotword_form("GPT模型"), "GPT 模 型");
+        assert_eq!(to_hotword_form("Tauri 框架"), "Tauri 框 架");
+    }
+
+    #[test]
+    fn hotword_form_trims_and_collapses_spaces() {
+        assert_eq!(to_hotword_form("  心  房  "), "心 房");
+        assert_eq!(to_hotword_form(""), "");
+        assert_eq!(to_hotword_form("   "), "");
+    }
+
+    #[test]
+    fn hotword_form_no_score_suffix() {
+        // 关键：永远不带 :score —— 用户看不到权重
+        assert!(!to_hotword_form("心房颤动").contains(':'));
+    }
+
+    #[test]
+    fn word_exists_detects_duplicate() {
+        let text = "# 注释\n心 房 颤 动\nuseEffect :2.5\n";
+        assert!(word_exists(text, "心 房 颤 动"));
+        assert!(word_exists(text, "useEffect")); // score 后缀被忽略，仍算存在
+        assert!(!word_exists(text, "肺 栓 塞"));
     }
 
     // ── recase 测试（用临时 map，不依赖磁盘 user.txt）──

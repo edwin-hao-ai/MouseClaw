@@ -453,6 +453,7 @@ pub fn run() {
             commands::vocab_reload,
             commands::vocab_get_builtin_enabled,
             commands::vocab_set_builtin_enabled,
+            commands::vocab_add_word,
             commands::get_settings,
             commands::save_tts,
             commands::save_sfx,

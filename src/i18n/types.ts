@@ -386,6 +386,9 @@ export interface Strings {
   "set.vime": string; "set.vime.hint": string;
   "set.trigger": string; "set.trigger.hint": string;
   "set.vocab": string; "set.vocab.hint": string;
+  "set.vocab.add": string; "set.vocab.add.hint": string; "set.vocab.add.ph": string;
+  "set.vocab.add.btn": string; "set.vocab.add.ok": string; "set.vocab.add.dup": string;
+  "set.vocab.add.err": string;
   "set.skin": string; "set.skin.hint": string; "set.skin.btn": string;
   "set.anchor": string; "set.anchor.hint": string;
   "set.name": string; "set.name.hint": string; "set.name.ph": string;
