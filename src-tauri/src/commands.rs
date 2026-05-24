@@ -690,11 +690,14 @@ pub async fn start_recording(
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
     let state = state.inner().clone();
-    // v0.5.x · PetMenu 召唤：show_mouse 定位到光标（跟托盘一致，定位本身没问题）+
-    //   **summon_follow=false 关跟随**。菜单召唤遮挡/裁切的真因是：持续 listening + cursor_follow
-    //   让气泡一直漂到鼠标当前位置，鼠标飘到屏幕边 → 气泡被切。关掉跟随后气泡**停在召唤点不动**
-    //   → 文字看得见、「⌨️打字」点得中。listening 全程不抢键盘焦点（想打字走气泡按钮）。
     state.summon_follow.store(false, std::sync::atomic::Ordering::Relaxed);
+    // v0.5.x · bug1 根因（日志实锤）：PetMenu 被自适应测量后把窗口撑到 ~508×462（菜单+阴影
+    //   padding）并 CURRENT_MODE=expanded；下一次召唤 show_mouse 按 320 算位置、但窗口还是
+    //   508×462（set_size(320) 跟自适应抢、且 expand_to_full 因已 expanded 而 no-op）→ 气泡
+    //   错位/跑出可见区 → "第一次显示、第二次不显示"。
+    //   修：召唤前先 shrink_to_compact 把窗口 + CURRENT_MODE 重置成干净 compact，让每次召唤都
+    //   和「第一次」一样从 80 干净展开到 320（show_mouse 会 mark_expanded + set_size(320)）。
+    crate::overlay_size::shrink_to_compact(&app);
     crate::overlay::show_mouse(&app);
     tauri::async_runtime::spawn(async move { on_shortcut_press(app, state).await });
     Ok(())

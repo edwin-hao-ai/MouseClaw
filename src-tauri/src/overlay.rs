@@ -89,15 +89,22 @@ pub fn show_mouse(app: &AppHandle) {
             crate::overlay_size::EXPANDED_SIZE,
         ));
         if let Some((x, y)) = current_mouse_pos_top_left(&window) {
-            let half = crate::overlay_size::EXPANDED_SIZE / 2.0;
-            let pos_x = x - half;
+            let sz = crate::overlay_size::EXPANDED_SIZE;
+            let half = sz / 2.0;
+            let raw_x = x - half;
             // 桌宠在窗口底部中心，下沿距光标 32px
-            let pos_y = y - crate::overlay_size::EXPANDED_SIZE + 32.0;
+            let raw_y = y - sz + 32.0;
+            // v0.5.x · bug1 修：**整窗**钳制在屏幕可见区内（不是只保桌宠 —— 那会让窗口顶部
+            //   的气泡溢出屏幕外被切）。光标偏上时 raw_y 会变负 → 窗口顶出屏幕 → 头顶
+            //   "正在说话"气泡看不见（"第一次能看到、再召唤位置偏上就看不到"的真因）。
+            let (pos_x, pos_y) = match crate::overlay_size::visible_frame_top_left() {
+                Some((sx, sy, sw, sh)) => (
+                    raw_x.clamp(sx, (sx + sw - sz).max(sx)),
+                    raw_y.clamp(sy, (sy + sh - sz).max(sy)),
+                ),
+                None => (raw_x, raw_y),
+            };
             let _ = window.set_position(LogicalPosition::new(pos_x, pos_y));
-            // DBG bug1 · 召唤时窗口尺寸+位置（对比第一次 vs 第二次召唤，找气泡被截断的状态差异）
-            let sz = window.outer_size().ok();
-            let scf = window.scale_factor().unwrap_or(1.0);
-            println!("[mouseclaw] DBG show_mouse cursor=({x:.0},{y:.0}) set_pos=({pos_x:.0},{pos_y:.0}) outer_size={sz:?} scale={scf}");
         }
         let _ = window.show();
         // macOS：NSPanel 自带 always-on-top（level=ScreenSaver），**不**调 set_always_on_top
