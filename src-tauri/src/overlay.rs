@@ -268,7 +268,11 @@ pub fn emit_view(app: &AppHandle, view: &ViewKind) {
     //   光标在目标输入框附近移动选词，桌宠跟着乱飞挡视线，体验差。
     //   AI 召唤本身鼠标是"画圈圈定"动作，跟随有意义；语音输入鼠标是"选输入框位置"，跟随无意义。
     if let Some(state) = app.try_state::<Arc<AppState>>() {
-        let should_follow = matches!(view, ViewKind::Listening { .. });
+        // v0.5.x · 只有 hold 召唤（summon_follow=true）的 listening 才跟随鼠标（圈定式）。
+        //   toggle 召唤（托盘 / PetMenu）summon_follow=false → 原地不动，气泡稳定可点
+        //   （「⌨️打字」/停止按钮不再被跟随抖走，也不再因跟随跑到怪位置遮挡）。
+        let should_follow = matches!(view, ViewKind::Listening { .. })
+            && state.summon_follow.load(std::sync::atomic::Ordering::Relaxed);
         if should_follow {
             crate::cursor_follow::enable(state.inner());
         } else {

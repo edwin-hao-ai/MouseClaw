@@ -406,9 +406,12 @@ pub(crate) fn summon_via_tray(app: &AppHandle) {
         return;
     }
     let state: Arc<crate::AppState> = app.state::<Arc<crate::AppState>>().inner().clone();
-    crate::overlay::show_mouse(app);
+    // v0.5.x · 托盘召唤与 PetMenu 召唤统一：原地持续监听、不跟随鼠标（点停止/桌宠结束，
+    //   或点「⌨️打字」切文字）。之前走 on_shortcut_pressed（tap 800ms 自动松开）跟菜单不一致。
+    state.summon_follow.store(false, std::sync::atomic::Ordering::Relaxed);
+    crate::overlay::show_mouse_at_anchor(app);
     let app_clone = app.clone();
     tauri::async_runtime::spawn(async move {
-        crate::pipeline::on_shortcut_pressed(app_clone, state).await;
+        crate::pipeline::on_shortcut_press(app_clone, state).await;
     });
 }
