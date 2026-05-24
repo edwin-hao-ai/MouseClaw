@@ -94,6 +94,10 @@ pub fn show_mouse(app: &AppHandle) {
             // 桌宠在窗口底部中心，下沿距光标 32px
             let pos_y = y - crate::overlay_size::EXPANDED_SIZE + 32.0;
             let _ = window.set_position(LogicalPosition::new(pos_x, pos_y));
+            // DBG bug1 · 召唤时窗口尺寸+位置（对比第一次 vs 第二次召唤，找气泡被截断的状态差异）
+            let sz = window.outer_size().ok();
+            let scf = window.scale_factor().unwrap_or(1.0);
+            println!("[mouseclaw] DBG show_mouse cursor=({x:.0},{y:.0}) set_pos=({pos_x:.0},{pos_y:.0}) outer_size={sz:?} scale={scf}");
         }
         let _ = window.show();
         // macOS：NSPanel 自带 always-on-top（level=ScreenSaver），**不**调 set_always_on_top

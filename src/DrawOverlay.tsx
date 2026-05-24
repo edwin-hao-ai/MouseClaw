@@ -107,6 +107,8 @@ function renderCanvas(canvas: HTMLCanvasElement, points: Pt[]) {
   for (const p of points) {
     if (prev) {
       const drawing = p.drawing || prev.drawing;
+      // v0.5.x · 用户只要「圈选」(按住左键拖动的粉色标注)，不要移动时的灰线。
+      //   所以只在 drawing 时画粉色；移动段(else)直接跳过，不再画灰线。
       if (drawing) {
         // 粉红主线 + halo
         ctx.strokeStyle = "rgba(232, 99, 140, 0.25)";
@@ -123,16 +125,8 @@ function renderCanvas(canvas: HTMLCanvasElement, points: Pt[]) {
         ctx.moveTo(prev.x, prev.y);
         ctx.lineTo(p.x, p.y);
         ctx.stroke();
-      } else {
-        // 灰色细线轨迹
-        ctx.strokeStyle = "rgba(170, 170, 170, 0.55)";
-        ctx.lineWidth = 1.5;
-        ctx.lineCap = "round";
-        ctx.beginPath();
-        ctx.moveTo(prev.x, prev.y);
-        ctx.lineTo(p.x, p.y);
-        ctx.stroke();
       }
+      // else: 移动段不画（去掉灰色轨迹线）
     }
     if (p.drawing) {
       // 端点圆
