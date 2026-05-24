@@ -28,6 +28,8 @@ interface PetMenuProps {
   onFeed: () => void;
   /** Called when user picks a nap duration (minutes). */
   onNap: (minutes: number) => void;
+  /** v0.5.x · 点「召唤·说话」瞬间通知 host（host 立刻关自适应，防菜单卸载测量缩窗剪气泡）。 */
+  onSummon: () => void;
 }
 
 /** localStorage key for the lifetime feed counter — a tiny tamagotchi hook. */
@@ -45,7 +47,7 @@ function prettyChord(sc: string): string {
   }).join("");
 }
 
-export function PetMenu({ open, onClose, onFeed, onNap }: PetMenuProps) {
+export function PetMenu({ open, onClose, onFeed, onNap, onSummon }: PetMenuProps) {
   const t = useT();
   const menuRef = useRef<HTMLDivElement | null>(null);
   // v0.4.3 · 菜单水平展开方向 —— 贴屏幕边时翻向内侧（后端按桌宠位置算），避免被切。
@@ -98,6 +100,10 @@ export function PetMenu({ open, onClose, onFeed, onNap }: PetMenuProps) {
   const summon = () => {
     // v0.1.30 · 走新的 start_recording —— 等价"按下快捷键"，进 listening。
     // 之前调 toggle_recording 是反的（那个=松开，直接发送空录音）。
+    // v0.5.x · 先通知 host 进入「召唤过渡」（关自适应），**再**卸载菜单 + invoke。
+    //   顺序关键：onSummon 必须在 onClose 之前，确保 React 这轮重渲染时 adaptive 已禁用，
+    //   菜单卸载触发的 MutationObserver 测量不会缩窗剪气泡（bug1 根因之一）。
+    onSummon();
     onClose();
     invoke("start_recording").catch(() => {});
   };

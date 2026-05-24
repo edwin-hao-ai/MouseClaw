@@ -85,6 +85,11 @@ export default function App() {
   const [skin, setSkin] = useState<SkinId>(DEFAULT_SKIN);
   // v0.1.27 P2 · 点击桌宠 → 弹出菜单（只在 idle 状态触发）
   const [petMenuOpen, setPetMenuOpen] = useState(false);
+  // v0.5.x bug1 · 召唤过渡期标记 —— PetMenu 点「开始对话」的瞬间置 true。
+  //   作用：立刻关掉 useAdaptiveOverlay，**抢在**菜单卸载触发的 MutationObserver 测量之前
+  //   （那次测量只剩桌宠 → 把窗口缩到 ~120 → emit_view(listening) 想撑回 320 时被卡住
+  //   → 气泡被剪）。listening 视图到达后自动清掉（adaptive 本来 listening 也禁用）。
+  const [summoning, setSummoning] = useState(false);
   // 临时 ack 气泡（喂奶酪 / 休息了 等本地动作的反馈）
   const [transientAck, setTransientAck] = useState<string | null>(null);
   // v0.4.4 · 🧠 记忆命中:本次回复实际用到的记忆条目(可展开看 + 删错的)。
@@ -131,7 +136,17 @@ export default function App() {
   // 跟随，自适应是唯一尺寸权威。
   // v0.5 · 入场横穿期间也禁用 —— 窗口尺寸/位置由 Rust entrance.rs 全权管，
   //   自适应若同时按内容反算会把横穿窗口缩掉、跟 set_position 抢尺寸。
-  useAdaptiveOverlay(stageRootRef, { enabled: view.kind !== "listening" && !entranceActive });
+  useAdaptiveOverlay(stageRootRef, { enabled: view.kind !== "listening" && !entranceActive && !summoning });
+
+  // v0.5.x bug1 · 召唤过渡结束就解除 summoning：view 一旦离开 idle（listening/thinking/
+  //   text-input 到达），过渡完成 → 让自适应回到正常职责。再加 1.2s 兜底，防止召唤被取消
+  //   （空录音回 idle）后 summoning 卡死把自适应一直关着。
+  useEffect(() => {
+    if (!summoning) return;
+    if (view.kind !== "idle") { setSummoning(false); return; }
+    const t = window.setTimeout(() => setSummoning(false), 1200);
+    return () => window.clearTimeout(t);
+  }, [summoning, view.kind]);
 
   // v0.3.12 · 在 idle 状态下显示 React-only UI（下载提示气泡 / petMenu / nudge / ack
   //   / v0.4 reactive ribbon）时主动通知 Rust 把窗口 hit-box 扩到全窗口；
@@ -824,6 +839,7 @@ export default function App() {
           onClose={() => setPetMenuOpen(false)}
           onFeed={handleFeed}
           onNap={handleNap}
+          onSummon={() => setSummoning(true)}
         />
         {nudge && !petMenuOpen && (
           <NudgeBubble payload={nudge} onDismiss={() => setNudge(null)} />

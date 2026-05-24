@@ -327,6 +327,23 @@ pub fn emit_view(app: &AppHandle, view: &ViewKind) {
         Ok(()) => println!("[mouseclaw] emit_view → {kind}"),
         Err(e) => eprintln!("[mouseclaw] ✘ emit_view 失败 ({kind}): {e}"),
     }
+    // v0.5.x bug1 诊断 · listening 起始瞬间记录窗口实际几何（一拍延迟，让上面的 resize 闭包先跑）。
+    // 用来确认"召唤进 listening 时窗口确为 320、气泡有空间"——历史 bug 是窗口被自适应残留缩到
+    // ~120 导致头顶气泡被剪。一次 listening 只打一行，低频高信号，保留作长期回归探针。
+    if matches!(view, ViewKind::Listening { .. }) {
+        let app2 = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            if let Some(w) = app2.get_webview_window("mouse") {
+                if let (Ok(sz), Ok(pos), Ok(sc)) = (w.outer_size(), w.outer_position(), w.scale_factor()) {
+                    println!(
+                        "[mouseclaw] listening-geo size=({:.0}x{:.0}) pos=({:.0},{:.0})",
+                        sz.width as f64 / sc, sz.height as f64 / sc,
+                        pos.x as f64 / sc, pos.y as f64 / sc,
+                    );
+                }
+            }
+        });
+    }
 }
 
 /// Hide the overlay window, emit Idle. Idempotent.

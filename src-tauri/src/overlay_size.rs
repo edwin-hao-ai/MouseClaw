@@ -322,9 +322,15 @@ pub(crate) fn visible_frame_top_left() -> Option<(f64, f64, f64, f64)> {
 pub(crate) fn visible_frame_top_left() -> Option<(f64, f64, f64, f64)> { None }
 
 fn set_mode(app: &AppHandle, new_size: f64, mode_tag: u32) {
-    if CURRENT_MODE.swap(mode_tag, Ordering::SeqCst) == mode_tag {
-        return; // 已是目标模式
-    }
+    // v0.5.x bug1 根因修复：早返回**不再**只看 CURRENT_MODE 标签 —— 改为在主线程闭包里
+    // 看**窗口实际尺寸**。
+    //   为什么：set_to_explicit（自适应测量）和 set_mode（expand/shrink）共用 CURRENT_MODE，
+    //   但 set_to_explicit 会把窗口设成任意尺寸（如菜单收起瞬间测到桌宠 ~120px）同时
+    //   store(CURRENT_MODE=1)。此后 expand_to_full→set_mode(320,1) 看到 swap(1)==1 直接
+    //   no-op → 窗口卡在 120，气泡被剪（"点开始对话第二次看不到气泡"真因，日志实锤）。
+    //   只信"模式标签"会被 set_to_explicit 的 size 跟 mode 解耦坑到。改信实际 size 后，
+    //   只要当前尺寸 ≠ 目标尺寸就真 resize，常态(已 320)仍 no-op、无额外漂移。
+    CURRENT_MODE.store(mode_tag, Ordering::SeqCst);
     // v0.4.0 fix · 必须 marshal 到主线程 ——
     // emit_view 可能来自 CGEventTap 工作线程（fn 按键 → start_recording_for_ime →
     // show_mouse 排队主线程闭包 → emit_view 同步直接调 set_mode）。
@@ -341,6 +347,12 @@ fn set_mode(app: &AppHandle, new_size: f64, mode_tag: u32) {
         let cur_y = pos.y as f64 / scale;
         let cur_w = size.width as f64 / scale;
         let cur_h = size.height as f64 / scale;
+
+        // 已是目标尺寸 → no-op（按实际 size 判，不按 mode 标签 —— 见函数头注释）。
+        // 容差 3px 跟 set_to_explicit 一致，挡住亚像素抖动。
+        if (cur_w - new_size).abs() < 3.0 && (cur_h - new_size).abs() < 3.0 {
+            return;
+        }
 
         // 当前桌宠的屏幕绝对位置（视觉锚点）—— flush-aware：窗口被屏幕边顶住时
         // 用存的真锚点而非"被顶过的当前位置"，否则收缩会把 clamp 偏移烤进锚点 → 漂移。
