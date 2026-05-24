@@ -77,6 +77,24 @@ fn build_template_icon() -> Image<'static> {
     Image::new_owned(rgba, SIZE as u32, SIZE as u32)
 }
 
+/// 托盘 tooltip 文案 —— 跟随当前召唤快捷键（换键后调 update_tray_tooltip 刷新）。
+pub fn tray_tooltip() -> String {
+    let cfg = crate::config::Config::load();
+    let sc = crate::shortcut_menu::pretty_shortcut(&cfg.shortcut);
+    if cfg.language == "en" {
+        format!("MouseClaw 🦞 — {sc} to summon  ·  ⌘⇧V clipboard")
+    } else {
+        format!("MouseClaw 🦞 — 按 {sc} 召唤  ·  ⌘⇧V 看剪贴板")
+    }
+}
+
+/// 换召唤快捷键 / 切语言后刷新托盘 tooltip（change_summon_shortcut / save_language 调）。
+pub fn update_tray_tooltip(app: &AppHandle) {
+    if let Some(tray) = app.tray_by_id("main-tray") {
+        let _ = tray.set_tooltip(Some(tray_tooltip()));
+    }
+}
+
 pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let menu = build_menu(app)?;
     let icon = build_template_icon();
@@ -84,7 +102,7 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     TrayIconBuilder::with_id("main-tray")
         .icon(icon)
         .icon_as_template(true)
-        .tooltip("MouseClaw 🦞 — 按 Cmd+Shift+Space 召唤  ·  ⌘⇧V 看剪贴板")
+        .tooltip(tray_tooltip())
         .menu(&menu)
         .on_menu_event(handle_menu_event)
         .on_tray_icon_event(|tray, event| {

@@ -33,17 +33,34 @@ interface PetMenuProps {
 /** localStorage key for the lifetime feed counter — a tiny tamagotchi hook. */
 const FEED_COUNT_KEY = "mouseclaw.feed.count";
 
+/** tauri 快捷键串（"Super+Shift+KeyM"）→ 符号（"⌘⇧M"）。跟后端 shortcut_menu::pretty_shortcut 对齐。 */
+function prettyChord(sc: string): string {
+  if (!sc) return "⌘⇧Space";
+  return sc.split("+").map((p) => {
+    if (p === "Super" || p === "Meta" || p === "Command" || p === "Cmd") return "⌘";
+    if (p === "Control" || p === "Ctrl") return "⌃";
+    if (p === "Alt" || p === "Option") return "⌥";
+    if (p === "Shift") return "⇧";
+    return p.replace(/^Key/, "").replace(/^Digit/, "");
+  }).join("");
+}
+
 export function PetMenu({ open, onClose, onFeed, onNap }: PetMenuProps) {
   const t = useT();
   const menuRef = useRef<HTMLDivElement | null>(null);
   // v0.4.3 · 菜单水平展开方向 —— 贴屏幕边时翻向内侧（后端按桌宠位置算），避免被切。
   const [menuH, setMenuH] = useState<"left" | "right" | "center">("center");
+  // v0.5.x · 召唤快捷键提示 —— 跟随 config（换键后变，不再写死 ⌘⇧Space）。
+  const [kbd, setKbd] = useState("⌘⇧Space");
 
   useEffect(() => {
     if (!open) return;
     invoke<{ h?: string }>("get_pet_menu_orientation")
       .then((o) => setMenuH(o?.h === "left" || o?.h === "right" ? o.h : "center"))
       .catch(() => setMenuH("center"));
+    invoke<{ shortcut?: string }>("get_settings")
+      .then((s) => { if (s?.shortcut) setKbd(prettyChord(s.shortcut)); })
+      .catch(() => {});
   }, [open]);
 
   // Click outside to close — listen on the document so clicks anywhere else
@@ -115,7 +132,7 @@ export function PetMenu({ open, onClose, onFeed, onNap }: PetMenuProps) {
       <button className="pet-menu-item" role="menuitem" type="button" onClick={summon}>
         <span className="pet-menu-ico">🎤</span>
         <span className="pet-menu-label">{t("petmenu.summon")}</span>
-        <span className="pet-menu-kbd" title={t("petmenu.summon_hint")}>⌘⇧Space</span>
+        <span className="pet-menu-kbd" title={t("petmenu.summon_hint")}>{kbd}</span>
       </button>
       <button className="pet-menu-item" role="menuitem" type="button" onClick={openHub}>
         <span className="pet-menu-ico">📜</span>

@@ -29,6 +29,30 @@ pub const SUMMON_PRESETS: &[(&str, &str)] = &[
     ("Control+Shift+Space", "⌃⇧Space"),
 ];
 
+/// 把 tauri global-shortcut 串（"Super+Shift+KeyM"）格式化成符号（"⌘⇧M"）。
+/// 预设命中直接用预设显示；自定义键走通用符号映射。托盘 tooltip / PetMenu 提示都用它，
+/// 这样换了召唤快捷键后显示能跟着变（不再写死 ⌘⇧Space）。
+pub fn pretty_shortcut(sc: &str) -> String {
+    if let Some((_, disp)) = SUMMON_PRESETS.iter().find(|(s, _)| *s == sc) {
+        return (*disp).to_string();
+    }
+    sc.split('+')
+        .map(|p| match p {
+            "Super" | "Meta" | "Command" | "Cmd" => "⌘".to_string(),
+            "Control" | "Ctrl" => "⌃".to_string(),
+            "Alt" | "Option" => "⌥".to_string(),
+            "Shift" => "⇧".to_string(),
+            "Space" => "Space".to_string(),
+            other => other
+                .strip_prefix("Key")
+                .or_else(|| other.strip_prefix("Digit"))
+                .unwrap_or(other)
+                .to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join("")
+}
+
 /// 构建「召唤快捷键」子菜单（CheckMenuItem，当前生效项打勾）。
 pub fn build_summon_submenu(app: &AppHandle, en: bool) -> tauri::Result<Submenu<Wry>> {
     let current = crate::config::Config::load().shortcut;
@@ -110,6 +134,8 @@ pub fn change_summon_shortcut(app: &AppHandle, new_str: &str) {
         eprintln!("[mouseclaw] change_summon_shortcut save: {e}");
         return;
     }
+    // 换键后刷新托盘 tooltip（之前写死 ⌘⇧Space 不变）。
+    crate::tray::update_tray_tooltip(app);
     let disp = SUMMON_PRESETS
         .iter()
         .find(|(s, _)| *s == new_str)
