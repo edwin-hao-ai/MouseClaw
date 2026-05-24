@@ -76,6 +76,14 @@ pub fn regenerate_active(builtin_enabled: bool) -> Result<usize> {
             .with_context(|| format!("read {}", user.display()))?;
         collect_entries(&user_text, &mut entries);
     }
+    // v0.6 · 自动学的词（auto.txt）也并进来 —— 与手动 user.txt 分开存，但一起生效。
+    if let Ok(auto) = auto_file_path() {
+        if auto.exists() {
+            if let Ok(auto_text) = fs::read_to_string(&auto) {
+                collect_entries(&auto_text, &mut entries);
+            }
+        }
+    }
 
     // 去重：相同 word 取最后一次（用户覆盖内置）
     let mut seen = std::collections::HashMap::<String, Option<f32>>::new();
@@ -219,6 +227,84 @@ pub fn add_user_word(raw: &str) -> Result<AddOutcome> {
     writeln!(f, "{stored}")?;
     println!("[mouseclaw] 📝 vocab + word: {stored:?}");
     Ok(AddOutcome::Added { stored })
+}
+
+// ============================================================================
+// v0.6 · 自动学词 —— 从纠错信号学，词表越用越深，零用户操作
+// ============================================================================
+//
+// 信号：用户说"把 X 改成 Y"——Y 就是 ASR 本该认出来的词。把 Y 学进 auto.txt，
+// 下次它在 hotwords 里、识别更准。完全本地、静默发生、用户不用管（行业惯例：
+// Typeless/Wispr 的"vocabulary stays accurate, whether added automatically or manually"）。
+//
+// auto.txt 与手动 user.txt 分开存，便于将来单独查看 / 清空；regenerate_active 一起并入。
+
+/// `~/.mouseclaw/vocab/auto.txt` —— 自动学到的词
+pub fn auto_file_path() -> Result<PathBuf> {
+    Ok(vocab_dir()?.join("auto.txt"))
+}
+
+/// auto.txt 最多保留多少条（防无限增长，超了丢最早的）。
+const AUTO_LEARN_CAP: usize = 500;
+
+/// 一个词是否值得自动学：term-like —— 短、无句子级标点、含字母或 CJK（非纯数字/符号）。
+/// 故意保守：宁可不学，也别把整句话 / 标点学进 hotwords 污染解码。
+pub fn is_learnable_term(y: &str) -> bool {
+    let t = y.trim();
+    if t.is_empty() {
+        return false;
+    }
+    if t.chars().count() > 12 {
+        return false; // 太长不像术语，多半是短语/句子
+    }
+    if t.chars().any(|c| {
+        matches!(c, '。' | '，' | '！' | '？' | '、' | '；' | '.' | ',' | '!' | '?' | ';' | '\n' | '\r')
+    }) {
+        return false; // 带句子级标点 → 不是单个术语
+    }
+    // 至少含一个 CJK 或字母（排除纯数字 / 纯符号）
+    t.chars().any(|c| is_cjk(c) || c.is_alphabetic())
+}
+
+/// 自动学一个词（写入 auto.txt）。已在 内置/user/auto 任一里则跳过。
+/// 不负责 regenerate/reload —— 调用方决定时机（通常纠错成功后立刻刷新）。
+/// 返回是否真的新增。
+pub fn learn_word(raw: &str) -> Result<bool> {
+    if !is_learnable_term(raw) {
+        return Ok(false);
+    }
+    let stored = to_hotword_form(raw);
+    if stored.is_empty() {
+        return Ok(false);
+    }
+    let dir = vocab_dir()?;
+    fs::create_dir_all(&dir)?;
+    let user_text = user_file_path()
+        .ok()
+        .and_then(|p| fs::read_to_string(p).ok())
+        .unwrap_or_default();
+    let auto_path = auto_file_path()?;
+    let auto_text = fs::read_to_string(&auto_path).unwrap_or_default();
+    if word_exists(&user_text, &stored)
+        || word_exists(&auto_text, &stored)
+        || word_exists(BUILTIN_PROGRAMMER, &stored)
+    {
+        return Ok(false); // 已有，不重复
+    }
+    let mut lines: Vec<String> = auto_text
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|s| s.to_string())
+        .collect();
+    lines.push(stored.clone());
+    if lines.len() > AUTO_LEARN_CAP {
+        let excess = lines.len() - AUTO_LEARN_CAP;
+        lines.drain(0..excess);
+    }
+    fs::write(&auto_path, format!("{}\n", lines.join("\n")))
+        .with_context(|| format!("write {}", auto_path.display()))?;
+    println!("[mouseclaw] 🧠 vocab auto-learned: {stored:?}");
+    Ok(true)
 }
 
 // ============================================================================
@@ -503,6 +589,32 @@ mod tests {
         assert!(word_exists(text, "心 房 颤 动"));
         assert!(word_exists(text, "useEffect")); // score 后缀被忽略，仍算存在
         assert!(!word_exists(text, "肺 栓 塞"));
+    }
+
+    // ── v0.6 自动学词 ──
+    #[test]
+    fn learnable_accepts_terms() {
+        assert!(is_learnable_term("李四"));
+        assert!(is_learnable_term("useEffect"));
+        assert!(is_learnable_term("心房颤动"));
+        assert!(is_learnable_term("OpenAI"));
+    }
+
+    #[test]
+    fn learnable_rejects_non_terms() {
+        assert!(!is_learnable_term("")); // 空
+        assert!(!is_learnable_term("   ")); // 空白
+        assert!(!is_learnable_term("123")); // 纯数字
+        assert!(!is_learnable_term("！？。")); // 纯标点
+        assert!(!is_learnable_term("这是一整句话，带标点。")); // 带句子标点
+        assert!(!is_learnable_term("一二三四五六七八九十十一十二十三")); // 太长
+    }
+
+    #[test]
+    fn learnable_term_becomes_hotword_form() {
+        // 学进去的中文也要逐字分（复用 to_hotword_form）
+        assert!(is_learnable_term("王五"));
+        assert_eq!(to_hotword_form("王五"), "王 五");
     }
 
     // ── recase 测试（用临时 map，不依赖磁盘 user.txt）──

@@ -18,6 +18,9 @@ versioning follows [SemVer](https://semver.org/).
 - **听写统计**：历史窗顶部 banner —— 累计字数 / 时长 / 平均 WPM / **省下多少分钟打字**
   （打字基线 40 WPM）。纯本地累计在 `~/.mouseclaw/stats.json`。（macOS 路径已接；
   Windows 听写路径待接。）
+- **词表自动学词（更深词表）**：用户纠错"把 X 改成 Y"时，把 Y 静默学进词表
+  （`~/.mouseclaw/vocab/auto.txt`，与手动 user.txt 分开），下次识别更准。term-like 过滤
+  （短、无句子标点、非纯数字）+ 去重 + 上限 500 条。零用户操作。
 
 ---
 

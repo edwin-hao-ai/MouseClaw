@@ -942,6 +942,13 @@ async fn handle_correction(
             match crate::mode_b::write_at_cursor(&full_replacement).await {
                 Ok(()) => {
                     crate::voice_correct::record_write(&full_replacement, current_bundle);
+                    // v0.6 · 自动学词 —— 用户纠正成 new 说明 ASR 本该认识它，学进词表下次更准。
+                    // 静默发生；命中才刷新 recognizer（下次听写生效）。
+                    if crate::vocab::learn_word(&new).unwrap_or(false) {
+                        let cfg = crate::config::Config::load();
+                        let _ = crate::vocab::regenerate_active(cfg.vocab_builtin_enabled);
+                        crate::transcribe_stream::invalidate_recognizer();
+                    }
                     println!("[mouseclaw] 🔄 corrected: '{old}' → '{new}'");
                     crate::overlay::emit_view(app, &crate::events::ViewKind::Reply {
                         transcript: "voice correction".into(),
