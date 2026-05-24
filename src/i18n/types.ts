@@ -377,6 +377,29 @@ export interface Strings {
   "schedule.result.tag": string;
   "schedule.result.expand": string;
   "schedule.hint.tag": string;
+
+  // v0.5.x · 设置窗（SettingsView）静态文案（枚举选项标签在组件内本地映射）
+  "set.cat.summon": string; "set.cat.voice": string; "set.cat.pet": string;
+  "set.cat.sound": string; "set.cat.general": string; "set.cat.privacy": string; "set.cat.diag": string;
+  "set.shortcut": string; "set.shortcut.hint": string;
+  "set.backend": string; "set.backend.hint": string;
+  "set.vime": string; "set.vime.hint": string;
+  "set.trigger": string; "set.trigger.hint": string;
+  "set.vocab": string; "set.vocab.hint": string;
+  "set.skin": string; "set.skin.hint": string; "set.skin.btn": string;
+  "set.anchor": string; "set.anchor.hint": string;
+  "set.name": string; "set.name.hint": string; "set.name.ph": string;
+  "set.persona": string; "set.persona.hint": string;
+  "set.tts": string; "set.tts.hint": string;
+  "set.sfx": string; "set.sfx.hint": string; "set.sfx.vol": string;
+  "set.lang": string; "set.lang.hint": string;
+  "set.autostart": string; "set.autostart.hint": string;
+  "set.workspace": string; "set.workspace.hint": string; "set.workspace.btn": string;
+  "set.privacy.desc": string;
+  "set.clip": string; "set.clip.hint": string;
+  "set.memory": string; "set.memory.hint": string;
+  "set.memory.manage": string; "set.memory.manage.hint": string; "set.memory.manage.btn": string;
+  "set.diag.desc": string;
 }
 
 /** 翻译值 —— 字符串 OR (args) => string。后者支持插值。 */

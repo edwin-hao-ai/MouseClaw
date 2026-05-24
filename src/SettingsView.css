@@ -1,0 +1,100 @@
+/* SettingsView · v0.5.x —— 设置窗。token 全来自 tokens.css / DESIGN.md。
+   设计源 docs/prototypes/settings-page-20260524.html。 */
+
+.settings-root {
+  display: flex;
+  height: 100vh;
+  font-family: var(--font-system);
+  color: var(--text-primary);
+  background: #f5f5f7;
+}
+.settings-root .loading { margin: auto; color: var(--text-dim); font-size: var(--text-headline); }
+
+/* 左侧分类导航 */
+.settings-root .sidebar {
+  width: 208px;
+  flex: 0 0 208px;
+  padding: var(--space-3);
+  overflow-y: auto;
+  background: linear-gradient(180deg, rgba(248, 248, 251, .9), rgba(244, 244, 248, .8));
+  border-right: 1px solid var(--bubble-border);
+}
+.settings-root .nav {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  border: 0; cursor: pointer; font-family: inherit; font-size: var(--text-body-lg); font-weight: 600;
+  color: var(--text-primary); background: transparent; padding: 9px 10px;
+  border-radius: var(--radius-md); margin-bottom: 2px;
+}
+.settings-root .nav .ico {
+  width: 26px; height: 26px; border-radius: var(--radius-sm); display: flex;
+  align-items: center; justify-content: center; font-size: 15px; background: rgba(0, 0, 0, .05); flex: 0 0 auto;
+}
+.settings-root .nav:hover { background: rgba(255, 107, 157, .08); }
+.settings-root .nav.on { background: var(--accent-glow); color: var(--text-link); }
+.settings-root .nav.on .ico { background: rgba(255, 107, 157, .22); }
+.settings-root .nav-sep { height: 1px; background: var(--bubble-border); margin: 8px 4px; }
+
+/* 右侧内容 */
+.settings-root .content { flex: 1; overflow-y: auto; padding: var(--space-5) var(--space-6); }
+.settings-root h2 { font-size: var(--text-title); font-weight: 700; margin: 0 0 4px; }
+.settings-root .desc { font-size: var(--text-meta); color: var(--text-bubble-dim); margin: 0 0 18px; line-height: 1.6; }
+.settings-root .group {
+  background: #fff; border: 1px solid var(--bubble-border); border-radius: var(--radius-lg);
+  overflow: hidden; margin-bottom: 18px; margin-top: 14px;
+}
+.settings-root .row {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: 11px var(--space-4); border-bottom: 1px solid rgba(0, 0, 0, .05);
+}
+.settings-root .row:last-child { border-bottom: 0; }
+.settings-root .row .lbl { flex: 1; min-width: 0; }
+.settings-root .row .lbl .name { font-size: var(--text-body-lg); font-weight: 600; }
+.settings-root .row .lbl .hint { font-size: var(--text-meta); color: var(--text-bubble-dim); margin-top: 2px; line-height: 1.5; word-break: break-word; }
+.settings-root .row .ctrl { flex: 0 0 auto; }
+
+/* 开关 toggle */
+.settings-root .sw {
+  width: 40px; height: 24px; border-radius: var(--radius-pill); background: rgba(0, 0, 0, .18);
+  position: relative; cursor: pointer; transition: background .2s var(--ease-default); border: 0; padding: 0;
+}
+.settings-root .sw::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); transition: transform .2s var(--ease-tap);
+}
+.settings-root .sw.on { background: var(--accent-primary); }
+.settings-root .sw.on::after { transform: translateX(16px); }
+
+/* segmented */
+.settings-root .seg { display: inline-flex; background: rgba(0, 0, 0, .05); border-radius: var(--radius-md); padding: 2px; gap: 2px; flex-wrap: wrap; }
+.settings-root .seg button {
+  border: 0; background: transparent; font-family: inherit; font-size: var(--text-meta); font-weight: 600;
+  color: var(--text-bubble-dim); padding: 5px 11px; border-radius: var(--radius-sm); cursor: pointer; white-space: nowrap;
+}
+.settings-root .seg button.on { background: #fff; color: var(--text-link); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
+
+/* select / button / text / kbd / slider */
+.settings-root .sel {
+  font-family: inherit; font-size: var(--text-body); font-weight: 600; color: var(--text-primary);
+  background: #fff; border: 1px solid var(--bubble-border); border-radius: var(--radius-md);
+  padding: 6px 28px 6px 10px; cursor: pointer; appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236c6c70' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center;
+}
+.settings-root .btn {
+  font-family: inherit; font-size: var(--text-meta); font-weight: 600; color: var(--text-link);
+  background: var(--accent-glow); border: 1px solid rgba(255, 107, 157, .3); border-radius: var(--radius-pill);
+  padding: 5px 12px; cursor: pointer;
+}
+.settings-root .btn:hover { background: rgba(255, 107, 157, .22); }
+.settings-root .kbd {
+  font-family: var(--font-mono); font-size: var(--text-body-sm); font-weight: 700;
+  background: rgba(0, 0, 0, .06); border: 1px solid var(--bubble-border); border-radius: var(--radius-sm); padding: 3px 8px;
+}
+.settings-root .txt {
+  font-family: inherit; font-size: var(--text-body); border: 1px solid var(--bubble-border);
+  border-radius: var(--radius-md); padding: 6px 10px; width: 160px;
+}
+.settings-root .slider { width: 140px; accent-color: var(--accent-primary); }
+
+/* 诊断分页内嵌 StatusView —— 去掉它自带的外边距让它贴合 */
+.settings-root .diag-embed { display: block; }

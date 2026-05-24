@@ -87,13 +87,9 @@ export function PetMenu({ open, onClose, onFeed, onNap }: PetMenuProps) {
   const openHub = () => { onClose(); invoke("open_hub_window").catch(() => {}); };
   const openPicker = () => { onClose(); invoke("open_picker_window").catch(() => {}); };
   const openStatus = () => {
+    // v0.5.x · 真·设置窗（之前临时错开成剪贴板 Hub，TODO 已兑现）。
     onClose();
-    // Status window is the closest thing to "settings" today — has all toggles.
-    invoke("check_permissions").catch(() => {});
-    // open_status_window is invoked via tray; expose as a command path here
-    // would need a new wrapper. For P2 we fall back to opening Hub which
-    // surfaces the same content via tray menu. TODO P3: dedicated settings.
-    invoke("open_hub_window").catch(() => {});
+    invoke("open_settings_window").catch(() => {});
   };
   const feed = () => {
     const cur = Number(localStorage.getItem(FEED_COUNT_KEY) ?? 0) + 1;
