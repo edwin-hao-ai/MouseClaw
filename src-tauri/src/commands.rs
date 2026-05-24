@@ -690,14 +690,12 @@ pub async fn start_recording(
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
     let state = state.inner().clone();
-    // v0.5.x · PetMenu 召唤：**原地（anchor）持续监听、不跟随鼠标**。
-    //   - summon_follow=false → emit_view 不开 cursor_follow，气泡稳定停在桌宠头顶 →
-    //     "正在说话"的文字看得见（修菜单召唤瞬移到高处光标 → 气泡被顶出/遮挡的 bug）、
-    //     「⌨️打字」按钮点得中。
-    //   - show_mouse_at_anchor：在桌宠原位展开，不像 show_mouse 那样瞬移到光标。
-    //   - listening 全程不抢键盘焦点（不 make_key），想打字走气泡「⌨️打字」按钮。
+    // v0.5.x · PetMenu 召唤：show_mouse 定位到光标（跟托盘一致，定位本身没问题）+
+    //   **summon_follow=false 关跟随**。菜单召唤遮挡/裁切的真因是：持续 listening + cursor_follow
+    //   让气泡一直漂到鼠标当前位置，鼠标飘到屏幕边 → 气泡被切。关掉跟随后气泡**停在召唤点不动**
+    //   → 文字看得见、「⌨️打字」点得中。listening 全程不抢键盘焦点（想打字走气泡按钮）。
     state.summon_follow.store(false, std::sync::atomic::Ordering::Relaxed);
-    crate::overlay::show_mouse_at_anchor(&app);
+    crate::overlay::show_mouse(&app);
     tauri::async_runtime::spawn(async move { on_shortcut_press(app, state).await });
     Ok(())
 }

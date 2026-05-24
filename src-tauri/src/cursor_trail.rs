@@ -65,34 +65,24 @@ pub fn start(app: AppHandle) {
         return; // 已经在跑
     }
     TRAIL.lock().unwrap().clear();
-    // 通知 overlay 清空旧轨迹
-    let _ = app.emit_to("draw", "trail-clear", ());
-    show_draw_overlay(&app);
-
+    // v0.5.x · 用户反馈：屏幕上那条灰色实时轨迹线烦人。改为**默默记录**——
+    //   只采样进 TRAIL buffer（给 run_pipeline 烘进截图，AI 仍能看到你圈了什么），
+    //   **不再显示 draw 画板 overlay、不再 emit 实时 trail-point**。所以也没有"圈选/轨迹
+    //   残留"问题（根本没画板可残留）。
     let start = Instant::now();
     std::thread::Builder::new().name("mouseclaw-cursor-trail".into()).spawn(move || {
+        let _ = &app; // app 仍捕获（保持签名/未来可用），但不再 emit 给 draw 窗
         while SAMPLING.load(Ordering::Relaxed) {
-            let app_ref = &app;
             let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 if let Some((x, y, btn)) = sample_cursor() {
                     let t_ms = start.elapsed().as_millis() as u64;
                     TRAIL.lock().unwrap().push(TrailPoint {
                         x, y, t_ms, left_button: btn,
                     });
-                    // 推给 overlay 实时画
-                    let _ = app_ref.emit_to("draw", "trail-point", TrailPointEvent {
-                        x, y, t: t_ms, drawing: btn,
-                    });
                 }
             }));
             if r.is_err() { eprintln!("[mouseclaw] 🐭 trail sample panic, 继续"); }
             std::thread::sleep(Duration::from_millis(60));
-        }
-        // 采样结束 → 隐藏 overlay（让用户看回干净屏幕）
-        // 给前端 1.5s 看自己刚画的，再隐
-        std::thread::sleep(Duration::from_millis(1500));
-        if let Some(w) = app.get_webview_window("draw") {
-            let _ = w.hide();
         }
     }).ok();
 }

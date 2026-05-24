@@ -33,8 +33,8 @@ pub fn reposition_to_cursor(app: &AppHandle) {
                 crate::overlay_size::clamp_follow_with_bonk(raw_x, raw_y, win_w, win_h);
             // v0.5.x · 缓动跟随（慢半拍）：每帧只挪向目标一部分，鼠标先到、老鼠过一会才追上。
             //   用户能从容把鼠标移到气泡按钮上点击（之前 30fps 直接 snap → 按钮跟着跑点不中）。
-            //   ALPHA 越小越懒；0.18 @ 30fps ≈ 0.3-0.5s 追上。鼠标停下后老鼠平滑归位。
-            const ALPHA: f64 = 0.18;
+            //   ALPHA 越小越懒；0.08 @ 30fps ≈ 1s 才追上，鼠标先到、能从容点气泡按钮。
+            const ALPHA: f64 = 0.08;
             let (cur_x, cur_y) = match window.outer_position() {
                 Ok(p) => (p.x as f64 / scale, p.y as f64 / scale),
                 Err(_) => (pos_x, pos_y),
