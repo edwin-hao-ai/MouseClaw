@@ -130,7 +130,9 @@ pub(crate) fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
             }
         }
         "backend-install" => recommend_backend_install(app),
-        "status"          => open_status_window(app),
+        "status"          => open_status_window(app), // 旧入口（菜单已移除，留作兜底）
+        // v0.5.x · 托盘瘦身：开关收进设置窗，托盘只留动作 + 这个统一「设置…」入口。
+        "open-settings"   => { let _ = crate::commands::open_settings_window(app.clone()); }
         // toggle-tidy removed in v0.3.3 — tidy_up is default-on via Haiku
         "toggle-voice-ime"=> { toggle_voice_ime(app); rebuild_tray_menu(app); }
         "toggle-clipboard-pause" => { toggle_clipboard_pause(app); rebuild_tray_menu(app); }
