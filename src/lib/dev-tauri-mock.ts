@@ -141,6 +141,22 @@ const FIXTURES: Record<string, (args?: any) => unknown> = {
     (window as any).__mcEmit?.("view-changed", { kind: "idle" });
     return null;
   },
+  // v0.5.x · 设置窗（SettingsView）—— 一次返回全部 config 现值 + 枚举专用 getter。
+  get_settings: () => ({
+    shortcut: "Super+Shift+Space", backend: "claude-cli", language: "中文",
+    voice_ime_enabled: true, vocab_builtin_enabled: true,
+    tts_enabled: false, sfx_enabled: true, sfx_volume: 0.6,
+    clipboard_paused: false, memory_enabled: true, autostart: true, workspace_path: null,
+  }),
+  get_pet_anchor: () => "bottom-right",
+  get_voice_ime_trigger: () => "fn",
+  get_pet_identity: () => ({ name: "鼠标龙虾", personality: "warm", custom: "" }),
+  save_tts: () => null, save_sfx: () => null, save_memory_enabled: () => null,
+  save_backend: () => null, save_voice_ime: () => null, save_voice_ime_trigger: () => null,
+  vocab_set_builtin_enabled: () => 127, save_pet_anchor: () => null, save_pet_identity: () => null,
+  save_language: () => null, set_autostart: () => true, save_clipboard_paused: () => null,
+  pick_workspace_folder: () => null, open_picker_window: () => null,
+  open_memory_window: () => null, open_settings_window: () => null,
   // 其他命令静默 resolve null（test 不关心的）
 };
 
