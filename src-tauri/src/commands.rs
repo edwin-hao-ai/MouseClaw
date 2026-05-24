@@ -618,6 +618,16 @@ pub async fn dismiss(app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<
         crate::feed_flow::cancel(app, s).await;
         return Ok(());
     }
+    // v0.5.x · 取消时（Esc / 点外）若正在 listening 录音 → 干净停掉：录音器 + sherpa 流 +
+    //   鼠标轨迹采样/圈选画板。否则 hide_overlay 只隐桌宠，采样线程仍在跑、draw 圈选窗
+    //   继续显示（用户报：按 Esc 后鼠标轨迹/圈选一直残留）。无录音时这些都是 no-op，安全。
+    s.streaming_active.store(false, std::sync::atomic::Ordering::SeqCst);
+    let _ = s.recorder.lock().unwrap().take();
+    let _ = s.stream_session.lock().unwrap().take();
+    #[cfg(target_os = "macos")]
+    {
+        let _ = crate::cursor_trail::stop_and_take();
+    }
     hide_overlay(&app);
     Ok(())
 }
