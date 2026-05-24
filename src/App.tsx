@@ -16,6 +16,7 @@ import { Panel } from "./components/Panel";
 import { PetMenu } from "./components/PetMenu";
 import { NudgeBubble } from "./components/NudgeBubble";
 import { RecordingBubble } from "./components/RecordingBubble";
+import { TextInputBubble } from "./components/TextInputBubble";
 import { TourBubble } from "./components/TourBubble";
 import {
   EV_VIEW_CHANGED, EV_SKIN_CHANGED, EV_NUDGE, EV_SESSION_STATE, EV_ENTRANCE,
@@ -49,6 +50,7 @@ function mouseStateFor(view: ViewKind): MouseState {
     case "onboarding":       return "listen";
     case "listening":        return "listen";
     case "voice-ime-listening": return "type"; // 长按触发键说话 → 笔状前爪 sprite
+    case "text-input":       return "type"; // v0.5.x 召唤后改打字 → 同笔状前爪态
     case "feed-waiting":     return "feed-wait";    // v0.4 · 文件 hover 在桌宠上：张嘴
     case "feed-listening":   return "feed-digest";  // v0.4 · 已吞文件：消化 + 听问题
     case "thinking":         return "think";
@@ -168,6 +170,14 @@ export default function App() {
       return () => { invoke("set_overlay_focusable", { focusable: false }).catch(() => {}); };
     }
   }, [view.kind, editRequested]);
+
+  // v0.5.x · text-input 态（召唤后敲键改打字）—— overlay 临时可获焦，让输入框真能打字。
+  // 一进就开（用户就是要打字，不像 voice-confirm 需先点一下进编辑）；离开关掉恢复非激活面板。
+  useEffect(() => {
+    if (view.kind !== "text-input") return;
+    invoke("set_overlay_focusable", { focusable: true }).catch(() => {});
+    return () => { invoke("set_overlay_focusable", { focusable: false }).catch(() => {}); };
+  }, [view.kind]);
 
   // v0.4.0 · 监听模型下载进度 —— 聚合 ASR + 标点两条，算总 % 给桌宠 idle 气泡用
   useEffect(() => {
@@ -488,6 +498,15 @@ export default function App() {
           e.preventDefault();
           setEditRequested(true);
         }
+        return;
+      }
+      // v0.5.x · listening 态敲任意字符键 → 不想语音说话，原地切文字输入框（已敲的字塞进去）。
+      //   只认单个可打印字符；带修饰键的组合（⌘C / ⌃R 等）透传不拦；Escape / 方向键 / 功能键
+      //   (e.key.length≠1) 落到下面 → Escape 走 dismiss，其余忽略，不误触切换。
+      if (view.kind === "listening" && e.key.length === 1
+          && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        invoke("switch_to_text_input", { initial: e.key }).catch(() => {});
         return;
       }
       if (e.key !== "Escape") return;
@@ -893,6 +912,9 @@ function BubbleFor({ view, continuing, onExpand, onNewSession, modelProgress, ed
       // v0.3.8 · Plan B —— 桌宠气泡实时显示 sherpa 流式 partial（视觉流式）。
       // 真正的"打字到光标"延后到 fn 松开后一次完成（避开 fn 抢焦点）。
       return <RecordingBubble partial={view.partial} />;
+    case "text-input":
+      // v0.5.x · 召唤后用户敲键改用文字 —— 输入框气泡，提交走主 pipeline。
+      return <TextInputBubble initial={view.initial} />;
     case "feed-waiting":
       // v0.4 · 文件 hover 在桌宠上 —— 张嘴气泡
       return <Bubble text="🍽️ 喂我？拖到我嘴里" variant="warn" />;

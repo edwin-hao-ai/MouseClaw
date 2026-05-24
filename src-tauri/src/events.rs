@@ -22,6 +22,14 @@ pub enum ViewKind {
         #[serde(default)]
         partial: String,
     },
+    /// v0.5.x · 召唤后用户不想语音 → 敲任意字符键原地切成文字输入框。
+    /// `initial` = 触发切换的那个字符（已敲的字不丢，塞进输入框）。
+    /// 提交走 `submit_query` → run_pipeline，和语音转写完全同一条路。
+    #[serde(rename = "text-input")]
+    TextInput {
+        #[serde(default)]
+        initial: String,
+    },
     /// v0.4 · 用户拖文件 hover 在桌宠上但还没 drop —— 张嘴等接收
     #[serde(rename = "feed-waiting")]
     FeedWaiting,

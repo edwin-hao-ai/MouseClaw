@@ -211,6 +211,9 @@ pub fn emit_view(app: &AppHandle, view: &ViewKind) {
                 format!("voice-ime-listening({}…)", partial.chars().take(20).collect::<String>())
             }
         }
+        ViewKind::TextInput { initial } => {
+            format!("text-input({} chars)", initial.chars().count())
+        }
         ViewKind::FeedWaiting => "feed-waiting".to_string(),
         ViewKind::FeedListening { files, partial } => {
             format!("feed-listening({} files, {}…)",

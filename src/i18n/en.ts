@@ -79,6 +79,10 @@ export const en: Strings = {
   "bubble.session_chip": "🔗 Session #{id} · turn {turn}",
   "bubble.new_session": "New chat",
   "bubble.error_prefix": "⛔ ",
+  "bubble.type_hint": "Or just type ⌨️",
+  "textinput.placeholder": "Type your question…",
+  "textinput.send": "Send",
+  "textinput.cancel": "Cancel",
 
   // Onboarding
   "onboarding.welcome.title": "Hi, I'm MouseClaw 🦞",

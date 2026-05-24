@@ -125,6 +125,22 @@ const FIXTURES: Record<string, (args?: any) => unknown> = {
   memory_clear_all: () => null,
   memory_set_paused: () => null,
   memory_set_enabled: () => null,
+  // v0.5.x · 召唤后改用打字 —— mock 下真 emit view，让 Chrome MCP 能走通
+  //   listening → 敲键(switch_to_text_input) → text-input → 输入 → Enter(submit_query) → thinking。
+  switch_to_text_input: (args: { initial?: string }) => {
+    (window as any).__mcEmit?.("view-changed", { kind: "text-input", initial: args?.initial ?? "" });
+    return null;
+  },
+  submit_query: (args: { text?: string }) => {
+    (window as any).__mcEmit?.("view-changed", { kind: "thinking", transcript: args?.text ?? "" });
+    return null;
+  },
+  set_overlay_focusable: () => null,
+  toggle_recording: () => null,
+  dismiss: () => {
+    (window as any).__mcEmit?.("view-changed", { kind: "idle" });
+    return null;
+  },
   // 其他命令静默 resolve null（test 不关心的）
 };
 

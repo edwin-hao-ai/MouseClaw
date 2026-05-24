@@ -689,6 +689,35 @@ pub async fn start_recording(
     Ok(())
 }
 
+/// v0.5.x · 召唤(listening)后用户敲了字符键 → 不想语音说话，原地切成文字输入框。
+/// 停录音并**丢弃**当前音频：drop recorder + sherpa session 而**不** finalize ——
+/// 不产生 transcript、不进 voice-confirm 倒数（区别于 toggle_recording = 松开转写）。
+/// 然后 emit text-input 视图：emit_view 会自动关 cursor_follow + 撑大窗口，
+/// 前端拿到 `initial`（触发切换的那个字符）塞进输入框。提交走 submit_query → 主 pipeline，
+/// 截图复用召唤瞬间那张（last_screenshot），和语音转写完全同一条路。
+#[tauri::command]
+pub fn switch_to_text_input(
+    initial: String,
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    use std::sync::atomic::Ordering;
+    let state = state.inner().clone();
+    bump_gen(&state);
+    // 停 streaming poller —— 它每 150ms tick 检查这个 flag，看到 false 就退出。
+    state.streaming_active.store(false, Ordering::SeqCst);
+    // 丢弃录音器 + sherpa stream session（take + drop = 停录音，不 finalize → 无 transcript）。
+    let _ = state.recorder.lock().unwrap().take();
+    let _ = state.stream_session.lock().unwrap().take();
+    // 丢弃光标轨迹采样（文字态没有"按住快捷键画圈"语义，不该把它烘进截图）。
+    #[cfg(target_os = "macos")]
+    {
+        let _ = crate::cursor_trail::stop_and_take();
+    }
+    crate::overlay::emit_view(&app, &crate::events::ViewKind::TextInput { initial });
+    Ok(())
+}
+
 // ────────────────── History ──────────────────
 
 /// 读 ~/.mouseclaw/sessions.jsonl，按 session_id 分组，倒序返回给历史窗口。

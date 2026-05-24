@@ -367,6 +367,7 @@ pub fn run() {
             commands::cancel_pipeline,
             commands::toggle_recording,
             commands::start_recording,
+            commands::switch_to_text_input,
             commands::pin_window,
             commands::dismiss,
             commands::read_history,

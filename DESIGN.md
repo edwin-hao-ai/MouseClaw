@@ -533,7 +533,26 @@ Internal layout:
 - **Tasks window**（与 Hub / Picker 同级的二级管理窗，非 overlay）：`--panel-bg` 玻璃头/底栏，任务卡 `--radius-lg` + 1px `--bubble-border`，开关 toggle 用 `--accent-primary`，频率 chip / 编辑表单全部走既有 token（见 `TasksView.css`）。
 - **桌宠状态**：定时任务**不新增** mouse 状态 —— 确认时复用 `think`，跑任务时复用既有三点忙碌 badge（§"Companion / busy"），到点投递不改变 8 色调色板，9 款皮肤天然一致。
 
-### 4.8 Forbidden Components
+### 4.8 Text-input bubble (v0.5.x · 召唤后改用打字)
+
+召唤(listening)后用户不想语音 → 敲任意字符键原地切成文字输入框（方案 A：listening 气泡内
+一行键盘提示 `--text-bubble-dim` 小字"不想说？直接打字 ⌨️"，开口出 partial 后淡出）。
+**复用既有 token + `type` mouse 状态，不引入新颜色/动画/mouse 状态**。
+
+- **输入框气泡**（`text-input` 视图，组件 `TextInputBubble`）：复用 `.bubble`（`--bubble-bg` /
+  `--shadow-bubble` / `--radius-xl` / 指向桌宠的三角）。内部：单行 `input`（`--m-belly` 白底 +
+  1.5px `--bubble-border`，focus 时 `--accent-primary` 边框 + `--shadow-input-focus`，placeholder
+  `--text-dim`）+ 32×32 发送钮（`--accent-gradient`，`↑` 字形，同 §4.2 Panel send）。
+  底部键盘提示行 `<kbd>↵</kbd>` 发送 · `<kbd>Esc</kbd>` 取消（kbd 同 §4.5 onboarding kbd 样式）。
+  打 `data-adaptive-measure` 走 `useAdaptiveOverlay` 测量（比 listening 气泡高，窗口自动撑大）。
+- **桌宠状态**：复用 `type` 态（黄铅笔前爪，同 voice-ime-listening）—— 不新增 mouse 状态，
+  9 款皮肤天然一致。
+- **窗口行为**：`emit_view(text-input)` 自动关 `cursor_follow`（不再跟光标）+ 撑大窗口；
+  overlay 临时 `set_overlay_focusable(true)` 让输入框能打字（离开关掉，恢复非激活面板）。
+- **提交**：走 `submit_query` → 主 pipeline，和语音转写**完全同一条路**（截图复用召唤瞬间那张）。
+  空内容提交 / Esc = 取消召唤（`dismiss`）。
+
+### 4.9 Forbidden Components
 
 - ❌ Modal dialogs (we don't have a window — bubble or panel only)
 - ❌ Dropdown menus (use AskUserQuestion-style options grid)
@@ -551,7 +570,8 @@ Internal layout:
 | Scenario | Visual |
 |---|---|
 | Idle (no shortcut pressed) | Sleeping mouse, bottom-right corner, only tail visible (clip-path) |
-| Listening (recording) | Mouse at trigger position, listen state, bubble: "听着呢" + voice bars |
+| Listening (recording) | Mouse at trigger position, listen state, bubble: "听着呢" + voice bars + 「直接打字 ⌨️」hint |
+| Text input (v0.5.x · 不想语音) | 敲键即切：listen → type state, bubble 换文字输入框 (`TextInputBubble`)，提交走主 pipeline |
 | ASR transcribing | Mouse listen → think transition, bubble: italic transcript appearing |
 | Claude thinking | Mouse think state, bubble: same transcript + dim pulsing |
 | Claude streaming | Bubble grows with tokens + pink stream-cursor `▮` |

@@ -79,6 +79,10 @@ export const zh: Strings = {
   "bubble.session_chip": "🔗 续 Session #{id} · 第 {turn} 轮",
   "bubble.new_session": "新对话",
   "bubble.error_prefix": "⛔ ",
+  "bubble.type_hint": "不想说？直接打字 ⌨️",
+  "textinput.placeholder": "打字问我…",
+  "textinput.send": "发送",
+  "textinput.cancel": "取消",
 
   // Onboarding
   "onboarding.welcome.title": "嘿，我是鼠标龙虾 🦞",

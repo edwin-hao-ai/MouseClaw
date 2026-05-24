@@ -96,6 +96,11 @@ export interface Strings {
   "bubble.session_chip": string;           // "🔗 续 Session #{id} · 第 {turn} 轮"
   "bubble.new_session": string;            // "新对话"
   "bubble.error_prefix": string;           // "⛔ "
+  // v0.5.x · 召唤后改用打字（不想语音说话）
+  "bubble.type_hint": string;              // listening 气泡里："不想说？直接打字 ⌨️"
+  "textinput.placeholder": string;         // 文字输入框 placeholder
+  "textinput.send": string;                // 发送
+  "textinput.cancel": string;              // 取消
 
   // ── Onboarding ──
   "onboarding.welcome.title": string;
