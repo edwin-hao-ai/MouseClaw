@@ -273,6 +273,10 @@ pub fn emit_view(app: &AppHandle, view: &ViewKind) {
 /// ⚠️ window.hide() / set_position marshal 到主线程 —— 同 show_mouse，
 /// 避免 AppKit 跨线程崩溃。
 pub fn hide_overlay(app: &AppHandle) {
+    // v0.5.x · 关掉 toggle 召唤可能开过的键盘焦点 —— 回 idle 不需要焦点（没开过 = no-op）。
+    if let Some(w) = app.get_webview_window("mouse") {
+        let _ = w.set_focusable(false);
+    }
     let anchor = crate::config::Config::load().pet_anchor;
     // v0.4 fix (2026-05-20): 顺序很关键 ——
     // 1. 先 emit_view(Idle) 触发 shrink_to_compact (320→80)，窗口尺寸先正确

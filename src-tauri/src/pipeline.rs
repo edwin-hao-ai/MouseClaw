@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::events::{ReplyMode, ViewKind, EV_VIEW_CHANGED};
 use crate::overlay::{bump_gen, emit_view, hide_overlay, schedule_auto_hide};
@@ -499,6 +499,12 @@ pub async fn on_shortcut_release(app: AppHandle, state: Arc<AppState>) {
     let Some(recorder) = recorder else {
         return; // 没在录音 → 忽略
     };
+
+    // v0.5.x · toggle 召唤曾让 overlay 获焦（为接收键盘切文字）—— 进入转写阶段不再需要
+    //   键盘焦点，关回 false 恢复非激活面板（push-to-talk 没开过 = no-op）。
+    if let Some(w) = app.get_webview_window("mouse") {
+        let _ = w.set_focusable(false);
+    }
 
     // v0.1.20 · 停轨迹采样，拿到点列。烘到 screenshot 上。
     #[cfg(target_os = "macos")]

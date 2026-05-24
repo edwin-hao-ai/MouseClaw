@@ -685,6 +685,15 @@ pub async fn start_recording(
     let state = state.inner().clone();
     // 触发 show_mouse + 进入 listening。和 lib.rs 全局快捷键 PRESS 分支等价。
     crate::overlay::show_mouse(&app);
+    // v0.5.x · toggle 召唤（点菜单/托盘/双击，非 push-to-talk）让 overlay 获焦 ——
+    //   listening 是 focus:false 的非激活 NSPanel，物理键盘事件发给前台 app、到不了
+    //   webview（见 pipeline.rs voice-confirm 注释），不获焦的话「敲键即切文字」收不到键。
+    //   离开 listening 会关回 false：转写走 on_shortcut_release、取消走 hide_overlay、
+    //   切文字走前端 text-input effect。push-to-talk（按住）不走这里，保持不获焦。
+    if let Some(w) = app.get_webview_window("mouse") {
+        let _ = w.set_focusable(true);
+        let _ = w.set_focus();
+    }
     tauri::async_runtime::spawn(async move { on_shortcut_press(app, state).await });
     Ok(())
 }
