@@ -131,6 +131,12 @@ pub struct AppState {
     /// 桌宠跟随鼠标开关 —— cursor_follow 后台任务 30fps 读它。
     /// emit_view 进 listening/idle 时 = true；进 thinking/reply/panel 时 = false。
     pub follow_cursor: AtomicBool,
+    /// v0.5.x · 本次召唤的 listening 是否跟随鼠标。
+    /// - hold（按住快捷键 / 全局快捷键 PRESS）= true：圈定式，气泡缓动跟随鼠标。
+    /// - PetMenu 召唤 = false：原地（anchor）持续监听，气泡稳定 → 头顶文字看得见、「⌨️打字」点得中。
+    /// - 托盘召唤 = true（保持原行为：快速 tap）。
+    /// emit_view 进 Listening 时按它 + Listening 共同决定开不开 cursor_follow。默认 true。
+    pub summon_follow: AtomicBool,
     /// v0.1.27 P3 · Nudge 引擎状态（last-fired 时间戳 + nap-until）。
     /// presence::spawn 返回的 PresenceBuffer 也存到这里，commands 能读。
     pub nudge_state: Arc<StdRwLock<crate::nudge::NudgeState>>,
@@ -188,6 +194,7 @@ impl AppState {
             backend: Mutex::new(backend),
             gen: AtomicU64::new(0),
             follow_cursor: AtomicBool::new(false),
+            summon_follow: AtomicBool::new(true),
             nudge_state: Arc::new(StdRwLock::new(crate::nudge::NudgeState::new())),
             fed_docs: Mutex::new(None),
             feed_drag_active: AtomicBool::new(false),
@@ -340,6 +347,8 @@ pub fn run() {
                     match event.state() {
                         ShortcutState::Pressed => {
                             println!("[mouseclaw] 🦞 shortcut PRESS: {shortcut:?}");
+                            // v0.5.x · hold（按住说话）= 圈定式，listening 缓动跟随鼠标。
+                            state.summon_follow.store(true, std::sync::atomic::Ordering::Relaxed);
                             show_mouse(app);
                             tauri::async_runtime::spawn(async move {
                                 on_shortcut_press(app_handle, state).await;

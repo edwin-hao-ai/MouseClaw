@@ -31,9 +31,22 @@ pub fn reposition_to_cursor(app: &AppHandle) {
             // v0.4+ · clamp 让桌宠本体不跑出屏幕 + 撞边回弹（窗口透明边距可溢出，桌宠不被切）。
             let (pos_x, pos_y, bonk) =
                 crate::overlay_size::clamp_follow_with_bonk(raw_x, raw_y, win_w, win_h);
-            let _ = window.set_position(LogicalPosition::new(pos_x, pos_y));
-            if let Some(dir) = bonk {
-                crate::overlay_size::emit_bonk_edge(&app2, dir);
+            // v0.5.x · 缓动跟随（慢半拍）：每帧只挪向目标一部分，鼠标先到、老鼠过一会才追上。
+            //   用户能从容把鼠标移到气泡按钮上点击（之前 30fps 直接 snap → 按钮跟着跑点不中）。
+            //   ALPHA 越小越懒；0.18 @ 30fps ≈ 0.3-0.5s 追上。鼠标停下后老鼠平滑归位。
+            const ALPHA: f64 = 0.18;
+            let (cur_x, cur_y) = match window.outer_position() {
+                Ok(p) => (p.x as f64 / scale, p.y as f64 / scale),
+                Err(_) => (pos_x, pos_y),
+            };
+            let eased_x = cur_x + (pos_x - cur_x) * ALPHA;
+            let eased_y = cur_y + (pos_y - cur_y) * ALPHA;
+            let _ = window.set_position(LogicalPosition::new(eased_x, eased_y));
+            // 接近目标边缘才回弹（缓动下很少真贴边，避免每帧虚假 bonk）。
+            if bonk.is_some() && (pos_x - eased_x).abs() < 1.0 && (pos_y - eased_y).abs() < 1.0 {
+                if let Some(dir) = bonk {
+                    crate::overlay_size::emit_bonk_edge(&app2, dir);
+                }
             }
         }
     });
@@ -268,7 +281,10 @@ pub fn emit_view(app: &AppHandle, view: &ViewKind) {
     //   光标在目标输入框附近移动选词，桌宠跟着乱飞挡视线，体验差。
     //   AI 召唤本身鼠标是"画圈圈定"动作，跟随有意义；语音输入鼠标是"选输入框位置"，跟随无意义。
     if let Some(state) = app.try_state::<Arc<AppState>>() {
-        let should_follow = matches!(view, ViewKind::Listening { .. });
+        // v0.5.x · 只有 summon_follow=true 的 listening 才跟随（hold/托盘）。PetMenu 召唤
+        //   summon_follow=false → 原地不跟随，气泡稳定（头顶文字看得见、「⌨️打字」点得中）。
+        let should_follow = matches!(view, ViewKind::Listening { .. })
+            && state.summon_follow.load(Ordering::Relaxed);
         if should_follow {
             crate::cursor_follow::enable(state.inner());
         } else {

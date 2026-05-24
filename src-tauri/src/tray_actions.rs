@@ -406,6 +406,9 @@ pub(crate) fn summon_via_tray(app: &AppHandle) {
         return;
     }
     let state: Arc<crate::AppState> = app.state::<Arc<crate::AppState>>().inner().clone();
+    // v0.5.x · 托盘召唤保持原行为（show_mouse + tap）。summon_follow=true 复位，
+    //   免得上一次 PetMenu 召唤把它设成 false 残留。
+    state.summon_follow.store(true, std::sync::atomic::Ordering::Relaxed);
     crate::overlay::show_mouse(app);
     let app_clone = app.clone();
     tauri::async_runtime::spawn(async move {

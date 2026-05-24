@@ -690,11 +690,14 @@ pub async fn start_recording(
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
     let state = state.inner().clone();
-    // 触发 show_mouse + 进入 listening。和 lib.rs 全局快捷键 PRESS 分支等价。
-    crate::overlay::show_mouse(&app);
-    // v0.5.x · listening 全程**不**抢键盘焦点（不 make_key）—— 跟 voice IME 一致，零焦点
-    //   干扰：无延迟、不抢原 app 文本光标、不影响 fn 听写/Mode B 写光标。想打字走 listening
-    //   气泡上的「⌨️ 打字」按钮（switch_to_text_input），那时才 make_key（前端 text-input effect）。
+    // v0.5.x · PetMenu 召唤：**原地（anchor）持续监听、不跟随鼠标**。
+    //   - summon_follow=false → emit_view 不开 cursor_follow，气泡稳定停在桌宠头顶 →
+    //     "正在说话"的文字看得见（修菜单召唤瞬移到高处光标 → 气泡被顶出/遮挡的 bug）、
+    //     「⌨️打字」按钮点得中。
+    //   - show_mouse_at_anchor：在桌宠原位展开，不像 show_mouse 那样瞬移到光标。
+    //   - listening 全程不抢键盘焦点（不 make_key），想打字走气泡「⌨️打字」按钮。
+    state.summon_follow.store(false, std::sync::atomic::Ordering::Relaxed);
+    crate::overlay::show_mouse_at_anchor(&app);
     tauri::async_runtime::spawn(async move { on_shortcut_press(app, state).await });
     Ok(())
 }
