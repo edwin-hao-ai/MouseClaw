@@ -11,6 +11,7 @@
  */
 import { useEffect, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useT, getCurrentLang } from "./i18n";
 import StatusView from "./StatusView";
 import "./SettingsView.css";
@@ -168,15 +169,35 @@ export default function SettingsView() {
   const [persona, setPersona] = useState("warm");
   const [custom, setCustom] = useState("");
 
-  // 挂载读全部现值
-  useEffect(() => {
-    invoke<Settings>("get_settings").then(setS).catch(() => {});
-    invoke<string>("get_pet_anchor").then(setAnchor).catch(() => {});
-    invoke<string>("get_voice_ime_trigger").then(setTrigger).catch(() => {});
+  // 读身份（名字/性格/自定义）—— picker 窗也能改，要能跨窗同步。
+  const loadIdentity = useCallback(() => {
     invoke<{ name: string; personality: string; custom: string }>("get_pet_identity")
       .then((id) => { setName(id.name || ""); setPersona((id.personality || "warm").toLowerCase()); setCustom(id.custom || ""); })
       .catch(() => {});
   }, []);
+  // 读全部现值
+  const loadAll = useCallback(() => {
+    invoke<Settings>("get_settings").then(setS).catch(() => {});
+    invoke<string>("get_pet_anchor").then(setAnchor).catch(() => {});
+    invoke<string>("get_voice_ime_trigger").then(setTrigger).catch(() => {});
+    loadIdentity();
+  }, [loadIdentity]);
+
+  // 挂载读一次 + 窗口重新获焦时刷新（在别的窗口/托盘改了设置 → 回到设置窗即同步）。
+  useEffect(() => {
+    loadAll();
+    window.addEventListener("focus", loadAll);
+    return () => window.removeEventListener("focus", loadAll);
+  }, [loadAll]);
+
+  // picker 窗改名字/性格 → save_pet_identity emit "pet-identity-changed" → 即时刷新（即便没切焦点）。
+  useEffect(() => {
+    let un: (() => void) | null = null;
+    try {
+      listen("pet-identity-changed", () => loadIdentity()).then((fn) => { un = fn; }).catch(() => {});
+    } catch { /* 浏览器 dev 模式 */ }
+    return () => { if (un) un(); };
+  }, [loadIdentity]);
 
   // 局部更新 settings 的某字段 + 调命令
   const set = useCallback(<K extends keyof Settings>(k: K, v: Settings[K]) =>
