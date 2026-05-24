@@ -153,7 +153,7 @@ const USER_FILE_TEMPLATE: &str = "\
 // score 一律省略（regenerate_active 会用全局默认 2.0），用户从头到尾看不到权重。
 
 /// CJK / 假名范围 —— 这些字符要逐字空格分开喂 sherpa。
-fn is_cjk(c: char) -> bool {
+pub fn is_cjk(c: char) -> bool {
     matches!(c as u32,
         0x3040..=0x30FF |   // 平假名 / 片假名
         0x3400..=0x4DBF |   // CJK 扩展 A

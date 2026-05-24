@@ -155,6 +155,7 @@ const FIXTURES: Record<string, (args?: any) => unknown> = {
   save_backend: () => null, save_voice_ime: () => null, save_voice_ime_trigger: () => null,
   vocab_set_builtin_enabled: () => 127, save_pet_anchor: () => null, save_pet_identity: () => null,
   vocab_add_word: (a: Record<string, unknown> = {}) => ({ status: String(a.word || "").trim() ? "added" : "empty", stored: String(a.word || ""), total: 128 }),
+  get_dictation_stats: () => ({ total_words: 2143, total_minutes: 13.6, sessions: 47, avg_wpm: 158, saved_minutes: 40 }),
   save_language: () => null, set_autostart: () => true, save_clipboard_paused: () => null,
   set_summon_shortcut: () => null,
   pick_workspace_folder: () => null, open_picker_window: () => null,

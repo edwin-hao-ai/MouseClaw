@@ -366,6 +366,7 @@ export const zh: Strings = {
   "set.vocab.add": "加一个词", "set.vocab.add.hint": "输一个词直接进词表，中文自动处理，不用设权重。",
   "set.vocab.add.ph": "如：心房颤动、useEffect", "set.vocab.add.btn": "添加",
   "set.vocab.add.ok": "✓ 已添加", "set.vocab.add.dup": "已在词表中", "set.vocab.add.err": "添加失败",
+  "hist.dict.summary": "🎙️ 语音输入 · 共 {words} 字 · {min} 分钟 · ≈{wpm} WPM · 省下 {saved} 分钟打字",
   "set.skin": "皮肤", "set.skin.hint": "9 款像素形象。", "set.skin.btn": "挑皮肤…",
   "set.anchor": "闲置位置", "set.anchor.hint": "没事时桌宠待在哪。",
   "set.name": "名字", "set.name.hint": "叫它什么。", "set.name.ph": "鼠标龙虾",

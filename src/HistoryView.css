@@ -32,6 +32,18 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* v0.6 · 听写统计 banner */
+.hv-dict-banner {
+  font-size: var(--text-body-sm);
+  color: var(--text-primary);
+  background: var(--surface-glass, rgba(127, 127, 127, 0.08));
+  border: 1px solid var(--bubble-border, rgba(0, 0, 0, 0.06));
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-5);
+  font-variant-numeric: tabular-nums;
+}
+
 .hv-empty {
   display: flex;
   flex-direction: column;

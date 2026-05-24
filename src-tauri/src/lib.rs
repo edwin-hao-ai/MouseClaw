@@ -67,6 +67,7 @@ pub mod voice_ime;
 pub mod voice_correct;
 pub mod voice_correct_inline;
 pub mod vocab;
+pub mod stats;
 // transcribe (Whisper) deleted in v0.3 — superseded by transcribe_stream (sherpa-onnx)
 pub mod tray;
 pub mod tray_menu;
@@ -454,6 +455,7 @@ pub fn run() {
             commands::vocab_get_builtin_enabled,
             commands::vocab_set_builtin_enabled,
             commands::vocab_add_word,
+            commands::get_dictation_stats,
             commands::get_settings,
             commands::save_tts,
             commands::save_sfx,

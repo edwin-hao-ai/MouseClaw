@@ -4,7 +4,32 @@
  */
 import { useEffect, useState } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { useT } from "./i18n";
 import "./HistoryView.css";
+
+interface DictationStats {
+  total_words: number;
+  total_minutes: number;
+  sessions: number;
+  avg_wpm: number;
+  saved_minutes: number;
+}
+
+/** v0.6 · 听写统计 banner —— 纯本地累计，省下多少打字时间。total_words=0 时不显示。 */
+function DictationBanner({ stats }: { stats: DictationStats | null }) {
+  const t = useT();
+  if (!stats || stats.total_words <= 0) return null;
+  return (
+    <div className="hv-dict-banner" data-testid="dictation-stats">
+      {t("hist.dict.summary", {
+        words: stats.total_words,
+        min: stats.total_minutes.toFixed(1),
+        wpm: Math.round(stats.avg_wpm),
+        saved: Math.round(stats.saved_minutes),
+      })}
+    </div>
+  );
+}
 
 interface HistoryTurn {
   role: "user" | "assistant" | string;
@@ -36,11 +61,15 @@ function fmtSession(id: number) {
 export default function HistoryView() {
   const [sessions, setSessions] = useState<HistorySession[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [dictStats, setDictStats] = useState<DictationStats | null>(null);
 
   useEffect(() => {
     invoke<HistorySession[]>("read_history")
       .then((s) => setSessions(s))
       .catch((e) => setError(String(e)));
+    invoke<DictationStats>("get_dictation_stats")
+      .then(setDictStats)
+      .catch(() => {});
   }, []);
 
   if (error) {
@@ -60,6 +89,7 @@ export default function HistoryView() {
   if (sessions.length === 0) {
     return (
       <div className="hv-root">
+        <DictationBanner stats={dictStats} />
         <div className="hv-empty">
           <div className="hv-empty-icon">📜</div>
           <div>还没有历史对话</div>
@@ -79,6 +109,7 @@ export default function HistoryView() {
           {sessions.length} 个 session · {totalTurns} 轮对话
         </span>
       </header>
+      <DictationBanner stats={dictStats} />
       <div className="hv-list">
         {sessions.map((s) => (
           <Session key={s.session_id} session={s} />

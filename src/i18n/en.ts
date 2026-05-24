@@ -366,6 +366,7 @@ export const en: Strings = {
   "set.vocab.add": "Add a word", "set.vocab.add.hint": "Type a word to add it — Chinese is handled automatically, no weights.",
   "set.vocab.add.ph": "e.g. atrial fibrillation, useEffect", "set.vocab.add.btn": "Add",
   "set.vocab.add.ok": "✓ Added", "set.vocab.add.dup": "Already in vocabulary", "set.vocab.add.err": "Failed to add",
+  "hist.dict.summary": "🎙️ Voice input · {words} words · {min} min · ≈{wpm} WPM · saved {saved} min of typing",
   "set.skin": "Skin", "set.skin.hint": "9 pixel looks.", "set.skin.btn": "Pick skin…",
   "set.anchor": "Idle position", "set.anchor.hint": "Where the pet rests when idle.",
   "set.name": "Name", "set.name.hint": "What to call it.", "set.name.ph": "MouseClaw",

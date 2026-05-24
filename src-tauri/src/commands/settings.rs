@@ -211,6 +211,12 @@ pub fn get_settings() -> config::Config {
     config::Config::load()
 }
 
+/// v0.6 · 听写统计（字数 / 时长 / WPM / 省下打字时间）—— 历史窗 banner 读这条。
+#[tauri::command]
+pub fn get_dictation_stats() -> crate::stats::StatsView {
+    crate::stats::view()
+}
+
 /// 朗读 AI 回复（TTS）开关。关掉时立刻停掉正在朗读的。
 #[tauri::command]
 pub fn save_tts(enabled: bool) -> Result<(), String> {

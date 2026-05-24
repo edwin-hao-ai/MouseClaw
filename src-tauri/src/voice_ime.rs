@@ -612,6 +612,8 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
         }
     };
     *state.recorder.lock().unwrap() = Some(recorder);
+    // v0.6 · 统计起点 —— 成功写入时算时长/字数（见 stop_and_paste 的 record_finish）
+    crate::stats::mark_start();
     // v0.3.1 · streaming: create sherpa session + start poller for live typing
     match crate::transcribe_stream::StreamSession::new() {
         Ok(s) => *state.stream_session.lock().unwrap() = Some(s),
@@ -884,6 +886,8 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
 
             match crate::mode_b::write_at_cursor(&final_text).await {
                 Ok(()) => {
+                    // v0.6 · 听写统计 —— 累加字数/时长（mark_start 在录音开始时已记起点）
+                    crate::stats::record_finish(&final_text);
                     // v0.4.0 P2 · 记录这次写入 —— 下一次 3 秒内的语音可能要纠错它
                     crate::voice_correct::record_write(&final_text, &current_bundle);
                     crate::overlay::emit_view(&app2, &crate::events::ViewKind::Reply {
