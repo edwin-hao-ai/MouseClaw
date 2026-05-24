@@ -51,9 +51,16 @@ export function RecordingBubble({ partial }: RecordingBubbleProps = {}) {
           ◼
         </button>
       </div>
-      {/* v0.5.x · 方案 A 提示：不想语音可直接打字（敲任意键即切）。开口后淡出。 */}
+      {/* v0.5.x · 「⌨️ 打字」按钮：listening 不抢键盘焦点，点这里才切文字输入
+          （switch_to_text_input → 进 text-input 态再 make_key）。开口出 partial 后淡出。 */}
       {!hasPartial && (
-        <div className="rec-type-hint">{t("bubble.type_hint")}</div>
+        <button
+          type="button"
+          className="rec-type-btn"
+          onClick={() => invoke("switch_to_text_input", { initial: "" }).catch(() => {})}
+        >
+          {t("bubble.type_hint")}
+        </button>
       )}
     </div>
   );

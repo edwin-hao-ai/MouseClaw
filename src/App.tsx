@@ -500,15 +500,10 @@ export default function App() {
         }
         return;
       }
-      // v0.5.x · listening 态敲任意字符键 → 不想语音说话，原地切文字输入框（已敲的字塞进去）。
-      //   只认单个可打印字符；带修饰键的组合（⌘C / ⌃R 等）透传不拦；Escape / 方向键 / 功能键
-      //   (e.key.length≠1) 落到下面 → Escape 走 dismiss，其余忽略，不误触切换。
-      if (view.kind === "listening" && e.key.length === 1
-          && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        e.preventDefault();
-        invoke("switch_to_text_input", { initial: e.key }).catch(() => {});
-        return;
-      }
+      // v0.5.x · listening 不再"敲键即切"——那要求 overlay 抢键盘焦点（make_key），
+      //   会引入延迟、抢走原 app 文本光标、还干扰 fn 听写/Mode B 写光标（用户实测）。
+      //   改为：listening 气泡上点「⌨️ 打字」按钮切（点击不需要 key window）。
+      //   listening 全程保持不抢焦点，和 voice IME 一致。
       if (e.key !== "Escape") return;
       invoke("dismiss").catch(() => {});
     };

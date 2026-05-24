@@ -682,12 +682,9 @@ pub async fn start_recording(
     let state = state.inner().clone();
     // 触发 show_mouse + 进入 listening。和 lib.rs 全局快捷键 PRESS 分支等价。
     crate::overlay::show_mouse(&app);
-    // v0.5.x · toggle 召唤（点菜单/托盘/双击，非 push-to-talk）让 overlay 成 key window ——
-    //   overlay 平时 focus:false 收不到物理键盘；nonactivating panel 成 key 只借键盘焦点、
-    //   不改系统 frontmost app（不污染 Mode B 续写光标），用户敲字符键即可切文字输入。
-    //   离开 listening 会 resign：转写走 on_shortcut_release、取消走 hide_overlay、切文字走
-    //   前端 text-input effect。push-to-talk（按住）不走这里，保持不获焦（手在键上用不上）。
-    crate::overlay::set_overlay_key_window(&app, true);
+    // v0.5.x · listening 全程**不**抢键盘焦点（不 make_key）—— 跟 voice IME 一致，零焦点
+    //   干扰：无延迟、不抢原 app 文本光标、不影响 fn 听写/Mode B 写光标。想打字走 listening
+    //   气泡上的「⌨️ 打字」按钮（switch_to_text_input），那时才 make_key（前端 text-input effect）。
     tauri::async_runtime::spawn(async move { on_shortcut_press(app, state).await });
     Ok(())
 }

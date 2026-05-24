@@ -205,7 +205,7 @@ pub fn apply_overlay_window_behavior(window: &WebviewWindow) {
 /// marshal 到主线程 —— `makeKeyWindow` 碰 AppKit，非主线程会崩。
 #[cfg(target_os = "macos")]
 pub fn set_overlay_key_window(app: &AppHandle, key: bool) {
-    use tauri_nspanel::{ManagerExt, Panel};
+    use tauri_nspanel::ManagerExt;
     let app2 = app.clone();
     let _ = app.run_on_main_thread(move || {
         match app2.get_webview_panel("mouse") {
