@@ -30,8 +30,10 @@ const SILENCE_TIMEOUT_MS: u64 = 2500;
 const FIRST_WORD_GRACE_MS: u64 = 8_000;
 /// 兜底：总录音不超过这个，避免用户走开后录到空气。
 const MAX_RECORD_MS: u64 = 30_000;
-/// 最低必须录到这么多字 partial 才允许 finalize（避免抓到一声"嗯"就发）。
-const MIN_PARTIAL_CHARS: usize = 1;
+/// v0.7 · SenseVoice 离线无实时 partial → 用能量 VAD 判断有没有在说话。
+/// 16k f32 [-1,1] 的 RMS：人声段通常 0.02~0.1，环境静音/底噪 < 0.01。
+/// 取 0.012：宁可稍微宽松（多录一点静音 SenseVoice 也能转对），也别漏掉小声说话。
+const VOICE_RMS_THRESHOLD: f32 = 0.012;
 /// 吞咽过渡：drop 之后先停 600ms 让 CSS gulp 动画跑完 + 给用户视觉确认"它真的吃下了"，
 /// 再切到 FeedListening 开始录音。少了这一步用户感觉不到吃下，会以为 drop 失败。
 const GULP_DURATION_MS: u64 = 600;
@@ -49,7 +51,7 @@ pub fn on_files_dropped(app: AppHandle, state: Arc<AppState>, paths: Vec<PathBuf
         });
         return;
     }
-    if !transcribe_stream::is_ready() {
+    if !crate::transcribe_sense::is_ready() {
         // v0.4.0 · 显示实时下载进度，复用 pipeline 的组装函数
         emit_view(&app, &ViewKind::Blocked {
             reason: crate::pipeline::build_model_blocked_msg(),
@@ -101,10 +103,8 @@ pub fn on_files_dropped(app: AppHandle, state: Arc<AppState>, paths: Vec<PathBuf
             }
         };
         *state_bg.recorder.lock().unwrap() = Some(recorder);
-        match transcribe_stream::StreamSession::new() {
-            Ok(s) => *state_bg.stream_session.lock().unwrap() = Some(s),
-            Err(e) => eprintln!("[mouseclaw] 🍽️ StreamSession::new: {e:#}"),
-        }
+        // v0.7 · SenseVoice 离线 —— 清空音频缓冲；record_until_silent 用能量 VAD 判断说完。
+        state_bg.ime_audio.lock().unwrap().clear();
         state_bg.streaming_active.store(true, Ordering::SeqCst);
 
         // 2.5 · 视觉吞咽过渡 —— FeedWaiting 状态 + 600ms 让 CSS gulp 动画跑完。
@@ -130,8 +130,9 @@ pub fn on_files_dropped(app: AppHandle, state: Arc<AppState>, paths: Vec<PathBuf
 async fn record_until_silent(app: AppHandle, state: Arc<AppState>, files: Vec<String>) {
     let start = Instant::now();
     let mut first_word_time: Option<Instant> = None;
-    let mut last_change = Instant::now();
-    let mut last_partial = String::new();
+    let mut last_voice = Instant::now();
+    let mut audio: Vec<f32> = Vec::new();
+    let mut shown_listening = false;
     let mut ticker = tokio::time::interval(Duration::from_millis(150));
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
@@ -148,80 +149,72 @@ async fn record_until_silent(app: AppHandle, state: Arc<AppState>, files: Vec<St
             }
         };
         if !samples.is_empty() {
-            let partial = {
-                let mut g = state.stream_session.lock().unwrap();
-                if let Some(s) = g.as_mut() {
-                    s.accept(&samples);
-                    s.partial()
-                } else {
-                    break;
-                }
-            };
-            if partial != last_partial {
-                last_partial = partial.clone();
-                last_change = Instant::now();
-                if first_word_time.is_none()
-                    && last_partial.chars().count() >= MIN_PARTIAL_CHARS
-                {
+            // v0.7 · 能量 VAD —— SenseVoice 无实时 partial，用 RMS 判断这一帧有没有人声。
+            let rms = (samples.iter().map(|s| s * s).sum::<f32>()
+                / samples.len() as f32).sqrt();
+            audio.extend_from_slice(&samples);
+            if rms > VOICE_RMS_THRESHOLD {
+                last_voice = Instant::now();
+                if first_word_time.is_none() {
                     first_word_time = Some(Instant::now());
-                    println!("[mouseclaw] 🍽️ first word @ {}ms", start.elapsed().as_millis());
+                    println!("[mouseclaw] 🍽️ first voice @ {}ms (rms={rms:.3})",
+                        start.elapsed().as_millis());
                 }
-                emit_view(&app, &ViewKind::FeedListening {
-                    files: files.clone(),
-                    partial,
-                });
+                if !shown_listening {
+                    shown_listening = true;
+                    emit_view(&app, &ViewKind::FeedListening {
+                        files: files.clone(),
+                        partial: String::new(),
+                    });
+                }
             }
         }
 
         let total = start.elapsed();
         match first_word_time {
             None => {
-                // 还没出字 —— 用 grace 等用户
+                // 还没听到人声 —— 用 grace 等用户
                 if total >= Duration::from_millis(FIRST_WORD_GRACE_MS) {
-                    println!("[mouseclaw] 🍽️ no first word in {}ms → give up",
-                        FIRST_WORD_GRACE_MS);
+                    println!("[mouseclaw] 🍽️ no voice in {}ms → give up", FIRST_WORD_GRACE_MS);
                     break;
                 }
             }
             Some(_) => {
-                // 已经在说 —— 用 silence 判断说完
-                let silent_for = last_change.elapsed();
+                // 已经在说 —— 用静默时长判断说完
+                let silent_for = last_voice.elapsed();
                 if silent_for >= Duration::from_millis(SILENCE_TIMEOUT_MS) {
                     println!("[mouseclaw] 🍽️ silence {}ms after speech → finalize",
                         silent_for.as_millis());
                     break;
                 }
                 if total >= Duration::from_millis(MAX_RECORD_MS) {
-                    println!("[mouseclaw] 🍽️ max-record {}ms → finalize",
-                        total.as_millis());
+                    println!("[mouseclaw] 🍽️ max-record {}ms → finalize", total.as_millis());
                     break;
                 }
             }
         }
     }
 
-    // 4. finalize
+    // 4. finalize —— 拼上剩余音频，SenseVoice 整段离线转写。
     state.streaming_active.store(false, Ordering::SeqCst);
     let recorder = state.recorder.lock().unwrap().take();
-    let session = state.stream_session.lock().unwrap().take();
+    let _ = state.stream_session.lock().unwrap().take();
 
     let transcript = tokio::task::spawn_blocking(move || -> anyhow::Result<String> {
         let remaining = match recorder {
             Some(r) => r.stop_drain_remaining_16k()?,
             None => Vec::new(),
         };
-        let Some(mut sess) = session else {
+        audio.extend_from_slice(&remaining);
+        if audio.is_empty() {
             return Ok(String::new());
-        };
-        if !remaining.is_empty() {
-            sess.accept(&remaining);
         }
-        sess.finalize()
+        crate::transcribe_sense::transcribe(&audio)
     })
     .await
     .unwrap_or_else(|e| Err(anyhow::anyhow!("join: {e}")))
     .unwrap_or_else(|e| {
-        eprintln!("[mouseclaw] 🍽️ finalize: {e:#}");
+        eprintln!("[mouseclaw] 🍽️ transcribe: {e:#}");
         String::new()
     });
     println!("[mouseclaw] 🍽️ transcript = {transcript:?}");

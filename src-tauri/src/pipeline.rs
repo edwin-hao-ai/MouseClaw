@@ -397,9 +397,8 @@ pub async fn on_shortcut_press(app: AppHandle, state: Arc<AppState>) {
         *state.prev_frontmost_pid.lock().unwrap() = pid;
     }
 
-    // v0.2 · check sherpa streaming model
-    // v0.4.0 · 模型走 lazy download，blocked 气泡显示**实时下载进度**让用户知道在干嘛
-    if !crate::transcribe_stream::is_ready() {
+    // v0.7 · SenseVoice 离线模型就绪检查（lazy download，blocked 气泡显示实时进度）
+    if !crate::transcribe_sense::is_ready() {
         let msg = build_model_blocked_msg();
         emit_view(&app, &ViewKind::Blocked { reason: msg });
         schedule_auto_hide(&app, &state, 6000);
@@ -422,25 +421,17 @@ pub async fn on_shortcut_press(app: AppHandle, state: Arc<AppState>) {
     };
     *state.recorder.lock().unwrap() = Some(recorder);
 
-    // v0.2 · 同步创建 streaming session（lazy load 模型 ~500ms 第一次，之后 ~0）
-    match crate::transcribe_stream::StreamSession::new() {
-        Ok(s) => *state.stream_session.lock().unwrap() = Some(s),
-        Err(e) => {
-            eprintln!("[mouseclaw] StreamSession::new failed: {e:#}");
-            // 没 streaming 也别完全 block —— 让录音继续，partial 不出来而已
-        }
-    }
     state.streaming_active.store(true, std::sync::atomic::Ordering::SeqCst);
+    // v0.7 · SenseVoice 离线 —— 清空音频缓冲；poller 只累积音频，松手一次性转写。
+    state.ime_audio.lock().unwrap().clear();
 
-    // v0.3.1 · 150ms 轮询任务 —— 把 recorder buffer 喂进 sherpa stream，emit 实时 partial
-    // 之前 200ms 偏慢；150ms 给"边说边出"更紧凑的感觉
+    // v0.7 · 音频累积 poller —— 150ms 排空 recorder 的 16k 音频进 state.ime_audio。
+    // 不再喂流式 recognizer / 不再 emit partial（SenseVoice 非流式，松手才转写）。
+    // 累积是轻量同步操作，放 tokio 任务无 starvation 风险（不像旧的 sherpa 实时解码）。
     let state_stream = state.clone();
-    let app_stream = app.clone();
     tauri::async_runtime::spawn(async move {
         let mut ticker = tokio::time::interval(std::time::Duration::from_millis(150));
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        let mut last_partial = String::new();
-        let mut total_samples_fed: usize = 0;
         loop {
             ticker.tick().await;
             if !state_stream.streaming_active.load(std::sync::atomic::Ordering::SeqCst) {
@@ -454,30 +445,8 @@ pub async fn on_shortcut_press(app: AppHandle, state: Arc<AppState>) {
                 }
             };
             if samples.is_empty() { continue; }
-            total_samples_fed += samples.len();
-            let partial = {
-                let mut g = state_stream.stream_session.lock().unwrap();
-                if let Some(s) = g.as_mut() {
-                    s.accept(&samples);
-                    s.partial()
-                } else {
-                    continue;
-                }
-            };
-            if partial != last_partial {
-                println!("[mouseclaw] 🎤 partial ({} samples fed): {:?}",
-                    total_samples_fed, partial);
-                last_partial = partial.clone();
-                // v0.4.0 · 流式 partial 加标点（短片段跳过，避免单字符 punct 误判）
-                let display = if partial.chars().count() >= 4 {
-                    crate::punctuation::add_punctuation(&partial)
-                } else {
-                    partial.clone()
-                };
-                emit_view(&app_stream, &ViewKind::Listening { partial: display });
-            }
+            state_stream.ime_audio.lock().unwrap().extend_from_slice(&samples);
         }
-        println!("[mouseclaw] 🎤 streaming poller exited (total {} samples fed)", total_samples_fed);
     });
 
     // v0.1.20 · 启动鼠标轨迹采样 + 实时 overlay（v0.1.21）
@@ -562,16 +531,20 @@ pub async fn on_shortcut_release(app: AppHandle, state: Arc<AppState>) {
             remaining.len(),
             remaining.len() as f32 / 16_000.0
         );
-        let session = {
-            let mut g = state_clone.stream_session.lock().unwrap();
-            g.take()
+        let _ = state_clone.stream_session.lock().unwrap().take();
+        // v0.7 · poller 累积的 + 剩余的 = 整段音频 → SenseVoice 离线转写。
+        let samples = {
+            let mut g = state_clone.ime_audio.lock().unwrap();
+            g.extend_from_slice(&remaining);
+            std::mem::take(&mut *g)
         };
-        let transcript = if let Some(mut sess) = session {
-            if !remaining.is_empty() { sess.accept(&remaining); }
-            match sess.finalize() {
+        let transcript = if samples.is_empty() {
+            String::new()
+        } else {
+            match crate::transcribe_sense::transcribe(&samples) {
                 Ok(t) => t,
                 Err(e) => {
-                    eprintln!("[mouseclaw] sherpa finalize: {e:#}");
+                    eprintln!("[mouseclaw] SenseVoice transcribe: {e:#}");
                     let _ = app_clone.emit(
                         EV_VIEW_CHANGED,
                         ViewKind::Blocked { reason: format!("转写失败：{e}") },
@@ -580,9 +553,6 @@ pub async fn on_shortcut_release(app: AppHandle, state: Arc<AppState>) {
                     return;
                 }
             }
-        } else {
-            eprintln!("[mouseclaw] stream session missing on release — empty transcript");
-            String::new()
         };
         println!("[mouseclaw] transcript (raw): {transcript:?}");
         if transcript.is_empty() {
@@ -596,15 +566,11 @@ pub async fn on_shortcut_release(app: AppHandle, state: Arc<AppState>) {
             return;
         }
         // v0.3.4 · 只跑 light_clean（regex, 5ms）—— LLM polish 删除
-        // v0.3.6 · light_clean 后再过本地标点模型（sherpa CT-Transformer，~10ms）
+        // v0.7 · SenseVoice 自带标点 → 不再过单独标点模型，light_clean 即终稿。
         tauri::async_runtime::spawn(async move {
             let cfg = crate::config::Config::load();
-            let light = crate::tidy_up::light_clean(&transcript, &cfg.language);
-            println!("[mouseclaw] transcript (light): {light:?}");
-            let punctuated = crate::punctuation::add_punctuation(&light);
-            if punctuated != light {
-                println!("[mouseclaw] transcript (punctuated): {punctuated:?}");
-            }
+            let punctuated = crate::tidy_up::light_clean(&transcript, &cfg.language);
+            println!("[mouseclaw] transcript (light): {punctuated:?}");
             // v0.4.0 · A 方案 · 3 秒倒数确认 —— 防误识别浪费 token。
             // Esc 取消 / Enter 立即发 / 点气泡进 edit / 默认 3s 后自动发。
             let final_text = match voice_confirm_countdown(&app_clone, &state_clone, &punctuated).await {
@@ -642,23 +608,25 @@ pub async fn on_dictation_release(app: AppHandle, state: Arc<AppState>) {
                 return;
             }
         };
-        let session = {
-            let mut g = state_clone.stream_session.lock().unwrap();
-            g.take()
+        let _ = state_clone.stream_session.lock().unwrap().take();
+        // v0.7 · SenseVoice 离线 —— poller 累积的 + 剩余的 整段转写。
+        let samples = {
+            let mut g = state_clone.ime_audio.lock().unwrap();
+            g.extend_from_slice(&remaining);
+            std::mem::take(&mut *g)
         };
-        let transcript = if let Some(mut sess) = session {
-            if !remaining.is_empty() { sess.accept(&remaining); }
-            sess.finalize().unwrap_or_default()
-        } else {
+        let transcript = if samples.is_empty() {
             String::new()
+        } else {
+            crate::transcribe_sense::transcribe(&samples).unwrap_or_default()
         };
         if transcript.trim().is_empty() {
             hide_overlay(&app_clone);
             return;
         }
         let cfg = crate::config::Config::load();
-        let light = crate::tidy_up::light_clean(&transcript, &cfg.language);
-        let punctuated = crate::punctuation::add_punctuation(&light);
+        // SenseVoice 自带标点 → 只 light_clean。
+        let punctuated = crate::tidy_up::light_clean(&transcript, &cfg.language);
         // 直接键入（enigo / Wayland 兜底剪贴板）。
         match crate::mode_b::type_unicode_sync(&punctuated) {
             Ok(()) => emit_view(&app_clone, &ViewKind::Reply {
@@ -797,17 +765,16 @@ async fn voice_confirm_loop(
 pub fn build_model_blocked_msg() -> String {
     use crate::model_downloader::latest_progress;
     // 优先看 active 语言模型进度（用户最关心 —— 这是按快捷键被挡住时唯一关心的事）
-    let active_id = crate::transcribe_stream::active_spec().id;
-    if let Some(p) = latest_progress(active_id) {
+    // v0.7 · 语音模型 = SenseVoice（听写 + AI 召唤 + feed 统一用它）
+    let spec = crate::transcribe_sense::active_spec();
+    if let Some(p) = latest_progress(spec.id) {
         return format_progress(&p);
     }
-    // 还没收到任何 progress event —— 用 active spec 算总 MB，不再 hardcode 199
-    let spec = crate::transcribe_stream::active_spec();
     let total_mb = spec.files.iter().map(|f| f.bytes).sum::<u64>() as f64 / 1024.0 / 1024.0;
-    match crate::transcribe_stream::current_state() {
-        Some(crate::transcribe_stream::ModelState::Downloading) =>
+    match crate::transcribe_sense::current_state() {
+        Some(crate::transcribe_sense::ModelState::Downloading) =>
             format!("🦞 正在准备语音模型（首次启动需下 ~{:.0}MB），完成后再试", total_mb),
-        Some(crate::transcribe_stream::ModelState::Failed(e)) =>
+        Some(crate::transcribe_sense::ModelState::Failed(e)) =>
             format!("🦞 语音模型下载失败：{e}\n托盘 → 📥 模型下载进度 → 🔁 重试"),
         _ => "🦞 语音模型未就绪，请稍候".into(),
     }

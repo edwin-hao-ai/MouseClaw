@@ -624,11 +624,9 @@ pub fn run() {
             //   zh-en 才发现用户在 onboarding 选了 English，前面下的全废。
             //   未 onboarded 由 commands::save_shortcut 在 onboarding 完成时调起。
             if cfg.onboarded {
-                // v0.7 · 听写改用 SenseVoice（离线，自带标点）。
+                // v0.7 · 全部语音（听写 / AI 召唤 / feed）统一用 SenseVoice（离线、自带标点）。
+                // 旧流式 zipformer + 单独标点模型已不再使用 → 不下载，安装更轻量（~229MB 单模型）。
                 transcribe_sense::kick_off_download_if_missing(app.handle().clone());
-                // 流式 zipformer + 标点模型仍供 AI 召唤 / feed 流程用（Phase 2 再切）。
-                transcribe_stream::kick_off_download_if_missing(app.handle().clone());
-                punctuation::kick_off_download_if_missing(app.handle().clone());
             }
 
             // v0.4.0 P1 · 启动时确保术语表用户文件存在 + 重新生成 active.txt。
