@@ -73,8 +73,9 @@ fn generate_blocking(user_prompt: &str, max_tokens: usize) -> Result<String> {
         let dir = model_dir()?;
         let tok = Tokenizer::from_file(dir.join("tokenizer.json"))
             .map_err(|e| anyhow!("load tokenizer: {e}"))?;
-        let session = Session::builder()?
-            .commit_from_file(dir.join("model_q4f16.onnx"))?;
+        // 执行器：用默认 CPU EP。实测 CoreML EP 对这个动态形状 LLM 反而更慢
+        // （首调 ~27s 图编译 + 稳态比 CPU 还慢，算子大量回退）—— 故不用 CoreML。
+        let session = Session::builder()?.commit_from_file(dir.join("model_q4f16.onnx"))?;
         *guard = Some((session, tok));
         println!("[mouseclaw] 🧠 local model loaded (Qwen3-0.6B ONNX)");
     }
@@ -164,14 +165,18 @@ mod tests {
             eprintln!("skip: 本地模型未下载，跳过端到端测试");
             return;
         }
-        let out = generate_blocking(
-            "把下面的中文翻译成英文，只输出译文：你好，世界。",
-            64,
-        )
-        .expect("local generate should succeed when model present");
-        eprintln!("译文输出: {out:?}");
-        assert!(!out.trim().is_empty(), "输出不应为空");
-        assert!(!out.contains("<think>"), "不应残留 think 标签");
+        // 跑两类有代表性的任务并计时（CoreML EP 真实生产延迟）。
+        for (label, prompt) in [
+            ("翻译", "把下面的中文翻译成英文，只输出译文：你好，世界。"),
+            ("整理成清单", "把下面口述整理成有序清单，只输出清单：今天要先写周报然后给客户回邮件对了还要订会议室"),
+        ] {
+            // 预热一次（首调含模型加载），再计时
+            let t = std::time::Instant::now();
+            let out = generate_blocking(prompt, 96).expect("generate ok");
+            eprintln!("[{label}] {}ms · 输出: {out:?}", t.elapsed().as_millis());
+            assert!(!out.trim().is_empty(), "输出不应为空");
+            assert!(!out.contains("<think>"), "不应残留 think 标签");
+        }
     }
 
     // 喂 production 的啰嗦 reactive 提示（曾让小模型把规则当文本输出）——
