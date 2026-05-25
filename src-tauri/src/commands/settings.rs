@@ -46,15 +46,12 @@ pub fn get_voice_ime() -> bool {
     config::Config::load().voice_ime_enabled
 }
 
-/// v0.6 · 切换"听写后用本地模型整理"（opt-in，~3-5s）。开启时后台预热模型避免首用等 20s。
+/// v0.6 · 切换"听写后整理成清单"（纯规则、即时、0 模型）。
 #[tauri::command]
-pub async fn save_dictation_tidy(enabled: bool) -> Result<(), String> {
+pub fn save_dictation_tidy(enabled: bool) -> Result<(), String> {
     let mut cfg = config::Config::load();
     cfg.dictation_tidy = enabled;
     cfg.save().map_err(|e| format!("保存失败：{e}"))?;
-    if enabled {
-        crate::local_model::prewarm().await;
-    }
     Ok(())
 }
 
@@ -227,23 +224,6 @@ pub fn get_settings() -> config::Config {
 #[tauri::command]
 pub fn get_dictation_stats() -> crate::stats::StatsView {
     crate::stats::view()
-}
-
-/// v0.6 · 本地小模型 (Qwen3-0.6B) 是否已下载就绪。
-#[tauri::command]
-pub fn local_model_ready() -> bool {
-    crate::local_model::is_ready()
-}
-
-/// v0.6 · 下载本地小模型（~580MB）—— 没装 CLI 后端的用户点一下，之后基础任务走本地。
-/// 复用 model_downloader（带进度事件，DownloaderView 已能显示）。
-#[tauri::command]
-pub async fn download_local_model(app: tauri::AppHandle) -> Result<(), String> {
-    // 打开统一的「模型下载进度」窗，让用户在那里看到本地模型进度（qwen 已纳入 snapshot_all）。
-    let _ = crate::commands::open_downloader_window(app.clone());
-    crate::model_downloader::download(app, crate::model_downloader::qwen_06b_spec())
-        .await
-        .map_err(|e| format!("下载本地模型失败：{e}"))
 }
 
 /// 朗读 AI 回复（TTS）开关。关掉时立刻停掉正在朗读的。

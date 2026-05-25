@@ -886,20 +886,11 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
                 }
             }
 
-            // v0.6 · 听写整理（opt-in，默认关）：用本地小模型把口述清理 + 理条理 + 模糊纠正
-            // （~3-5s）。仅在开关开 + 模型就绪时。失败用原文。这是确认为正文（非跨句纠正）后。
-            let final_text = if tidy_enabled && crate::local_model::is_ready() {
-                crate::overlay::emit_view(&app2, &crate::events::ViewKind::Thinking {
-                    transcript: "(整理中…)".into(),
-                    status: None,
-                });
-                let tp = format!(
-                    "把下面这段口述整理干净、通顺、有条理，去掉口头禅、应用自我纠正，只输出整理后的文字：\n{final_text}"
-                );
-                match crate::local_model::generate(&tp).await {
-                    Ok(t) if !t.trim().is_empty() => t.trim().to_string(),
-                    _ => final_text,
-                }
+            // v0.6 · 听写整理（opt-in，默认关）：纯规则把一长串口述整理成有序清单
+            // （1. 2. 3.），即时、0 模型。非列表性口述保持原样（organize 返回 None）。
+            let final_text = if tidy_enabled {
+                let lang = crate::config::Config::load().language;
+                crate::tidy_up::organize_into_list(&final_text, &lang).unwrap_or(final_text)
             } else {
                 final_text
             };

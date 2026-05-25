@@ -31,33 +31,27 @@ async fn run(action: &str) -> Result<String, String> {
     if text.trim().is_empty() {
         return Err("待处理内容为空".into());
     }
+    // v0.6 · 清理 = 纯规则（去口头禅 + 收敛空白/标点），0 模型、即时，不走后端。
+    if action == "clean" {
+        let lang = crate::config::Config::load().language;
+        let cleaned = crate::tidy_up::light_clean(&text, &lang);
+        if cleaned.trim().is_empty() {
+            return Err("清理后为空".into());
+        }
+        if let Err(e) = write_to_pasteboard(&cleaned) {
+            eprintln!("[mouseclaw] 📋 write back failed: {e}");
+        }
+        return Ok(cleaned);
+    }
+    // 翻译 / 解释 / 写回信 = 走 CLI 后端（这些需要真模型；本地不做）。
     let prompt = build_prompt(action, &text)
         .map_err(|e| e.to_string())?;
     // v0.4 · AI 任务串行队列 —— 排队等轮到自己（桌宠在排队期间显示忙碌）。
-    //   ticket 持有到本函数结束自动释放，下一个 AI 任务才能进来。
-    //   见 CLAUDE.md "AI 任务串行 + 听写即时"硬规则。
     let _ticket = crate::ai_queue::acquire().await;
-    // v0.4 · 走统一后端接口，自动适配用户在 Onboarding 选的 CLI
-    //   （Claude / Codex / OpenClaw / Hermes 都走同一份 action prompt）。
-    //   见 CLAUDE.md "多后端 CLI 都要兼容"硬规则。
+    // v0.4 · 走统一后端接口，自动适配用户在 Onboarding 选的 CLI（多后端硬规则）。
     let backend = crate::config::Config::load().backend;
-    // v0.6 · 清理/翻译优先走本地小模型（省 token、快、离线）—— 仅在模型已下载就绪时。
-    //   本地失败 → 回退 CLI。解释/写回信/复杂仍走 CLI（本地 0.6B 那俩弱）。
-    //   "下载本地模型"本身就是 opt-in，没下载就照旧走 CLI。
-    let local_first = matches!(action, "clean" | "translate") && crate::local_model::is_ready();
-    let result = if local_first {
-        match crate::local_model::generate(&prompt).await {
-            Ok(r) => r,
-            Err(e) => {
-                eprintln!("[mouseclaw] 🧠 本地 {action} 失败({e})，回退 CLI");
-                crate::backend::ask_text_only(backend, &prompt).await
-                    .map_err(|e| format!("调用 {} 失败：{e}", backend.display_name()))?
-            }
-        }
-    } else {
-        crate::backend::ask_text_only(backend, &prompt).await
-            .map_err(|e| format!("调用 {} 失败：{e}", backend.display_name()))?
-    };
+    let result = crate::backend::ask_text_only(backend, &prompt).await
+        .map_err(|e| format!("调用 {} 失败：{e}", backend.display_name()))?;
     let cleaned = strip_wrappers(result.trim());
     if cleaned.is_empty() {
         return Err("后台返回空结果".into());
