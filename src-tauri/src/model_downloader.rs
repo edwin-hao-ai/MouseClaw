@@ -73,7 +73,8 @@ pub fn latest_progress(model_id: &str) -> Option<ProgressEvent> {
 pub fn snapshot_all() -> Vec<ProgressEvent> {
     let mut out: Vec<ProgressEvent> = Vec::new();
     let map = LATEST_PROGRESS.lock().unwrap();
-    let specs = [zh_en_spec(), en_spec(), punct_spec()];
+    // v0.7 · 语音只剩 SenseVoice（流式 zipformer + 标点模型已弃用）。
+    let specs = [sense_voice_spec()];
     for spec in specs {
         if let Some(p) = map.get(spec.id) {
             out.push(p.clone());

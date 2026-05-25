@@ -131,8 +131,8 @@ pub fn open_downloader_window(app: AppHandle) -> Result<(), String> {
 /// v0.4.0 · 重试模型下载 —— 用户在 DownloaderView 点「🔁 重试下载」时调
 #[tauri::command]
 pub fn retry_model_downloads(app: AppHandle) -> Result<(), String> {
-    crate::transcribe_stream::kick_off_download_if_missing(app.clone());
-    crate::punctuation::kick_off_download_if_missing(app);
+    // v0.7 · 语音统一用 SenseVoice（离线，自带标点）—— 不再下流式 zipformer + 标点模型。
+    crate::transcribe_sense::kick_off_download_if_missing(app);
     Ok(())
 }
 
@@ -143,8 +143,8 @@ pub fn retry_model_downloads(app: AppHandle) -> Result<(), String> {
 /// (注:有意改变原"未 onboarded 不预下"的设计 —— 用户拍板"先下载可以"。)
 #[tauri::command]
 pub fn prefetch_models(app: AppHandle) -> Result<(), String> {
-    crate::transcribe_stream::kick_off_download_if_missing(app.clone());
-    crate::punctuation::kick_off_download_if_missing(app);
+    // v0.7 · 只预取 SenseVoice（~229MB）。
+    crate::transcribe_sense::kick_off_download_if_missing(app);
     Ok(())
 }
 
