@@ -39,6 +39,13 @@ rg -q 'data-testid="localmodel-download"' src/SettingsView.tsx && pass "下载�
 rg -q 'model-progress' src/SettingsView.tsx && pass "监听下载进度" || die "未监听进度"
 rg -q 'download_local_model' src/lib/dev-tauri-mock.ts && pass "dev-mock 桩" || die "缺 dev-mock 桩"
 
+# 8. 下载进度显示在统一下载窗（snapshot_all 含 qwen + 点下载开下载窗）
+rg -q 'qwen_06b_spec\(\)\]' src-tauri/src/model_downloader.rs && pass "qwen 纳入 snapshot_all（下载窗可见）" || die "snapshot_all 未含 qwen"
+rg -q 'open_downloader_window' src-tauri/src/commands/settings.rs && pass "下载时开下载进度窗" || die "未开下载窗"
+
+# 9. onboarding 没装 CLI 时提供本地模型入口
+rg -q 'download_local_model' src/components/OnboardingBackendStep.tsx && pass "onboarding 本地模型入口" || die "onboarding 缺本地入口"
+
 echo "----"
 [ "$fail" -eq 0 ] && echo "✅ local-model 全部通过" || echo "❌ 有失败项"
 exit $fail

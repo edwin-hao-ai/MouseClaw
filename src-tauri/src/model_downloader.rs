@@ -73,7 +73,8 @@ pub fn latest_progress(model_id: &str) -> Option<ProgressEvent> {
 pub fn snapshot_all() -> Vec<ProgressEvent> {
     let mut out: Vec<ProgressEvent> = Vec::new();
     let map = LATEST_PROGRESS.lock().unwrap();
-    let specs = [zh_en_spec(), en_spec(), punct_spec()];
+    // qwen 本地模型也纳入快照 —— 逻辑是"有进度或已就绪才出卡片"，没下载的用户不会被打扰。
+    let specs = [zh_en_spec(), en_spec(), punct_spec(), qwen_06b_spec()];
     for spec in specs {
         if let Some(p) = map.get(spec.id) {
             out.push(p.clone());

@@ -302,6 +302,33 @@ export function OnboardingBackendStep({ skin, onNext }: Props) {
           </div>
         </div>
 
+        {/* v0.6 · 不想装 CLI？用内置本地小模型兜底基础功能（清理/翻译/整理） */}
+        <div style={{
+          background: "rgba(124, 180, 255, 0.07)",
+          border: "1.5px solid rgba(124, 180, 255, 0.28)",
+          borderRadius: 12, padding: "14px 16px", marginBottom: 12,
+        }}>
+          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4, color: "var(--text-on-dark)" }}>
+            {isEnUi ? "Or: use the built-in local model" : "或：用内置本地小模型"}
+          </div>
+          <div style={{ fontSize: 12.5, color: "var(--text-dim)", marginBottom: 10, lineHeight: 1.55 }}>
+            {isEnUi
+              ? "No CLI needed — handles basic tasks (clean / translate / organize) on-device (Qwen3-0.6B, ~580MB). For full agentic power, install a CLI above."
+              : "无需装 CLI —— 基础任务（清理 / 翻译 / 整理）在本地跑（Qwen3-0.6B，~580MB）。要完整 agent 能力请装上面的 CLI。"}
+          </div>
+          <button
+            type="button"
+            onClick={() => { invoke("download_local_model").catch(() => {}); onNext(backend); }}
+            style={{
+              background: "rgba(124,180,255,0.16)", border: "1px solid rgba(124,180,255,0.4)",
+              borderRadius: 6, padding: "8px 14px", fontSize: 13, cursor: "pointer",
+              color: "var(--text-on-dark)", fontFamily: "inherit", fontWeight: 600,
+            }}
+          >
+            {isEnUi ? "💾 Download & continue" : "💾 下载并继续"}
+          </button>
+        </div>
+
         <button
           type="button"
           className="ob-cta ob-cta-secondary"

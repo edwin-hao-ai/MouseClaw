@@ -30,7 +30,9 @@ versioning follows [SemVer](https://semver.org/).
   - **设置 → 召唤 → "本地兜底模型"**：一键下载（~580MB，带 % 进度，监听 model-progress）+ 就绪状态。
   - **防 echo**：强 system 消息让给 Claude 调的啰嗦 reactive 提示在 0.6B 上也只输出结果、不复述规则。
   - 端到端实测：生产代码加载模型 + "你好，世界。"→"Hello, world."；啰嗦翻译提示无 echo。✅
-  - ⏳ 仍可优化（非必须）：onboarding 检测到没装 CLI 时主动提示下载本地模型；reactive 各动作的小模型专用精简提示。
+  - **下载进度统一**：本地模型纳入 `snapshot_all`，下载时自动打开"模型下载进度"窗显示进度（修：之前进度不在下载窗里）。
+  - **onboarding 入口**：没装任何 CLI 时，引导页给"用内置本地小模型（无需 CLI）· 下载并继续"选项。
+  - ⏳ 仍可优化（非必须）：reactive 各动作的小模型专用精简提示（当前通用 system 消息已够用）。
 
 ---
 

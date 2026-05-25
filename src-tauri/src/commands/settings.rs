@@ -227,6 +227,8 @@ pub fn local_model_ready() -> bool {
 /// 复用 model_downloader（带进度事件，DownloaderView 已能显示）。
 #[tauri::command]
 pub async fn download_local_model(app: tauri::AppHandle) -> Result<(), String> {
+    // 打开统一的「模型下载进度」窗，让用户在那里看到本地模型进度（qwen 已纳入 snapshot_all）。
+    let _ = crate::commands::open_downloader_window(app.clone());
     crate::model_downloader::download(app, crate::model_downloader::qwen_06b_spec())
         .await
         .map_err(|e| format!("下载本地模型失败：{e}"))
