@@ -95,25 +95,27 @@
 /* v0.2 · streaming partial transcript — soft gray, flows in real time
    as sherpa-onnx emits new characters. Pet text reads like a thought
    bubble that fills out before final commit. */
+/* v0.6 · partial 在场时气泡**固定宽**（不再 max-width 内容驱动）——
+   原来随每个词增长宽度 → useAdaptiveOverlay 每词 resize+重定位 → 横向抖动。 */
 .recording-bubble.has-partial {
-  /* expand bubble width to fit partial text */
-  max-width: 380px;
+  width: 360px;
+  min-width: 360px;
+  max-width: 360px;
 }
+/* v0.6 · partial 独占一行（不再挤在 rec-main 横排）。限高 ~3 行 + 底部锚定
+   （column-reverse）：短文本正常从上读、贴气泡；超 3 行则高度封顶、最新文字
+   始终在底部、旧的往上溢出裁掉，**不再继续 resize 窗口** → 长句听写也不抖。
+   去掉了原 rec-partial-pulse 透明度脉冲（用户反馈"闪烁"），录音红点已示意"在听"。 */
 .rec-partial {
-  flex: 1 1 auto;
   font-size: var(--text-body);
   font-weight: 500;
   color: var(--text-primary);
-  opacity: 0.78;            /* still-streaming → softer than final reply */
+  opacity: 0.9;
   line-height: 1.4;
   word-break: break-word;
-  /* subtle "alive" pulse so user knows text is updating */
-  animation: rec-partial-pulse 1.6s ease-in-out infinite;
-}
-@keyframes rec-partial-pulse {
-  0%, 100% { opacity: 0.78; }
-  50%      { opacity: 1.0;  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .rec-partial { animation: none; opacity: 0.9; }
+  white-space: pre-wrap;
+  max-height: 4.2em;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column-reverse;
 }

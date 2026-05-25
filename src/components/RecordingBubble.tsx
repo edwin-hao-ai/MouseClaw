@@ -33,11 +33,7 @@ export function RecordingBubble({ partial }: RecordingBubbleProps = {}) {
     <div className={`bubble bubble-default recording-bubble ${hasPartial ? "has-partial" : ""}`}>
       <div className="rec-main">
         <span className="rec-dot" aria-hidden />
-        {hasPartial ? (
-          <span className="rec-partial" aria-live="polite">{partial}</span>
-        ) : (
-          <span className="rec-label">{t("bubble.listening")}</span>
-        )}
+        {!hasPartial && <span className="rec-label">{t("bubble.listening")}</span>}
         <span className="voicebars" aria-hidden>
           <span /><span /><span /><span /><span />
         </span>
@@ -51,6 +47,13 @@ export function RecordingBubble({ partial }: RecordingBubbleProps = {}) {
           ◼
         </button>
       </div>
+      {/* v0.6 · partial 独占一行：父气泡固定宽 + 这里限高、底部锚定滚动。
+          原来 partial 与控件挤一行 + max-width 内容驱动宽度 + 无限增高 →
+          每多一个词就 resize+重定位窗口 → 气泡横跳 / 越长越抖（用户实测）。
+          现在宽度恒定、超 ~3 行后高度封顶不再 resize → 长句也稳。 */}
+      {hasPartial && (
+        <div className="rec-partial" aria-live="polite">{partial}</div>
+      )}
       {/* v0.5.x · 「⌨️ 打字」按钮：listening 不抢键盘焦点，点这里才切文字输入
           （switch_to_text_input → 进 text-input 态再 make_key）。开口出 partial 后淡出。 */}
       {!hasPartial && (
