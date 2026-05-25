@@ -1,11 +1,11 @@
 {
-  "$comment": "MouseClaw macOS 自动更新通道 · App 启动拉此 URL 比对版本。v0.6.0 是 macOS 面向的语音输入法大升级（v0.5.0 是 Win/Linux 测试版、对 macOS 无新功能故当时跳过）。URL 钉死 v0.6.0 tag（不用 latest）。",
-  "latest": "0.6.0",
+  "$comment": "MouseClaw macOS 自动更新通道 · App 启动拉此 URL 比对版本。v0.6.x 是 macOS 面向的语音输入法大升级（v0.5.0 是 Win/Linux 测试版、对 macOS 无新功能故当时跳过）。v0.6.1 在 0.6.0 基础上修听写气泡抖动/闪烁/截断。URL 钉死 tag（不用 latest）。",
+  "latest": "0.6.1",
   "min_supported": "0.1.0",
   "released_at": "2026-05-25",
   "size_mb": 13,
-  "dmg_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/download/v0.6.0/MouseClaw_0.6.0_aarch64.dmg",
-  "release_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/tag/v0.6.0",
+  "dmg_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/download/v0.6.1/MouseClaw_0.6.1_aarch64.dmg",
+  "release_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/tag/v0.6.1",
   "notes_zh": "🎙️ 语音输入法大升级。中英混说终于听对了（说\"把代码 push 上去\"写出来就是 push，不再是\"铺石\"）· ↩️ 说错了口头改口就行（\"…哦，把那句去掉\"，字落下前就改好）· 🔢 一长串口述自动整理成 1. 2. 3. 清单 · 📝 一个小框加词、它还会从你的纠错里自动学词 · 📊 历史窗看省了多少打字（字数/时长/WPM）· 🪶 清理和整理走本地规则、翻译交给你已配置的 AI CLI —— 不用下任何额外模型。",
   "notes_en": "🎙️ Voice typing, leveled up. Chinese + English finally come out right (say \"把代码 push 上去\" and it writes push, not a sound-alike) · ↩️ correct yourself out loud mid-sentence (\"…oh, drop that part\" — fixed before the text lands) · 🔢 rambling auto-organizes into a numbered 1. 2. 3. list · 📝 add custom words in one box; it also learns from your corrections · 📊 see how much typing you saved in History (words / time / WPM) · 🪶 cleanup & list-organizing run on local rules, translate goes to the AI CLI you already use — no extra model download."
 }
