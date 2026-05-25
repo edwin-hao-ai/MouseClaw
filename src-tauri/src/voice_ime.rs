@@ -565,8 +565,8 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
         MONITOR.triggered.store(false, Ordering::Relaxed);
         return;
     }
-    if !crate::transcribe_stream::is_ready() {
-        eprintln!("[mouseclaw] 🎙️ sherpa not ready (model still downloading?), skip voice IME");
+    if !crate::transcribe_sense::is_ready() {
+        eprintln!("[mouseclaw] 🎙️ SenseVoice not ready (model still downloading?), skip voice IME");
         // v0.4.0 · 给用户气泡反馈 —— 之前只 eprintln 用户看不到，按 fn 按了半天以为坏了。
         // 复用 pipeline 的 blocked 消息组装（带实时下载进度）。
         crate::overlay::show_mouse(&app);
@@ -614,41 +614,27 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
     *state.recorder.lock().unwrap() = Some(recorder);
     // v0.6 · 统计起点 —— 成功写入时算时长/字数（见 stop_and_paste 的 record_finish）
     crate::stats::mark_start();
-    // v0.3.1 · streaming: create sherpa session + start poller for live typing
-    match crate::transcribe_stream::StreamSession::new() {
-        Ok(s) => *state.stream_session.lock().unwrap() = Some(s),
-        Err(e) => eprintln!("[mouseclaw] 🎙️ StreamSession::new for IME failed: {e:#}"),
-    }
     state.streaming_active.store(true, Ordering::SeqCst);
+    // v0.7 · SenseVoice 离线听写 —— 清空音频缓冲；poller 只累积音频，不实时转写。
+    {
+        state.ime_audio.lock().unwrap().clear();
+        state.ime_typed.lock().unwrap().clear();
+    }
     // v0.4.2 · bug2 修复 —— 新会话开始即 bump_gen，让上一次 stop_and_paste 排的
     // auto-hide timer 失效（否则它会在新会话进行中 hide 掉桌宠 → 跳）。
     crate::overlay::bump_gen(&state);
     crate::overlay::show_mouse(&app);
+    // v0.7 · 录音中显示"听写中"指示（partial 留空）—— SenseVoice 非流式，松手才转写，
+    // 没有粗略实时预览。气泡此时显示录音红点 + voicebars + "聆听中"标签。
     crate::overlay::emit_view(&app, &crate::events::ViewKind::VoiceImeListening { partial: String::new() });
 
-    // v0.3.1 · 流式 type-as-you-speak —— 150ms 一次轮询，partial 增量直接 paste 到光标
-    // 走 sherpa partial 与上一次已 type 的文本求 longest common prefix，
-    // 删掉发散部分 + paste 新部分。模型自我纠错时回退 N char，再写新。
-    // 已 type 的字符串同步进 state.ime_typed，stop_and_paste 拿它做 final delta。
-    {
-        let mut g = state.ime_typed.lock().unwrap();
-        g.clear();
-    }
-    // v0.3.8 · Plan B —— streaming poller 只更新桌宠气泡 partial，**不**写入光标。
-    // 真正的 paste 延后到 fn 松开后（stop_and_paste_for_ime），那时候 macOS fn
-    // 系统行为已经结束，焦点回到原 app，CGEvent 字才进得了输入框。
-    // 这跟 Whisper 时代的 timing 一致 —— 用户看到流式视觉但写入是 batch 的。
+    // v0.7 · 音频累积 poller —— 每 150ms 把录音的 16k 音频排空进 state.ime_audio。
+    // 不再喂流式 recognizer / 不再 emit partial（SenseVoice 松手一次性转写）。
+    // 仍用专用 OS 线程：drain/resample 是同步调用，不放 tokio worker（避免被 AI 子进程饿死）。
     let state_stream = state.clone();
-    let app_stream = app.clone();
-    // v0.4 fix (2026-05-20) · 用专用 std::thread 而非 async_runtime::spawn 跑流式解码。
-    //   原因：sherpa s.accept/partial + add_punctuation 都是 CPU 密集**同步**调用，放在
-    //   tokio async 任务里会占住一个 worker 线程。当 AI 子进程（翻译 / 召唤）同时在跑、
-    //   抢 tokio runtime 时，worker 被饿死 → 听写 partial 卡住（用户实测"打开语音输入法
-    //   就卡住"）。挪到独立 OS 线程后，操作系统抢占式调度保证它永远能跑，不受 tokio 状态影响。
     std::thread::Builder::new()
-        .name("mouseclaw-ime-poller".into())
+        .name("mouseclaw-ime-audio-accum".into())
         .spawn(move || {
-        let mut last_partial = String::new();
         loop {
             std::thread::sleep(Duration::from_millis(150));
             if !state_stream.streaming_active.load(Ordering::SeqCst) {
@@ -662,35 +648,10 @@ fn start_recording_for_ime(app: AppHandle, state: Arc<AppState>) {
                 }
             };
             if samples.is_empty() { continue; }
-            let partial = {
-                let mut g = state_stream.stream_session.lock().unwrap();
-                if let Some(s) = g.as_mut() {
-                    s.accept(&samples);
-                    s.partial()
-                } else {
-                    continue;
-                }
-            };
-            if partial == last_partial { continue; }
-            last_partial = partial.clone();
-            // v0.4.1 · 先把模型的全大写英文还原成自然大小写（OPENAI→OpenAI），
-            // partial 也做，让"边说边出"的英文一开始就正常，不是最后一刻才变。
-            let recased = crate::vocab::recase_english(&partial);
-            // v0.4.0 · 流式 partial 也加标点 —— 沿用 add_punctuation（~10ms, soft-fail）
-            // 短片段（< 4 字符）模型加标点效果差，跳过让 raw 出。
-            let display = if recased.chars().count() >= 4 {
-                crate::punctuation::add_punctuation(&recased)
-            } else {
-                recased
-            };
-            // 桌宠头顶气泡实时显示新 partial —— 用户看到"边说边出"的视觉反馈
-            crate::overlay::emit_view(
-                &app_stream,
-                &crate::events::ViewKind::VoiceImeListening { partial: display },
-            );
+            state_stream.ime_audio.lock().unwrap().extend_from_slice(&samples);
         }
-        println!("[mouseclaw] 🎙️ IME streaming poller exited (final paste in stop_and_paste)");
-    }).expect("spawn ime poller thread");
+        println!("[mouseclaw] 🎙️ IME audio accumulator exited (transcribe in stop_and_paste)");
+    }).expect("spawn ime audio accumulator thread");
 
     // v0.1.13 安全 #3：记录当前前台 app 的 bundle id —— 录音中切走就取消
     let start_bundle = std::panic::catch_unwind(frontmost_bundle).unwrap_or_default();
@@ -769,8 +730,7 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
     });
 
     tauri::async_runtime::spawn_blocking(move || {
-        // v0.3.1 · streaming poller 已 paste 增量了，这里只需 stop + finalize
-        // sherpa 拿到最终 transcript → 跟 poller 已 paste 的对比 → 仅补足 delta
+        // v0.7 · SenseVoice 离线 —— 排空剩余音频，拼上 poller 已累积的整段，一次性转写。
         let remaining = match recorder.stop_drain_remaining_16k() {
             Ok(s) => s,
             Err(e) => {
@@ -779,21 +739,27 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
                 return;
             }
         };
-        let session = state.stream_session.lock().unwrap().take();
-        let raw = if let Some(mut sess) = session {
-            if !remaining.is_empty() { sess.accept(&remaining); }
-            match sess.finalize() {
+        // 清掉可能残留的旧流式 session（字段保留 —— AI 召唤 / feed 流程仍在用）。
+        let _ = state.stream_session.lock().unwrap().take();
+        // poller 累积的 + 剩余的 = 整段音频，take 出来转写。
+        let samples = {
+            let mut g = state.ime_audio.lock().unwrap();
+            g.extend_from_slice(&remaining);
+            std::mem::take(&mut *g)
+        };
+        let raw = if samples.is_empty() {
+            String::new()
+        } else {
+            match crate::transcribe_sense::transcribe(&samples) {
                 Ok(t) => t,
                 Err(e) => {
-                    eprintln!("[mouseclaw] 🎙️ sherpa finalize 失败: {e}");
+                    eprintln!("[mouseclaw] 🎙️ SenseVoice transcribe 失败: {e}");
                     crate::overlay::emit_view(&app, &crate::events::ViewKind::Blocked {
                         reason: format!("transcribe failed: {e}"),
                     });
                     return;
                 }
             }
-        } else {
-            String::new()
         };
         let cfg = crate::config::Config::load();
         let cleaned = crate::tidy_up::light_clean(&raw, &cfg.language);
@@ -802,22 +768,11 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
             crate::overlay::hide_overlay(&app);
             return;
         }
-        println!("[mouseclaw] 🎙️ light cleaned → {cleaned:?}");
+        println!("[mouseclaw] 🎙️ SenseVoice → {cleaned:?}");
 
-        // v0.4.1 · 英文大小写还原 —— 模型英文输出全大写，这里用词表把术语还原成
-        // 正确大小写（OPENAI→OpenAI / OPEN CLAW→OpenClaw / USEEFFECT→useEffect），
-        // 其余未知英文转小写。中文/数字/标点不动。在加标点之前做。
-        let recased = crate::vocab::recase_english(&cleaned);
-        if recased != cleaned {
-            println!("[mouseclaw] 🔤 recased → {recased:?}");
-        }
-
-        // v0.3.6 · 本地标点 —— sherpa CT-Transformer，~10ms 加 。，？
-        // 失败兜底返回原文，永远不阻断主流程
-        let punctuated = crate::punctuation::add_punctuation(&recased);
-        if punctuated != recased {
-            println!("[mouseclaw] 🎯 punctuated → {punctuated:?}");
-        }
+        // v0.7 · SenseVoice 自带标点 + ITN，且输出自然大小写 → 不再走 recase / add_punctuation
+        // （旧流式 zipformer 输出全大写无标点才需要那两步；SenseVoice 原生解决）。
+        let punctuated = cleaned;
 
         // v0.6 · B 方案 · 同句内自我纠正 —— 用户在一段话里先说正文、再用
         // "哦/不对/等等 + 去掉/删掉/改成" 纠正自己（"…喝了一碗汤。哦，把那个喝汤去掉。"）。

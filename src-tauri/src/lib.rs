@@ -23,6 +23,7 @@ pub mod presence;
 pub mod punctuation;
 pub mod tts;
 pub mod transcribe_stream;
+pub mod transcribe_sense;
 pub mod model_downloader;
 pub mod claude_cli;
 pub mod cli_install;
@@ -118,6 +119,9 @@ pub struct AppState {
     /// v0.3.1 · voice IME 流式 type-as-you-speak —— poller 实时更新已 paste 的字符串。
     /// stop_and_paste 拿它跟 final cleaned 求 LCP，仅删/补 delta，避免删除整段+重写的闪烁。
     pub ime_typed: StdMutex<String>,
+    /// v0.7 · SenseVoice 离线听写 —— poller 把每段 16k 音频累积进这里，松手一次性转写。
+    /// （SenseVoice 非流式，需整段音频；流式 zipformer 时代不需要这个缓冲。）
+    pub ime_audio: StdMutex<Vec<f32>>,
     /// One-shot panel context —— open_panel_window 写入，前端 take_panel_context 取走 + 清空
     pub pending_panel_context: StdMutex<Option<PendingPanelContext>>,
     /// v0.1.18 · 打开 Hub 前记下当时的前台 app pid
@@ -191,6 +195,7 @@ impl AppState {
             stream_session: StdMutex::new(None),
             streaming_active: AtomicBool::new(false),
             ime_typed: StdMutex::new(String::new()),
+            ime_audio: StdMutex::new(Vec::new()),
             pending_panel_context: StdMutex::new(None),
             prev_frontmost_pid: StdMutex::new(None),
             backend: Mutex::new(backend),
@@ -619,6 +624,9 @@ pub fn run() {
             //   zh-en 才发现用户在 onboarding 选了 English，前面下的全废。
             //   未 onboarded 由 commands::save_shortcut 在 onboarding 完成时调起。
             if cfg.onboarded {
+                // v0.7 · 听写改用 SenseVoice（离线，自带标点）。
+                transcribe_sense::kick_off_download_if_missing(app.handle().clone());
+                // 流式 zipformer + 标点模型仍供 AI 召唤 / feed 流程用（Phase 2 再切）。
                 transcribe_stream::kick_off_download_if_missing(app.handle().clone());
                 punctuation::kick_off_download_if_missing(app.handle().clone());
             }

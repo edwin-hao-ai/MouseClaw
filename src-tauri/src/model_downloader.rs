@@ -636,6 +636,35 @@ pub fn en_spec() -> ModelSpec {
     }
 }
 
+/// SenseVoice 多语种离线模型 · int8 ~228MB（model.int8.onnx + tokens.txt）
+/// `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17`
+/// 比 2023 流式 zipformer 中英混说质量高一档 + 自带标点（use_itn）。离线（松手转写）。
+pub fn sense_voice_spec() -> ModelSpec {
+    let hf_repo = "csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17";
+    let mirrors_for = |file: &str| vec![
+        // hf-mirror 对该 repo 的 LFS 解析有问题（返回 pointer），huggingface 优先。
+        format!("https://huggingface.co/{hf_repo}/resolve/main/{file}"),
+        format!("https://hf-mirror.com/{hf_repo}/resolve/main/{file}"),
+    ];
+    ModelSpec {
+        id: "sense-voice",
+        display: "SenseVoice 多语种语音模型",
+        files: vec![
+            FileSpec {
+                rel_path: "model.int8.onnx",
+                bytes: 239_233_841,
+                mirrors: mirrors_for("model.int8.onnx"),
+            },
+            FileSpec {
+                rel_path: "tokens.txt",
+                bytes: 315_894,
+                mirrors: mirrors_for("tokens.txt"),
+            },
+        ],
+        post_extract_keep: None,
+    }
+}
+
 /// 标点模型 · ~62MB tarball → 解出 model.int8.onnx (~72MB)
 pub fn punct_spec() -> ModelSpec {
     let tarball = "sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8.tar.bz2";

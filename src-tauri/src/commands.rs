@@ -155,11 +155,14 @@ pub fn save_shortcut(
     );
 
     // v0.4.0 · Onboarding 完成立即触发模型下载（不等用户首次按快捷键）
+    // v0.7 · 听写用 SenseVoice（离线、自带标点）。
+    crate::transcribe_sense::kick_off_download_if_missing(app.clone());
     crate::transcribe_stream::kick_off_download_if_missing(app.clone());
     crate::punctuation::kick_off_download_if_missing(app.clone());
 
-    // 若两个模型都还没下完 → 自动打开下载进度窗口，用户能看到动静
-    let need_download = !crate::transcribe_stream::is_ready()
+    // 若模型还没下完 → 自动打开下载进度窗口，用户能看到动静
+    let need_download = !crate::transcribe_sense::is_ready()
+        || !crate::transcribe_stream::is_ready()
         || !crate::punctuation::is_ready();
     if need_download {
         if let Err(e) = open_downloader_window(app) {

@@ -492,4 +492,76 @@ mod tests {
         eprintln!("=== C 新式 大写 hotwords + bpe    : {c}");
         eprintln!("=== C recased                     : {}\n", crate::vocab::recase_english(&c));
     }
+
+    // ── SenseVoice spike：离线模型，验证转写质量 + 原生标点（use_itn）──────────
+    // 依赖 ~/.mouseclaw/models/sense-voice/{model.int8.onnx,tokens.txt} + 一个 16k 单声道 wav。
+    //   cargo test --manifest-path src-tauri/Cargo.toml --lib \
+    //     transcribe_stream::tests::spike_sensevoice -- --ignored --nocapture
+    // MC_TEST_WAV 可逗号分隔多个 wav。打印 SenseVoice vs 现 zipformer 对比。
+    #[test]
+    #[ignore]
+    fn spike_sensevoice() {
+        use sherpa_onnx::{OfflineRecognizer, OfflineRecognizerConfig, OfflineSenseVoiceModelConfig};
+        let home = std::env::var("HOME").unwrap();
+        let sv_dir = std::path::PathBuf::from(&home).join(".mouseclaw/models/sense-voice");
+        let zip_dir = std::path::PathBuf::from(&home).join(".mouseclaw/models/sherpa-zh-en");
+        if !sv_dir.join("model.int8.onnx").exists() {
+            eprintln!("SKIP: SenseVoice 模型不在 {}", sv_dir.display());
+            return;
+        }
+        let wav = std::env::var("MC_TEST_WAV").unwrap_or_else(|_| "/tmp/mc_push.wav".into());
+        let mut samples: Vec<f32> = Vec::new();
+        for p in wav.split(',') {
+            samples.extend(read_wav_i16_mono(std::path::Path::new(p.trim())));
+        }
+        eprintln!("wav={wav} samples={} ({:.2}s)", samples.len(), samples.len() as f32 / 16000.0);
+
+        // SenseVoice 离线转写（use_itn=true → 原生标点 + 数字归一）
+        let mut cfg = OfflineRecognizerConfig::default();
+        cfg.model_config.sense_voice = OfflineSenseVoiceModelConfig {
+            model: Some(sv_dir.join("model.int8.onnx").to_string_lossy().into_owned()),
+            language: Some("auto".into()),
+            use_itn: true,
+        };
+        cfg.model_config.tokens = Some(sv_dir.join("tokens.txt").to_string_lossy().into_owned());
+        cfg.model_config.num_threads = 2;
+        let t0 = std::time::Instant::now();
+        let rec = OfflineRecognizer::create(&cfg).expect("create SenseVoice recognizer");
+        let stream = rec.create_stream();
+        stream.accept_waveform(16_000, &samples);
+        rec.decode(&stream);
+        let sv_text = stream.get_result().map(|r| r.text).unwrap_or_default();
+        let sv_ms = t0.elapsed().as_millis();
+
+        // 现 zipformer（带 hotwords + bpe）对比
+        let zip = if zip_dir.join("tokens.txt").exists() {
+            let bpe = zip_dir.join("bpe.vocab");
+            if !bpe.exists() { std::fs::write(&bpe, BPE_VOCAB).ok(); }
+            let active = std::path::PathBuf::from(&home).join(".mouseclaw/vocab/active.txt");
+            let hw = if active.exists() { Some(active) } else { None };
+            transcribe_with(&zip_dir, Some("cjkchar+bpe"), Some(&bpe), hw.as_deref(), &samples)
+        } else { "(zipformer 不在)".into() };
+
+        eprintln!("\n=== SenseVoice (use_itn, {sv_ms}ms) : {sv_text}");
+        eprintln!("=== 现 zipformer + hotwords        : {zip}\n");
+    }
+
+    /// 验证**生产函数** crate::transcribe_sense::transcribe（非内联 spike）端到端可用。
+    #[test]
+    #[ignore]
+    fn sense_production_path() {
+        let home = std::env::var("HOME").unwrap();
+        if !std::path::PathBuf::from(&home).join(".mouseclaw/models/sense-voice/model.int8.onnx").exists() {
+            eprintln!("SKIP: SenseVoice 模型不在");
+            return;
+        }
+        let wav = std::env::var("MC_TEST_WAV").unwrap_or_else(|_| "/tmp/mc_push.wav".into());
+        let mut samples: Vec<f32> = Vec::new();
+        for p in wav.split(',') {
+            samples.extend(read_wav_i16_mono(std::path::Path::new(p.trim())));
+        }
+        let t = crate::transcribe_sense::transcribe(&samples).expect("production transcribe");
+        eprintln!("\n=== transcribe_sense::transcribe → {t}\n");
+        assert!(!t.is_empty(), "production path returned empty");
+    }
 }
