@@ -170,6 +170,8 @@ export default function SettingsView() {
   const [custom, setCustom] = useState("");
   const [vocabWord, setVocabWord] = useState("");
   const [vocabMsg, setVocabMsg] = useState("");
+  const [localReady, setLocalReady] = useState(false);
+  const [localPct, setLocalPct] = useState<number | null>(null); // null = 未在下载
 
   // 读身份（名字/性格/自定义）—— picker 窗也能改，要能跨窗同步。
   const loadIdentity = useCallback(() => {
@@ -200,6 +202,33 @@ export default function SettingsView() {
     } catch { /* 浏览器 dev 模式 */ }
     return () => { if (un) un(); };
   }, [loadIdentity]);
+
+  // v0.6 · 本地兜底模型：读就绪状态 + 监听下载进度（model-progress, 过滤本模型 id）
+  useEffect(() => {
+    invoke<boolean>("local_model_ready").then(setLocalReady).catch(() => {});
+    let un: (() => void) | null = null;
+    try {
+      listen<{ model_id: string; total_done: number; total_expected: number; phase: string }>(
+        "model-progress",
+        (e) => {
+          if (e.payload.model_id !== "qwen3-0.6b-onnx") return;
+          if (e.payload.phase === "ok") { setLocalReady(true); setLocalPct(null); }
+          else if (e.payload.phase === "error") { setLocalPct(null); }
+          else if (e.payload.total_expected > 0) {
+            setLocalPct(Math.round((e.payload.total_done / e.payload.total_expected) * 100));
+          }
+        },
+      ).then((fn) => { un = fn; }).catch(() => {});
+    } catch { /* 浏览器 dev 模式 */ }
+    return () => { if (un) un(); };
+  }, []);
+
+  const downloadLocal = useCallback(() => {
+    setLocalPct(0);
+    invoke("download_local_model")
+      .then(() => { setLocalReady(true); setLocalPct(null); })
+      .catch(() => setLocalPct(null));
+  }, []);
 
   // 局部更新 settings 的某字段 + 调命令
   const set = useCallback(<K extends keyof Settings>(k: K, v: Settings[K]) =>
@@ -264,6 +293,17 @@ export default function SettingsView() {
                   onChange={(e) => { set("backend", e.target.value); invoke("save_backend", { backend: e.target.value }).catch(() => {}); }}>
                   {BACKENDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
+              </Row>
+              <Row name={t("set.localmodel")} hint={t("set.localmodel.hint")}>
+                {localReady ? (
+                  <span className="hint" data-testid="localmodel-ready">{t("set.localmodel.ready")}</span>
+                ) : localPct !== null ? (
+                  <span className="hint" data-testid="localmodel-downloading">{t("set.localmodel.downloading")} {localPct}%</span>
+                ) : (
+                  <button type="button" className="btn" data-testid="localmodel-download" onClick={downloadLocal}>
+                    {t("set.localmodel.download")}
+                  </button>
+                )}
               </Row>
             </div>
           </section>

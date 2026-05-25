@@ -27,8 +27,10 @@ versioning follows [SemVer](https://semver.org/).
   接在 `backend.rs::ask_text_only`：CLI 没装且模型就绪 → 本地生成；否则优雅回退原错误。
   视觉/截图/复杂/agentic 仍走云 CLI（0.6B 视觉实测不可用）。
   - 命令：`download_local_model` / `local_model_ready`。
-  - 端到端实测：生产代码加载模型 + "你好，世界。"→"Hello, world." ✅
-  - ⏳ 待接：没装 CLI 时自动触发下载的 UI 入口；reactive 菜单针对小模型的简化提示。
+  - **设置 → 召唤 → "本地兜底模型"**：一键下载（~580MB，带 % 进度，监听 model-progress）+ 就绪状态。
+  - **防 echo**：强 system 消息让给 Claude 调的啰嗦 reactive 提示在 0.6B 上也只输出结果、不复述规则。
+  - 端到端实测：生产代码加载模型 + "你好，世界。"→"Hello, world."；啰嗦翻译提示无 echo。✅
+  - ⏳ 仍可优化（非必须）：onboarding 检测到没装 CLI 时主动提示下载本地模型；reactive 各动作的小模型专用精简提示。
 
 ---
 

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>本地兜底模型 · 下载行 prototype · v0.6</title>
+<style>
+  :root{ --panel:#fcfcfe; --row:#fff; --text:#1a1a1a; --dim:#8a8a92; --border:rgba(0,0,0,.08);
+    --accent:#ff6b9d; --accent-soft:#ff9bb8; --success:#2e9e6b; --radius-md:8px; --radius-xl:12px;
+    --font:-apple-system,BlinkMacSystemFont,"SF Pro Display",system-ui,sans-serif; }
+  @media (prefers-color-scheme: dark){ :root{ --panel:#13151c; --row:#1a1d26; --text:#f5f5f7; --dim:#a1a1a8; --border:rgba(255,255,255,.08); } }
+  body{ font-family:var(--font); background:var(--panel); color:var(--text); margin:0; padding:40px; line-height:1.5; }
+  .wrap{ max-width:620px; margin:0 auto; }
+  h1{ font-size:18px; margin:0 0 4px; } .sub{ color:var(--dim); font-size:13px; margin:0 0 24px; }
+  h2{ font-size:13px; color:var(--dim); text-transform:uppercase; letter-spacing:.04em; margin:24px 0 8px; }
+  .group{ background:var(--row); border:1px solid var(--border); border-radius:var(--radius-xl); overflow:hidden; }
+  .r{ display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding:14px 16px; border-bottom:1px solid var(--border); }
+  .r:last-child{ border-bottom:none; } .name{ font-size:14px; font-weight:500; }
+  .hint{ font-size:12px; color:var(--dim); margin-top:2px; max-width:340px; } .ctrl{ flex-shrink:0; }
+  .sel{ font:inherit; font-size:13px; padding:6px 10px; border:1px solid var(--border); border-radius:var(--radius-md); background:var(--panel); color:var(--text); }
+  .btn{ font:inherit; font-size:13px; padding:6px 14px; border:none; border-radius:var(--radius-md); background:var(--accent); color:#fff; cursor:pointer; }
+  .btn:hover{ background:var(--accent-soft); } .ok{ font-size:13px; color:var(--success); } .dl{ font-size:13px; color:var(--dim); }
+  .note{ margin-top:24px; font-size:12px; color:var(--dim); line-height:1.7; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>设置 · 召唤 / Settings · Summon</h1>
+  <p class="sub">没装 CLI 后端时，给个一键下载本地兜底模型的入口。</p>
+  <h2>⌘ 召唤 / Summon</h2>
+  <div class="group">
+    <div class="r"><div><div class="name">AI 后端</div><div class="hint">用哪个 CLI agent 干活。</div></div>
+      <div class="ctrl"><select class="sel"><option>Claude Code CLI</option><option>OpenAI Codex CLI</option></select></div></div>
+    <div class="r"><div><div class="name">本地兜底模型</div>
+      <div class="hint">没装 CLI 后端时，清理 / 翻译 / 整理用本地小模型（Qwen3-0.6B，~580MB，纯本地）。</div></div>
+      <div class="ctrl"><button class="btn">下载 (~580MB)</button></div></div>
+  </div>
+
+  <h2 style="margin-top:28px">三种状态</h2>
+  <div class="group">
+    <div class="r"><div><div class="name">未下载</div></div><div class="ctrl"><button class="btn">下载 (~580MB)</button></div></div>
+    <div class="r"><div><div class="name">下载中</div></div><div class="ctrl"><span class="dl">下载中 47%</span></div></div>
+    <div class="r"><div><div class="name">已就绪</div></div><div class="ctrl"><span class="ok">✓ 已就绪</span></div></div>
+  </div>
+
+  <div class="note">
+    机制（藏在后面）：点下载 → <code>download_local_model</code> 复用 model_downloader（带 model-progress 事件）→
+    SettingsView 监听过滤 <code>model_id="qwen3-0.6b-onnx"</code> 显示 %，phase=ok 翻"已就绪"。<br>
+    之后没装 CLI 时，reactive 菜单的清理/翻译/整理自动走本地（backend.rs 已接兜底）。<br>
+    英文：Local fallback model · Download (~580MB) / Downloading 47% / ✓ Ready
+  </div>
+</div>
+</body>
+</html>

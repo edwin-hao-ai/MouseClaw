@@ -390,6 +390,8 @@ export interface Strings {
   "set.vocab.add.btn": string; "set.vocab.add.ok": string; "set.vocab.add.dup": string;
   "set.vocab.add.err": string;
   "hist.dict.summary": string;
+  "set.localmodel": string; "set.localmodel.hint": string; "set.localmodel.download": string;
+  "set.localmodel.downloading": string; "set.localmodel.ready": string;
   "set.skin": string; "set.skin.hint": string; "set.skin.btn": string;
   "set.anchor": string; "set.anchor.hint": string;
   "set.name": string; "set.name.hint": string; "set.name.ph": string;
