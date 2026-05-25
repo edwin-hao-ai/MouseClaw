@@ -138,78 +138,8 @@ pub fn get_autostart(app: AppHandle) -> bool {
     app.autolaunch().is_enabled().unwrap_or_else(|_| config::Config::load().autostart)
 }
 
-// ───────────────────── v0.4.0 P1 · 术语库 (vocab) commands ─────────────────────
-
-/// 在系统默认编辑器里打开 `~/.mouseclaw/vocab/user.txt` —— 托盘
-/// 「📝 编辑术语表...」走这条。文件不存在会先创建一份带说明的模板。
-#[tauri::command]
-pub fn vocab_open_user_file() -> Result<(), String> {
-    crate::vocab::ensure_user_file().map_err(|e| format!("ensure user file: {e}"))?;
-    let path = crate::vocab::user_file_path().map_err(|e| format!("path: {e}"))?;
-    std::process::Command::new("open")
-        .arg(&path)
-        .spawn()
-        .map_err(|e| format!("open {}: {e}", path.display()))?;
-    Ok(())
-}
-
-/// 重读用户词表 → 重新生成 active.txt → 失效 sherpa recognizer 让下次
-/// transcribe 重新 init 注入 hotwords。
-/// 托盘「🔄 刷新术语表」 + 设置 builtin enabled 时都走这条。
-#[tauri::command]
-pub fn vocab_reload() -> Result<usize, String> {
-    let cfg = config::Config::load();
-    let n = crate::vocab::regenerate_active(cfg.vocab_builtin_enabled)
-        .map_err(|e| format!("regen: {e}"))?;
-    crate::transcribe_stream::invalidate_recognizer();
-    println!("[mouseclaw] 📝 vocab reloaded: {n} entries");
-    Ok(n)
-}
-
-#[tauri::command]
-pub fn vocab_get_builtin_enabled() -> bool {
-    config::Config::load().vocab_builtin_enabled
-}
-
-#[tauri::command]
-pub fn vocab_set_builtin_enabled(enabled: bool) -> Result<usize, String> {
-    let mut cfg = config::Config::load();
-    cfg.vocab_builtin_enabled = enabled;
-    cfg.save().map_err(|e| format!("save config: {e}"))?;
-    let n = crate::vocab::regenerate_active(enabled).map_err(|e| format!("regen: {e}"))?;
-    crate::transcribe_stream::invalidate_recognizer();
-    println!("[mouseclaw] 📝 builtin vocab → {enabled}, {n} entries active");
-    Ok(n)
-}
-
-/// v0.6 · 加词（去权重）—— 用户输一个词就进词表，自动 CJK 分字、无 score。
-/// status: "added" | "exists" | "empty"。Added 时重生成 active.txt + 失效 recognizer。
-#[derive(serde::Serialize)]
-pub struct VocabAddResult {
-    pub status: String,
-    pub stored: String,
-    pub total: usize,
-}
-
-#[tauri::command]
-pub fn vocab_add_word(word: String) -> Result<VocabAddResult, String> {
-    use crate::vocab::AddOutcome;
-    let outcome = crate::vocab::add_user_word(&word).map_err(|e| format!("add word: {e}"))?;
-    match outcome {
-        AddOutcome::Empty => Ok(VocabAddResult { status: "empty".into(), stored: String::new(), total: 0 }),
-        AddOutcome::Exists { stored } => {
-            // 已存在 → 不必重生成（已在 active 里），直接返回
-            Ok(VocabAddResult { status: "exists".into(), stored, total: 0 })
-        }
-        AddOutcome::Added { stored } => {
-            let cfg = config::Config::load();
-            let total = crate::vocab::regenerate_active(cfg.vocab_builtin_enabled)
-                .map_err(|e| format!("regen: {e}"))?;
-            crate::transcribe_stream::invalidate_recognizer();
-            Ok(VocabAddResult { status: "added".into(), stored, total })
-        }
-    }
-}
+// v0.7 · 术语库 (vocab) commands 已删除 —— hotwords 只对流式 transducer 生效，
+// 换 SenseVoice（CTC）后无效，整个加词/hotword 子系统下线。
 
 // ───────────────────── v0.5.x · 设置窗 (SettingsView) commands ─────────────────────
 // 收拢原先散在托盘里的开关。设置页一次 get_settings 读全部现值填表单，改一项调对应 save_*。

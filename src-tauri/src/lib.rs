@@ -20,9 +20,7 @@ pub mod backend_menu;
 pub mod browser_bridge;
 pub mod nudge;
 pub mod presence;
-pub mod punctuation;
 pub mod tts;
-pub mod transcribe_stream;
 pub mod transcribe_sense;
 pub mod model_downloader;
 pub mod claude_cli;
@@ -67,7 +65,6 @@ pub mod shortcut_menu;
 pub mod voice_ime;
 pub mod voice_correct;
 pub mod voice_correct_inline;
-pub mod vocab;
 pub mod stats;
 // transcribe (Whisper) deleted in v0.3 — superseded by transcribe_stream (sherpa-onnx)
 pub mod tray;
@@ -111,10 +108,7 @@ pub struct AppState {
     /// v0.1.20 · 上一次 AI 召唤的鼠标轨迹（已烘到 screenshot 上 + 送 prompt）
     pub last_trail: Mutex<Option<Vec<cursor_trail::TrailPoint>>>,
     pub recorder: StdMutex<Option<audio::Recorder>>,
-    /// v0.2 · 当前流式转录 session —— on_press 创建，on_release 取出 finalize。
-    /// Sync mutex 因为 sherpa OnlineStream 是 Send+Sync 但不是 async-friendly。
-    pub stream_session: StdMutex<Option<transcribe_stream::StreamSession>>,
-    /// v0.2 · streaming polling task 通过这个 flag 知道何时退出
+    /// 录音轮询任务通过这个 flag 知道何时退出（按住录音 → 松手置 false）。
     pub streaming_active: AtomicBool,
     /// v0.3.1 · voice IME 流式 type-as-you-speak —— poller 实时更新已 paste 的字符串。
     /// stop_and_paste 拿它跟 final cleaned 求 LCP，仅删/补 delta，避免删除整段+重写的闪烁。
@@ -192,7 +186,6 @@ impl AppState {
             last_screenshot: Mutex::new(None),
             last_trail: Mutex::new(None),
             recorder: StdMutex::new(None),
-            stream_session: StdMutex::new(None),
             streaming_active: AtomicBool::new(false),
             ime_typed: StdMutex::new(String::new()),
             ime_audio: StdMutex::new(Vec::new()),
@@ -455,11 +448,6 @@ pub fn run() {
             commands::dismiss_nudge,
             commands::check_backend_installed,
             commands::open_picker_window,
-            commands::vocab_open_user_file,
-            commands::vocab_reload,
-            commands::vocab_get_builtin_enabled,
-            commands::vocab_set_builtin_enabled,
-            commands::vocab_add_word,
             commands::get_dictation_stats,
             commands::save_dictation_tidy,
             commands::get_settings,
@@ -627,16 +615,6 @@ pub fn run() {
                 // v0.7 · 全部语音（听写 / AI 召唤 / feed）统一用 SenseVoice（离线、自带标点）。
                 // 旧流式 zipformer + 单独标点模型已不再使用 → 不下载，安装更轻量（~229MB 单模型）。
                 transcribe_sense::kick_off_download_if_missing(app.handle().clone());
-            }
-
-            // v0.4.0 P1 · 启动时确保术语表用户文件存在 + 重新生成 active.txt。
-            // 失败不阻塞启动，sherpa 在缺 hotwords_file 时退回 greedy decoding。
-            if let Err(e) = vocab::ensure_user_file() {
-                eprintln!("[mouseclaw] vocab init failed: {e}");
-            }
-            match vocab::regenerate_active(cfg.vocab_builtin_enabled) {
-                Ok(n) => println!("[mouseclaw] 📝 vocab active.txt regenerated: {n} entries"),
-                Err(e) => eprintln!("[mouseclaw] vocab regen failed: {e}"),
             }
 
             // v0.1.26 · --minimized 由 autostart plugin 在登录启动时传入。

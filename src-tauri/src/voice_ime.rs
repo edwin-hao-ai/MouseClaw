@@ -740,7 +740,6 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
             }
         };
         // 清掉可能残留的旧流式 session（字段保留 —— AI 召唤 / feed 流程仍在用）。
-        let _ = state.stream_session.lock().unwrap().take();
         // poller 累积的 + 剩余的 = 整段音频，take 出来转写。
         let samples = {
             let mut g = state.ime_audio.lock().unwrap();
@@ -908,13 +907,7 @@ async fn handle_correction(
             match crate::mode_b::write_at_cursor(&full_replacement).await {
                 Ok(()) => {
                     crate::voice_correct::record_write(&full_replacement, current_bundle);
-                    // v0.6 · 自动学词 —— 用户纠正成 new 说明 ASR 本该认识它，学进词表下次更准。
-                    // 静默发生；命中才刷新 recognizer（下次听写生效）。
-                    if crate::vocab::learn_word(&new).unwrap_or(false) {
-                        let cfg = crate::config::Config::load();
-                        let _ = crate::vocab::regenerate_active(cfg.vocab_builtin_enabled);
-                        crate::transcribe_stream::invalidate_recognizer();
-                    }
+                    // v0.7 · 自动学词已删（vocab/hotword 子系统下线，SenseVoice 不用 hotwords）。
                     println!("[mouseclaw] 🔄 corrected: '{old}' → '{new}'");
                     crate::overlay::emit_view(app, &crate::events::ViewKind::Reply {
                         transcript: "voice correction".into(),

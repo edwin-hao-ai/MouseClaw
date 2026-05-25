@@ -52,17 +52,7 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     // 召唤快捷键子菜单 —— 设置窗里 shortcut 是只读展示，改键的唯一入口在这。
     let summon_submenu = crate::shortcut_menu::build_summon_submenu(app, en)?;
 
-    // 术语表子菜单 —— 「编辑 user.txt / 刷新生效」是文件动作，设置窗没有；内置词表开关在设置窗。
-    let s_vocab_root = if en { "📝 Vocabulary" } else { "📝 术语表" };
-    let s_vocab_edit = if en { "    ↳ Edit user vocabulary…" } else { "    ↳ 编辑用户词表..." };
-    let s_vocab_reload = if en { "    ↳ Reload vocabulary" } else { "    ↳ 刷新生效" };
-    let vocab_edit_item = MenuItem::with_id(app, "vocab-edit", s_vocab_edit, true, None::<&str>)?;
-    let vocab_reload_item = MenuItem::with_id(app, "vocab-reload", s_vocab_reload, true, None::<&str>)?;
-    let vocab_submenu = Submenu::with_id_and_items(
-        app, "vocab-submenu", s_vocab_root, true,
-        &[&vocab_edit_item as &dyn tauri::menu::IsMenuItem<tauri::Wry>,
-          &vocab_reload_item as &dyn tauri::menu::IsMenuItem<tauri::Wry>],
-    )?;
+    // v0.7 · 术语表子菜单已删（vocab/hotword 子系统下线，SenseVoice 不用 hotwords）。
 
     // 会话控制：新对话 + 钉住任务
     let pinned_now = app.try_state::<std::sync::Arc<crate::AppState>>()
@@ -93,7 +83,7 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         &summon, &new_session_item, &pin_item,
         &sep1,
         &clipboard_item, &history, &tasks_item, &memory_item, &skin_picker_item,
-        &summon_submenu, &vocab_submenu,
+        &summon_submenu,
         &sep2,
         &settings_item, &downloader_item, &about, &quit,
     ];

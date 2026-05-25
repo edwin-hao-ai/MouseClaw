@@ -21,7 +21,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::events::ViewKind;
 use crate::overlay::{emit_view, show_mouse};
-use crate::{audio, feed, transcribe_stream, AppState};
+use crate::{audio, feed, AppState};
 
 /// 静默判定：用户**说话之后**多久没新字了就算说完了。
 const SILENCE_TIMEOUT_MS: u64 = 2500;
@@ -198,7 +198,6 @@ async fn record_until_silent(app: AppHandle, state: Arc<AppState>, files: Vec<St
     // 4. finalize —— 拼上剩余音频，SenseVoice 整段离线转写。
     state.streaming_active.store(false, Ordering::SeqCst);
     let recorder = state.recorder.lock().unwrap().take();
-    let _ = state.stream_session.lock().unwrap().take();
 
     let transcript = tokio::task::spawn_blocking(move || -> anyhow::Result<String> {
         let remaining = match recorder {
@@ -423,7 +422,6 @@ pub async fn cancel(app: AppHandle, state: Arc<AppState>) {
     state.fed_docs.lock().await.take();
     // 停录音 + session（如果在录）
     let _ = state.recorder.lock().unwrap().take();
-    let _ = state.stream_session.lock().unwrap().take();
     crate::cursor_follow::disable(&state);
     // v0.4 fix (2026-05-20)：同 hide_overlay / on_drag_leave —— 先 emit_view(Idle)
     // 让 shrink 320→80 跑完，再 apply_idle_anchor 用正确尺寸算角落。

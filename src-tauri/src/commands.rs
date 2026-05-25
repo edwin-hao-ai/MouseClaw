@@ -124,7 +124,6 @@ pub fn save_shortcut(
         skin,
         language: prev.language,
         voice_lang: voice_lang.clone(),
-        vocab_builtin_enabled: prev.vocab_builtin_enabled,
         dictation_tidy: prev.dictation_tidy,
         firstrun_tour_done: prev.firstrun_tour_done,
         voice_ime_enabled: prev.voice_ime_enabled,
@@ -623,7 +622,6 @@ pub async fn dismiss(app: AppHandle, state: State<'_, Arc<AppState>>) -> Result<
     //   继续显示（用户报：按 Esc 后鼠标轨迹/圈选一直残留）。无录音时这些都是 no-op，安全。
     s.streaming_active.store(false, std::sync::atomic::Ordering::SeqCst);
     let _ = s.recorder.lock().unwrap().take();
-    let _ = s.stream_session.lock().unwrap().take();
     #[cfg(target_os = "macos")]
     {
         let _ = crate::cursor_trail::stop_and_take();
@@ -722,7 +720,6 @@ pub fn switch_to_text_input(
     state.streaming_active.store(false, Ordering::SeqCst);
     // 丢弃录音器 + sherpa stream session（take + drop = 停录音，不 finalize → 无 transcript）。
     let _ = state.recorder.lock().unwrap().take();
-    let _ = state.stream_session.lock().unwrap().take();
     // 丢弃光标轨迹采样（文字态没有"按住快捷键画圈"语义，不该把它烘进截图）。
     #[cfg(target_os = "macos")]
     {

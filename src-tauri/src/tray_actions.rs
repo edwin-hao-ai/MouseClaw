@@ -133,33 +133,7 @@ pub(crate) fn set_workspace_via_picker(app: &AppHandle) {
     }
 }
 
-/// v0.4.0 P1 · 术语表刷新后弹个气泡告诉用户「N 词生效」。
-///
-/// fix(2026-05-19): 必须走完整 show_mouse_at_anchor + emit_view 路径，
-/// 直接 emit JSON 不会 expand overlay 也不会 show window —— 用户
-/// 反馈"气泡一直跳但没显示"就是这个原因（pet 在 80×80 compact 模式
-/// 时 bubble 被切掉）。
-pub(crate) fn emit_vocab_reloaded(app: &AppHandle, n: usize) {
-    let lang = crate::config::Config::load().language;
-    let msg = if lang == "en" {
-        format!("📝 Vocabulary reloaded — {n} terms active")
-    } else {
-        format!("📝 术语表已刷新 — {n} 个词生效")
-    };
-    // 走 show_mouse_at_anchor 让窗口显示在 anchor 位置且 expand 到 320×320
-    crate::overlay::show_mouse_at_anchor(app);
-    crate::overlay::emit_view(app, &crate::events::ViewKind::Reply {
-        transcript: "vocab reload".into(),
-        reply: msg,
-        mode: crate::events::ReplyMode::A,
-        insert_text: None,
-        streaming: false,
-    });
-    // 3 秒后自动收回 anchor
-    if let Some(state) = app.try_state::<std::sync::Arc<crate::AppState>>() {
-        crate::overlay::schedule_auto_hide(app, state.inner(), 3000);
-    }
-}
+// v0.7 · emit_vocab_reloaded 已删（术语表 / hotword 子系统下线）。
 
 /// v0.4.0 · 切换 TTS（桌宠开口说话）
 pub(crate) fn toggle_tts(app: &AppHandle) {

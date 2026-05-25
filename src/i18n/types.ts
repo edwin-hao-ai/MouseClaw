@@ -385,10 +385,6 @@ export interface Strings {
   "set.backend": string; "set.backend.hint": string;
   "set.vime": string; "set.vime.hint": string;
   "set.trigger": string; "set.trigger.hint": string;
-  "set.vocab": string; "set.vocab.hint": string;
-  "set.vocab.add": string; "set.vocab.add.hint": string; "set.vocab.add.ph": string;
-  "set.vocab.add.btn": string; "set.vocab.add.ok": string; "set.vocab.add.dup": string;
-  "set.vocab.add.err": string;
   "hist.dict.summary": string;
   "set.tidy": string; "set.tidy.hint": string;
   "set.skin": string; "set.skin.hint": string; "set.skin.btn": string;

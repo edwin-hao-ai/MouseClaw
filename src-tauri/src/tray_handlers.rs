@@ -9,7 +9,7 @@
 use tauri::{menu::MenuEvent, AppHandle, Manager};
 
 use crate::tray_actions::{
-    change_backend, change_language, change_skin, emit_vocab_reloaded, enable_browser_automation,
+    change_backend, change_language, change_skin, enable_browser_automation,
     recommend_backend_install, set_sfx_volume, set_workspace_via_picker, summon_via_tray,
     toggle_autostart, toggle_clipboard_pause, toggle_sfx, toggle_tts, toggle_voice_ime,
 };
@@ -142,26 +142,7 @@ pub(crate) fn handle_menu_event(app: &AppHandle, event: MenuEvent) {
         "sfx-vol:low"  => { set_sfx_volume(app, 0.25); rebuild_tray_menu(app); }
         "sfx-vol:mid"  => { set_sfx_volume(app, 0.45); rebuild_tray_menu(app); }
         "sfx-vol:high" => { set_sfx_volume(app, 0.70); rebuild_tray_menu(app); }
-        // v0.4.0 P1 · 术语表
-        "vocab-edit" => {
-            if let Err(e) = crate::commands::vocab_open_user_file() {
-                eprintln!("[mouseclaw] vocab-edit: {e}");
-            }
-        }
-        "vocab-reload" => {
-            match crate::commands::vocab_reload() {
-                Ok(n) => emit_vocab_reloaded(app, n),
-                Err(e) => eprintln!("[mouseclaw] vocab-reload: {e}"),
-            }
-        }
-        "toggle-vocab-builtin" => {
-            let cur = crate::config::Config::load().vocab_builtin_enabled;
-            match crate::commands::vocab_set_builtin_enabled(!cur) {
-                Ok(n) => emit_vocab_reloaded(app, n),
-                Err(e) => eprintln!("[mouseclaw] toggle-vocab-builtin: {e}"),
-            }
-            rebuild_tray_menu(app);
-        }
+        // v0.7 · 术语表 (vocab) 菜单项已删 —— hotword 子系统下线。
         "set-workspace"   => { set_workspace_via_picker(app); rebuild_tray_menu(app); }
         "clear-workspace" => {
             let _ = crate::commands::save_workspace_path(None);

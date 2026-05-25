@@ -531,7 +531,6 @@ pub async fn on_shortcut_release(app: AppHandle, state: Arc<AppState>) {
             remaining.len(),
             remaining.len() as f32 / 16_000.0
         );
-        let _ = state_clone.stream_session.lock().unwrap().take();
         // v0.7 · poller 累积的 + 剩余的 = 整段音频 → SenseVoice 离线转写。
         let samples = {
             let mut g = state_clone.ime_audio.lock().unwrap();
@@ -608,7 +607,6 @@ pub async fn on_dictation_release(app: AppHandle, state: Arc<AppState>) {
                 return;
             }
         };
-        let _ = state_clone.stream_session.lock().unwrap().take();
         // v0.7 · SenseVoice 离线 —— poller 累积的 + 剩余的 整段转写。
         let samples = {
             let mut g = state_clone.ime_audio.lock().unwrap();

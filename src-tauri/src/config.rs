@@ -199,11 +199,6 @@ pub struct Config {
     /// 不同于上面 `language`（UI 文案 i18n），voice_lang 只决定**模型**。
     #[serde(default = "default_voice_lang")]
     pub voice_lang: String,
-    /// v0.4.0 P1 · 内置程序员词表是否注入 sherpa hotwords contextual biasing。
-    /// 默认开 —— 装上即享受 "useEffect / Tauri / Claude" 等 80+ 程序员高频词
-    /// 的识别提升。用户托盘里能关。详见 `vocab.rs`。
-    #[serde(default = "default_vocab_builtin_enabled")]
-    pub vocab_builtin_enabled: bool,
     /// v0.4.0 · 首次使用引导是否已完成 —— 模型下载完后桌宠主动跳出来教用户用一次。
     /// 用户完成或跳过都设 true；PetMenu 的「📖 教我用 MouseClaw」可强制重启。
     #[serde(default)]
@@ -305,7 +300,6 @@ pub struct Config {
 fn legacy_version() -> u32 { 1 }
 fn default_language() -> String { "zh".into() }
 fn default_voice_lang() -> String { "zh-en".into() }
-fn default_vocab_builtin_enabled() -> bool { true }
 // LLM tidy 默认**关** —— Claude CLI 调用每次 +3-8s，对 AI 召唤流程是过度优化。
 // 只有写到光标的语音 IME 场景值得开（精修文本，用户看到的就是它）。
 // 用户托盘菜单可一键开。
@@ -326,7 +320,6 @@ impl Default for Config {
             skin: SkinId::default(),
             language: default_language(),
             voice_lang: default_voice_lang(),
-            vocab_builtin_enabled: default_vocab_builtin_enabled(),
             firstrun_tour_done: false,
             voice_ime_enabled: default_voice_ime(),
             voice_ime_trigger: default_voice_ime_trigger(),

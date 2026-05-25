@@ -562,80 +562,8 @@ fn emit_progress(
 }
 
 // ────────────────── 内建 ModelSpec 工厂 ──────────────────
-
-/// 中文（含中英混合）默认模型 · ~199MB
-/// `sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20`
-pub fn zh_en_spec() -> ModelSpec {
-    let hf_repo = "csukuangfj/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20";
-    let mirrors_for = |file: &str| vec![
-        format!("https://hf-mirror.com/{hf_repo}/resolve/main/{file}"),
-        format!("https://huggingface.co/{hf_repo}/resolve/main/{file}"),
-    ];
-    ModelSpec {
-        id: "sherpa-zh-en",
-        display: "中文语音模型 (zh-en bilingual)",
-        files: vec![
-            FileSpec {
-                rel_path: "encoder-epoch-99-avg-1.int8.onnx",
-                bytes: 181_895_032,
-                mirrors: mirrors_for("encoder-epoch-99-avg-1.int8.onnx"),
-            },
-            FileSpec {
-                rel_path: "decoder-epoch-99-avg-1.onnx",
-                bytes: 13_876_452,
-                mirrors: mirrors_for("decoder-epoch-99-avg-1.onnx"),
-            },
-            FileSpec {
-                rel_path: "joiner-epoch-99-avg-1.int8.onnx",
-                bytes: 3_228_404,
-                mirrors: mirrors_for("joiner-epoch-99-avg-1.int8.onnx"),
-            },
-            FileSpec {
-                rel_path: "tokens.txt",
-                bytes: 56_317,
-                mirrors: mirrors_for("tokens.txt"),
-            },
-        ],
-        post_extract_keep: None,
-    }
-}
-
-/// 英文模型 · ~73MB
-/// `sherpa-onnx-streaming-zipformer-en-2023-06-26`
-pub fn en_spec() -> ModelSpec {
-    let hf_repo = "csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26";
-    let mirrors_for = |file: &str| vec![
-        format!("https://hf-mirror.com/{hf_repo}/resolve/main/{file}"),
-        format!("https://huggingface.co/{hf_repo}/resolve/main/{file}"),
-    ];
-    ModelSpec {
-        id: "sherpa-en",
-        display: "English voice model",
-        files: vec![
-            FileSpec {
-                rel_path: "encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx",
-                bytes: 71_083_163,
-                mirrors: mirrors_for("encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx"),
-            },
-            FileSpec {
-                rel_path: "decoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx",
-                bytes: 1_307_236,
-                mirrors: mirrors_for("decoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx"),
-            },
-            FileSpec {
-                rel_path: "joiner-epoch-99-avg-1-chunk-16-left-128.int8.onnx",
-                bytes: 259_335,
-                mirrors: mirrors_for("joiner-epoch-99-avg-1-chunk-16-left-128.int8.onnx"),
-            },
-            FileSpec {
-                rel_path: "tokens.txt",
-                bytes: 5_048,
-                mirrors: mirrors_for("tokens.txt"),
-            },
-        ],
-        post_extract_keep: None,
-    }
-}
+// v0.7 · 旧流式 zh-en zipformer + 英文模型 + CT-Transformer 标点 spec 全删 ——
+// 语音统一用 SenseVoice（自带标点）。
 
 /// SenseVoice 多语种离线模型 · int8 ~228MB（model.int8.onnx + tokens.txt）
 /// `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17`
@@ -666,25 +594,4 @@ pub fn sense_voice_spec() -> ModelSpec {
     }
 }
 
-/// 标点模型 · ~62MB tarball → 解出 model.int8.onnx (~72MB)
-pub fn punct_spec() -> ModelSpec {
-    let tarball = "sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8.tar.bz2";
-    let gh_path = format!(
-        "k2-fsa/sherpa-onnx/releases/download/punctuation-models/{tarball}"
-    );
-    ModelSpec {
-        id: "sherpa-punct",
-        display: "标点模型 (zh-en punctuation)",
-        files: vec![FileSpec {
-            rel_path: tarball,
-            bytes: 64_717_756,
-            mirrors: vec![
-                format!("https://gh-proxy.com/github.com/{gh_path}"),
-                format!("https://ghfast.top/https://github.com/{gh_path}"),
-                format!("https://github.com/{gh_path}"),
-            ],
-        }],
-        // 解压后 model.int8.onnx 字节数（实测 2026-05-19）
-        post_extract_keep: Some(("model.int8.onnx", 75_519_198)),
-    }
-}
+// v0.7 · punct_spec 已删 —— SenseVoice use_itn 自带标点。

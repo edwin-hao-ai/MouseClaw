@@ -20,8 +20,20 @@ use once_cell::sync::Lazy;
 use sherpa_onnx::{OfflineRecognizer, OfflineRecognizerConfig, OfflineSenseVoiceModelConfig};
 use tauri::AppHandle;
 
-/// 复用流式那边的下载状态枚举，避免重复定义。
-pub use crate::transcribe_stream::ModelState;
+/// 模型下载状态（UI 显示进度用）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelState {
+    Ready,
+    Downloading,
+    Failed(String),
+}
+
+/// 推理线程数 —— 取逻辑核一半，clamp 2..=4。拿不到核数退回 2。
+pub fn pick_inference_threads() -> i32 {
+    std::thread::available_parallelism()
+        .map(|n| (n.get() / 2).clamp(2, 4) as i32)
+        .unwrap_or(2)
+}
 
 pub const MODEL_DIR: &str = "sense-voice";
 pub const MODEL_FILES: &[&str] = &["model.int8.onnx", "tokens.txt"];
@@ -58,7 +70,7 @@ fn ensure_loaded() -> Result<()> {
         ));
     }
     let mut config = OfflineRecognizerConfig::default();
-    config.model_config.num_threads = crate::transcribe_stream::pick_inference_threads();
+    config.model_config.num_threads = pick_inference_threads();
     config.model_config.sense_voice = OfflineSenseVoiceModelConfig {
         model: Some(dir.join("model.int8.onnx").to_string_lossy().into_owned()),
         language: Some("auto".into()),
@@ -122,4 +134,52 @@ pub fn kick_off_download_if_missing(app: AppHandle) {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 解析 16-bit PCM 单声道 wav → f32 [-1,1]。找 `data` chunk（容忍 FLLR 填充块）。
+    fn read_wav_i16_mono(path: &std::path::Path) -> Vec<f32> {
+        let bytes = std::fs::read(path).expect("read wav");
+        assert!(&bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WAVE", "not WAVE");
+        let mut pos = 12usize;
+        while pos + 8 <= bytes.len() {
+            let id = &bytes[pos..pos + 4];
+            let sz = u32::from_le_bytes([bytes[pos+4], bytes[pos+5], bytes[pos+6], bytes[pos+7]]) as usize;
+            let body = pos + 8;
+            if id == b"data" {
+                let end = (body + sz).min(bytes.len());
+                return bytes[body..end].chunks_exact(2)
+                    .map(|c| i16::from_le_bytes([c[0], c[1]]) as f32 / 32768.0)
+                    .collect();
+            }
+            pos = body + sz + (sz & 1);
+        }
+        panic!("no data chunk");
+    }
+
+    /// 端到端验证生产函数 transcribe()。依赖本机模型 + wav，故 #[ignore]：
+    ///   say -v Meijia -o /tmp/p.aiff "我今天写了很多代码 push 到主分支"
+    ///   afconvert -f WAVE -d LEI16@16000 -c 1 /tmp/p.aiff /tmp/p.wav
+    ///   MC_TEST_WAV=/tmp/p.wav cargo test --manifest-path src-tauri/Cargo.toml \
+    ///     --lib transcribe_sense::tests::production_path -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn production_path() {
+        let home = std::env::var("HOME").unwrap();
+        if !std::path::PathBuf::from(&home).join(".mouseclaw/models/sense-voice/model.int8.onnx").exists() {
+            eprintln!("SKIP: SenseVoice 模型不在");
+            return;
+        }
+        let wav = std::env::var("MC_TEST_WAV").unwrap_or_else(|_| "/tmp/p.wav".into());
+        let mut samples: Vec<f32> = Vec::new();
+        for p in wav.split(',') {
+            samples.extend(read_wav_i16_mono(std::path::Path::new(p.trim())));
+        }
+        let t = transcribe(&samples).expect("transcribe");
+        eprintln!("\n=== transcribe_sense::transcribe → {t}\n");
+        assert!(!t.is_empty(), "empty result");
+    }
 }

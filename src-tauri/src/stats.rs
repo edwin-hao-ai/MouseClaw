@@ -91,12 +91,22 @@ pub fn record_finish(text: &str) {
     }
 }
 
+/// CJK / 假名范围 —— 逐字算 1 词。（原在 vocab.rs，v0.7 vocab 模块删除后内联到此。）
+fn is_cjk(c: char) -> bool {
+    matches!(c as u32,
+        0x3040..=0x30FF |   // 平假名 / 片假名
+        0x3400..=0x4DBF |   // CJK 扩展 A
+        0x4E00..=0x9FFF |   // CJK 基本
+        0xF900..=0xFAFF |   // CJK 兼容
+        0x20000..=0x2A6DF)  // CJK 扩展 B
+}
+
 /// CJK 每字算 1 词，ASCII 按空白切词。
 pub fn count_words(text: &str) -> u64 {
     let mut n = 0u64;
     let mut in_ascii = false;
     for ch in text.chars() {
-        if crate::vocab::is_cjk(ch) {
+        if is_cjk(ch) {
             n += 1;
             in_ascii = false;
         } else if ch.is_alphanumeric() {
