@@ -353,10 +353,23 @@ where
 /// 设计原则（CLAUDE.md "多后端 CLI 都要兼容"硬规则）：每次新加一种短任务流水线
 /// **必须**走这个统一接口而不是硬编码 `claude` 二进制 —— 否则非 Claude 用户拿不到那功能。
 pub async fn ask_text_only(backend: Backend, prompt: &str) -> Result<String> {
-    let bin = find_backend_binary(backend)?;
-    let args = backend.oneshot_args(prompt);
-    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    spawn_and_stream(&bin, &arg_refs, |_| {}).await
+    match find_backend_binary(backend) {
+        Ok(bin) => {
+            let args = backend.oneshot_args(prompt);
+            let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+            spawn_and_stream(&bin, &arg_refs, |_| {}).await
+        }
+        // v0.6 · 没装任何 CLI 后端 → 本地小模型 (Qwen3-0.6B) 兜底基础任务（清理/翻译/整理）。
+        // 模型没下好就回原始"CLI 没装"错误（优雅降级，不假装能用）。
+        Err(cli_err) => {
+            if crate::local_model::is_ready() {
+                println!("[mouseclaw] 🧠 CLI 未装 → 本地模型兜底");
+                crate::local_model::generate(prompt).await
+            } else {
+                Err(cli_err)
+            }
+        }
+    }
 }
 
 /// 纯文本 → 文本 单次调用，但**放开 agentic 工具**（WebSearch/WebFetch/Bash/Read…）。

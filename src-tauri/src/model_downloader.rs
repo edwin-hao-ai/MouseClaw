@@ -636,6 +636,33 @@ pub fn en_spec() -> ModelSpec {
     }
 }
 
+/// 本地小模型 · Qwen3-0.6B ONNX (q4f16) · ~580MB —— 没装 CLI 时兜底基础任务。
+/// 本地扁平存放（rel_path 无子目录），URL 指向 repo 的 onnx/ 子路径。
+pub fn qwen_06b_spec() -> ModelSpec {
+    let hf_repo = "onnx-community/Qwen3-0.6B-ONNX";
+    let mirrors_for = |file: &str| vec![
+        format!("https://hf-mirror.com/{hf_repo}/resolve/main/{file}"),
+        format!("https://huggingface.co/{hf_repo}/resolve/main/{file}"),
+    ];
+    ModelSpec {
+        id: "qwen3-0.6b-onnx",
+        display: "本地小模型 (Qwen3-0.6B)",
+        files: vec![
+            FileSpec {
+                rel_path: "model_q4f16.onnx",
+                bytes: 569_789_750,
+                mirrors: mirrors_for("onnx/model_q4f16.onnx"),
+            },
+            FileSpec {
+                rel_path: "tokenizer.json",
+                bytes: 9_117_040,
+                mirrors: mirrors_for("tokenizer.json"),
+            },
+        ],
+        post_extract_keep: None,
+    }
+}
+
 /// 标点模型 · ~62MB tarball → 解出 model.int8.onnx (~72MB)
 pub fn punct_spec() -> ModelSpec {
     let tarball = "sherpa-onnx-punct-ct-transformer-zh-en-vocab272727-2024-04-12-int8.tar.bz2";

@@ -217,6 +217,21 @@ pub fn get_dictation_stats() -> crate::stats::StatsView {
     crate::stats::view()
 }
 
+/// v0.6 · 本地小模型 (Qwen3-0.6B) 是否已下载就绪。
+#[tauri::command]
+pub fn local_model_ready() -> bool {
+    crate::local_model::is_ready()
+}
+
+/// v0.6 · 下载本地小模型（~580MB）—— 没装 CLI 后端的用户点一下，之后基础任务走本地。
+/// 复用 model_downloader（带进度事件，DownloaderView 已能显示）。
+#[tauri::command]
+pub async fn download_local_model(app: tauri::AppHandle) -> Result<(), String> {
+    crate::model_downloader::download(app, crate::model_downloader::qwen_06b_spec())
+        .await
+        .map_err(|e| format!("下载本地模型失败：{e}"))
+}
+
 /// 朗读 AI 回复（TTS）开关。关掉时立刻停掉正在朗读的。
 #[tauri::command]
 pub fn save_tts(enabled: bool) -> Result<(), String> {

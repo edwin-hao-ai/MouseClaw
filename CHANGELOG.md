@@ -21,6 +21,14 @@ versioning follows [SemVer](https://semver.org/).
 - **词表自动学词（更深词表）**：用户纠错"把 X 改成 Y"时，把 Y 静默学进词表
   （`~/.mouseclaw/vocab/auto.txt`，与手动 user.txt 分开），下次识别更准。term-like 过滤
   （短、无句子标点、非纯数字）+ 去重 + 上限 500 条。零用户操作。
+- **本地小模型兜底（Qwen3-0.6B ONNX）**：没装任何 CLI 后端时，基础文本任务（清理/
+  翻译/整理）走本地小模型。纯 Rust + ONNX Runtime（`ort`，与 sherpa 同一家），**无
+  Python、无 Ollama、无 C++ 编译**。模型按需下载 ~580MB（复用 model_downloader）。
+  接在 `backend.rs::ask_text_only`：CLI 没装且模型就绪 → 本地生成；否则优雅回退原错误。
+  视觉/截图/复杂/agentic 仍走云 CLI（0.6B 视觉实测不可用）。
+  - 命令：`download_local_model` / `local_model_ready`。
+  - 端到端实测：生产代码加载模型 + "你好，世界。"→"Hello, world." ✅
+  - ⏳ 待接：没装 CLI 时自动触发下载的 UI 入口；reactive 菜单针对小模型的简化提示。
 
 ---
 
