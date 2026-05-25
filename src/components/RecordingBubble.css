@@ -102,10 +102,11 @@
   min-width: 360px;
   max-width: 360px;
 }
-/* v0.6 · partial 独占一行（不再挤在 rec-main 横排）。限高 ~3 行 + 底部锚定
-   （column-reverse）：短文本正常从上读、贴气泡；超 3 行则高度封顶、最新文字
-   始终在底部、旧的往上溢出裁掉，**不再继续 resize 窗口** → 长句听写也不抖。
-   去掉了原 rec-partial-pulse 透明度脉冲（用户反馈"闪烁"），录音红点已示意"在听"。 */
+/* v0.6 · partial 独占一行（不再挤在 rec-main 横排）。
+   **不限高**：气泡随文字增长完整显示（恢复改动前行为，不截断 —— 用户实测
+   截断回归）。配合上面固定宽：宽度恒定 → 只有"换行"才触发一次窗口长高（new_x
+   不变、只 new_y 上移），不再每个词都 resize 横跳；换行级别的增高是平滑生长、
+   不是抖动。去掉了原 rec-partial-pulse 透明度脉冲（"闪烁"），录音红点已示意"在听"。 */
 .rec-partial {
   font-size: var(--text-body);
   font-weight: 500;
@@ -113,9 +114,4 @@
   opacity: 0.9;
   line-height: 1.4;
   word-break: break-word;
-  white-space: pre-wrap;
-  max-height: 4.2em;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column-reverse;
 }
