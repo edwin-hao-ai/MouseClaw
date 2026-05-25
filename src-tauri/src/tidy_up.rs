@@ -51,6 +51,126 @@ pub fn light_clean(text: &str, ui_lang: &str) -> String {
     s.trim().to_string()
 }
 
+// ============================================================================
+// v0.6 · 规则版"整理成清单" —— 纯规则、即时、0 模型（替代生成式 LLM 做简单理条理）
+// ============================================================================
+//
+// 把一长串口述按列表性话语标记（先/然后/还有/对了/第一/其次/最后…）切成有序清单：
+//   "今天要先写周报然后给客户回邮件对了还要订会议室"
+//   → "1. 写周报\n2. 给客户回邮件\n3. 订会议室"
+// 只分点 + 编号 + 换行，**不重写措辞**（保留原话、清掉口头禅）。
+// 非列表性文本（切出的项 < 2）返回 None —— 不强行编号。
+
+/// item 边界标记。多字优先（先匹配"首先"再"先"）。
+const LIST_MARKERS: &[&str] = &[
+    "首先", "第一点", "第二点", "第三点", "第一", "第二", "第三", "第四", "第五",
+    "其次", "然后", "接着", "再就是", "再来", "还有", "还要", "另外", "此外",
+    "以及", "对了", "最后", "最终",
+    // 英文
+    "firstly", "secondly", "first", "second", "third", "then", "next",
+    "also", "additionally", "finally", "lastly",
+];
+
+/// 引子（应丢弃，不当 item）：短、且像"今天要做的有"这种开场白。
+fn is_leadin(s: &str) -> bool {
+    let t = s.trim();
+    if t.is_empty() {
+        return true;
+    }
+    let n = t.chars().count();
+    // 短 + 以引子收尾（"今天要做的有"/"我想说的是"）才算引子；不按内容词误删真实项。
+    n <= 8 && t.ends_with(['要', '有', '想', '是', '：', ':'])
+}
+
+/// 剥首尾标点 + 句首引子词（"今天要先写周报"→"写周报"），按引子结构单趟剥。
+fn strip_item(s: &str) -> String {
+    let mut t = s
+        .trim()
+        .trim_matches(|c| matches!(c, '，' | '。' | '、' | '；' | ',' | '.' | ';' | ' '))
+        .to_string();
+    // 句首引子结构 "(今天)?(我/我们)?(要/想/需要)?(先/首先)?"，按顺序各剥一次。
+    // 剥后剩余必须 ≥2 字，避免把内容词当引子（保守）。
+    for lead in ["今天", "我们", "我", "需要", "要", "想", "先", "首先", "这边", "那个", "就"] {
+        if let Some(rest) = t.strip_prefix(lead) {
+            if rest.chars().count() >= 2 {
+                t = rest.to_string();
+            }
+        }
+    }
+    t.trim().to_string()
+}
+
+/// 规则切分成 item 列表。
+fn split_list_items(text: &str) -> Vec<String> {
+    let delims = ['，', '。', '、', '；', '！', '？', ',', '.', ';', ' ', '\n', '\t', '：', ':'];
+    // 1) 找所有 marker 在边界处的起始字节位置 + 其长度
+    let mut marks: Vec<(usize, usize)> = Vec::new(); // (起始字节, marker字节长)
+    // 口述多为连读无标点，多字话语标记（然后/还有/对了/其次…）在任意位置都视为 item 边界。
+    let _ = delims;
+    for m in LIST_MARKERS {
+        let mut start = 0;
+        while let Some(rel) = text[start..].find(m) {
+            let abs = start + rel;
+            marks.push((abs, m.len()));
+            start = abs + m.len();
+        }
+    }
+    if marks.is_empty() {
+        return Vec::new();
+    }
+    marks.sort_by_key(|&(p, _)| p);
+    // 去重叠：若两个 marker 起点距离过近（嵌套，如"第一点"含"第一"），保留靠前的长的
+    let mut filtered: Vec<(usize, usize)> = Vec::new();
+    for &(p, l) in &marks {
+        if let Some(&(pp, pl)) = filtered.last() {
+            if p < pp + pl {
+                continue; // 落在上一个 marker 内，跳过
+            }
+        }
+        filtered.push((p, l));
+    }
+    // 2) 切分：第一段 = [0, 第一个marker起点)；之后每段 = [marker结束, 下一个marker起点)
+    let mut items: Vec<String> = Vec::new();
+    let first_mark = filtered[0].0;
+    let preamble = &text[..first_mark];
+    if !is_leadin(preamble) {
+        let it = strip_item(preamble);
+        if !it.is_empty() {
+            items.push(it);
+        }
+    }
+    for i in 0..filtered.len() {
+        let (p, l) = filtered[i];
+        let seg_start = p + l;
+        let seg_end = filtered.get(i + 1).map(|&(np, _)| np).unwrap_or(text.len());
+        if seg_start >= seg_end {
+            continue;
+        }
+        let it = strip_item(&text[seg_start..seg_end]);
+        if !it.is_empty() && !is_leadin(&it) {
+            items.push(it);
+        }
+    }
+    items
+}
+
+/// 公开入口：把口述整理成有序清单。非列表性 → None。
+pub fn organize_into_list(text: &str, ui_lang: &str) -> Option<String> {
+    let cleaned = light_clean(text, ui_lang);
+    let items = split_list_items(&cleaned);
+    if items.len() < 2 {
+        return None; // 不是清单，别强行编号
+    }
+    Some(
+        items
+            .iter()
+            .enumerate()
+            .map(|(i, it)| format!("{}. {}", i + 1, it))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
+}
+
 fn clean_zh(text: &str) -> String {
     let mut s = text.to_string();
     for filler in ZH_FILLERS {
@@ -127,6 +247,45 @@ fn collapse_repeats(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── organize_into_list 测试（规则版理条理）──
+    #[test]
+    fn organize_user_example() {
+        let out = organize_into_list(
+            "今天要先写周报然后给客户回邮件对了还要订会议室",
+            "zh",
+        );
+        eprintln!("整理输出:\n{}", out.clone().unwrap_or_else(|| "(None)".into()));
+        let out = out.expect("应识别为清单");
+        assert!(out.contains("1.") && out.contains("2.") && out.contains("3."));
+        assert!(out.contains("写周报") && out.contains("订会议室"));
+    }
+
+    #[test]
+    fn organize_sequential_markers() {
+        let out = organize_into_list(
+            "首先我们要确定目标，其次分配任务，最后定个时间线",
+            "zh",
+        ).expect("清单");
+        eprintln!("整理输出2:\n{out}");
+        assert_eq!(out.lines().count(), 3);
+    }
+
+    #[test]
+    fn organize_non_list_returns_none() {
+        // 普通一句话不该被强行编号
+        assert!(organize_into_list("今天天气不错我打算去公园散步", "zh").is_none());
+    }
+
+    #[test]
+    fn organize_english() {
+        let out = organize_into_list(
+            "first finish the slides then call the vendor also review the budget",
+            "en",
+        ).expect("list");
+        eprintln!("organize en:\n{out}");
+        assert_eq!(out.lines().count(), 3);
+    }
 
     // ── light_clean 测试 ──
 
