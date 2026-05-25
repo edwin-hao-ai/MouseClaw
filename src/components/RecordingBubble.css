@@ -95,18 +95,17 @@
 /* v0.2 · streaming partial transcript — soft gray, flows in real time
    as sherpa-onnx emits new characters. Pet text reads like a thought
    bubble that fills out before final commit. */
-/* v0.6 · partial 在场时气泡**固定宽**（不再 max-width 内容驱动）——
-   原来随每个词增长宽度 → useAdaptiveOverlay 每词 resize+重定位 → 横向抖动。 */
+/* v0.6 · partial 用 max-width（**不能**用固定 width）——
+   固定 width:360 会强制气泡 360px，当 overlay 窗口比它窄时被窗口边裁掉（用户实测
+   "横向截断"）。max-width 让气泡随窗口收缩、文字换行回流 → 永不裁切；多行后最长行
+   撑满 max-width → 宽度稳定，不再每词横跳。 */
 .recording-bubble.has-partial {
-  width: 360px;
-  min-width: 360px;
-  max-width: 360px;
+  max-width: 380px;
 }
-/* v0.6 · partial 独占一行（不再挤在 rec-main 横排）。
-   **不限高**：气泡随文字增长完整显示（恢复改动前行为，不截断 —— 用户实测
-   截断回归）。配合上面固定宽：宽度恒定 → 只有"换行"才触发一次窗口长高（new_x
-   不变、只 new_y 上移），不再每个词都 resize 横跳；换行级别的增高是平滑生长、
-   不是抖动。去掉了原 rec-partial-pulse 透明度脉冲（"闪烁"），录音红点已示意"在听"。 */
+/* v0.6 · partial 独占一行（不挤在 rec-main 横排）。**不限高**：随文字完整增长、
+   不截断。去掉了原 rec-partial-pulse 透明度脉冲（用户反馈"闪烁"），录音红点已示意
+   "在听"。横向抖动由 max-width 稳定宽度解决；纵向只有真换行才长高（中速说话约每
+   9 秒一行），是缓慢生长而非高频抖动。 */
 .rec-partial {
   font-size: var(--text-body);
   font-weight: 500;
