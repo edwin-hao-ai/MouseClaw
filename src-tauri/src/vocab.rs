@@ -98,6 +98,7 @@ pub fn regenerate_active(builtin_enabled: bool) -> Result<usize> {
     let mut sorted: Vec<_> = seen.into_iter().collect();
     sorted.sort_by(|a, b| a.0.cmp(&b.0));
     for (word, score) in sorted {
+        let word = to_active_word(&word);
         match score {
             Some(s) => writeln!(f, "{} :{}", word, s)?,
             None => writeln!(f, "{}", word)?,
@@ -168,6 +169,18 @@ pub fn is_cjk(c: char) -> bool {
         0x4E00..=0x9FFF |   // CJK 基本
         0xF900..=0xFAFF |   // CJK 兼容
         0x20000..=0x2A6DF)  // CJK 扩展 B
+}
+
+/// v0.6 · active.txt（sherpa hotwords_file）专用形式：英文大写化。
+///
+/// 双语 zh-en 模型英文建模单元是大写 BPE piece（`▁PUSH` / `▁THE`）。hotword 必须
+/// 大写才能在 BPE 切分时对上模型 units —— 小写 "push" 会被切成查不到的碎片，
+/// sherpa 直接 skip（日志 "Cannot find ID for token push"），英文 biasing 形同
+/// 虚设（这正是 "push"→"铺石" 的根因）。模型本就只输出大写英文，下游
+/// `recase_english` 再还原自然大小写，故这里大写**零副作用**。
+/// 中文字 / 数字 / 标点经 `to_uppercase` 不变。
+fn to_active_word(word: &str) -> String {
+    word.to_uppercase()
 }
 
 /// 把用户输入的词转成 sherpa hotword 形式：CJK 逐字空格分开，ASCII 串保持整体。
@@ -568,6 +581,18 @@ mod tests {
     fn hotword_form_mixed_zh_en() {
         assert_eq!(to_hotword_form("GPT模型"), "GPT 模 型");
         assert_eq!(to_hotword_form("Tauri 框架"), "Tauri 框 架");
+    }
+
+    #[test]
+    fn active_word_uppercases_english_for_bpe_match() {
+        // 英文必须大写才能对上模型大写 BPE units（修 "push"→"铺石" 的关键）
+        assert_eq!(to_active_word("push"), "PUSH");
+        assert_eq!(to_active_word("useEffect"), "USEEFFECT");
+        // 中文字 / 已分字串经 to_uppercase 原样不变
+        assert_eq!(to_active_word("心 房 颤 动"), "心 房 颤 动");
+        // 中英混合：英文部分大写，中文不变
+        assert_eq!(to_active_word("GPT 模 型"), "GPT 模 型");
+        assert_eq!(to_active_word("Next.js"), "NEXT.JS");
     }
 
     #[test]

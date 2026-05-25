@@ -29,6 +29,17 @@ use tauri::AppHandle;
 
 /// Model relative dir under ~/.mouseclaw/models/ —— **中文模型**
 pub const MODEL_DIR: &str = "sherpa-zh-en";
+
+/// v0.6 · BPE vocab（SentencePiece，~12 KB）—— 编译进二进制。
+/// 双语 zh-en Zipformer 的英文建模单元是大写 BPE piece（`▁PUSH` / `▁THE`…）。
+/// 没它时 sherpa 把英文 hotword（"push"）当整 token 查表 → 永远查不到 →
+/// 英文 contextual biasing 形同虚设，"push" 被音译成"铺石"。
+/// 设 `modeling_unit=cjkchar+bpe` + 这份 vocab，sherpa 会把英文 hotword 正确
+/// 切成模型 units 来 boost。随模型版本锁定（zh-en-2023-02-20），故内嵌而非下载：
+/// 离线可用、对老安装即时生效、只占 12 KB。
+const BPE_VOCAB: &str = include_str!("../resources/sherpa/bpe.vocab");
+/// 落盘文件名（sherpa 需要文件路径，不收 in-memory buffer）。
+const BPE_VOCAB_FILE: &str = "bpe.vocab";
 /// 中文模型文件名（4 个）—— 用于 ensure_loaded / bundle seed 拼路径
 pub const MODEL_FILES: &[&str] = &[
     "encoder-epoch-99-avg-1.int8.onnx",
@@ -206,9 +217,25 @@ fn ensure_loaded() -> Result<()> {
         config.max_active_paths = 4;
         config.hotwords_file = active_path.map(|p| p.to_string_lossy().into_owned());
         config.hotwords_score = crate::vocab::DEFAULT_HOTWORDS_SCORE;
+
+        // v0.6 · 让英文 hotword 真正生效：把内嵌 bpe.vocab 落盘（缺则写），
+        // 设 modeling_unit=cjkchar+bpe + bpe_vocab，sherpa 才会把 "PUSH" 这类英文
+        // 词切成模型的大写 BPE units 来 boost。没这步英文 biasing 是 no-op。
+        // 失败（磁盘只读等）只降级到"中文 biasing 仍在、英文照旧"，不阻断识别。
+        let bpe_path = dir.join(BPE_VOCAB_FILE);
+        if !bpe_path.exists() {
+            if let Err(e) = std::fs::write(&bpe_path, BPE_VOCAB) {
+                eprintln!("[mouseclaw] 🎤 写 bpe.vocab 失败（英文 biasing 降级）: {e}");
+            }
+        }
+        if bpe_path.exists() {
+            config.model_config.modeling_unit = Some("cjkchar+bpe".into());
+            config.model_config.bpe_vocab = Some(bpe_path.to_string_lossy().into_owned());
+        }
+
         println!(
-            "[mouseclaw] 🎤 hotwords loaded: {} entries, score={}",
-            active_count, crate::vocab::DEFAULT_HOTWORDS_SCORE
+            "[mouseclaw] 🎤 hotwords loaded: {} entries, score={}, bpe={}",
+            active_count, crate::vocab::DEFAULT_HOTWORDS_SCORE, bpe_path.exists()
         );
     } else {
         config.decoding_method = Some("greedy_search".into());
@@ -353,5 +380,116 @@ mod tests {
     #[test]
     fn current_state_doesnt_panic_before_kickoff() {
         let _ = current_state();
+    }
+
+    // ── 真音频 A/B/C 实测（中英混合 "push" 修复）──────────────────────────
+    // 依赖本机模型 (~/.mouseclaw/models/sherpa-zh-en) + 一个 16k 单声道 wav，
+    // 故默认 #[ignore]，手动跑：
+    //   say -v Meijia -o /tmp/mc_push.aiff "我要把代码 push 上去"
+    //   afconvert -f WAVE -d LEI16@16000 -c 1 /tmp/mc_push.aiff /tmp/mc_push.wav
+    //   cargo test --manifest-path src-tauri/Cargo.toml --lib \
+    //     transcribe_stream::tests::ab_mixed_zh_en -- --ignored --nocapture
+    // 可用 MC_TEST_WAV 指定其它 wav。打印三种解码结果对比。
+
+    /// 解析 16-bit PCM 单声道 wav → f32 [-1,1]。找 `data` chunk（容忍 FLLR 等填充块）。
+    fn read_wav_i16_mono(path: &std::path::Path) -> Vec<f32> {
+        let bytes = std::fs::read(path).expect("read wav");
+        assert!(&bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WAVE", "not a WAVE file");
+        let mut pos = 12usize;
+        while pos + 8 <= bytes.len() {
+            let id = &bytes[pos..pos + 4];
+            let sz = u32::from_le_bytes([bytes[pos+4], bytes[pos+5], bytes[pos+6], bytes[pos+7]]) as usize;
+            let body = pos + 8;
+            if id == b"data" {
+                let end = (body + sz).min(bytes.len());
+                return bytes[body..end]
+                    .chunks_exact(2)
+                    .map(|c| i16::from_le_bytes([c[0], c[1]]) as f32 / 32768.0)
+                    .collect();
+            }
+            pos = body + sz + (sz & 1); // chunk 偶字节对齐
+        }
+        panic!("no data chunk");
+    }
+
+    /// 用给定配置建 recognizer 并转写整段 samples，返回 raw text（模型大写英文）。
+    fn transcribe_with(
+        dir: &std::path::Path,
+        modeling_unit: Option<&str>,
+        bpe_vocab: Option<&std::path::Path>,
+        hotwords_file: Option<&std::path::Path>,
+        samples: &[f32],
+    ) -> String {
+        let mut config = OnlineRecognizerConfig::default();
+        config.model_config.num_threads = 2;
+        config.model_config.transducer.encoder =
+            Some(dir.join("encoder-epoch-99-avg-1.int8.onnx").to_string_lossy().into_owned());
+        config.model_config.transducer.decoder =
+            Some(dir.join("decoder-epoch-99-avg-1.onnx").to_string_lossy().into_owned());
+        config.model_config.transducer.joiner =
+            Some(dir.join("joiner-epoch-99-avg-1.int8.onnx").to_string_lossy().into_owned());
+        config.model_config.tokens =
+            Some(dir.join("tokens.txt").to_string_lossy().into_owned());
+        config.enable_endpoint = false;
+        config.model_config.modeling_unit = modeling_unit.map(|s| s.to_string());
+        config.model_config.bpe_vocab = bpe_vocab.map(|p| p.to_string_lossy().into_owned());
+        if let Some(hw) = hotwords_file {
+            config.decoding_method = Some("modified_beam_search".into());
+            config.max_active_paths = 4;
+            config.hotwords_file = Some(hw.to_string_lossy().into_owned());
+            config.hotwords_score = 2.0;
+        } else {
+            config.decoding_method = Some("greedy_search".into());
+        }
+        let rec = OnlineRecognizer::create(&config).expect("create recognizer");
+        let mut stream = rec.create_stream();
+        let _ = &mut stream;
+        // 分块喂，模拟流式
+        for chunk in samples.chunks(3200) {
+            stream.accept_waveform(16_000, chunk);
+            while rec.is_ready(&stream) { rec.decode(&stream); }
+        }
+        stream.input_finished();
+        while rec.is_ready(&stream) { rec.decode(&stream); }
+        rec.get_result(&stream).map(|r| r.text).unwrap_or_default()
+    }
+
+    #[test]
+    #[ignore]
+    fn ab_mixed_zh_en() {
+        let home = std::env::var("HOME").unwrap();
+        let dir = std::path::PathBuf::from(&home).join(".mouseclaw/models/sherpa-zh-en");
+        if !dir.join("tokens.txt").exists() {
+            eprintln!("SKIP: 模型不在 {}", dir.display());
+            return;
+        }
+        // MC_TEST_WAV 可逗号分隔多个 wav → 拼接（用不同音色合成真·中英 code-switch）
+        let wav = std::env::var("MC_TEST_WAV").unwrap_or_else(|_| "/tmp/mc_push.wav".into());
+        let mut samples: Vec<f32> = Vec::new();
+        for p in wav.split(',') {
+            samples.extend(read_wav_i16_mono(std::path::Path::new(p.trim())));
+        }
+        eprintln!("wav={wav} samples={} ({:.2}s)", samples.len(), samples.len() as f32 / 16000.0);
+
+        let bpe = dir.join("bpe.vocab");
+        // 确保 bpe.vocab 在（用内嵌的写一份）
+        if !bpe.exists() { std::fs::write(&bpe, BPE_VOCAB).unwrap(); }
+
+        let tmp = std::env::temp_dir();
+        let hw_lower = tmp.join("mc_hw_lower.txt");
+        let hw_upper = tmp.join("mc_hw_upper.txt");
+        // 旧式：英文整词、原样小写、无 bpe（== 修复前行为）
+        std::fs::write(&hw_lower, "push\npull\ncommit\nmerge\n").unwrap();
+        // 新式：大写，配 bpe（== 修复后行为）
+        std::fs::write(&hw_upper, "PUSH\nPULL\nCOMMIT\nMERGE\n").unwrap();
+
+        let a = transcribe_with(&dir, None, None, None, &samples);
+        let b = transcribe_with(&dir, None, None, Some(&hw_lower), &samples);
+        let c = transcribe_with(&dir, Some("cjkchar+bpe"), Some(&bpe), Some(&hw_upper), &samples);
+
+        eprintln!("\n=== A 无 hotwords (greedy)        : {a}");
+        eprintln!("=== B 旧式 小写 hotwords 无 bpe   : {b}");
+        eprintln!("=== C 新式 大写 hotwords + bpe    : {c}");
+        eprintln!("=== C recased                     : {}\n", crate::vocab::recase_english(&c));
     }
 }
