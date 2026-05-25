@@ -61,53 +61,86 @@ pub fn light_clean(text: &str, ui_lang: &str) -> String {
 // 只分点 + 编号 + 换行，**不重写措辞**（保留原话、清掉口头禅）。
 // 非列表性文本（切出的项 < 2）返回 None —— 不强行编号。
 
-/// item 边界标记。多字优先（先匹配"首先"再"先"）。
-const LIST_MARKERS: &[&str] = &[
-    "首先", "第一点", "第二点", "第三点", "第一", "第二", "第三", "第四", "第五",
-    "其次", "然后", "接着", "再就是", "再来", "还有", "还要", "另外", "此外",
-    "以及", "对了", "最后", "最终",
-    // 英文
-    "firstly", "secondly", "first", "second", "third", "then", "next",
-    "also", "additionally", "finally", "lastly",
+/// 列表性话语标记 —— 中文（无空格，子串匹配任意位置）。多字优先（去重叠靠顺序+长度）。
+const LIST_MARKERS_ZH: &[&str] = &[
+    // 序数
+    "第一点", "第二点", "第三点", "第四点", "第五点", "最后一点",
+    "第一", "第二", "第三", "第四", "第五", "其一", "其二", "其三", "其四",
+    "首先", "其次", "再次", "然后", "接着", "随后", "紧接着", "再来", "再就是",
+    "最后", "最终",
+    // 追加 / 补充
+    "还有", "还要", "还得", "另外", "此外", "除此之外", "以及", "再加上",
+    "对了", "顺便", "别忘了", "记得", "也要",
+    // 列举
+    "一来", "二来", "三来", "一方面", "另一方面", "一个是", "另一个是", "再一个",
 ];
 
-/// 引子（应丢弃，不当 item）：短、且像"今天要做的有"这种开场白。
+/// 列表性话语标记 —— 英文（**按词边界**匹配，避免切到 streng[then]/[also] 等词内）。
+/// 多词短语放前面（"first of all" 先于 "first"）。统一小写比较。
+const LIST_MARKERS_EN: &[&str] = &[
+    "first of all", "first off", "to start with", "to begin with", "and another",
+    "another thing", "one more thing", "and then", "after that", "as well as",
+    "don't forget to", "dont forget to", "remember to", "make sure to",
+    "firstly", "secondly", "thirdly", "fourthly", "first", "second", "third", "fourth",
+    "then", "next", "afterwards", "subsequently", "finally", "lastly",
+    "also", "plus", "additionally", "moreover", "furthermore", "besides",
+];
+
+/// 引子（应丢弃，不当 item）：短、且像"今天要做的有 / I need to do are"这种开场白。
 fn is_leadin(s: &str) -> bool {
     let t = s.trim();
     if t.is_empty() {
         return true;
     }
     let n = t.chars().count();
-    // 短 + 以引子收尾（"今天要做的有"/"我想说的是"）才算引子；不按内容词误删真实项。
-    n <= 8 && t.ends_with(['要', '有', '想', '是', '：', ':'])
+    if n <= 9 && t.ends_with(['要', '有', '想', '是', '：', ':']) {
+        return true;
+    }
+    // 英文引子：短 + 以 to/are/is/do/following 收尾（"the things I need to do are"）
+    let lower = t.to_lowercase();
+    let words = lower.split_whitespace().count();
+    words <= 8
+        && (lower.ends_with(" to") || lower.ends_with(" are") || lower.ends_with(" is")
+            || lower.ends_with(" do") || lower.ends_with(':') || lower.ends_with("following"))
 }
 
-/// 剥首尾标点 + 句首引子词（"今天要先写周报"→"写周报"），按引子结构单趟剥。
+/// 剥首尾标点 + 句首引子词（中："今天要先写周报"→"写周报"；英："I need to call Bob"→"call Bob"）。
 fn strip_item(s: &str) -> String {
     let mut t = s
         .trim()
         .trim_matches(|c| matches!(c, '，' | '。' | '、' | '；' | ',' | '.' | ';' | ' '))
         .to_string();
-    // 句首引子结构 "(今天)?(我/我们)?(要/想/需要)?(先/首先)?"，按顺序各剥一次。
-    // 剥后剩余必须 ≥2 字，避免把内容词当引子（保守）。
-    for lead in ["今天", "我们", "我", "需要", "要", "想", "先", "首先", "这边", "那个", "就"] {
+    // 中文引子结构 "(今天)?(我/我们)?(要/想/需要)?(先/首先)?…"，按顺序各剥一次（剩余≥2字）。
+    for lead in ["今天", "我们", "我", "需要", "要", "想", "先", "首先", "这边", "那个", "就", "得"] {
         if let Some(rest) = t.strip_prefix(lead) {
             if rest.chars().count() >= 2 {
                 t = rest.to_string();
             }
         }
     }
+    // 英文引子（大小写不敏感）："i need to / i have to / i want to / i'll / we / today / let me / to"
+    for lead in [
+        "i need to ", "i have to ", "i want to ", "i should ", "i'll ", "i will ",
+        "we need to ", "we should ", "let me ", "today i ", "today ", "i ", "to ", "we ",
+    ] {
+        // t.get 在非字符边界返回 None —— 中文 item 不会误切到字符中间 panic。
+        if let Some(head) = t.get(..lead.len()) {
+            if head.eq_ignore_ascii_case(lead) {
+                let rest = t[lead.len()..].to_string();
+                if rest.split_whitespace().count() >= 2 {
+                    t = rest;
+                    break; // 英文只剥一层，避免误伤
+                }
+            }
+        }
+    }
     t.trim().to_string()
 }
 
-/// 规则切分成 item 列表。
-fn split_list_items(text: &str) -> Vec<String> {
-    let delims = ['，', '。', '、', '；', '！', '？', ',', '.', ';', ' ', '\n', '\t', '：', ':'];
-    // 1) 找所有 marker 在边界处的起始字节位置 + 其长度
-    let mut marks: Vec<(usize, usize)> = Vec::new(); // (起始字节, marker字节长)
-    // 口述多为连读无标点，多字话语标记（然后/还有/对了/其次…）在任意位置都视为 item 边界。
-    let _ = delims;
-    for m in LIST_MARKERS {
+/// 找所有 marker 起点（中文任意位置；英文按词边界）。返回 (起始字节, marker字节长)。
+fn find_marks(text: &str) -> Vec<(usize, usize)> {
+    let mut marks: Vec<(usize, usize)> = Vec::new();
+    for m in LIST_MARKERS_ZH {
         let mut start = 0;
         while let Some(rel) = text[start..].find(m) {
             let abs = start + rel;
@@ -115,24 +148,46 @@ fn split_list_items(text: &str) -> Vec<String> {
             start = abs + m.len();
         }
     }
-    if marks.is_empty() {
-        return Vec::new();
+    // 英文：小写比较 + 词边界（前后非字母数字）。ASCII 小写不改字节布局，位置可直接用在原串。
+    let lower = text.to_lowercase();
+    for m in LIST_MARKERS_EN {
+        let mut start = 0;
+        while let Some(rel) = lower[start..].find(m) {
+            let abs = start + rel;
+            let after = abs + m.len();
+            let prev_ok = abs == 0
+                || lower[..abs].chars().last().map_or(true, |c| !c.is_ascii_alphanumeric());
+            let next_ok = after >= lower.len()
+                || lower[after..].chars().next().map_or(true, |c| !c.is_ascii_alphanumeric());
+            if prev_ok && next_ok {
+                marks.push((abs, m.len()));
+            }
+            start = after;
+        }
     }
-    marks.sort_by_key(|&(p, _)| p);
-    // 去重叠：若两个 marker 起点距离过近（嵌套，如"第一点"含"第一"），保留靠前的长的
+    marks
+}
+
+/// 规则切分成 item 列表。要求 ≥2 个标记（防把普通散文误判成清单）。
+fn split_list_items(text: &str) -> Vec<String> {
+    let mut marks = find_marks(text);
+    // 位置升序；同位置长的优先（"first of all" 先于 "first"，"第一点" 先于 "第一"）。
+    marks.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
+    // 去重叠：落在上一个 marker 区间内的跳过。
     let mut filtered: Vec<(usize, usize)> = Vec::new();
     for &(p, l) in &marks {
         if let Some(&(pp, pl)) = filtered.last() {
             if p < pp + pl {
-                continue; // 落在上一个 marker 内，跳过
+                continue;
             }
         }
         filtered.push((p, l));
     }
-    // 2) 切分：第一段 = [0, 第一个marker起点)；之后每段 = [marker结束, 下一个marker起点)
+    if filtered.len() < 2 {
+        return Vec::new(); // < 2 个标记 → 不是清单，不强行编号
+    }
     let mut items: Vec<String> = Vec::new();
-    let first_mark = filtered[0].0;
-    let preamble = &text[..first_mark];
+    let preamble = &text[..filtered[0].0];
     if !is_leadin(preamble) {
         let it = strip_item(preamble);
         if !it.is_empty() {
@@ -285,6 +340,42 @@ mod tests {
         ).expect("list");
         eprintln!("organize en:\n{out}");
         assert_eq!(out.lines().count(), 3);
+    }
+
+    #[test]
+    fn organize_english_phrases_and_preamble() {
+        // 多词标记 + 英文引子剥离（"I need to"）
+        let out = organize_into_list(
+            "I need to finish the report, after that email Bob, and another book the room",
+            "en",
+        ).expect("list");
+        eprintln!("organize en2:\n{out}");
+        assert_eq!(out.lines().count(), 3);
+        assert!(out.contains("finish the report"));
+        assert!(!out.to_lowercase().contains("i need to"), "应剥掉引子");
+    }
+
+    #[test]
+    fn organize_english_word_boundary_no_false_split() {
+        // "strengthen" 含 "then"、"often" 含 ... —— 不能在词内误切。这句不是清单 → None。
+        assert!(organize_into_list("we should strengthen the team and improve often", "en").is_none());
+    }
+
+    #[test]
+    fn organize_zh_more_markers() {
+        // 除此之外 / 另外 / 顺便 等
+        let out = organize_into_list(
+            "这个项目要先调研市场，另外做个原型，除此之外还得准备预算，顺便约一下投资人",
+            "zh",
+        ).expect("list");
+        eprintln!("organize zh markers:\n{out}");
+        assert!(out.lines().count() >= 3);
+    }
+
+    #[test]
+    fn organize_single_connector_not_forced() {
+        // 只有一个连接词（散文里偶发）不该被强行变清单（要 ≥2 标记）。
+        assert!(organize_into_list("我觉得这个方案不错然后我们可以推进", "zh").is_none());
     }
 
     // ── light_clean 测试 ──
