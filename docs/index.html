@@ -207,7 +207,7 @@
       <span>★ GitHub</span>
     </a>
   </div>
-  <p class="version" id="version-line"><span data-lang="en">v0.4.7 · macOS · Apple Silicon · Developer-ID signed</span><span data-lang="zh">v0.4.7 · macOS · Apple Silicon · 开发者签名</span></p>
+  <p class="version" id="version-line"><span data-lang="en">v0.6.0 · macOS · Apple Silicon · Developer-ID signed</span><span data-lang="zh">v0.6.0 · macOS · Apple Silicon · 开发者签名</span></p>
 
   <video id="demo-video" src="assets/demo-en.mp4" autoplay muted loop playsinline poster="assets/hero.png"></video>
 </section>
@@ -378,9 +378,47 @@
   </div>
 </section>
 
+<!-- ───────── v0.6 新功能（语音输入法大升级） ───────── -->
+<section>
+  <h2 class="section-title" data-lang="en">New in v0.6 — voice typing, leveled up</h2>
+  <h2 class="section-title" data-lang="zh">v0.6 新功能 —— 语音输入法大升级（2026-05）</h2>
+  <div class="feat">
+    <div class="feat-card">
+      <span class="ico">🗣️</span><b data-lang="en">Chinese + English, finally right.</b><b data-lang="zh">中英混说，终于听对了。</b>
+      <p data-lang="en">Say "把代码 push 上去" and it writes <b>push</b>, not a sound-alike Chinese word. We taught the recognizer the real BPE units behind 100+ dev terms (push / pull / commit / merge / deploy…), so English words inside Chinese sentences come out as English.</p>
+      <p data-lang="zh">说"把代码 push 上去"，写出来就是 <b>push</b>，不再是音近的"铺石"。给识别器接上了 100+ 程序员术语的真实 BPE 建模单元（push / pull / commit / merge / deploy…），中文句子里的英文词就按英文出。</p>
+    </div>
+    <div class="feat-card">
+      <span class="ico">↩️</span><b data-lang="en">Just correct yourself mid-sentence.</b><b data-lang="zh">说错了，改口就行。</b>
+      <p data-lang="en">Talk naturally, then fix it out loud: "…drank a bowl of soup. Oh, remove the soup part." It edits before the text lands — no backspacing. Works in both languages, all local, zero delay.</p>
+      <p data-lang="zh">自然地说，然后口头纠正："…喝了一碗汤。哦，把喝汤去掉。" 字落下前就改好，不用退格。中英文都行、全本地、零延迟。</p>
+    </div>
+    <div class="feat-card">
+      <span class="ico">🔢</span><b data-lang="en">Rambling → a clean list.</b><b data-lang="zh">一长串口述 → 清爽清单。</b>
+      <p data-lang="en">Dictate "first write the report then email the client oh and book a room" and it turns into a numbered <b>1. 2. 3.</b> list with line breaks. Pure rules — instant, no model, opt-in toggle.</p>
+      <p data-lang="zh">口述"先写周报然后给客户回邮件对了还要订会议室"，自动变成带换行的 <b>1. 2. 3.</b> 有序清单。纯规则、即时、零模型，设置里可开关。</p>
+    </div>
+    <div class="feat-card">
+      <span class="ico">📝</span><b data-lang="en">Teach it your words.</b><b data-lang="zh">教它你的词。</b>
+      <p data-lang="en">Add a custom term in one box — no weights, no fuss. It also quietly learns from your corrections, so the more you use it, the fewer mistakes it makes.</p>
+      <p data-lang="zh">一个小框加词就进 —— 不用填权重、不折腾。它还会从你的纠错里默默学词，越用越准。</p>
+    </div>
+    <div class="feat-card">
+      <span class="ico">📊</span><b data-lang="en">See how much typing you saved.</b><b data-lang="zh">看你省了多少打字。</b>
+      <p data-lang="en">A banner in History shows total words spoken, time, average WPM, and the minutes of typing you saved. All counted locally.</p>
+      <p data-lang="zh">历史窗顶部 banner：累计字数 / 时长 / 平均 WPM / 帮你省下多少分钟打字。全部本地统计。</p>
+    </div>
+    <div class="feat-card">
+      <span class="ico">🪶</span><b data-lang="en">Light tasks, zero extra download.</b><b data-lang="zh">轻任务，零额外下载。</b>
+      <p data-lang="en">Cleanup &amp; list-organizing run on fast local rules; translate / explain / draft-reply go to the AI CLI you already use. No 580 MB model to download — instant and lean.</p>
+      <p data-lang="zh">清理、整理清单走快速本地规则；翻译 / 解释 / 写回信交给你已经在用的 AI CLI。不用下任何 580MB 模型 —— 即时、不臃肿。</p>
+    </div>
+  </div>
+</section>
+
 <!-- ───────── v0.4.6 新功能 ───────── -->
 <section>
-  <h2 class="section-title" data-lang="en">What's new in v0.4.6</h2>
+  <h2 class="section-title" data-lang="en">Earlier in v0.4.6</h2>
   <h2 class="section-title" data-lang="zh">v0.4.6 新功能（2026-05）</h2>
   <div class="feat">
     <div class="feat-card">

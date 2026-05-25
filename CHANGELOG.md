@@ -6,7 +6,18 @@ versioning follows [SemVer](https://semver.org/).
 
 ---
 
-## [Unreleased] · 语音输入法增强
+## [0.6.0] · 2026-05-25 · 语音输入法大升级
+
+### Fixed
+- **中英混说不再听错**（"push" 不再变"铺石"）。根因：双语 zh-en 模型的英文建模单元
+  是大写 BPE piece（`▁PUSH`），而旧术语库把英文 hotword 当整词喂给 sherpa →
+  `Cannot find ID for token push` → 直接 skip，**英文 contextual biasing 一直是
+  no-op**。修复：(1) 内嵌 `bpe.vocab`（~12 KB，随模型版本锁定）并设
+  `modeling_unit=cjkchar+bpe` + `bpe_vocab`，让 sherpa 把英文词正确切成模型 BPE
+  units 来 boost；(2) `active.txt`（sherpa hotwords_file）英文大写化对上模型 units
+  （下游 `recase_english` 再还原自然大小写，零副作用）；(3) 内置词表补 100+ 常用
+  git/工作流英文动词（push / pull / commit / merge / deploy / refactor…）。
+  缺 `bpe.vocab` 时降级到"中文 biasing 仍在、英文照旧"，不阻断识别。
 
 ### Added
 - **同句内自我纠正**（本地规则，零延迟）：一段话里先说正文、再用"哦/不对/等等 +

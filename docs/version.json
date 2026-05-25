@@ -1,11 +1,11 @@
 {
-  "$comment": "MouseClaw macOS 自动更新通道 · App 启动拉此 URL 比对版本。注意：故意停在 0.4.7 —— v0.5.0 是 Win/Linux 测试版里程碑，对 macOS 无新功能，不打扰 macOS 用户。URL 钉死 v0.4.7 tag（不用 latest），这样 v0.5.0 成为 latest release 后老 macOS 用户更新仍下得到 0.4.7。",
-  "latest": "0.4.7",
+  "$comment": "MouseClaw macOS 自动更新通道 · App 启动拉此 URL 比对版本。v0.6.0 是 macOS 面向的语音输入法大升级（v0.5.0 是 Win/Linux 测试版、对 macOS 无新功能故当时跳过）。URL 钉死 v0.6.0 tag（不用 latest）。",
+  "latest": "0.6.0",
   "min_supported": "0.1.0",
-  "released_at": "2026-05-23",
+  "released_at": "2026-05-25",
   "size_mb": 13,
-  "dmg_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/download/v0.4.7/MouseClaw_0.4.7_aarch64.dmg",
-  "release_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/tag/v0.4.7",
-  "notes_zh": "🎉 大版本：桌宠会记事、会定时干活、有名字有性格了。14 个 AI 后端任选（含国产 Qwen Code 通义千问）· 🧠 长期记忆（全本地）+ 💗「我们的故事」+ 💭 主动记忆提醒 · ⏰ 定时任务 + 统一结果页（一句话创建、反幻觉）· 🐭 起名 + 9 种性格 · 🔊 皮肤音效 · ✨ 首次向导桌宠就活起来。并修好了「某 app 全屏后桌宠消失」—— 桌宠现在浮在全屏之上。",
-  "notes_en": "🎉 Big release: the pet now remembers, runs scheduled tasks, and has a name + personality. 14 AI backends (incl. China's Qwen Code) · 🧠 fully-local long-term memory + 💗 \"our story\" + 💭 proactive memory glances · ⏰ scheduled tasks + unified results page (one-line create, anti-hallucination) · 🐭 naming + 9 personalities · 🔊 per-skin sound effects · ✨ the pet comes alive in onboarding. Plus: the pet now floats over fullscreen apps (fixed the disappearing-in-fullscreen bug)."
+  "dmg_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/download/v0.6.0/MouseClaw_0.6.0_aarch64.dmg",
+  "release_url": "https://github.com/edwin-hao-ai/MouseClaw/releases/tag/v0.6.0",
+  "notes_zh": "🎙️ 语音输入法大升级。中英混说终于听对了（说\"把代码 push 上去\"写出来就是 push，不再是\"铺石\"）· ↩️ 说错了口头改口就行（\"…哦，把那句去掉\"，字落下前就改好）· 🔢 一长串口述自动整理成 1. 2. 3. 清单 · 📝 一个小框加词、它还会从你的纠错里自动学词 · 📊 历史窗看省了多少打字（字数/时长/WPM）· 🪶 清理和整理走本地规则、翻译交给你已配置的 AI CLI —— 不用下任何额外模型。",
+  "notes_en": "🎙️ Voice typing, leveled up. Chinese + English finally come out right (say \"把代码 push 上去\" and it writes push, not a sound-alike) · ↩️ correct yourself out loud mid-sentence (\"…oh, drop that part\" — fixed before the text lands) · 🔢 rambling auto-organizes into a numbered 1. 2. 3. list · 📝 add custom words in one box; it also learns from your corrections · 📊 see how much typing you saved in History (words / time / WPM) · 🪶 cleanup & list-organizing run on local rules, translate goes to the AI CLI you already use — no extra model download."
 }
