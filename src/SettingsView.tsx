@@ -119,6 +119,7 @@ interface Settings {
   language: string;
   voice_ime_enabled: boolean;
   vocab_builtin_enabled: boolean;
+  dictation_tidy: boolean;
   tts_enabled: boolean;
   sfx_enabled: boolean;
   sfx_volume: number;
@@ -337,6 +338,9 @@ export default function SettingsView() {
                   <button type="button" className="btn" data-testid="vocab-add-btn" onClick={addVocab}>{t("set.vocab.add.btn")}</button>
                   {vocabMsg && <span className="hint" data-testid="vocab-add-msg">{vocabMsg}</span>}
                 </span>
+              </Row>
+              <Row name={t("set.tidy")} hint={t("set.tidy.hint")}>
+                <Toggle on={s.dictation_tidy} onChange={(v) => { set("dictation_tidy", v); invoke("save_dictation_tidy", { enabled: v }).catch(() => {}); }} />
               </Row>
             </div>
           </section>

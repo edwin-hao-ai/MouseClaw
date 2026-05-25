@@ -41,8 +41,23 @@ async fn run(action: &str) -> Result<String, String> {
     //   （Claude / Codex / OpenClaw / Hermes 都走同一份 action prompt）。
     //   见 CLAUDE.md "多后端 CLI 都要兼容"硬规则。
     let backend = crate::config::Config::load().backend;
-    let result = crate::backend::ask_text_only(backend, &prompt).await
-        .map_err(|e| format!("调用 {} 失败：{e}", backend.display_name()))?;
+    // v0.6 · 清理/翻译优先走本地小模型（省 token、快、离线）—— 仅在模型已下载就绪时。
+    //   本地失败 → 回退 CLI。解释/写回信/复杂仍走 CLI（本地 0.6B 那俩弱）。
+    //   "下载本地模型"本身就是 opt-in，没下载就照旧走 CLI。
+    let local_first = matches!(action, "clean" | "translate") && crate::local_model::is_ready();
+    let result = if local_first {
+        match crate::local_model::generate(&prompt).await {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("[mouseclaw] 🧠 本地 {action} 失败({e})，回退 CLI");
+                crate::backend::ask_text_only(backend, &prompt).await
+                    .map_err(|e| format!("调用 {} 失败：{e}", backend.display_name()))?
+            }
+        }
+    } else {
+        crate::backend::ask_text_only(backend, &prompt).await
+            .map_err(|e| format!("调用 {} 失败：{e}", backend.display_name()))?
+    };
     let cleaned = strip_wrappers(result.trim());
     if cleaned.is_empty() {
         return Err("后台返回空结果".into());

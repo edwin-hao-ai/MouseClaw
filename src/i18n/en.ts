@@ -371,6 +371,8 @@ export const en: Strings = {
   "set.localmodel.hint": "When no CLI backend is installed, clean / translate / organize run on a local model (Qwen3-0.6B, ~580MB, fully local).",
   "set.localmodel.download": "Download (~580MB)", "set.localmodel.downloading": "Downloading",
   "set.localmodel.ready": "✓ Ready",
+  "set.tidy": "Tidy up after dictation (local model)",
+  "set.tidy.hint": "After you finish, a local model cleans up, organizes & applies fuzzy self-corrections (Typeless-style). Needs the local model downloaded; adds a few seconds after each dictation (off by default).",
   "set.skin": "Skin", "set.skin.hint": "9 pixel looks.", "set.skin.btn": "Pick skin…",
   "set.anchor": "Idle position", "set.anchor.hint": "Where the pet rests when idle.",
   "set.name": "Name", "set.name.hint": "What to call it.", "set.name.ph": "MouseClaw",

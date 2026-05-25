@@ -46,6 +46,19 @@ rg -q 'open_downloader_window' src-tauri/src/commands/settings.rs && pass "下�
 # 9. onboarding 没装 CLI 时提供本地模型入口
 rg -q 'download_local_model' src/components/OnboardingBackendStep.tsx && pass "onboarding 本地模型入口" || die "onboarding 缺本地入口"
 
+# 10. 清理/翻译优先本地（省 token）
+rg -q 'matches!\(action, "clean" \| "translate"\)' src-tauri/src/clipboard_action.rs && pass "清理/翻译优先本地" || die "未接 prefer-local"
+
+# 11. 听写整理层（opt-in，默认关）
+rg -q 'pub dictation_tidy' src-tauri/src/config.rs && rg -q 'fn default_dictation_tidy\(\) -> bool \{ false \}' src-tauri/src/config.rs \
+  && pass "dictation_tidy 配置(默认关)" || die "缺 dictation_tidy 配置"
+rg -q 'save_dictation_tidy' src-tauri/src/commands/settings.rs && rg -q 'commands::save_dictation_tidy' src-tauri/src/lib.rs \
+  && pass "save_dictation_tidy 命令+注册" || die "缺 save 命令"
+rg -q 'tidy_enabled' src-tauri/src/voice_ime.rs && rg -q '整理中' src-tauri/src/voice_ime.rs \
+  && pass "voice_ime 听写整理钩子" || die "voice_ime 未挂整理"
+rg -q 'pub async fn prewarm' src-tauri/src/local_model.rs && pass "模型预热(避免首用20s)" || die "缺 prewarm"
+rg -q '"set.tidy"' src/i18n/zh.ts && rg -q 'save_dictation_tidy' src/SettingsView.tsx && pass "整理开关 UI+i18n" || die "缺整理 UI"
+
 echo "----"
 [ "$fail" -eq 0 ] && echo "✅ local-model 全部通过" || echo "❌ 有失败项"
 exit $fail

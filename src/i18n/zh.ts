@@ -371,6 +371,8 @@ export const zh: Strings = {
   "set.localmodel.hint": "没装 CLI 后端时，清理 / 翻译 / 整理用本地小模型（Qwen3-0.6B，~580MB，纯本地）。",
   "set.localmodel.download": "下载 (~580MB)", "set.localmodel.downloading": "下载中",
   "set.localmodel.ready": "✓ 已就绪",
+  "set.tidy": "听写后整理（本地模型）",
+  "set.tidy.hint": "说完用本地小模型把口述清理、理条理、应用模糊纠正（类 Typeless）。需先下载本地模型；每次听写后会慢几秒（默认关）。",
   "set.skin": "皮肤", "set.skin.hint": "9 款像素形象。", "set.skin.btn": "挑皮肤…",
   "set.anchor": "闲置位置", "set.anchor.hint": "没事时桌宠待在哪。",
   "set.name": "名字", "set.name.hint": "叫它什么。", "set.name.ph": "鼠标龙虾",

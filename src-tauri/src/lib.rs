@@ -459,6 +459,7 @@ pub fn run() {
             commands::get_dictation_stats,
             commands::local_model_ready,
             commands::download_local_model,
+            commands::save_dictation_tidy,
             commands::get_settings,
             commands::save_tts,
             commands::save_sfx,

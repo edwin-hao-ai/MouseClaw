@@ -237,6 +237,10 @@ pub struct Config {
     /// 默认 fn —— 兼容老 config
     #[serde(default = "default_voice_ime_trigger")]
     pub voice_ime_trigger: String,
+    /// v0.6 · 听写后用本地小模型「整理」（清理+理条理+模糊纠正，类 Typeless）。
+    /// 默认**关** —— 本地模型 ~3-5s，开了会在每次听写后等几秒（opt-in，要先下载本地模型）。
+    #[serde(default = "default_dictation_tidy")]
+    pub dictation_tidy: bool,
     /// 剪贴板捕获暂停开关 —— v0.1.13 隐私强化
     /// 默认 false（开启捕获）。用户点托盘「⏸️ 暂停剪贴板记录」时为 true。
     #[serde(default)]
@@ -307,6 +311,7 @@ fn default_vocab_builtin_enabled() -> bool { true }
 // 用户托盘菜单可一键开。
 // default_tidy_up removed in v0.3.4 alongside LLM polish
 fn default_voice_ime() -> bool { true }
+fn default_dictation_tidy() -> bool { false }
 fn default_voice_ime_trigger() -> String { "fn".into() }
 fn default_autostart() -> bool { true }
 fn default_memory_enabled() -> bool { true }
@@ -325,6 +330,7 @@ impl Default for Config {
             firstrun_tour_done: false,
             voice_ime_enabled: default_voice_ime(),
             voice_ime_trigger: default_voice_ime_trigger(),
+            dictation_tidy: default_dictation_tidy(),
             clipboard_paused: false,
             workspace_path: None,
             autostart: default_autostart(),

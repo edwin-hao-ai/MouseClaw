@@ -46,6 +46,18 @@ pub fn get_voice_ime() -> bool {
     config::Config::load().voice_ime_enabled
 }
 
+/// v0.6 · 切换"听写后用本地模型整理"（opt-in，~3-5s）。开启时后台预热模型避免首用等 20s。
+#[tauri::command]
+pub async fn save_dictation_tidy(enabled: bool) -> Result<(), String> {
+    let mut cfg = config::Config::load();
+    cfg.dictation_tidy = enabled;
+    cfg.save().map_err(|e| format!("保存失败：{e}"))?;
+    if enabled {
+        crate::local_model::prewarm().await;
+    }
+    Ok(())
+}
+
 /// 设置 voice IME 触发键
 #[tauri::command]
 pub fn save_voice_ime_trigger(trigger: String) -> Result<(), String> {

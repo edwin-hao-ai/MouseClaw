@@ -846,6 +846,8 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
             return;
         }
 
+        // v0.6 · 听写整理开关（opt-in，默认关）—— 捕获进异步块，决定要不要本地模型整理。
+        let tidy_enabled = cfg.dictation_tidy;
         // v0.3.8 · Plan B —— streaming poller 不 type，只在 fn 松开后一次性写。
         // 跟 Whisper batch timing 一致：fn 松开 → 等焦点回到原 app → activate + paste。
         // 不再有 LCP delta（streaming 没 type 任何东西，typed 永远是空）。
@@ -883,6 +885,24 @@ fn stop_and_paste(app: AppHandle, state: Arc<AppState>) {
                     return;
                 }
             }
+
+            // v0.6 · 听写整理（opt-in，默认关）：用本地小模型把口述清理 + 理条理 + 模糊纠正
+            // （~3-5s）。仅在开关开 + 模型就绪时。失败用原文。这是确认为正文（非跨句纠正）后。
+            let final_text = if tidy_enabled && crate::local_model::is_ready() {
+                crate::overlay::emit_view(&app2, &crate::events::ViewKind::Thinking {
+                    transcript: "(整理中…)".into(),
+                    status: None,
+                });
+                let tp = format!(
+                    "把下面这段口述整理干净、通顺、有条理，去掉口头禅、应用自我纠正，只输出整理后的文字：\n{final_text}"
+                );
+                match crate::local_model::generate(&tp).await {
+                    Ok(t) if !t.trim().is_empty() => t.trim().to_string(),
+                    _ => final_text,
+                }
+            } else {
+                final_text
+            };
 
             match crate::mode_b::write_at_cursor(&final_text).await {
                 Ok(()) => {

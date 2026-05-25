@@ -51,6 +51,20 @@ pub async fn generate(prompt: &str) -> Result<String> {
         .map_err(|e| anyhow!("local_model join: {e}"))?
 }
 
+/// 预热：后台把模型加载进缓存，让首次真用别等 ~20s 冷加载。
+/// 听写整理开关打开时调一次。模型没下载就静默 no-op。
+pub async fn prewarm() {
+    if !is_ready() {
+        return;
+    }
+    let _ = tokio::task::spawn_blocking(|| {
+        // 生成 1 token，副作用是把 session+tokenizer 载入 MODEL 缓存。
+        let _ = generate_blocking("hi", 1);
+    })
+    .await;
+    println!("[mouseclaw] 🧠 local model prewarmed");
+}
+
 fn argmax_f32(slice: &[f32]) -> usize {
     let mut best = 0usize;
     let mut bestv = f32::MIN;

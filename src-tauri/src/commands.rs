@@ -125,6 +125,7 @@ pub fn save_shortcut(
         language: prev.language,
         voice_lang: voice_lang.clone(),
         vocab_builtin_enabled: prev.vocab_builtin_enabled,
+        dictation_tidy: prev.dictation_tidy,
         firstrun_tour_done: prev.firstrun_tour_done,
         voice_ime_enabled: prev.voice_ime_enabled,
         voice_ime_trigger: prev.voice_ime_trigger,
