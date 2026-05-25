@@ -83,8 +83,13 @@ fn generate_blocking(user_prompt: &str, max_tokens: usize) -> Result<String> {
     let im_end = tok.token_to_id("<|im_end|>").unwrap_or(151645) as i64;
     let eos = tok.token_to_id("<|endoftext|>").unwrap_or(151643) as i64;
 
-    // Qwen3 chat 格式；/no_think 抑制思考链（基础任务不需要）。
-    let prompt = format!("<|im_start|>user\n{user_prompt} /no_think<|im_end|>\n<|im_start|>assistant\n");
+    // 强 system 消息：压住小模型"把指令/规则当文本复述"的 echo bug（给 Claude 调的
+    // 啰嗦 reactive 提示喂 0.6B 会触发，spike 实测过）。/no_think 抑制思考链。
+    const SYS: &str = "你是文本处理工具。严格执行用户给的指令处理文本，\
+只输出处理后的结果文本本身，绝不复述指令、规则、原文标记（如 ===== 原文 =====）或加任何解释。";
+    let prompt = format!(
+        "<|im_start|>system\n{SYS}<|im_end|>\n<|im_start|>user\n{user_prompt} /no_think<|im_end|>\n<|im_start|>assistant\n"
+    );
     let enc = tok.encode(prompt, false).map_err(|e| anyhow!("encode: {e}"))?;
     let prompt_ids: Vec<i64> = enc.get_ids().iter().map(|&x| x as i64).collect();
 
@@ -167,5 +172,26 @@ mod tests {
         eprintln!("译文输出: {out:?}");
         assert!(!out.trim().is_empty(), "输出不应为空");
         assert!(!out.contains("<think>"), "不应残留 think 标签");
+    }
+
+    // 喂 production 的啰嗦 reactive 提示（曾让小模型把规则当文本输出）——
+    // 验证强 system 消息压住了 echo bug。需模型在场才跑。
+    #[test]
+    fn verbose_clipboard_prompt_no_echo() {
+        if !is_ready() {
+            eprintln!("skip: 本地模型未下载");
+            return;
+        }
+        let verbose = "请翻译下面这段文字：\n\
+             - 自动判断语向：中文 → 英文；非中文 → 中文\n\
+             - 不要解释、不要加注释\n\
+             - 只输出翻译后的纯文本\n\n\
+             ===== 原文 START =====\n这个功能下周三上线。\n===== 原文 END =====";
+        let out = generate_blocking(verbose, 80).expect("generate ok");
+        eprintln!("啰嗦提示输出: {out:?}");
+        assert!(!out.trim().is_empty(), "输出不应为空");
+        // 不应把提示规则/标记复述出来
+        assert!(!out.contains("====="), "不应复述原文标记");
+        assert!(!out.contains("自动判断语向"), "不应复述规则");
     }
 }
