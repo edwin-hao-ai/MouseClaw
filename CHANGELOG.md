@@ -6,6 +6,23 @@ versioning follows [SemVer](https://semver.org/).
 
 ---
 
+## [0.7.0] · 2026-05-26 · 语音引擎换成 SenseVoice（中英混说质量大升 + 原生标点）
+
+### Changed
+- **语音识别全面换成 SenseVoice 离线模型**（听写 / AI 召唤 / 拖文件后说话三条路径统一）。
+  旧的 2023 流式 zipformer 对中英混说到顶（"push" 老被音译成"铺石/p实"）；SenseVoice
+  多语种、中英混说质量高一档，且**自带标点 + 逆文本归一**（use_itn），不再需要单独标点模型。
+  离线模型（松手一次性转写）—— 听写本来就是松手才落字，体验不变，只是录音中改显示"听写中…"
+  而非粗略实时预览。
+- **拖文件后说话（feed）改用能量 VAD 判断静默**（SenseVoice 无流式 partial）。
+- **总占用更小**：229MB 一个模型，取代旧 zh-en 190MB + 标点 72MB = 262MB。
+
+### Removed
+- **删除旧流式 zipformer + 单独标点模型 + 词表/hotword 子系统**（净删 ~2500 行死代码）：
+  - "加词 / 内置术语表 / 自动学词" 功能整体下线 —— sherpa 的 hotwords contextual biasing
+    只对 transducer 模型生效，SenseVoice 是 CTC 模型、解码时忽略 hotwords，加词无效。
+  - 设置页"加词"行、托盘"📝 术语表"子菜单一并移除。
+
 ## [0.6.1] · 2026-05-25 · 听写气泡不再抖动/闪烁/截断
 
 ### Fixed
